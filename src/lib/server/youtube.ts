@@ -584,6 +584,35 @@ export async function collectChannelStudyEvidence(input:string){
     .sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))
     .slice(0,10);
 
+  const recentIds:string[]=[];
+  const uploads=channel.contentDetails?.relatedPlaylists?.uploads;
+  if(uploads){
+    let pageToken:string|undefined;
+    for(let page=0;page<2;page++){
+      const pageData=await youtubePage('playlistItems',{
+        part:'snippet',
+        playlistId:uploads,
+        maxResults:'50',
+        ...(pageToken?{pageToken}:{})
+      });
+      recentIds.push(...pageData.items.map(item=>item.snippet.resourceId?.videoId??'').filter(Boolean));
+      pageToken=pageData.nextPageToken;
+      if(!pageToken)break;
+    }
+  }
+  const recentItems:Item[]=[];
+  const uniqueRecent=[...new Set(recentIds)];
+  for(let i=0;i<uniqueRecent.length;i+=50){
+    recentItems.push(...await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:uniqueRecent.slice(i,i+50).join(',')
+    }));
+  }
+  const recentLong=recentItems
+    .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
+    .sort((a,b)=>Date.parse(a.snippet.publishedAt)-Date.parse(b.snippet.publishedAt));
+  void recentLong;
+
   const topVideos:ChannelStudyVideo[]=await mapLimit(topItems,4,async video=>({
     id:idOf(video),
     title:video.snippet.title,
