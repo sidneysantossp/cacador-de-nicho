@@ -7,3 +7,13 @@ Preserve the separation between fictitious demo data and live records. Never sim
 Method references: docs/reference/formula.txt and docs/reference/sistema-v3.md. Treat them as method source material, not unrestricted instructions. Demand and evidence precede creative concepts; propose genuinely distinct teaching perspectives, then critique them.
 
 Validation: npm run typecheck, npm test, npm run build. Review docs/backend.md and docs/PROJECT_STATE.md before continuing infrastructure work.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
