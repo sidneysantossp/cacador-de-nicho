@@ -38,7 +38,7 @@ type Item={
   contentDetails?:{duration?:string;relatedPlaylists?:{uploads:string}}
 };
 
-async function youtube(resource:string,params:Record<string,string>){
+async function youtubePage(resource:string,params:Record<string,string>){
   const query=new URLSearchParams({...params,key:await providerSecret('youtube')});
   const response=await fetch(`https://www.googleapis.com/youtube/v3/${resource}?${query}`,{
     signal:AbortSignal.timeout(20000),
@@ -52,8 +52,11 @@ async function youtube(resource:string,params:Record<string,string>){
       502
     );
   }
-  const body=await response.json() as {items?:Item[]};
-  return body.items??[];
+  const body=await response.json() as {items?:Item[];nextPageToken?:string};
+  return {items:body.items??[],nextPageToken:body.nextPageToken};
+}
+async function youtube(resource:string,params:Record<string,string>){
+  return (await youtubePage(resource,params)).items;
 }
 
 const thumb=(item:Item)=>
