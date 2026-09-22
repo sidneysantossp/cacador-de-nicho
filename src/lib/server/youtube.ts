@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, Settings } from '@/lib/types';
+import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings } from '@/lib/types';
 import {
   REFERENCE_CHANNELS,
   REFERENCE_DISCOVERY_QUERIES,
@@ -10,7 +10,7 @@ import {
 import { checked, db, list, put } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
-import { evaluateOpportunityCandidate } from '@/lib/opportunity-criteria';
+import { evaluateOpportunityCandidate, isoDurationSeconds, MIN_LONG_FORM_SECONDS } from '@/lib/opportunity-criteria';
 
 type Item={
   id:string|{videoId?:string;channelId?:string};
@@ -29,6 +29,8 @@ type Item={
   };
   statistics?:{
     viewCount?:string;
+    likeCount?:string;
+    commentCount?:string;
     videoCount?:string;
     subscriberCount?:string;
     hiddenSubscriberCount?:boolean
@@ -448,4 +450,308 @@ export async function scan(config:Settings){
   }
 
   return adjacent.length;
+}
+
+
+type CommentThreadItem={
+  snippet?:{
+    topLevelComment?:{
+      snippet?:{
+        textDisplay?:string;
+        textOriginal?:string;
+        likeCount?:number;
+        publishedAt?:string;
+      }
+    }
+  }
+};
+
+async function youtubeComments(videoId:string){
+  const query=new URLSearchParams({
+    part:'snippet',
+    videoId,
+    order:'relevance',
+    maxResults:'10',
+    textFormat:'plainText',
+    key:await providerSecret('youtube')
+  });
+  const response=await fetch(`https://www.googleapis.com/youtube/v3/commentThreads?${query}`,{
+    signal:AbortSignal.timeout(20000),
+    cache:'no-store'
+  });
+  if(response.status===403||response.status===404)return [];
+  if(!response.ok)return [];
+  const body=await response.json() as {items?:CommentThreadItem[]};
+  return (body.items??[]).flatMap(item=>{
+    const snippet=item.snippet?.topLevelComment?.snippet;
+    const text=(snippet?.textOriginal??snippet?.textDisplay??'').trim();
+    if(!text)return [];
+    return [{
+      text:text.slice(0,1200),
+      likes:Number(snippet?.likeCount??0),
+      publishedAt:snippet?.publishedAt??''
+    }];
+  });
+}
+
+async function resolveChannelInput(input:string){
+  const raw=input.trim();
+  if(!raw)throw new HttpError('Informe um canal, @handle ou URL do YouTube.',400);
+  let id='';
+  let handle='';
+  let username='';
+  try{
+    const url=new URL(/^https?:\/\//i.test(raw)?raw:`https://youtube.com/${raw.replace(/^\/+/, '')}`);
+    const parts=url.pathname.split('/').filter(Boolean);
+    if(parts[0]==='channel'&&parts[1])id=parts[1];
+    else if(parts[0]?.startsWith('@'))handle=parts[0];
+    else if(parts[0]==='user'&&parts[1])username=parts[1];
+    else if(parts[0]?.startsWith('UC'))id=parts[0];
+  }catch{}
+  if(!id&&raw.startsWith('UC'))id=raw;
+  if(!handle&&raw.startsWith('@'))handle=raw;
+
+  let channels:Item[]=[];
+  if(id){
+    channels=await youtube('channels',{part:'snippet,statistics,contentDetails',id});
+  }else if(handle){
+    channels=await youtube('channels',{part:'snippet,statistics,contentDetails',forHandle:handle.replace(/^@/,'')});
+  }else if(username){
+    channels=await youtube('channels',{part:'snippet,statistics,contentDetails',forUsername:username});
+  }else{
+    const found=await youtube('search',{
+      part:'snippet',
+      type:'channel',
+      q:raw,
+      maxResults:'10',
+      relevanceLanguage:'en',
+      regionCode:'US'
+    });
+    const best=[...found].sort((a,b)=>nameScore(b.snippet.title,raw)-nameScore(a.snippet.title,raw))[0];
+    if(best){
+      channels=await youtube('channels',{part:'snippet,statistics,contentDetails',id:idOf(best)});
+    }
+  }
+  const channel=channels[0];
+  if(!channel)throw new HttpError('Canal do YouTube não encontrado.',404);
+  return channel;
+}
+
+export async function collectChannelStudyEvidence(input:string){
+  const channel=await resolveChannelInput(input);
+  const channelId=idOf(channel);
+  const source={
+    id:channelId,
+    name:channel.snippet.title,
+    handle:channel.snippet.customUrl??'',
+    description:channel.snippet.description,
+    url:`https://www.youtube.com/channel/${channelId}`,
+    createdAt:channel.snippet.publishedAt,
+    videoCount:Number(channel.statistics?.videoCount??0),
+    subscribers:channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0),
+    avatar:thumb(channel)
+  };
+
+  const ids=new Set<string>();
+  for(const videoDuration of ['medium','long'] as const){
+    const found=await youtube('search',{
+      part:'snippet',
+      type:'video',
+      channelId,
+      order:'viewCount',
+      maxResults:'25',
+      videoDuration
+    });
+    for(const item of found){
+      const id=idOf(item);
+      if(id)ids.add(id);
+    }
+  }
+  const videoIds=[...ids];
+  const videos:Item[]=[];
+  for(let i=0;i<videoIds.length;i+=50){
+    videos.push(...await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:videoIds.slice(i,i+50).join(',')
+    }));
+  }
+
+  const topItems=videos
+    .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
+    .sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))
+    .slice(0,10);
+
+  const topVideos:ChannelStudyVideo[]=await mapLimit(topItems,4,async video=>({
+    id:idOf(video),
+    title:video.snippet.title,
+    publishedAt:video.snippet.publishedAt,
+    views:Number(video.statistics?.viewCount??0),
+    likes:video.statistics?.likeCount===undefined?null:Number(video.statistics.likeCount),
+    commentCount:video.statistics?.commentCount===undefined?null:Number(video.statistics.commentCount),
+    duration:video.contentDetails?.duration??'',
+    thumbnail:thumb(video),
+    url:`https://www.youtube.com/watch?v=${idOf(video)}`,
+    comments:await youtubeComments(idOf(video))
+  }));
+
+  if(!topVideos.length)throw new HttpError('Não encontrei vídeos long form públicos suficientes neste canal.',422);
+  const sortedViews=topVideos.map(v=>v.views).sort((a,b)=>a-b);
+  const medianTop10Views=sortedViews.length%2
+    ?sortedViews[Math.floor(sortedViews.length/2)]
+    :Math.round((sortedViews[sortedViews.length/2-1]+sortedViews[sortedViews.length/2])/2);
+  const top10Views=topVideos.reduce((sum,v)=>sum+v.views,0);
+  const top3Views=topVideos.slice(0,3).reduce((sum,v)=>sum+v.views,0);
+  const videosAboveSubscribers=source.subscribers===null
+    ?null
+    :topVideos.filter(v=>v.views>source.subscribers!).length;
+
+  return {
+    source,
+    topVideos,
+    scannedVideos:videoIds.length,
+    totalPublicVideos:source.videoCount,
+    scanTruncated:source.videoCount>videoIds.length,
+    commentSampleSize:topVideos.reduce((sum,v)=>sum+v.comments.length,0),
+    commentsAvailableVideos:topVideos.filter(v=>v.comments.length>0).length,
+    metrics:{
+      top10Views,
+      top3Share:top10Views?top3Views/top10Views:0,
+      medianTop10Views,
+      videosAboveSubscribers
+    }
+  };
+}
+
+function matchedNicheTerms(profile:ChannelNicheProfile,text:string){
+  const normalized=norm(text);
+  return profile.anchorTerms.filter(term=>{
+    const t=norm(term);
+    return t.length>=3&&normalized.includes(t);
+  });
+}
+
+export async function findNicheLockedSimilarCandidates(
+  profile:ChannelNicheProfile,
+  config:Settings,
+  excludeChannelId:string
+){
+  const publishedAfter=new Date(Date.now()-config.maxVideoAgeHours*3600000).toISOString();
+  const videoIds=new Set<string>();
+  const sourceByVideo=new Map<string,string>();
+
+  for(const query of profile.searchQueries.slice(0,5)){
+    for(const videoDuration of ['medium','long'] as const){
+      const found=await youtube('search',{
+        part:'snippet',
+        type:'video',
+        q:query,
+        order:'viewCount',
+        publishedAfter,
+        maxResults:'50',
+        relevanceLanguage:'en',
+        regionCode:'US',
+        videoDuration
+      });
+      for(const item of found){
+        const id=idOf(item);
+        if(!id)continue;
+        videoIds.add(id);
+        if(!sourceByVideo.has(id))sourceByVideo.set(id,query);
+      }
+    }
+  }
+
+  const videos:Item[]=[];
+  const ids=[...videoIds];
+  for(let i=0;i<ids.length;i+=50){
+    videos.push(...await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:ids.slice(i,i+50).join(',')
+    }));
+  }
+  const eligibleVideos=videos.filter(video=>{
+    const language=(video.snippet.defaultAudioLanguage??video.snippet.defaultLanguage??'').toLowerCase();
+    return language.startsWith('en')&&video.snippet.channelId&&video.snippet.channelId!==excludeChannelId;
+  });
+
+  const channelIds=[...new Set(eligibleVideos.map(video=>video.snippet.channelId!).filter(Boolean))];
+  const channels:Item[]=[];
+  for(let i=0;i<channelIds.length;i+=50){
+    channels.push(...await youtube('channels',{
+      part:'snippet,statistics',
+      id:channelIds.slice(i,i+50).join(',')
+    }));
+  }
+
+  const observedAt=new Date().toISOString();
+  const candidates:Array<{score:number;channel:Channel}>=[];
+
+  for(const channel of channels){
+    const id=idOf(channel);
+    if(channel.snippet.country!=='US')continue;
+    const relevant=eligibleVideos
+      .filter(video=>video.snippet.channelId===id)
+      .sort((a,b)=>videoSignal(b)-videoSignal(a));
+    const video=relevant[0];
+    if(!video)continue;
+    const sourceQuery=sourceByVideo.get(idOf(video))??profile.searchQueries[0]??profile.subniche;
+    const lexicalText=`${channel.snippet.title} ${channel.snippet.description} ${video.snippet.title}`;
+    const matches=matchedNicheTerms(profile,lexicalText);
+    const exactMultiword=matches.some(term=>norm(term).includes(' '));
+    if(matches.length<2&&!exactMultiword)continue;
+
+    const views=Number(video.statistics?.viewCount??0);
+    const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
+    const payload:Channel={
+      id,
+      name:channel.snippet.title,
+      handle:channel.snippet.customUrl??'',
+      niche:inferNiche(video),
+      language:(video.snippet.defaultAudioLanguage??video.snippet.defaultLanguage??'en').toLowerCase(),
+      country:channel.snippet.country,
+      format:`${inferFormat(video,sourceQuery)} · Long form`,
+      description:channel.snippet.description.slice(0,2000),
+      lens:`Candidato encontrado dentro do Niche Lock "${profile.subniche}".`,
+      thumbnail:thumb(video),
+      avatar:thumb(channel),
+      url:`https://www.youtube.com/channel/${id}`,
+      createdAt:channel.snippet.publishedAt,
+      firstSeenAt:observedAt,
+      observedAt,
+      videoCount:Number(channel.statistics?.videoCount??0),
+      subscribers,
+      video:{
+        id:idOf(video),
+        title:video.snippet.title,
+        publishedAt:video.snippet.publishedAt,
+        views,
+        duration:video.contentDetails?.duration??'',
+        thumbnail:thumb(video),
+        url:`https://www.youtube.com/watch?v=${idOf(video)}`
+      },
+      status:'new',
+      evidence:[
+        `Niche Lock: ${profile.primaryNiche} → ${profile.subniche}.`,
+        `Termos de aderência encontrados: ${matches.join(', ')}.`,
+        `Consulta focada: "${sourceQuery}".`,
+        'Gate de mercado: canal US, vídeo em inglês e long form.'
+      ],
+      discoverySource:'reference-adjacent'
+    };
+    const qualification=evaluateOpportunityCandidate(payload,config);
+    if(!qualification.qualified)continue;
+    const breakout=qualification.breakoutRatio===null?1:Math.min(8,qualification.breakoutRatio);
+    const score=matches.length*12+Math.log10(videoSignal(video)+1)*10+breakout;
+    candidates.push({score,channel:payload});
+  }
+
+  const deduped=new Map<string,{score:number;channel:Channel}>();
+  for(const item of candidates){
+    const prior=deduped.get(item.channel.id);
+    if(!prior||item.score>prior.score)deduped.set(item.channel.id,item);
+  }
+  return [...deduped.values()]
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,30)
+    .map(item=>item.channel);
 }
