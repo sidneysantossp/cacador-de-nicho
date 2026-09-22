@@ -64,7 +64,7 @@ export default function Dashboard(){
      {!visible.length&&<Empty icon={<Telescope size={30}/>} title={data.channels.length?'Nenhum canal com esses filtros':'Seu radar está pronto para começar'} description={data.channels.length?'Tente outro nicho, idioma ou termo de busca.':'Conecte o YouTube e execute a primeira pesquisa. A base real começa vazia.'}/>}
      <div className="bottom-note"><ShieldCheck size={15}/><span>Evidência antes de convicção. Cada proposta é uma hipótese até ser testada.</span><span className="footer-version">CAÇADORES / V0.1</span></div>
     </>}
-    {view==='analysis'&&<ChannelAnalysis studies={data.channelStudies??[]} mode={data.mode} busy={busy} onAnalyze={(channelInput)=>action({action:'channelStudy',channelInput},'channelStudy')}/>}
+    {view==='analysis'&&<ChannelAnalysis studies={data.channelStudies??[]} reports={data.opportunityReports??[]} mode={data.mode} busy={busy} onAnalyze={(channelInput)=>action({action:'channelStudy',channelInput},'channelStudy')} onGenerateReport={(channelStudyId)=>action({action:'opportunityReport',channelStudyId},'opportunityReport')}/>}
     {view==='opportunities'&&(
       <>
        <div className="info-strip">
