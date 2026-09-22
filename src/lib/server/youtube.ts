@@ -620,7 +620,7 @@ export async function collectChannelStudyEvidence(input:string){
   const topIds=topItems.map(idOf);
   type SnapshotRow={video_id:string;views:number;observed_at:string};
   const snapshotRows:SnapshotRow[]=topIds.length
-    ?checked(await db().from('radar_snapshots').select('video_id,views,observed_at').eq('channel_id',channelId).in('video_id',topIds).order('observed_at',{ascending:true}).limit(500))
+    ?checked(await db().from('radar_snapshots').select('video_id,views,observed_at').eq('channel_id',channelId).in('video_id',topIds).order('observed_at',{ascending:true}).limit(500)) as SnapshotRow[]
     :[];
 
   function snapshotData(video:Item){
