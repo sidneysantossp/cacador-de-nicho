@@ -16,7 +16,8 @@ function channel(overrides:Partial<Channel>={}):Channel{
     name:'Breakout Lab',
     handle:'@breakout',
     niche:'Education',
-    language:'en',
+    language:'en-US',
+    country:'US',
     format:'2D Animation',
     description:'',
     lens:'',
@@ -68,4 +69,10 @@ test('strict opportunity gate rejects weak reach and non-breakout videos',()=>{
 
 test('hidden subscriber counts do not block an otherwise qualifying channel',()=>{
   assert.equal(qualifiesOpportunityCandidate(channel({subscribers:null}),config),true);
+});
+
+test('strict market gate rejects non-US, non-English and short-form candidates',()=>{
+  assert.equal(qualifiesOpportunityCandidate(channel({country:'IN'}),config),false);
+  assert.equal(qualifiesOpportunityCandidate(channel({language:'hi'}),config),false);
+  assert.equal(qualifiesOpportunityCandidate(channel({video:{...channel().video,duration:'PT2M59S'}}),config),false);
 });
