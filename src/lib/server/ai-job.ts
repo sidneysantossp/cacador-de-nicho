@@ -8,5 +8,5 @@ export async function runAiJob(kind:'analyze'|'script'|'channel-study'|'opportun
  if(!acquired)throw new HttpError('Outra tarefa está em execução ou esta solicitação já foi processada. Consulte Atividade.',409);
  const run={id:key,type:kind==='analyze'?'Análise editorial':kind==='channel-study'?'Análise profunda de canal':kind==='opportunity-report'?'Opportunity Report':'Rascunho de roteiro',startedAt:new Date().toISOString(),status:'running',message:'Pesquisa e agentes em execução.'};
  try{await put('radar_runs',key,run);await work();await put('radar_runs',key,{...run,status:'completed',message:'Entrega registrada. Consulte as fontes e limitações.'});checked(await db().rpc('finish_radar_job',{job_key:key,lease_token:token,success:true}));}
- catch(e){await put('radar_runs',key,{...run,status:'failed',message:'A tarefa não foi concluída. Verifique as conexões antes de tentar novamente.'});checked(await db().rpc('finish_radar_job',{job_key:key,lease_token:token,success:false}));throw e;}
+ catch(e){const detail=e instanceof Error?e.message:'Falha não identificada.';await put('radar_runs',key,{...run,status:'failed',message:`Falha: ${detail.slice(0,600)}`});checked(await db().rpc('finish_radar_job',{job_key:key,lease_token:token,success:false}));throw e;}
 }
