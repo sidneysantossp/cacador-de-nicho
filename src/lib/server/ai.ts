@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { editorialMethod } from './method';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-import type { Analysis, Channel, ChannelNicheProfile, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, ChannelStudyVideo, Decision, ResearchContext, Script } from '@/lib/types';
+import type { Analysis, Channel, ChannelNicheProfile, ChannelStudy, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, ChannelStudyVideo, Decision, OpportunityReport, ResearchContext, Script } from '@/lib/types';
 import { list, put, settings } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
@@ -189,6 +189,121 @@ export async function reviewSimilarChannelCandidates(
   }
  );
  return review.matches.filter(item=>item.sameNiche&&item.score>=80).sort((a,b)=>b.score-a.score);
+}
+
+const opportunitySignal=z.object({level:z.enum(['low','medium','high','uncertain']),rationale:z.string()});
+const opportunityReportBody=z.object({
+ title:z.string(),
+ thesis:z.string(),
+ curve:z.object({
+  thesis:z.string(),
+  subject:z.string(),
+  promise:z.string(),
+  angle:z.string(),
+  narrativeMechanism:z.string(),
+  visualMechanism:z.string(),
+  emotionalDriver:z.string(),
+  repeatabilityEvidence:z.array(z.string()).max(10),
+  failureConditions:z.array(z.string()).max(10)
+ }),
+ validation:z.object({
+  classification:z.enum(['hypothesis','emerging','structural']),
+  independentCreators:z.number().int().min(1),
+  supportingVideos:z.number().int().min(1),
+  evidence:z.array(z.string()).max(12),
+  counterEvidence:z.array(z.string()).max(12),
+  limitations:z.array(z.string()).max(12)
+ }),
+ saturation:z.object({
+  level:z.enum(['low','medium','high','uncertain']),
+  rationale:z.string(),
+  saturatedPatterns:z.array(z.string()).max(10),
+  underusedAngles:z.array(z.string()).max(10),
+  whitespace:z.array(z.string()).max(10)
+ }),
+ viralDNA:z.object({
+  demand:opportunitySignal,
+  repeatability:opportunitySignal,
+  breakout:opportunitySignal,
+  saturation:opportunitySignal,
+  gap:opportunitySignal
+ }),
+ transfers:z.array(z.object({
+  label:z.string(),
+  principle:z.string(),
+  targetNiche:z.string(),
+  targetAudience:z.string(),
+  changedVariable:z.string(),
+  preservedMechanism:z.string(),
+  demandStatus:z.enum(['observed','partial','hypothesis']),
+  demandEvidence:z.array(z.string()).max(8),
+  gap:z.string(),
+  whyItCouldWork:z.string(),
+  titles:z.array(z.string()).min(3).max(5),
+  risks:z.array(z.string()).max(8)
+ })).length(3),
+ channelConcept:z.object({
+  nameDirections:z.array(z.string()).min(3).max(8),
+  positioning:z.string(),
+  audience:z.string(),
+  promise:z.string(),
+  format:z.string(),
+  thumbnailSystem:z.string(),
+  productionModel:z.string(),
+  firstEpisodes:z.array(z.string()).length(10),
+  testPlan:z.array(z.string()).min(3).max(8)
+ }),
+ nextMove:z.string(),
+ limitations:z.array(z.string()).min(1).max(15)
+});
+
+export async function generateOpportunityReport(study:ChannelStudy):Promise<OpportunityReport>{
+ const similar=study.similarCandidates.map(match=>({
+  id:match.channel.id,
+  name:match.channel.name,
+  similarityScore:match.similarityScore,
+  videoTitle:match.channel.video.title,
+  videoViews:match.channel.video.views,
+  subscribers:match.channel.subscribers,
+  videoCount:match.channel.videoCount,
+  matchedTerms:match.matchedTerms,
+  reason:match.similarityReason
+ }));
+ const independentCreators=1+new Set(similar.map(item=>item.id)).size;
+ const supportingVideos=study.topVideos.length+similar.length;
+ const evidence={
+  source:{name:study.source.name,description:study.source.description,subscribers:study.source.subscribers,videoCount:study.source.videoCount},
+  nicheLock:study.nicheProfile,
+  metrics:study.metrics,
+  anatomy:study.anatomy,
+  thumbnailAnalysis:study.thumbnailAnalysis,
+  topVideos:study.topVideos.map((video,index)=>({rank:index+1,id:video.id,title:video.title,views:video.views,publishedAt:video.publishedAt,velocity:video.velocity})),
+  weakRecentVideos:study.weakRecentVideos.map(video=>({id:video.id,title:video.title,views:video.views,publishedAt:video.publishedAt})),
+  similarChannels:similar,
+  structuralCounts:{independentCreators,supportingVideos},
+  collection:{scannedVideos:study.scannedVideos,totalPublicVideos:study.totalPublicVideos,scanTruncated:study.scanTruncated,comparisonSampleSize:study.comparisonSampleSize}
+ };
+ const body=await structured(
+  opportunityReportBody,
+  'opportunity_report',
+  'Transforme esta anatomia em um RELATÓRIO EXECUTIVO DE OPORTUNIDADE. Princípio central: NÃO COPIE O NICHO; EXTRAIA A CURVA. Primeiro abstraia a curva que conecta assunto, promessa, ângulo, mecanismo narrativo, mecanismo visual e driver emocional. Depois avalie se ela é apenas hipótese, emergente ou estrutural. structural exige pelo menos 3 criadores independentes na evidência fornecida; emerging exige pelo menos 2; com apenas o canal de origem use hypothesis. Não invente criadores, vídeos, views, demanda, saturação ou evidências. Saturação deve ser uncertain quando a amostra não sustentar uma conclusão. Viral DNA deve usar níveis explicados, não um score agregado. Gere exatamente 3 transferências que PRESERVEM o mecanismo e alterem deliberadamente uma variável. Para cada transferência, observed só é permitido se houver evidência explícita fornecida para aquele alvo; partial quando há analogia observável mas evidência incompleta; hypothesis quando é uma extensão criativa sem validação externa. Títulos e nomes destinados ao público devem ser em INGLÊS. A explicação para o operador deve ser em português. O conceito final de canal deve ser original e executável, com 10 episódios iniciais. Separe fatos observados de inferências em todas as seções.',
+  evidence
+ );
+ const classification=independentCreators>=3?'structural':independentCreators>=2?'emerging':'hypothesis';
+ return {
+  kind:'opportunity-report',
+  id:`opportunity-report:${study.source.id}`,
+  channelStudyId:study.id,
+  sourceChannelId:study.source.id,
+  ...body,
+  validation:{...body.validation,classification,independentCreators,supportingVideos},
+  evidence:{
+   topVideos:study.topVideos.slice(0,10).map(video=>({id:video.id,title:video.title,views:video.views,url:video.url})),
+   similarChannels:study.similarCandidates.map(match=>({id:match.channel.id,name:match.channel.name,similarityScore:match.similarityScore,videoViews:match.channel.video.views,url:match.channel.url}))
+  },
+  transfers:body.transfers.map((transfer,index)=>({...transfer,id:`${study.source.id}-transfer-${index+1}`})),
+  createdAt:new Date().toISOString()
+ };
 }
 
 const anatomy=z.object({observation:z.string(),mechanism:z.string(),hypotheses:z.array(z.string()),gaps:z.array(z.string()),limitations:z.array(z.string())});
