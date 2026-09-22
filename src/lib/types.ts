@@ -1,5 +1,6 @@
 export type ChannelStudyComment = { text: string; likes: number; publishedAt: string };
-export type ChannelStudyVideo = { id: string; title: string; publishedAt: string; views: number; likes: number | null; commentCount: number | null; duration: string; thumbnail: string; url: string; comments: ChannelStudyComment[] };
+export type ChannelStudySnapshot = { observedAt: string; views: number };
+export type ChannelStudyVideo = { id: string; title: string; publishedAt: string; views: number; likes: number | null; commentCount: number | null; duration: string; thumbnail: string; url: string; comments: ChannelStudyComment[]; snapshots: ChannelStudySnapshot[]; velocity: { baseline: boolean; deltaViews: number | null; deltaHours: number | null; viewsPerHour: number | null } };
 export type ChannelNicheProfile = { primaryNiche: string; subniche: string; audienceIntent: string; coreTopics: string[]; anchorTerms: string[]; excludedAdjacentTopics: string[]; searchQueries: string[]; formatSignature: string };
 export type ChannelStudyAnatomy = { executiveSummary: string; viralPatterns: string[]; titlePatterns: string[]; topicClusters: string[]; formatPatterns: string[]; commentSignals: string[]; audienceQuestions: string[]; repeatableMechanisms: string[]; oneOffRisks: string[]; contentGaps: string[]; productionNotes: string[]; limitations: string[] };
 export type SimilarChannelMatch = { channel: Channel; similarityScore: number; similarityReason: string; matchedTerms: string[] };
