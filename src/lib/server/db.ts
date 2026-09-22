@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import type { RadarData, Channel, Settings } from '@/lib/types';
+import type { RadarData, Channel, ChannelStudy, Settings } from '@/lib/types';
 import { defaultSettings } from '@/lib/types';
 import { buildOpportunityGaps } from '@/lib/reference-catalog';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
@@ -15,7 +15,32 @@ async function optionalList<T>(table:string,limit=200):Promise<T[]>{try{return a
 export async function settings():Promise<Settings>{const saved=(await list<Partial<Settings>>('radar_settings',1))[0];return {...defaultSettings,...saved,languages:['en']};}
 export async function channel(id:string):Promise<Channel>{const data=checked(await db().from('radar_channels').select('payload').eq('id',id).maybeSingle());if(!data)throw new HttpError('Canal não encontrado.',404);return data.payload as Channel;}
 export async function cleanup(){checked(await db().rpc('prune_radar_data',{analytics_approved:policyApproved()}));}
-export async function loadRadar():Promise<Pick<RadarData,'channels'|'channelStudies'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,allAnalyses,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),optionalList<unknown>('radar_analyses',200),optionalList<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channelStudies=allAnalyses.filter((item):item is RadarData['channelStudies'][number]=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='channel-study');const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,channelStudies,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
+function normalizeChannelStudy(study:ChannelStudy):ChannelStudy{
+ const topicGenome=study.anatomy?.topicGenome??{winningEntities:[],recurringAngles:[],curiosityMechanisms:[],titleTokens:[],underperformingContrasts:[]};
+ const sustainability=study.anatomy?.sustainability??{score:0,classification:'fragile' as const,rationale:'Análise anterior à métrica de sustentabilidade.',supportingSignals:[],riskSignals:['Reexecute a análise para calcular sustentabilidade com a metodologia atual.']};
+ return {
+  ...study,
+  comparisonSampleSize:study.comparisonSampleSize??0,
+  weakRecentVideos:(study.weakRecentVideos??[]).map(video=>({...video,snapshots:video.snapshots??[],velocity:video.velocity??{baseline:true,deltaViews:null,deltaHours:null,viewsPerHour:null}})),
+  sequences:study.sequences??[],
+  topVideos:(study.topVideos??[]).map(video=>({...video,snapshots:video.snapshots??[],velocity:video.velocity??{baseline:true,deltaViews:null,deltaHours:null,viewsPerHour:null}})),
+  metrics:{
+   ...study.metrics,
+   weakMedianViews:study.metrics?.weakMedianViews??null,
+   hitToWeakMedianRatio:study.metrics?.hitToWeakMedianRatio??null,
+   velocityTrackedVideos:study.metrics?.velocityTrackedVideos??0
+  },
+  anatomy:{
+   ...study.anatomy,
+   topicGenome,
+   sustainability,
+   sequenceInsights:study.anatomy?.sequenceInsights??[],
+   weakVideoContrasts:study.anatomy?.weakVideoContrasts??[]
+  }
+ };
+}
+
+export async function loadRadar():Promise<Pick<RadarData,'channels'|'channelStudies'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,allAnalyses,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),optionalList<unknown>('radar_analyses',200),optionalList<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channelStudies=allAnalyses.filter((item):item is ChannelStudy=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='channel-study').map(normalizeChannelStudy);const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,channelStudies,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
 
 
 
