@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { RadarData, Channel, Settings } from '@/lib/types';
 import { defaultSettings } from '@/lib/types';
 import { buildOpportunityGaps } from '@/lib/reference-catalog';
+import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { HttpError } from './auth';
 export const dbConfigured=()=>!!process.env.SUPABASE_URL&&!!process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const policyApproved=()=>process.env.YOUTUBE_ANALYTICS_APPROVED==='true';
@@ -13,7 +14,7 @@ export async function list<T>(table:string,limit=200):Promise<T[]>{const data=ch
 export async function settings():Promise<Settings>{const saved=(await list<Partial<Settings>>('radar_settings',1))[0];return {...defaultSettings,...saved,languages:['en']};}
 export async function channel(id:string):Promise<Channel>{const data=checked(await db().from('radar_channels').select('payload').eq('id',id).maybeSingle());if(!data)throw new HttpError('Canal não encontrado.',404);return data.payload as Channel;}
 export async function cleanup(){checked(await db().rpc('prune_radar_data',{analytics_approved:policyApproved()}));}
-export async function loadRadar():Promise<Pick<RadarData,'channels'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),list<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channels=allChannels.filter(c=>c.discoverySource==='reference'||c.discoverySource==='reference-adjacent');const gaps=buildOpportunityGaps(channels);return {channels,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??null};}
+export async function loadRadar():Promise<Pick<RadarData,'channels'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),list<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
 
 
 
