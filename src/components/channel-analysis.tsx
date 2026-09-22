@@ -27,7 +27,8 @@ export default function ChannelAnalysis({
   mode,
   busy,
   onAnalyze,
-  onGenerateReport
+  onGenerateReport,
+  selectedStudyId
 }:{
   studies:ChannelStudy[];
   reports:OpportunityReport[];
@@ -35,10 +36,12 @@ export default function ChannelAnalysis({
   busy:string;
   onAnalyze:(input:string)=>Promise<boolean|undefined>;
   onGenerateReport:(channelStudyId:string)=>Promise<boolean|undefined>;
+  selectedStudyId?:string;
 }){
   const [input,setInput]=useState('');
-  const [selectedId,setSelectedId]=useState(studies[0]?.id??'');
+  const [selectedId,setSelectedId]=useState(selectedStudyId??studies[0]?.id??'');
   useEffect(()=>{if(studies.length&&!studies.some(s=>s.id===selectedId))setSelectedId(studies[0].id);},[studies,selectedId]);
+  useEffect(()=>{if(selectedStudyId&&studies.some(s=>s.id===selectedStudyId))setSelectedId(selectedStudyId);},[selectedStudyId,studies]);
   const study=useMemo(()=>studies.find(s=>s.id===selectedId)??studies[0]??null,[studies,selectedId]);
   const report=useMemo(()=>study?reports.find(item=>item.channelStudyId===study.id)??null:null,[reports,study]);
 
