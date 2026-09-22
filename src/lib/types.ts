@@ -10,6 +10,84 @@ export type ChannelStudySequence = { hitVideoId: string; hitTitle: string; befor
 export type ChannelStudyAnatomy = { executiveSummary: string; viralPatterns: string[]; titlePatterns: string[]; topicClusters: string[]; formatPatterns: string[]; commentSignals: string[]; audienceQuestions: string[]; repeatableMechanisms: string[]; oneOffRisks: string[]; contentGaps: string[]; productionNotes: string[]; commentDemand: ChannelStudyCommentDemand; topicGenome: ChannelStudyTopicGenome; sustainability: ChannelStudySustainability; sequenceInsights: string[]; weakVideoContrasts: string[]; limitations: string[] };
 export type SimilarChannelMatch = { channel: Channel; similarityScore: number; similarityReason: string; matchedTerms: string[] };
 export type ChannelStudy = { kind: 'channel-study'; id: string; input: string; source: { id: string; name: string; handle: string; description: string; url: string; createdAt: string; videoCount: number; subscribers: number | null; avatar: string }; scannedVideos: number; totalPublicVideos: number; scanTruncated: boolean; comparisonSampleSize: number; topVideos: ChannelStudyVideo[]; thumbnailAnalysis: ChannelStudyThumbnailAnalysis; weakRecentVideos: ChannelStudyVideo[]; sequences: ChannelStudySequence[]; commentSampleSize: number; commentsAvailableVideos: number; nicheProfile: ChannelNicheProfile; anatomy: ChannelStudyAnatomy; similarCandidates: SimilarChannelMatch[]; metrics: { top10Views: number; top3Share: number; medianTop10Views: number; weakMedianViews: number | null; hitToWeakMedianRatio: number | null; videosAboveSubscribers: number | null; velocityTrackedVideos: number }; createdAt: string };
+export type OpportunityCurve = {
+ thesis: string;
+ subject: string;
+ promise: string;
+ angle: string;
+ narrativeMechanism: string;
+ visualMechanism: string;
+ emotionalDriver: string;
+ repeatabilityEvidence: string[];
+ failureConditions: string[];
+};
+export type OpportunitySignal = { level: 'low' | 'medium' | 'high' | 'uncertain'; rationale: string };
+export type OpportunityValidation = {
+ classification: 'hypothesis' | 'emerging' | 'structural';
+ independentCreators: number;
+ supportingVideos: number;
+ evidence: string[];
+ counterEvidence: string[];
+ limitations: string[];
+};
+export type OpportunityTransfer = {
+ id: string;
+ label: string;
+ principle: string;
+ targetNiche: string;
+ targetAudience: string;
+ changedVariable: string;
+ preservedMechanism: string;
+ demandStatus: 'observed' | 'partial' | 'hypothesis';
+ demandEvidence: string[];
+ gap: string;
+ whyItCouldWork: string;
+ titles: string[];
+ risks: string[];
+};
+export type OpportunityReport = {
+ kind: 'opportunity-report';
+ id: string;
+ channelStudyId: string;
+ sourceChannelId: string;
+ title: string;
+ thesis: string;
+ curve: OpportunityCurve;
+ validation: OpportunityValidation;
+ saturation: {
+  level: 'low' | 'medium' | 'high' | 'uncertain';
+  rationale: string;
+  saturatedPatterns: string[];
+  underusedAngles: string[];
+  whitespace: string[];
+ };
+ viralDNA: {
+  demand: OpportunitySignal;
+  repeatability: OpportunitySignal;
+  breakout: OpportunitySignal;
+  saturation: OpportunitySignal;
+  gap: OpportunitySignal;
+ };
+ evidence: {
+  topVideos: { id: string; title: string; views: number; url: string }[];
+  similarChannels: { id: string; name: string; similarityScore: number; videoViews: number; url: string }[];
+ };
+ transfers: OpportunityTransfer[];
+ channelConcept: {
+  nameDirections: string[];
+  positioning: string;
+  audience: string;
+  promise: string;
+  format: string;
+  thumbnailSystem: string;
+  productionModel: string;
+  firstEpisodes: string[];
+  testPlan: string[];
+ };
+ nextMove: string;
+ limitations: string[];
+ createdAt: string;
+};
 export type Opportunity = { id: string; name: string; lens: string; promise: string; difference: string; episodes: string[]; risk: string; test: string; gap?: string; demandEvidence?: string[] };
 export type GapOpportunity = { id: string; format: string; niche: string; status: 'investigate'; strength: number; rationale: string; directReferences: string[]; analogReferences: string[]; observedChannels: string[] };
 export type Analysis = { observation: string; mechanism: string; hypotheses: string[]; gaps: string[]; limitations: string[]; opportunities: Opportunity[]; sources: { title: string; url: string }[]; review: string; createdAt: string };
@@ -21,5 +99,5 @@ export type Run = { id: string; type: string; status: 'queued' | 'running' | 'co
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; createdAt: string; updatedAt: string };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
-export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
+export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; opportunityReports: OpportunityReport[]; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
