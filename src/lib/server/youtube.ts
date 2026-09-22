@@ -10,6 +10,7 @@ import {
 import { checked, db, list, put } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { evaluateOpportunityCandidate } from '@/lib/opportunity-criteria';
 
 type Item={
   id:string|{videoId?:string;channelId?:string};
@@ -299,12 +300,14 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
   const videoIds=new Set<string>();
   const sourceByVideo=new Map<string,string>();
 
+  const publishedAfter=new Date(Date.now()-config.maxVideoAgeHours*3600000).toISOString();
   for(const query of queries){
     const found=await youtube('search',{
       part:'snippet',
       type:'video',
       q:query,
       order:'viewCount',
+      publishedAfter,
       maxResults:'50',
       relevanceLanguage:'en'
     });
@@ -387,12 +390,20 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
         `Descoberta adjacente à matriz do catálogo: consulta "${sourceQuery}".`,
         `Visualizações públicas observadas em ${observedAt}.`,
         ...signals,
-        'A presença no radar indica proximidade com padrões validados; demanda e lacuna ainda precisam de comparação entre referências.'
+        'Todos os filtros numéricos do radar são eliminatórios para candidatos de oportunidade.'
       ],
       discoverySource:'reference-adjacent',
       ...(old?.video.id===idOf(video)&&old.analysis?{analysis:old.analysis}:{})
     };
-    const breakout=subscribers&&subscribers>0?Math.min(8,views/subscribers):1;
+    const qualification=evaluateOpportunityCandidate(payload,config);
+    if(!qualification.qualified)continue;
+    payload.evidence.push(
+      `PASS obrigatório: ${views.toLocaleString('en-US')} views em ${Math.max(1,Math.round(qualification.ageHours))}h; ${payload.videoCount} vídeos; canal com ${Math.max(1,Math.round(qualification.channelAgeDays))} dias.`
+    );
+    if(qualification.breakoutRatio!==null){
+      payload.evidence.push(`Breakout: vídeo com ${qualification.breakoutRatio.toFixed(1)}× a base atual de inscritos.`);
+    }
+    const breakout=qualification.breakoutRatio===null?1:Math.min(8,qualification.breakoutRatio);
     const score=Math.log10(videoSignal(video)+1)*10+Math.log10(views+1)*2+breakout;
     prepared.push({score,payload});
   }
@@ -406,7 +417,8 @@ export async function scan(config:Settings){
   const referenceIds=new Set(references.map(c=>c.id));
   const adjacent=await discoverAdjacent(config,prior,referenceIds);
   const observedAt=new Date().toISOString();
-  const all=[...references,...adjacent];
+  // Referências grandes continuam monitoradas como inteligência de mercado,
+  // mas somente candidatos que passam por TODOS os gates entram no radar de oportunidades.
 
   // Persist lower-priority discoveries first so the strongest current signals and
   // reference updates are returned near the top by updated_at.
@@ -429,5 +441,5 @@ export async function scan(config:Settings){
     }));
   }
 
-  return all.length;
+  return adjacent.length;
 }
