@@ -30,8 +30,10 @@ function normalizeChannelStudy(study:ChannelStudy):ChannelStudy{
    hitToWeakMedianRatio:study.metrics?.hitToWeakMedianRatio??null,
    velocityTrackedVideos:study.metrics?.velocityTrackedVideos??0
   },
+  thumbnailAnalysis:study.thumbnailAnalysis??{inspected:false,hitPatterns:[],weakPatterns:[],visualContrasts:[],compositionPatterns:[],textUsage:[],recurringSubjects:[],visualHooks:[],consistencySignals:[],limitations:['Análise anterior à inspeção visual de thumbnails.']},
   anatomy:{
    ...study.anatomy,
+   commentDemand:study.anatomy?.commentDemand??{requestedTopics:[],repeatedQuestions:[],confusionPoints:[],emotionalTriggers:[],objectionsAndDebates:[]},
    topicGenome,
    sustainability,
    sequenceInsights:study.anatomy?.sequenceInsights??[],
