@@ -174,6 +174,46 @@ export default function ChannelAnalysis({
        <div className="study-weak-grid">{study.weakRecentVideos.map(video=><a key={video.id} href={video.url} target="_blank" rel="noreferrer" className="study-weak-card"><img src={video.thumbnail} alt=""/><div><strong>{video.title}</strong><span>{compact(video.views)} views · {formatDuration(video.duration)}</span></div></a>)}</div>
       </>}
 
+      <div className="study-anatomy-grid">
+        <section className="panel study-summary">
+          <div className="panel-heading"><Eye size={20}/><h2>Análise visual das thumbnails</h2></div>
+          <p>{study.thumbnailAnalysis.inspected?'As imagens abaixo foram realmente inspecionadas pela camada de visão.':'A camada visual não foi concluída nesta execução.'}</p>
+        </section>
+        <div>
+          <ListBlock title="Padrões visuais dos hits" items={study.thumbnailAnalysis.hitPatterns}/>
+          <ListBlock title="Composição recorrente" items={study.thumbnailAnalysis.compositionPatterns}/>
+        </div>
+        <div>
+          <ListBlock title="Diferenças hits × fracos" items={study.thumbnailAnalysis.visualContrasts}/>
+          <ListBlock title="Padrões visuais dos fracos" items={study.thumbnailAnalysis.weakPatterns}/>
+        </div>
+        <div>
+          <ListBlock title="Hooks visuais" items={study.thumbnailAnalysis.visualHooks}/>
+          <ListBlock title="Texto nas thumbnails" items={study.thumbnailAnalysis.textUsage}/>
+        </div>
+        <div>
+          <ListBlock title="Sujeitos e objetos recorrentes" items={study.thumbnailAnalysis.recurringSubjects}/>
+          <ListBlock title="Consistência visual" items={study.thumbnailAnalysis.consistencySignals}/>
+          <ListBlock title="Limites da visão" items={study.thumbnailAnalysis.limitations}/>
+        </div>
+      </div>
+
+      <div className="study-anatomy-grid">
+        <section className="panel study-summary">
+          <div className="panel-heading"><MessageSquareText size={20}/><h2>Comment Demand Mining</h2></div>
+          <p>Extraído somente da amostra pública de comentários coletada nos Top 10.</p>
+        </section>
+        <div>
+          <ListBlock title="Pedidos de próximos temas" items={study.anatomy.commentDemand.requestedTopics}/>
+          <ListBlock title="Perguntas repetidas" items={study.anatomy.commentDemand.repeatedQuestions}/>
+        </div>
+        <div>
+          <ListBlock title="Pontos de confusão" items={study.anatomy.commentDemand.confusionPoints}/>
+          <ListBlock title="Gatilhos emocionais expressos" items={study.anatomy.commentDemand.emotionalTriggers}/>
+          <ListBlock title="Objeções e debates" items={study.anatomy.commentDemand.objectionsAndDebates}/>
+        </div>
+      </div>
+
       <div className="section-heading study-similar-heading"><div><h2>Pequenos do mesmo nicho <span className="count-pill">{study.similarCandidates.length}</span></h2><p>Somente US + inglês confirmado + long form + mesmos gates do Radar + aprovação semântica do Niche Lock.</p></div></div>
       <div className="channel-grid">
         {study.similarCandidates.map(match=><article className="channel-card study-match-card" key={match.channel.id}>
