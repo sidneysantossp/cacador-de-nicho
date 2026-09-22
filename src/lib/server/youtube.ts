@@ -613,6 +613,14 @@ export async function collectChannelStudyEvidence(input:string){
     .sort((a,b)=>Date.parse(a.snippet.publishedAt)-Date.parse(b.snippet.publishedAt));
   void recentLong;
 
+  const observedAt=new Date().toISOString();
+  const topIds=topItems.map(idOf);
+  type SnapshotRow={video_id:string;views:number;observed_at:string};
+  const snapshotRows=topIds.length
+    ?checked(await db().from('radar_snapshots').select('video_id,views,observed_at').eq('channel_id',channelId).in('video_id',topIds).order('observed_at',{ascending:true}).limit(500)) as SnapshotRow[]
+    :[];
+  void snapshotRows;
+
   const topVideos:ChannelStudyVideo[]=await mapLimit(topItems,4,async video=>({
     id:idOf(video),
     title:video.snippet.title,
