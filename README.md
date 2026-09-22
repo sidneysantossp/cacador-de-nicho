@@ -37,3 +37,5 @@ Depois de validar, configurar Vercel Cron para `/api/cron` e definir CRON_SECRET
 - Rotinas têm exclusão mútua, limite de jobs e retries, mas precisam de scheduler para retomada após interrupção.
 
 Fontes e detalhes técnicos: `docs/backend.md`.
+
+<!-- deploy diagnostic: known-good baseline -->
