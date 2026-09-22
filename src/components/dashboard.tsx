@@ -34,7 +34,8 @@ export default function Dashboard(){
  }
  function draftScript(c:Channel,o:Opportunity){if(data.mode==='demo'){setToast('A criação de roteiros reais exige entrar na operação e conectar a OpenAI.');return;}void action({action:'script',channelId:c.id,opportunityId:o.id},'script');}
  const visible=data.channels.filter(c=>(niche==='Todos os nichos'||c.niche===niche)&&(language==='Todos os idiomas'||c.language===language)&&(`${c.name} ${c.description} ${c.niche} ${c.lens}`.toLowerCase().includes(query.toLowerCase()))&&(filter==='all'||(filter==='new'&&c.status==='new')||(filter==='analyzed'&&!!c.analysis)||(filter==='saved'&&data.decisions.some(d=>d.channelId===c.id&&d.decision==='approved'))));
- const allOpportunities=data.channels.flatMap(c=>(c.analysis?.opportunities??[]).map(o=>({channel:c,opportunity:o})));\n const gapCount=data.gaps?.length??0;
+ const allOpportunities=data.channels.flatMap(c=>(c.analysis?.opportunities??[]).map(o=>({channel:c,opportunity:o})));
+ const gapCount=data.gaps?.length??0;
  const selectedLive=selected?data.channels.find(c=>c.id===selected.id)??selected:null;
  const updateTime=data.lastUpdated?new Date(data.lastUpdated).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):null;
  return <div className="app-shell">
