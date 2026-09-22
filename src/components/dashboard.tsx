@@ -60,7 +60,106 @@ export default function Dashboard(){
      {!visible.length&&<Empty icon={<Telescope size={30}/>} title={data.channels.length?'Nenhum canal com esses filtros':'Seu radar está pronto para começar'} description={data.channels.length?'Tente outro nicho, idioma ou termo de busca.':'Conecte o YouTube e execute a primeira pesquisa. A base real começa vazia.'}/>}
      <div className="bottom-note"><ShieldCheck size={15}/><span>Evidência antes de convicção. Cada proposta é uma hipótese até ser testada.</span><span className="footer-version">CAÇADORES / V0.1</span></div>
     </>}
-    {view==='opportunities'&&<><div className="info-strip"><Sparkles size={19}/><span>Catálogo de referências → padrões recorrentes → lacunas de formato × nicho → análise comparativa antes de criar.</span></div>{gapCount>0&&<><div className="section-heading"><div><h2>Lacunas da matriz <span className="count-pill">{gapCount}</span></h2><p>Combinações pouco representadas no catálogo. São hipóteses para investigar, não demanda comprovada.</p></div></div><div className="opportunity-grid">{data.gaps.map((g,i)=><article className="opportunity-card" key={g.id}><div className="opportunity-top"><span className="big-number">{String(i+1).padStart(2,'0')}</span><span className="tag orange">Lacuna a investigar</span></div><h2>{g.format} × {g.niche}</h2><p>{g.rationale}</p><div className="proposal-difference"><span>EVIDÊNCIA DA MATRIZ</span><p>{g.directReferences.length?'Referência direta: '+g.directReferences.join(', ')+'.':'Nenhuma referência direta no catálogo.'} Analogias úteis: {g.analogReferences.join(', ')}.</p></div>{g.observedChannels.length>0&&<small>Sinais adjacentes já encontrados: {g.observedChannels.join(', ')}</small>}<div className="proposal-actions"><button className="button subtle small" onClick={()=>{setNiche(g.niche);setView('radar');}}>Ver referências <ArrowUpRight size={15}/></button></div></article>)}</div></>}<div className="section-heading"><div><h2>Oportunidades aprofundadas <span className="count-pill">{allOpportunities.length}</span></h2><p>Geradas somente depois da análise comparativa de uma referência com seus pares.</p></div></div><div className="opportunity-grid">{allOpportunities.map(({channel:c,opportunity:o},i)=><article className="opportunity-card" key={c.id+'-'+o.id}><div className="opportunity-top"><span className="big-number">{String(i+1).padStart(2,'0')}</span><span className="tag orange">Hipótese editorial</span></div><h2>{o.name}</h2><p>{o.lens}</p>{o.gap&&<div className="proposal-difference"><span>LACUNA EXPLORADA</span><p>{o.gap}</p></div>}<div className="proposal-difference"><span>O QUE MUDA</span><p>{o.difference}</p></div>{o.demandEvidence?.length?<div className="proposal-difference"><span>EVIDÊNCIA DE DEMANDA</span><p>{o.demandEvidence.join(' · ')}</p></div>:null}<small>Referência: {c.name}</small><div className="proposal-actions"><button className="button primary small" onClick={()=>remember(c,o)}><Bookmark size={15}/>Selecionar</button><button className="button subtle small" onClick={()=>open(c,'opportunities')}>Ver proposta <ArrowUpRight size={15}/></button></div></article>)}</div>{!gapCount&&!allOpportunities.length&&<Empty icon={<Layers3 size={30}/>} title="A matriz ainda está sendo construída" description="Execute uma pesquisa para resolver as referências do catálogo e mapear as primeiras lacunas."/>)}</>}
+    {view==='opportunities'&&(
+      <>
+       <div className="info-strip">
+        <Sparkles size={19}/>
+        <span>Catálogo de referências → padrões recorrentes → lacunas de formato × nicho → análise comparativa antes de criar.</span>
+       </div>
+
+       {gapCount>0&&(
+        <>
+         <div className="section-heading">
+          <div>
+           <h2>Lacunas da matriz <span className="count-pill">{gapCount}</span></h2>
+           <p>Combinações pouco representadas no catálogo. São hipóteses para investigar, não demanda comprovada.</p>
+          </div>
+         </div>
+         <div className="opportunity-grid">
+          {data.gaps.map((g,i)=>(
+           <article className="opportunity-card" key={g.id}>
+            <div className="opportunity-top">
+             <span className="big-number">{String(i+1).padStart(2,'0')}</span>
+             <span className="tag orange">Lacuna a investigar</span>
+            </div>
+            <h2>{g.format} × {g.niche}</h2>
+            <p>{g.rationale}</p>
+            <div className="proposal-difference">
+             <span>EVIDÊNCIA DA MATRIZ</span>
+             <p>
+              {g.directReferences.length>0
+               ? <>Referência direta: {g.directReferences.join(', ')}. </>
+               : <>Nenhuma referência direta no catálogo. </>}
+              Analogias úteis: {g.analogReferences.join(', ')}.
+             </p>
+            </div>
+            {g.observedChannels.length>0&&(
+             <small>Sinais adjacentes já encontrados: {g.observedChannels.join(', ')}</small>
+            )}
+            <div className="proposal-actions">
+             <button className="button subtle small" onClick={()=>{setNiche(g.niche);setView('radar');}}>
+              Ver referências <ArrowUpRight size={15}/>
+             </button>
+            </div>
+           </article>
+          ))}
+         </div>
+        </>
+       )}
+
+       <div className="section-heading">
+        <div>
+         <h2>Oportunidades aprofundadas <span className="count-pill">{allOpportunities.length}</span></h2>
+         <p>Geradas somente depois da análise comparativa de uma referência com seus pares.</p>
+        </div>
+       </div>
+       <div className="opportunity-grid">
+        {allOpportunities.map(({channel:c,opportunity:o},i)=>(
+         <article className="opportunity-card" key={`${c.id}-${o.id}`}>
+          <div className="opportunity-top">
+           <span className="big-number">{String(i+1).padStart(2,'0')}</span>
+           <span className="tag orange">Hipótese editorial</span>
+          </div>
+          <h2>{o.name}</h2>
+          <p>{o.lens}</p>
+          {o.gap&&(
+           <div className="proposal-difference">
+            <span>LACUNA EXPLORADA</span>
+            <p>{o.gap}</p>
+           </div>
+          )}
+          <div className="proposal-difference">
+           <span>O QUE MUDA</span>
+           <p>{o.difference}</p>
+          </div>
+          {o.demandEvidence&&o.demandEvidence.length>0&&(
+           <div className="proposal-difference">
+            <span>EVIDÊNCIA DE DEMANDA</span>
+            <p>{o.demandEvidence.join(' · ')}</p>
+           </div>
+          )}
+          <small>Referência: {c.name}</small>
+          <div className="proposal-actions">
+           <button className="button primary small" onClick={()=>remember(c,o)}>
+            <Bookmark size={15}/>Selecionar
+           </button>
+           <button className="button subtle small" onClick={()=>open(c,'opportunities')}>
+            Ver proposta <ArrowUpRight size={15}/>
+           </button>
+          </div>
+         </article>
+        ))}
+       </div>
+
+       {gapCount===0&&allOpportunities.length===0&&(
+        <Empty
+         icon={<Layers3 size={30}/>}
+         title="A matriz ainda está sendo construída"
+         description="Execute uma pesquisa para resolver as referências do catálogo e mapear as primeiras lacunas."
+        />
+       )}
+      </>
+     )}
     {view==='memory'&&<div className="memory-layout"><section className="panel"><div className="panel-heading"><BrainCircuit size={20}/><h2>Adicionar contexto</h2></div><p>Registre restrições, aprendizados e informações que os agentes devem considerar.</p><form onSubmit={async e=>{e.preventDefault();if(!contextTitle.trim()||!contextText.trim())return;if(data.mode==='demo'){demoSave({...data,contexts:[{id:crypto.randomUUID(),title:contextTitle,content:contextText,createdAt:new Date().toISOString()},...data.contexts]});setToast('Contexto salvo apenas neste navegador, na demonstração.');setContextTitle('');setContextText('');}else if(await action({action:'context',title:contextTitle,content:contextText},'context')){setContextTitle('');setContextText('');}}}><label>Título<input required maxLength={160} value={contextTitle} onChange={e=>setContextTitle(e.target.value)} placeholder="Ex.: restrições de produção do canal"/></label><label>Contexto<textarea required rows={7} maxLength={20000} value={contextText} onChange={e=>setContextText(e.target.value)} placeholder="O que devemos levar em conta nas próximas pesquisas?"/></label><button className="button primary" disabled={!!busy}><Plus size={16}/>Salvar contexto</button></form></section><section><h2 className="list-title">Contextos & decisões <span className="count-pill">{data.contexts.length+data.decisions.length}</span></h2>{!data.contexts.length&&!data.decisions.length&&<Empty icon={<BookOpen size={28}/>} title="A memória começa com uma decisão" description="Salve uma oportunidade ou registre o primeiro contexto. Cada item guarda sua origem."/>}{data.contexts.map(c=><article className="memory-card" key={c.id}><span className="tag">Contexto do operador</span><h3>{c.title}</h3><p>{c.content}</p><small>{date(c.createdAt)}</small></article>)}{data.decisions.map(d=><article className="memory-card" key={d.id}><span className="tag orange">{d.decision==='approved'?'Selecionado':d.decision==='rejected'?'Descartado':'Anotação'}</span><h3>{data.channels.find(c=>c.id===d.channelId)?.name??'Decisão editorial'}</h3><p>{d.reason}</p><small>{date(d.createdAt)}</small></article>)}</section></div>}
     {view==='scripts'&&<><div className="script-process"><span><Search size={17}/>Pesquisa</span><ArrowRight size={16}/><span><Layers3 size={17}/>Proposta</span><ArrowRight size={16}/><span><FileText size={17}/>Roteiro</span><ArrowRight size={16}/><span><ShieldCheck size={17}/>Revisão factual</span></div>{!data.scripts.length?<Empty icon={<FileText size={32}/>} title="O próximo roteiro começa na pesquisa" description="Selecione uma proposta na anatomia de um canal e peça um primeiro rascunho. Fatos pendentes ficam sinalizados para revisão." action={<button className="button primary" onClick={()=>setView('opportunities')}>Explorar oportunidades <ArrowRight size={16}/></button>}/>:data.scripts.map(s=><article className="panel script-card" key={s.id}><span className="tag orange">Rascunho · revisar antes de produzir</span><h2>{s.title}</h2><pre>{s.content}</pre><button className="button subtle" onClick={()=>exportText(`${s.id}.md`,s.content)}><Download size={16}/>Exportar roteiro</button></article>)}</>}
     {view==='activity'&&<section className="panel"><div className="panel-heading"><Activity size={20}/><h2>Histórico de execução</h2></div>{data.runs.length?data.runs.map(r=><div className="run-row" key={r.id}><span className={`run-status ${r.status}`}><CircleDot size={19}/></span><div><strong>{r.type}</strong><p>{r.message}</p></div><span className="tag">{{queued:'Na fila',running:'Executando',completed:'Concluído',failed:'Falhou'}[r.status]}</span><small>{date(r.startedAt)}</small></div>):<Empty icon={<Activity size={30}/>} title="Nenhuma execução registrada" description="Ao conectar a operação, cada coleta e análise mostrará aqui o resultado e eventuais falhas."/>}</section>}
