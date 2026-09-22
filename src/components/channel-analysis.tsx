@@ -110,7 +110,7 @@ export default function ChannelAnalysis({
               <span><Eye size={13}/>{compact(video.views)} views</span>
               <span><Clock3 size={13}/>{formatDuration(video.duration)}</span>
               <span><MessageSquareText size={13}/>{video.commentCount===null?'—':compact(video.commentCount)} comentários</span>
-              <span>{ageHours(video.publishedAt)}h desde publicação</span>
+              <span>{ageHours(video.publishedAt)}h desde publicação</span><span>{video.velocity.baseline?'Baseline criado':`+${compact(video.velocity.deltaViews??0)} em ${(video.velocity.deltaHours??0).toFixed(1)}h · ${compact(video.velocity.viewsPerHour??0)}/h`}</span>
             </div>
             {video.comments.length>0&&<div className="study-comments">
               {video.comments.slice(0,3).map((comment,i)=><p key={i}>“{comment.text}” {comment.likes>0&&<small>♥ {compact(comment.likes)}</small>}</p>)}
@@ -124,10 +124,14 @@ export default function ChannelAnalysis({
           <div className="panel-heading"><Sparkles size={20}/><h2>Anatomia da viralização</h2></div>
           <p>{study.anatomy.executiveSummary}</p>
           <div className="study-health">
+            <div><span>Sustainability</span><strong>{Math.round(study.anatomy.sustainability.score)}/100</strong><small>{study.anatomy.sustainability.classification}</small></div>
             <div><span>Mediana Top 10</span><strong>{compact(study.metrics.medianTop10Views)}</strong></div>
+            <div><span>Hit / fraco</span><strong>{study.metrics.hitToWeakMedianRatio===null?'—':study.metrics.hitToWeakMedianRatio.toFixed(1)+'×'}</strong></div>
+            <div><span>Velocidade rastreada</span><strong>{study.metrics.velocityTrackedVideos}/{study.topVideos.length}</strong></div>
             <div><span>Hits &gt; inscritos</span><strong>{study.metrics.videosAboveSubscribers===null?'—':study.metrics.videosAboveSubscribers}</strong></div>
             <div><span>Comentários amostrados</span><strong>{study.commentSampleSize}</strong></div>
             <div><span>Vídeos com comentários</span><strong>{study.commentsAvailableVideos}/{study.topVideos.length}</strong></div>
+            <div><span>Amostra de contraste</span><strong>{study.comparisonSampleSize}</strong></div>
           </div>
         </section>
         <div>
@@ -146,7 +150,29 @@ export default function ChannelAnalysis({
           <ListBlock title="Lacunas editoriais" items={study.anatomy.contentGaps}/>
           <ListBlock title="Notas de produção" items={study.anatomy.productionNotes}/>
         </div>
+        <div>
+          <ListBlock title="Topic Genome · entidades vencedoras" items={study.anatomy.topicGenome.winningEntities}/>
+          <ListBlock title="Topic Genome · ângulos recorrentes" items={study.anatomy.topicGenome.recurringAngles}/>
+        </div>
+        <div>
+          <ListBlock title="Mecanismos de curiosidade" items={study.anatomy.topicGenome.curiosityMechanisms}/>
+          <ListBlock title="Tokens de títulos" items={study.anatomy.topicGenome.titleTokens}/>
+        </div>
+        <div>
+          <ListBlock title="Contrastes dos vídeos fracos" items={study.anatomy.weakVideoContrasts}/>
+          <ListBlock title="Diferenças do Topic Genome" items={study.anatomy.topicGenome.underperformingContrasts}/>
+        </div>
+        <div>
+          <ListBlock title="Sequência editorial dos breakouts" items={study.anatomy.sequenceInsights}/>
+          <ListBlock title="Sinais que sustentam repetibilidade" items={study.anatomy.sustainability.supportingSignals}/>
+          <ListBlock title="Riscos de sustentabilidade" items={study.anatomy.sustainability.riskSignals}/>
+        </div>
       </div>
+
+      {study.weakRecentVideos.length>0&&<>
+       <div className="section-heading"><div><h2>Contraste: long forms fracos na amostra <span className="count-pill">{study.weakRecentVideos.length}</span></h2><p>Menor desempenho dentro de até 100 uploads recentes inspecionados. Não é apresentado como “piores vídeos de toda a história” quando a coleta é parcial.</p></div></div>
+       <div className="study-weak-grid">{study.weakRecentVideos.map(video=><a key={video.id} href={video.url} target="_blank" rel="noreferrer" className="study-weak-card"><img src={video.thumbnail} alt=""/><div><strong>{video.title}</strong><span>{compact(video.views)} views · {formatDuration(video.duration)}</span></div></a>)}</div>
+      </>}
 
       <div className="section-heading study-similar-heading"><div><h2>Pequenos do mesmo nicho <span className="count-pill">{study.similarCandidates.length}</span></h2><p>Somente US + inglês confirmado + long form + mesmos gates do Radar + aprovação semântica do Niche Lock.</p></div></div>
       <div className="channel-grid">
