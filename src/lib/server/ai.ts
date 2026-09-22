@@ -32,15 +32,34 @@ const channelStudyAnatomy=z.object({
  oneOffRisks:z.array(z.string()).max(8),
  contentGaps:z.array(z.string()).max(10),
  productionNotes:z.array(z.string()).max(10),
- limitations:z.array(z.string()).min(1).max(10)
+ topicGenome:z.object({
+  winningEntities:z.array(z.string()).max(12),
+  recurringAngles:z.array(z.string()).max(12),
+  curiosityMechanisms:z.array(z.string()).max(12),
+  titleTokens:z.array(z.string()).max(16),
+  underperformingContrasts:z.array(z.string()).max(12)
+ }),
+ sustainability:z.object({
+  score:z.number().min(0).max(100),
+  classification:z.enum(['fragile','emerging','repeatable']),
+  rationale:z.string(),
+  supportingSignals:z.array(z.string()).max(10),
+  riskSignals:z.array(z.string()).max(10)
+ }),
+ sequenceInsights:z.array(z.string()).max(10),
+ weakVideoContrasts:z.array(z.string()).max(10),
+ limitations:z.array(z.string()).min(1).max(12)
 });
 export async function analyzeChannelStudyEvidence(input:{
  source:{id:string;name:string;handle:string;description:string;url:string;createdAt:string;videoCount:number;subscribers:number|null};
  topVideos:ChannelStudyVideo[];
- metrics:{top10Views:number;top3Share:number;medianTop10Views:number;videosAboveSubscribers:number|null};
+ weakRecentVideos:ChannelStudyVideo[];
+ sequences:Array<{hitVideoId:string;hitTitle:string;before:{id:string;title:string;views:number}[];after:{id:string;title:string;views:number}[]}>;
+ metrics:{top10Views:number;top3Share:number;medianTop10Views:number;weakMedianViews:number|null;hitToWeakMedianRatio:number|null;videosAboveSubscribers:number|null;velocityTrackedVideos:number};
  scannedVideos:number;
  totalPublicVideos:number;
  scanTruncated:boolean;
+ comparisonSampleSize:number;
 }):Promise<{nicheProfile:ChannelNicheProfile;anatomy:ChannelStudyAnatomy}>{
  const compactVideos=input.topVideos.map((v,index)=>({
   rank:index+1,
@@ -50,9 +69,19 @@ export async function analyzeChannelStudyEvidence(input:{
   likes:v.likes,
   commentCount:v.commentCount,
   duration:v.duration,
+  velocity:v.velocity,
   comments:v.comments.slice(0,6).map(comment=>({text:comment.text.slice(0,500),likes:comment.likes}))
  }));
- const evidence={...input,topVideos:compactVideos};
+ const weakVideos=input.weakRecentVideos.map((v,index)=>({
+  rank:index+1,
+  title:v.title,
+  publishedAt:v.publishedAt,
+  views:v.views,
+  likes:v.likes,
+  commentCount:v.commentCount,
+  duration:v.duration
+ }));
+ const evidence={...input,topVideos:compactVideos,weakRecentVideos:weakVideos};
  const nicheProfile=await structured(
   channelNicheProfile,
   'channel_niche_lock',
@@ -62,7 +91,7 @@ export async function analyzeChannelStudyEvidence(input:{
  const anatomy=await structured(
   channelStudyAnatomy,
   'channel_study_anatomy',
-  'Extraia a anatomia editorial do canal a partir dos 10 vídeos com mais views e da amostra pública de comentários. Diferencie padrões repetíveis de um único outlier. Analise padrões de tema, títulos, duração/formato, concentração de views, recorrência entre hits, sinais explícitos dos comentários, perguntas do público e lacunas editoriais. Não afirme ter assistido aos vídeos nem analisado visualmente thumbnails; URL de thumbnail não equivale a inspeção visual. Não invente retenção, CTR, RPM ou causalidade.',
+  'Extraia a anatomia editorial do canal comparando os 10 vídeos com mais views contra a amostra explícita de vídeos long form recentes de menor desempenho. Use também sequências antes/depois dos principais hits, concentração Top 3, mediana dos hits, relação hits/fracos e velocidade SOMENTE quando houver pelo menos dois snapshots reais. Gere Topic Genome com entidades vencedoras, ângulos recorrentes, mecanismos de curiosidade, tokens de títulos e contrastes dos vídeos fracos. Gere Sustainability de 0-100 como diagnóstico explicável, não como verdade absoluta: repeatable exige múltiplos hits e padrões repetidos; fragile deve refletir concentração excessiva ou um único outlier. Analise sinais explícitos dos comentários e perguntas do público. Não afirme ter assistido aos vídeos nem analisado visualmente thumbnails; URL de thumbnail não equivale a inspeção visual. Não invente retenção, CTR, RPM, velocidade sem histórico ou causalidade.',
   {evidence,nicheProfile}
  );
  return {nicheProfile,anatomy};
