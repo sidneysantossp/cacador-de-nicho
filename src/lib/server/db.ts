@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import type { RadarData, Channel, ChannelStudy, Settings } from '@/lib/types';
+import type { RadarData, Channel, ChannelStudy, OpportunityReport, Settings } from '@/lib/types';
 import { defaultSettings } from '@/lib/types';
 import { buildOpportunityGaps } from '@/lib/reference-catalog';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
@@ -42,7 +42,7 @@ function normalizeChannelStudy(study:ChannelStudy):ChannelStudy{
  };
 }
 
-export async function loadRadar():Promise<Pick<RadarData,'channels'|'channelStudies'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,allAnalyses,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),optionalList<unknown>('radar_analyses',200),optionalList<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channelStudies=allAnalyses.filter((item):item is ChannelStudy=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='channel-study').map(normalizeChannelStudy);const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,channelStudies,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
+export async function loadRadar():Promise<Pick<RadarData,'channels'|'channelStudies'|'opportunityReports'|'gaps'|'managedChannels'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,allAnalyses,managedChannels,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),optionalList<unknown>('radar_analyses',200),optionalList<RadarData['managedChannels'][number]>('radar_managed_channels'),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channelStudies=allAnalyses.filter((item):item is ChannelStudy=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='channel-study').map(normalizeChannelStudy);const opportunityReports=allAnalyses.filter((item):item is OpportunityReport=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='opportunity-report');const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,channelStudies,opportunityReports,gaps,managedChannels,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
 
 
 
