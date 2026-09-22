@@ -19,7 +19,6 @@ begin
 -- One global advisory transaction lock serializes claim decisions only.
 perform pg_advisory_xact_lock(825014101);
 if exists(select 1 from public.radar_jobs where status='running' and lease_until>now()) then return false;end if;
-if (select count(*) from public.radar_jobs where updated_at>=date_trunc('day',now()))>=20 then return false;end if;
 insert into public.radar_jobs(id,status,token,lease_until) values(job_key,'running',lease_token,now()+interval '15 minutes')
 on conflict(id) do update set status='running',token=excluded.token,lease_until=excluded.lease_until,attempts=public.radar_jobs.attempts+1,updated_at=now()
 where public.radar_jobs.status<>'completed' and public.radar_jobs.attempts<3 and (public.radar_jobs.status='failed' or public.radar_jobs.lease_until<now()) returning id into claimed;
