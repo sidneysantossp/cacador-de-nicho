@@ -20,6 +20,7 @@ type Item={
     description:string;
     publishedAt:string;
     customUrl?:string;
+    country?:string;
     defaultLanguage?:string;
     defaultAudioLanguage?:string;
     categoryId?:string;
@@ -302,20 +303,24 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
 
   const publishedAfter=new Date(Date.now()-config.maxVideoAgeHours*3600000).toISOString();
   for(const query of queries){
-    const found=await youtube('search',{
-      part:'snippet',
-      type:'video',
-      q:query,
-      order:'viewCount',
-      publishedAfter,
-      maxResults:'50',
-      relevanceLanguage:'en'
-    });
-    for(const item of found){
-      const id=idOf(item);
-      if(!id)continue;
-      videoIds.add(id);
-      if(!sourceByVideo.has(id))sourceByVideo.set(id,query);
+    for(const videoDuration of ['medium','long'] as const){
+      const found=await youtube('search',{
+        part:'snippet',
+        type:'video',
+        q:query,
+        order:'viewCount',
+        publishedAfter,
+        maxResults:'50',
+        relevanceLanguage:'en',
+        regionCode:'US',
+        videoDuration
+      });
+      for(const item of found){
+        const id=idOf(item);
+        if(!id)continue;
+        videoIds.add(id);
+        if(!sourceByVideo.has(id))sourceByVideo.set(id,query);
+      }
     }
   }
 
@@ -329,8 +334,8 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
   }
 
   const candidates=videos.filter(video=>{
-    const language=(video.snippet.defaultLanguage??video.snippet.defaultAudioLanguage??'').toLowerCase();
-    return (!language||language.startsWith('en'))&&!!video.snippet.channelId&&!referenceIds.has(video.snippet.channelId);
+    const language=(video.snippet.defaultAudioLanguage??video.snippet.defaultLanguage??'').toLowerCase();
+    return language.startsWith('en')&&!!video.snippet.channelId&&!referenceIds.has(video.snippet.channelId);
   });
 
   const channelIds=[...new Set(candidates.map(v=>v.snippet.channelId!).filter(Boolean))];
@@ -364,7 +369,8 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
       name:channel.snippet.title,
       handle:channel.snippet.customUrl??'',
       niche,
-      language:video.snippet.defaultLanguage??video.snippet.defaultAudioLanguage??'Inglês provável / confirmar',
+      language:(video.snippet.defaultAudioLanguage??video.snippet.defaultLanguage??'en').toLowerCase(),
+      country:channel.snippet.country,
       format,
       description:channel.snippet.description.slice(0,2000),
       lens:`Descoberto ao expandir o padrão validado "${sourceQuery}".`,
@@ -390,7 +396,7 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
         `Descoberta adjacente à matriz do catálogo: consulta "${sourceQuery}".`,
         `Visualizações públicas observadas em ${observedAt}.`,
         ...signals,
-        'Todos os filtros numéricos do radar são eliminatórios para candidatos de oportunidade.'
+        'Todos os filtros do radar são eliminatórios: Estados Unidos, inglês confirmado nos metadados, long form, alcance, recência, canal enxuto/recente e breakout.'
       ],
       discoverySource:'reference-adjacent',
       ...(old?.video.id===idOf(video)&&old.analysis?{analysis:old.analysis}:{})
@@ -398,7 +404,7 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
     const qualification=evaluateOpportunityCandidate(payload,config);
     if(!qualification.qualified)continue;
     payload.evidence.push(
-      `PASS obrigatório: ${views.toLocaleString('en-US')} views em ${Math.max(1,Math.round(qualification.ageHours))}h; ${payload.videoCount} vídeos; canal com ${Math.max(1,Math.round(qualification.channelAgeDays))} dias.`
+      `PASS obrigatório: US + English + long form (${Math.round(qualification.durationSeconds/60)} min); ${views.toLocaleString('en-US')} views em ${Math.max(1,Math.round(qualification.ageHours))}h; ${payload.videoCount} vídeos; canal com ${Math.max(1,Math.round(qualification.channelAgeDays))} dias.`
     );
     if(qualification.breakoutRatio!==null){
       payload.evidence.push(`Breakout: vídeo com ${qualification.breakoutRatio.toFixed(1)}× a base atual de inscritos.`);
