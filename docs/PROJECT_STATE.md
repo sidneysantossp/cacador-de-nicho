@@ -16,6 +16,8 @@
 - SQL com RLS e acesso só service_role, jobs e retenção de dados.
 - Coleta YouTube limitada, análise OpenAI em etapas com pesquisa web, exportação de dossiê/roteiro.
 - Mercado inglês imposto no schema de configurações.
+- Central de credenciais para OpenAI e YouTube, com validação antes da gravação, máscara de quatro caracteres e remoção.
+- Supabase Vault preparado para cifrar as chaves; modelos de análise e roteiro escolhidos separadamente na interface.
 
 ## Infraestrutura
 
@@ -24,7 +26,7 @@ Project ID: prj_cF9scWeWLDSuM8RIplNBJDN4Fc1s.
 URL: https://cacadores-de-nichos.vercel.app
 Git local iniciado. Repositório remoto GitHub ainda não criado: conector não oferece criação e credencial CLI indisponível. Não foi feita publicação no GitHub.
 Supabase: nenhum projeto novo criado e nenhum SQL executado. Pergunta pendente ao operador sobre usar organização AUDITSEO PLATAFORM (qbrwkkrxqosocbwbjbnz) para projeto dedicado. Custo retornado no momento da consulta: US$ 0/mês. Não reutilizar bancos de outros projetos.
-Chaves YouTube/OpenAI e banco privado ainda ausentes. Não houve pesquisa ou chamada paga real.
+Chaves YouTube/OpenAI e banco privado ainda ausentes. Não houve pesquisa ou chamada paga real. A nova central permanece bloqueada até Supabase e acesso privado serem provisionados.
 
 ## Próximo passo
 
@@ -34,4 +36,4 @@ Confirmar organização do Supabase na pergunta pendente, criar banco dedicado c
 
 Primeiro build local e deploy passaram. Testes cobrem assinatura/expiração/origem, janela temporal e limites de configuração. Navegador confirmou radar e abertura de anatomia/cinco propostas. Alterações subsequentes precisam de build/deploy final registrado no encerramento desta tarefa.
 
-Verificação final: build local passou, 4 testes passaram e deploy final READY (dpl_HAz2hccdMH83hgdk1VWuhFGxRGVR). Desktop e celular inspecionados. GET público /api/radar retorna apenas demo, inglês, três canais fictícios; cron sem credencial retorna 401. Nenhum banco real ou chamada OpenAI/YouTube validado.
+Verificação final: build local passou, 4 testes passaram e deploy da central de configuração READY (dpl_4QZPhfu8XeyMhg5BGnwt1qjKSNn9). Desktop e celular inspecionados. A rota de credenciais retorna 401 sem sessão, e o radar público não expõe padrões de segredo. O deploy anterior foi dpl_HAz2hccdMH83hgdk1VWuhFGxRGVR. Nenhum banco real ou chamada OpenAI/YouTube foi validado.

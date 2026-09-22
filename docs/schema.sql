@@ -44,14 +44,57 @@ create table if not exists public.radar_login_attempts(id text primary key,attem
 alter table public.radar_login_attempts enable row level security;
 revoke all on table public.radar_login_attempts from anon,authenticated;
 grant all on table public.radar_login_attempts to service_role;
-create or replace function public.radar_allow_login(attempt_key text) returns boolean language plpgsql security invoker set search_path='' as $
+create or replace function public.radar_allow_login(attempt_key text) returns boolean language plpgsql security invoker set search_path='' as $$
 declare total int;
 begin
 delete from public.radar_login_attempts where expires_at<now()-interval '1 day';
 insert into public.radar_login_attempts(id,attempts,expires_at) values(attempt_key,1,now()+interval '15 minutes')
 on conflict(id) do update set attempts=case when public.radar_login_attempts.expires_at<=now() then 1 else public.radar_login_attempts.attempts+1 end,expires_at=case when public.radar_login_attempts.expires_at<=now() then now()+interval '15 minutes' else public.radar_login_attempts.expires_at end returning attempts into total;
 return total<=5;
-end $;
+end $$;
 revoke all on function public.radar_allow_login(text) from public,anon,authenticated;
 grant execute on function public.radar_allow_login(text) to service_role;
+
+-- Supabase Vault is enabled by default on hosted projects. These narrow RPCs are
+-- the only application path to decrypted values; browser roles receive no access.
+create or replace function public.radar_get_secret(p_secret_name text) returns text
+language plpgsql security definer set search_path='' as $$
+begin
+if p_secret_name not in ('openai_api_key','youtube_api_key') then raise exception 'secret not allowed';end if;
+return (select d.decrypted_secret from vault.decrypted_secrets d where d.name=p_secret_name limit 1);
+end $$;
+
+create or replace function public.radar_set_secret(p_secret_name text,p_secret_value text) returns void
+language plpgsql security definer set search_path='' as $$
+declare secret_id uuid;
+begin
+if p_secret_name not in ('openai_api_key','youtube_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
+select d.id into secret_id from vault.decrypted_secrets d where d.name=p_secret_name limit 1;
+if secret_id is null then
+ perform vault.create_secret(p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
+else
+ perform vault.update_secret(secret_id,p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
+end if;
+end $$;
+
+create or replace function public.radar_delete_secret(p_secret_name text) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+if p_secret_name not in ('openai_api_key','youtube_api_key') then raise exception 'secret not allowed';end if;
+delete from vault.secrets where name=p_secret_name;
+end $$;
+
+create or replace function public.radar_secret_status() returns table(secret_name text,last4 text,updated_at timestamptz)
+language sql security definer set search_path='' as $$
+select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key');
+$$;
+
+revoke all on function public.radar_get_secret(text) from public,anon,authenticated;
+revoke all on function public.radar_set_secret(text,text) from public,anon,authenticated;
+revoke all on function public.radar_delete_secret(text) from public,anon,authenticated;
+revoke all on function public.radar_secret_status() from public,anon,authenticated;
+grant execute on function public.radar_get_secret(text) to service_role;
+grant execute on function public.radar_set_secret(text,text) to service_role;
+grant execute on function public.radar_delete_secret(text) to service_role;
+grant execute on function public.radar_secret_status() to service_role;
 commit;
