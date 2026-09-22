@@ -2,12 +2,12 @@ import 'server-only';
 
 import type { ChannelStudy } from '@/lib/types';
 import { put, settings } from './db';
-import { analyzeChannelStudyEvidence, reviewSimilarChannelCandidates } from './ai';
+import { analyzeChannelStudyEvidence, analyzeChannelThumbnails, reviewSimilarChannelCandidates } from './ai';
 import { collectChannelStudyEvidence, findNicheLockedSimilarCandidates } from './youtube';
 
 export async function runChannelStudy(input:string):Promise<ChannelStudy>{
   const evidence=await collectChannelStudyEvidence(input);
-  const {nicheProfile,anatomy}=await analyzeChannelStudyEvidence(evidence);
+  const [{nicheProfile,anatomy},thumbnailAnalysis]=await Promise.all([analyzeChannelStudyEvidence(evidence),analyzeChannelThumbnails(evidence.topVideos,evidence.weakRecentVideos)]);
   const config=await settings();
   const candidates=await findNicheLockedSimilarCandidates(nicheProfile,config,evidence.source.id);
   const reviewed=await reviewSimilarChannelCandidates(nicheProfile,candidates);
@@ -31,6 +31,7 @@ export async function runChannelStudy(input:string):Promise<ChannelStudy>{
     totalPublicVideos:evidence.totalPublicVideos,
     scanTruncated:evidence.scanTruncated,
     topVideos:evidence.topVideos,
+    thumbnailAnalysis,
     weakRecentVideos:evidence.weakRecentVideos,
     sequences:evidence.sequences,
     comparisonSampleSize:evidence.comparisonSampleSize,
