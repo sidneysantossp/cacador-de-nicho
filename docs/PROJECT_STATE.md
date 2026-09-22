@@ -34,6 +34,6 @@ Confirmar organização do Supabase na pergunta pendente, criar banco dedicado c
 
 ## Verificação
 
-Primeiro build local e deploy passaram. Testes cobrem assinatura/expiração/origem, janela temporal e limites de configuração. Navegador confirmou radar e abertura de anatomia/cinco propostas. Alterações subsequentes precisam de build/deploy final registrado no encerramento desta tarefa.
+Primeiro build local e deploy passaram. Testes cobrem assinatura/expiração/origem, janela temporal e limites de configuração. Navegador confirmou radar e abertura de anatomia/cinco propostas. A gestão de canais adiciona cadastro, estágios, prioridade e conversão de perspectivas em iniciativas de portfólio; a tabela `radar_managed_channels` precisa estar aplicada no Supabase para persistência fora do modo demonstração. Alterações subsequentes precisam de build/deploy final registrado no encerramento desta tarefa.
 
 Verificação final: build local passou, 4 testes passaram e deploy da central de configuração READY (dpl_4QZPhfu8XeyMhg5BGnwt1qjKSNn9). Desktop e celular inspecionados. A rota de credenciais retorna 401 sem sessão, e o radar público não expõe padrões de segredo. O deploy anterior foi dpl_HAz2hccdMH83hgdk1VWuhFGxRGVR. Nenhum banco real ou chamada OpenAI/YouTube foi validado.

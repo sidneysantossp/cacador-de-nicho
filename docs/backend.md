@@ -8,7 +8,7 @@ Aplicar `docs/schema.sql` em projeto Supabase dedicado depois de revisar; preenc
 
 - `GET /api/radar`: RadarData; nenhum dado privado para sessão ausente.
 - `POST /api/auth`: `{password}`. `DELETE /api/auth`: logout. Origin exata obrigatória.
-- `POST /api/actions`: `{action, channelId?, opportunityId?, decision?, reason?, title?, content?, settings?}`; resposta `{message}`. Refazer GET após sucesso. As ações exigem sessão e Origin exata.
+- `POST /api/actions`: `{action, channelId?, opportunityId?, decision?, reason?, title?, content?, settings?, managedChannel?}`; resposta `{message}`. A ação `managedChannel` cria ou atualiza um canal do portfólio, incluindo nicho, formato, estágio, prioridade e vínculo opcional com uma oportunidade. Refazer GET após sucesso. As ações exigem sessão e Origin exata.
 - `GET /api/cron`: `Authorization: Bearer CRON_SECRET`; rotina apenas se settings.enabled. Sem agendamento automático no repositório.
 
 Descoberta: até 5 buscas, 25 resultados cada, 20 canais acompanhados por rodada, 10 uploads por canal, lotes de 50 vídeos. A rotação de canais é diária; a base lida é limitada a 100 canais. Isto é cobertura amostral, não indexação completa do YouTube. O sinal corresponde a uma observação feita antes do limite, nunca a uma estimativa de quando um marco foi atingido. Formato, nicho e idioma desconhecidos permanecem explícitos. Nenhuma chamada de API paga é feita na instalação ou demonstração.
