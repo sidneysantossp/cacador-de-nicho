@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { editorialMethod } from './method';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-import type { Analysis, Channel, ChannelNicheProfile, ChannelStudyAnatomy, ChannelStudyVideo, Decision, ResearchContext, Script } from '@/lib/types';
+import type { Analysis, Channel, ChannelNicheProfile, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, ChannelStudyVideo, Decision, ResearchContext, Script } from '@/lib/types';
 import { list, policyApproved, put, settings } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
@@ -32,6 +32,13 @@ const channelStudyAnatomy=z.object({
  oneOffRisks:z.array(z.string()).max(8),
  contentGaps:z.array(z.string()).max(10),
  productionNotes:z.array(z.string()).max(10),
+ commentDemand:z.object({
+  requestedTopics:z.array(z.string()).max(10),
+  repeatedQuestions:z.array(z.string()).max(10),
+  confusionPoints:z.array(z.string()).max(10),
+  emotionalTriggers:z.array(z.string()).max(10),
+  objectionsAndDebates:z.array(z.string()).max(10)
+ }),
  topicGenome:z.object({
   winningEntities:z.array(z.string()).max(12),
   recurringAngles:z.array(z.string()).max(12),
@@ -50,6 +57,55 @@ const channelStudyAnatomy=z.object({
  weakVideoContrasts:z.array(z.string()).max(10),
  limitations:z.array(z.string()).min(1).max(12)
 });
+const channelThumbnailAnalysis=z.object({
+ inspected:z.boolean(),
+ hitPatterns:z.array(z.string()).max(10),
+ weakPatterns:z.array(z.string()).max(10),
+ visualContrasts:z.array(z.string()).max(10),
+ compositionPatterns:z.array(z.string()).max(10),
+ textUsage:z.array(z.string()).max(10),
+ recurringSubjects:z.array(z.string()).max(10),
+ visualHooks:z.array(z.string()).max(10),
+ consistencySignals:z.array(z.string()).max(10),
+ limitations:z.array(z.string()).max(10)
+});
+
+export async function analyzeChannelThumbnails(
+ topVideos:ChannelStudyVideo[],
+ weakVideos:ChannelStudyVideo[]
+):Promise<ChannelStudyThumbnailAnalysis>{
+ const hits=topVideos.filter(video=>/^https:\/\//.test(video.thumbnail)).slice(0,10);
+ const weak=weakVideos.filter(video=>/^https:\/\//.test(video.thumbnail)).slice(0,6);
+ if(!hits.length)return {inspected:false,hitPatterns:[],weakPatterns:[],visualContrasts:[],compositionPatterns:[],textUsage:[],recurringSubjects:[],visualHooks:[],consistencySignals:[],limitations:['Nenhuma thumbnail pública válida estava disponível para inspeção visual.']};
+ try{
+  const config=await settings();
+  const content:Array<Record<string,unknown>>=[{
+   type:'input_text',
+   text:'Você está recebendo thumbnails REAIS de vídeos, rotuladas como HIT ou WEAK SAMPLE. Compare somente o que é visualmente observável. Procure composição, quantidade/posição de texto, personagem/objeto dominante, escala, enquadramento, repetição visual, contraste entre hits e fracos e possíveis hooks visuais. Não infira CTR, retenção, emoção do público ou causalidade. WEAK SAMPLE significa menor desempenho dentro da amostra recente consultada, não os piores vídeos históricos.'
+  }];
+  hits.forEach((video,index)=>{
+   content.push({type:'input_text',text:`HIT #${index+1}: ${video.title} — ${video.views} views`});
+   content.push({type:'input_image',image_url:video.thumbnail,detail:'low'});
+  });
+  weak.forEach((video,index)=>{
+   content.push({type:'input_text',text:`WEAK SAMPLE #${index+1}: ${video.title} — ${video.views} views`});
+   content.push({type:'input_image',image_url:video.thumbnail,detail:'low'});
+  });
+  const response=await (await client()).responses.parse({
+   model:config.analysisModel,
+   store:false,
+   instructions:instructions+'\nAnalise visualmente apenas as imagens realmente fornecidas nesta solicitação.',
+   input:[{role:'user',content:content as never}],
+   text:{format:zodTextFormat(channelThumbnailAnalysis,'channel_thumbnail_anatomy')},
+   max_output_tokens:3500
+  });
+  if(!response.output_parsed)throw new Error('thumbnail analysis incomplete');
+  return {...channelThumbnailAnalysis.parse(response.output_parsed),inspected:true};
+ }catch{
+  return {inspected:false,hitPatterns:[],weakPatterns:[],visualContrasts:[],compositionPatterns:[],textUsage:[],recurringSubjects:[],visualHooks:[],consistencySignals:[],limitations:['A inspeção visual das thumbnails falhou nesta execução. Reexecute a análise para tentar novamente.']};
+ }
+}
+
 export async function analyzeChannelStudyEvidence(input:{
  source:{id:string;name:string;handle:string;description:string;url:string;createdAt:string;videoCount:number;subscribers:number|null};
  topVideos:ChannelStudyVideo[];
@@ -91,7 +147,7 @@ export async function analyzeChannelStudyEvidence(input:{
  const anatomy=await structured(
   channelStudyAnatomy,
   'channel_study_anatomy',
-  'Extraia a anatomia editorial do canal comparando os 10 vídeos com mais views contra a amostra explícita de vídeos long form recentes de menor desempenho. Use também sequências antes/depois dos principais hits, concentração Top 3, mediana dos hits, relação hits/fracos e velocidade SOMENTE quando houver pelo menos dois snapshots reais. Gere Topic Genome com entidades vencedoras, ângulos recorrentes, mecanismos de curiosidade, tokens de títulos e contrastes dos vídeos fracos. Gere Sustainability de 0-100 como diagnóstico explicável, não como verdade absoluta: repeatable exige múltiplos hits e padrões repetidos; fragile deve refletir concentração excessiva ou um único outlier. Analise sinais explícitos dos comentários e perguntas do público. Não afirme ter assistido aos vídeos nem analisado visualmente thumbnails; URL de thumbnail não equivale a inspeção visual. Não invente retenção, CTR, RPM, velocidade sem histórico ou causalidade.',
+  'Extraia a anatomia editorial do canal comparando os 10 vídeos com mais views contra a amostra explícita de vídeos long form recentes de menor desempenho. Use também sequências antes/depois dos principais hits, concentração Top 3, mediana dos hits, relação hits/fracos e velocidade SOMENTE quando houver pelo menos dois snapshots reais. Gere Topic Genome com entidades vencedoras, ângulos recorrentes, mecanismos de curiosidade, tokens de títulos e contrastes dos vídeos fracos. Gere Sustainability de 0-100 como diagnóstico explicável, não como verdade absoluta: repeatable exige múltiplos hits e padrões repetidos; fragile deve refletir concentração excessiva ou um único outlier. Faça Comment Demand Mining SOMENTE a partir dos comentários fornecidos: pedidos de temas, perguntas repetidas, pontos de confusão, gatilhos emocionais expressos e objeções/debates. Não trate ausência de comentário como ausência de demanda. Não afirme ter assistido aos vídeos nem analisado visualmente thumbnails nesta etapa textual; URL de thumbnail não equivale a inspeção visual. Não invente retenção, CTR, RPM, velocidade sem histórico ou causalidade.',
   {evidence,nicheProfile}
  );
  return {nicheProfile,anatomy};
