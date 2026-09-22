@@ -1,13 +1,20 @@
 import 'server-only';
+
 import type { Channel, Settings } from '@/lib/types';
+import {
+  REFERENCE_CHANNELS,
+  REFERENCE_DISCOVERY_QUERIES,
+  referenceForName,
+  type ReferenceChannel
+} from '@/lib/reference-catalog';
 import { checked, db, list, put } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
 
 type Item={
-  id:string|{videoId:string};
+  id:string|{videoId?:string;channelId?:string};
   snippet:{
-    channelId:string;
+    channelId?:string;
     title:string;
     description:string;
     publishedAt:string;
@@ -36,7 +43,7 @@ async function youtube(resource:string,params:Record<string,string>){
   if(!response.ok){
     throw new HttpError(
       response.status===403
-        ?'YouTube recusou a consulta: confira a chave, API habilitada e cota.'
+        ?'YouTube recusou a consulta: confira a chave, API habilitada e cota de pesquisa.'
         :`YouTube indisponível (HTTP ${response.status}).`,
       502
     );
@@ -51,59 +58,248 @@ const thumb=(item:Item)=>
   item.snippet.thumbnails?.default?.url??
   '';
 
-const idOf=(item:Item)=>typeof item.id==='string'?item.id:item.id.videoId;
+function idOf(item:Item){
+  if(typeof item.id==='string')return item.id;
+  return item.id.videoId??item.id.channelId??'';
+}
+
+const norm=(value:string)=>
+  value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
+
+function nameScore(a:string,b:string){
+  const x=norm(a),y=norm(b);
+  if(x===y)return 1;
+  if(x.includes(y)||y.includes(x))return 0.94;
+  const xs=new Set(x.split(' ').filter(Boolean)),ys=new Set(y.split(' ').filter(Boolean));
+  const intersection=[...xs].filter(t=>ys.has(t)).length;
+  const union=new Set([...xs,...ys]).size;
+  return union?intersection/union:0;
+}
+
+async function mapLimit<T,R>(items:T[],limit:number,work:(item:T,index:number)=>Promise<R>){
+  const output=new Array<R>(items.length);
+  let cursor=0;
+  async function worker(){
+    while(cursor<items.length){
+      const index=cursor++;
+      output[index]=await work(items[index],index);
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},()=>worker()));
+  return output;
+}
+
+function hoursSince(date:string,now=Date.now()){
+  return Math.max(0,(now-Date.parse(date))/3600000);
+}
+
+function videoSignal(video:Item){
+  const ageHours=Math.max(6,hoursSince(video.snippet.publishedAt));
+  const views=Number(video.statistics?.viewCount??0);
+  return views/Math.max(ageHours/24,0.25);
+}
 
 function inferNiche(video:Item){
   const text=`${video.snippet.title} ${video.snippet.description}`.toLowerCase();
   const groups:Array<[string,string[]]>= [
-    ['Finanças & Economia',['finance','money','invest','stock','market','econom','bank','wealth','business']],
-    ['Tecnologia & IA',['artificial intelligence',' ai ','technology','tech ','robot','software','computer','iphone','android']],
-    ['Ciência & Espaço',['science','physics','chemistry','space','nasa','planet','universe','biology','quantum']],
-    ['Saúde & Corpo',['health','doctor','medical','medicine','body','brain','nutrition','fitness','disease']],
-    ['Psicologia & Comportamento',['psychology','behavior','habit','mental','motivation','relationship','social']],
-    ['História & Sociedade',['history','ancient','empire','war','civilization','historical','society','culture']],
-    ['Animais & Natureza',['animal','wildlife','nature','ocean','dog','cat','bird','reptile','insect']],
-    ['Games',['game','gaming','minecraft','fortnite','roblox','playstation','xbox','nintendo']],
-    ['Esportes',['sport','football','soccer','basketball','nba','nfl','tennis','f1','formula 1']],
-    ['Viagem & Lugares',['travel','country','city','island','hotel','flight','tourism','destination']],
-    ['Comida & Cozinha',['food','recipe','cooking','restaurant','chef','kitchen']],
-    ['Educação & Explicadores',['explained','how it works','how does','why does','lesson','tutorial','documentary']]
+    ['History',['history','historical','ancient','empire','civilization','medieval','archaeology']],
+    ['Engineering',['engineering','engineer','mechanical','civil engineering','machine','infrastructure','construction']],
+    ['Military',['military','weapon','war ','battle','tank','aircraft','army','navy','geopolitic']],
+    ['Education',['education','explained','how it works','science','physics','chemistry','learn','documentary']],
+    ['Storytelling',['story','storytelling','animated story','my story','life story']],
+    ['Entertainment',['entertainment','animation','animated','cartoon','comedy','funny']],
+    ['Fitness & Health',['fitness','health','bodybuilding','workout','nutrition','muscle','medical','body']],
+    ['Crime & Psychology',['crime','criminal','psychology','murder','mystery','behavior','serial killer']],
+    ['Animals',['animal','wildlife','dog','cat','fish','bird','dinosaur','insect']],
+    ['Gaming',['gaming','game','roblox','minecraft','fortnite']],
+    ['Politics',['politics','political','election','government']],
+    ['Stats',['data','statistics','comparison','ranked','countries compared']],
+    ['Sport',['sport','football','soccer','basketball','athlete','nba','nfl']],
+    ['Biology',['biology','cell','organism','evolution','anatomy']]
   ];
   for(const [name,words] of groups)if(words.some(word=>text.includes(word)))return name;
-  const category:Record<string,string>={
-    '1':'Filmes & Animação','2':'Automóveis','10':'Música','15':'Animais & Natureza','17':'Esportes',
-    '19':'Viagem & Lugares','20':'Games','22':'Pessoas & Blogs','23':'Comédia','24':'Entretenimento',
-    '25':'Notícias & Sociedade','26':'How-to & Estilo','27':'Educação','28':'Ciência & Tecnologia','29':'ONGs & Ativismo'
-  };
-  return category[video.snippet.categoryId??'']??'Outros sinais';
+  return 'Explained';
 }
 
-function videoSignal(video:Item){
-  const ageHours=Math.max(1,(Date.now()-Date.parse(video.snippet.publishedAt))/3600000);
+function inferFormat(video:Item,sourceQuery:string){
+  const text=`${sourceQuery} ${video.snippet.title} ${video.snippet.description}`.toLowerCase();
+  const duration=video.contentDetails?.duration??'';
+  const short=/^PT(?:\d+M)?(?:[0-5]?\dS)$/.test(duration)&&!/^PT(?:[2-9]\d|\d{3,})M/.test(duration);
+  if(text.includes('3d')||text.includes('cgi')||text.includes('simulation'))return short?'Shorts 3D':'3D Animation';
+  if(text.includes('shorts')||text.includes('#shorts'))return 'Shorts 2D';
+  if(text.includes('animated')||text.includes('animation'))return '2D Animation';
+  if(text.includes('storytelling')||text.includes('story'))return 'Storytelling';
+  return 'Explained';
+}
+
+function signalsFor(video:Item,channel:Item,config:Settings){
+  const now=Date.now();
   const views=Number(video.statistics?.viewCount??0);
-  return views/Math.max(ageHours/24,1);
+  const videoCount=Number(channel.statistics?.videoCount??0);
+  const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
+  const videoHours=hoursSince(video.snippet.publishedAt,now);
+  const channelDays=Math.max(0,(now-Date.parse(channel.snippet.publishedAt))/86400000);
+  const signals:string[]=[];
+  if(views>=config.minViews)signals.push(`Alcance forte: ${views.toLocaleString('en-US')} visualizações públicas.`);
+  if(videoHours<=config.maxVideoAgeHours)signals.push(`Recência forte: publicado há cerca de ${Math.max(1,Math.round(videoHours))}h.`);
+  if(videoCount<=config.maxChannelVideos)signals.push(`Canal enxuto: ${videoCount} vídeos publicados.`);
+  if(channelDays<=config.maxChannelAgeDays)signals.push(`Canal recente: criado há cerca de ${Math.max(1,Math.round(channelDays))} dias.`);
+  if(subscribers&&subscribers>0&&views>subscribers)signals.push(`Breakout público: o vídeo observado tem mais views que a base atual de inscritos.`);
+  return signals;
 }
 
-export async function scan(config:Settings){
-  const prior=await list<Channel>('radar_channels',1000);
-  const ids=new Set<string>();
-  const candidateMap=new Map<string,Item>();
-
-  // Broad discovery is independent of the configured seeds. These markets keep the
-  // operation English-first without forcing a single niche.
-  for(const region of ['US','GB','CA','AU']){
-    const popular=await youtube('videos',{
-      part:'snippet,statistics,contentDetails',
-      chart:'mostPopular',
-      regionCode:region,
-      maxResults:'50'
-    });
-    for(const item of popular)candidateMap.set(idOf(item),item);
+async function resolveReferenceIds(prior:Channel[]){
+  const resolved=new Map<string,string>();
+  for(const channel of prior){
+    const ref=channel.reference
+      ?REFERENCE_CHANNELS.find(r=>norm(r.name)===norm(channel.reference!.catalogName))
+      :referenceForName(channel.name);
+    if(ref)resolved.set(norm(ref.name),channel.id);
   }
 
-  // Seeds are focus hints, not gates. We intentionally avoid publishedAfter here:
-  // the age/view/channel settings are signals used to rank evidence, never exclusion rules.
-  for(const query of config.queries.map(q=>q.trim()).filter(Boolean)){
+  const unresolved=REFERENCE_CHANNELS.filter(ref=>!resolved.has(norm(ref.name)));
+  for(let i=0;i<unresolved.length;i+=7){
+    const group=unresolved.slice(i,i+7);
+    const found=await youtube('search',{
+      part:'snippet',
+      type:'channel',
+      q:group.map(ref=>ref.name).join('|'),
+      maxResults:'50',
+      relevanceLanguage:'en'
+    });
+    for(const item of found){
+      const id=idOf(item);
+      if(!id)continue;
+      const ranked=group
+        .map(ref=>({ref,score:nameScore(item.snippet.title,ref.name)}))
+        .sort((a,b)=>b.score-a.score);
+      if(ranked[0]?.score>=0.76&&!resolved.has(norm(ranked[0].ref.name))){
+        resolved.set(norm(ranked[0].ref.name),id);
+      }
+    }
+  }
+  return resolved;
+}
+
+async function monitorReferences(config:Settings,prior:Channel[]){
+  const resolved=await resolveReferenceIds(prior);
+  const ids=[...new Set(resolved.values())];
+  const detailMap=new Map<string,Item>();
+
+  for(let i=0;i<ids.length;i+=50){
+    const details=await youtube('channels',{
+      part:'snippet,statistics,contentDetails',
+      id:ids.slice(i,i+50).join(',')
+    });
+    for(const item of details)detailMap.set(idOf(item),item);
+  }
+
+  const uploads=await mapLimit(ids,8,async id=>{
+    const channel=detailMap.get(id);
+    const playlistId=channel?.contentDetails?.relatedPlaylists?.uploads;
+    if(!playlistId)return {id,videoIds:[] as string[]};
+    const items=await youtube('playlistItems',{
+      part:'snippet',
+      playlistId,
+      maxResults:'20'
+    });
+    return {id,videoIds:items.map(v=>v.snippet.resourceId?.videoId??'').filter(Boolean)};
+  });
+
+  const allVideoIds=[...new Set(uploads.flatMap(x=>x.videoIds))];
+  const videoMap=new Map<string,Item>();
+  for(let i=0;i<allVideoIds.length;i+=50){
+    const videos=await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:allVideoIds.slice(i,i+50).join(',')
+    });
+    for(const video of videos)videoMap.set(idOf(video),video);
+  }
+
+  const byChannel=new Map(uploads.map(x=>[
+    x.id,
+    x.videoIds.map(id=>videoMap.get(id)).filter((v):v is Item=>!!v)
+  ]));
+
+  const observedAt=new Date().toISOString();
+  const payloads:Channel[]=[];
+
+  for(const ref of REFERENCE_CHANNELS){
+    const id=resolved.get(norm(ref.name));
+    if(!id)continue;
+    const channel=detailMap.get(id);
+    if(!channel)continue;
+    const videos=(byChannel.get(id)??[]).sort((a,b)=>videoSignal(b)-videoSignal(a));
+    const video=videos[0];
+    const old=prior.find(x=>x.id===id);
+    if(!video&&old){
+      payloads.push({...old,discoverySource:'reference',reference:{catalogName:ref.name,tier:ref.tier,format:ref.format,niche:ref.niche}});
+      continue;
+    }
+    if(!video)continue;
+
+    const signals=signalsFor(video,channel,config);
+    const views=Number(video.statistics?.viewCount??0);
+    const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
+    const payload:Channel={
+      id,
+      name:channel.snippet.title,
+      handle:channel.snippet.customUrl??'',
+      niche:ref.niche,
+      language:ref.market==='adjacent'?'Mercado adjacente':'Inglês / confirmar metadado',
+      format:ref.format,
+      description:channel.snippet.description.slice(0,2000),
+      lens:`Referência ${ref.tier} do catálogo: ${ref.format} + ${ref.niche}.`,
+      thumbnail:thumb(video),
+      avatar:thumb(channel),
+      url:`https://www.youtube.com/channel/${id}`,
+      createdAt:channel.snippet.publishedAt,
+      firstSeenAt:old?.firstSeenAt??observedAt,
+      observedAt,
+      videoCount:Number(channel.statistics?.videoCount??0),
+      subscribers,
+      video:{
+        id:idOf(video),
+        title:video.snippet.title,
+        publishedAt:video.snippet.publishedAt,
+        views,
+        duration:video.contentDetails?.duration??'',
+        thumbnail:thumb(video),
+        url:`https://www.youtube.com/watch?v=${idOf(video)}`
+      },
+      status:old?.status??'watching',
+      evidence:[
+        `Canal incluído no catálogo de referência fornecido pelo operador como ${ref.tier}.`,
+        `Padrão catalogado: ${ref.format} + ${ref.niche}.`,
+        `Melhor sinal entre os uploads recentes monitorados: "${video.snippet.title}".`,
+        ...signals,
+        'O radar monitora esta referência mesmo quando ela não atende aos limiares numéricos de prioridade.'
+      ],
+      discoverySource:'reference',
+      reference:{catalogName:ref.name,tier:ref.tier,format:ref.format,niche:ref.niche},
+      ...(old?.video.id===idOf(video)&&old.analysis?{analysis:old.analysis}:{})
+    };
+    payloads.push(payload);
+  }
+
+  return payloads;
+}
+
+const legacyGeneric=new Set([
+  'explained','documentary','how it works','why','what if',
+  'finance explained animation','economics explained animation'
+]);
+
+async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set<string>){
+  const configured=config.queries
+    .map(q=>q.trim())
+    .filter(q=>q.length>=2&&!legacyGeneric.has(q.toLowerCase()));
+
+  const queries=[...new Set([...REFERENCE_DISCOVERY_QUERIES,...configured])];
+  const videoIds=new Set<string>();
+  const sourceByVideo=new Map<string,string>();
+
+  for(const query of queries){
     const found=await youtube('search',{
       part:'snippet',
       type:'video',
@@ -112,38 +308,29 @@ export async function scan(config:Settings){
       maxResults:'50',
       relevanceLanguage:'en'
     });
-    for(const item of found)if(typeof item.id!=='string')ids.add(item.id.videoId);
-  }
-
-  // Keep watching a rotating sample of previously discovered channels, but this does
-  // not constrain new discovery.
-  const offset=prior.length?Math.floor(Date.now()/86400000)*20%prior.length:0;
-  const tracked=[...prior.slice(offset),...prior.slice(0,offset)].slice(0,20);
-  if(tracked.length){
-    const cs=await youtube('channels',{part:'contentDetails',id:tracked.map(c=>c.id).join(',')});
-    for(const c of cs){
-      const uploads=c.contentDetails?.relatedPlaylists?.uploads;
-      if(!uploads)continue;
-      const videos=await youtube('playlistItems',{part:'snippet',playlistId:uploads,maxResults:'10'});
-      for(const v of videos)if(v.snippet.resourceId)ids.add(v.snippet.resourceId.videoId);
+    for(const item of found){
+      const id=idOf(item);
+      if(!id)continue;
+      videoIds.add(id);
+      if(!sourceByVideo.has(id))sourceByVideo.set(id,query);
     }
   }
 
-  const idList=[...ids].filter(id=>!candidateMap.has(id));
-  for(let i=0;i<idList.length;i+=50){
-    const batch=await youtube('videos',{
+  const videos:Item[]=[];
+  const ids=[...videoIds];
+  for(let i=0;i<ids.length;i+=50){
+    videos.push(...await youtube('videos',{
       part:'snippet,statistics,contentDetails',
-      id:idList.slice(i,i+50).join(',')
-    });
-    for(const item of batch)candidateMap.set(idOf(item),item);
+      id:ids.slice(i,i+50).join(',')
+    }));
   }
 
-  const candidates=[...candidateMap.values()].filter(video=>{
+  const candidates=videos.filter(video=>{
     const language=(video.snippet.defaultLanguage??video.snippet.defaultAudioLanguage??'').toLowerCase();
-    return !language||language.startsWith('en');
+    return (!language||language.startsWith('en'))&&!!video.snippet.channelId&&!referenceIds.has(video.snippet.channelId);
   });
 
-  const channelIds=[...new Set(candidates.map(v=>v.snippet.channelId))];
+  const channelIds=[...new Set(candidates.map(v=>v.snippet.channelId!).filter(Boolean))];
   const channels:Item[]=[];
   for(let i=0;i<channelIds.length;i+=50){
     channels.push(...await youtube('channels',{
@@ -153,47 +340,38 @@ export async function scan(config:Settings){
   }
 
   const observedAt=new Date().toISOString();
-  const prepared:Array<{score:number;id:string;payload:Channel}>=[];
+  const prepared:Array<{score:number;payload:Channel}>=[];
 
-  for(const c of channels){
-    const channelVideos=candidates
-      .filter(v=>v.snippet.channelId===c.id)
+  for(const channel of channels){
+    const id=idOf(channel);
+    const relevant=candidates
+      .filter(v=>v.snippet.channelId===id)
       .sort((a,b)=>videoSignal(b)-videoSignal(a));
-    const video=channelVideos[0];
+    const video=relevant[0];
     if(!video)continue;
-
-    const videoCount=Number(c.statistics?.videoCount??0);
-    const ageDays=Math.max(0,(Date.parse(observedAt)-Date.parse(c.snippet.publishedAt))/86400000);
-    const ageHours=Math.max(0,(Date.parse(observedAt)-Date.parse(video.snippet.publishedAt))/3600000);
+    const sourceQuery=sourceByVideo.get(idOf(video))??'matriz de referências faceless';
+    const signals=signalsFor(video,channel,config);
+    const old=prior.find(c=>c.id===id);
     const views=Number(video.statistics?.viewCount??0);
-    const subscribers=c.statistics?.hiddenSubscriberCount?null:Number(c.statistics?.subscriberCount??0);
-    const old=prior.find(x=>x.id===c.id);
-    const signals:string[]=[];
-
-    if(views>=config.minViews)signals.push(`Sinal forte de alcance: ${views.toLocaleString('en-US')} visualizações públicas.`);
-    if(ageHours<=config.maxVideoAgeHours)signals.push(`Sinal de recência: publicado há cerca de ${Math.max(1,Math.round(ageHours))}h.`);
-    if(videoCount<=config.maxChannelVideos)signals.push(`Sinal de canal enxuto: ${videoCount} vídeos publicados.`);
-    if(ageDays<=config.maxChannelAgeDays)signals.push(`Sinal de canal recente: criado há cerca de ${Math.max(1,Math.round(ageDays))} dias.`);
-    if(subscribers&&views>subscribers)signals.push('Sinal de distribuição além da base atual de inscritos.');
-
-    const id=c.id as string;
+    const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
+    const format=inferFormat(video,sourceQuery);
     const niche=inferNiche(video);
     const payload:Channel={
       id,
-      name:c.snippet.title,
-      handle:c.snippet.customUrl??'',
+      name:channel.snippet.title,
+      handle:channel.snippet.customUrl??'',
       niche,
-      language:video.snippet.defaultLanguage??video.snippet.defaultAudioLanguage??'Não informado',
-      format:'A confirmar',
-      description:c.snippet.description.slice(0,2000),
-      lens:signals[0]??'Referência capturada para comparação e investigação editorial.',
+      language:video.snippet.defaultLanguage??video.snippet.defaultAudioLanguage??'Inglês provável / confirmar',
+      format,
+      description:channel.snippet.description.slice(0,2000),
+      lens:`Descoberto ao expandir o padrão validado "${sourceQuery}".`,
       thumbnail:thumb(video),
-      avatar:thumb(c),
+      avatar:thumb(channel),
       url:`https://www.youtube.com/channel/${id}`,
-      createdAt:c.snippet.publishedAt,
+      createdAt:channel.snippet.publishedAt,
       firstSeenAt:old?.firstSeenAt??observedAt,
       observedAt,
-      videoCount,
+      videoCount:Number(channel.statistics?.videoCount??0),
       subscribers,
       video:{
         id:idOf(video),
@@ -206,33 +384,50 @@ export async function scan(config:Settings){
       },
       status:old?.status??'new',
       evidence:[
+        `Descoberta adjacente à matriz do catálogo: consulta "${sourceQuery}".`,
         `Visualizações públicas observadas em ${observedAt}.`,
-        `Publicado em ${video.snippet.publishedAt}; esta é uma observação, não uma estimativa histórica.`,
         ...signals,
-        'Os critérios configurados são sinais de prioridade, não filtros eliminatórios.',
-        'Formato, RPM e retenção não são inferidos sem evidência apropriada.'
+        'A presença no radar indica proximidade com padrões validados; demanda e lacuna ainda precisam de comparação entre referências.'
       ],
+      discoverySource:'reference-adjacent',
       ...(old?.video.id===idOf(video)&&old.analysis?{analysis:old.analysis}:{})
     };
-
-    const reachPerDay=videoSignal(video);
-    const breakout=subscribers&&subscribers>0?Math.min(5,views/subscribers):1;
-    const score=Math.log10(reachPerDay+1)*10+Math.log10(views+1)*2+breakout;
-    prepared.push({score,id,payload});
+    const breakout=subscribers&&subscribers>0?Math.min(8,views/subscribers):1;
+    const score=Math.log10(videoSignal(video)+1)*10+Math.log10(views+1)*2+breakout;
+    prepared.push({score,payload});
   }
 
-  // Supabase returns newest updates first, so persist weaker signals first and the
-  // strongest opportunity signals last. Nothing is discarded because of thresholds.
-  prepared.sort((a,b)=>a.score-b.score);
-  for(const item of prepared){
-    await put('radar_channels',item.id,item.payload);
+  return prepared.sort((a,b)=>b.score-a.score).map(x=>x.payload);
+}
+
+export async function scan(config:Settings){
+  const prior=await list<Channel>('radar_channels',1000);
+  const references=await monitorReferences(config,prior);
+  const referenceIds=new Set(references.map(c=>c.id));
+  const adjacent=await discoverAdjacent(config,prior,referenceIds);
+  const observedAt=new Date().toISOString();
+  const all=[...references,...adjacent];
+
+  // Persist lower-priority discoveries first so the strongest current signals and
+  // reference updates are returned near the top by updated_at.
+  for(const channel of [...adjacent].reverse()){
+    await put('radar_channels',channel.id,channel);
     checked(await db().from('radar_snapshots').insert({
-      channel_id:item.id,
-      video_id:item.payload.video.id,
-      views:item.payload.video.views,
+      channel_id:channel.id,
+      video_id:channel.video.id,
+      views:channel.video.views,
+      observed_at:observedAt
+    }));
+  }
+  for(const channel of references){
+    await put('radar_channels',channel.id,channel);
+    checked(await db().from('radar_snapshots').insert({
+      channel_id:channel.id,
+      video_id:channel.video.id,
+      views:channel.video.views,
       observed_at:observedAt
     }));
   }
 
-  return prepared.length;
+  return all.length;
 }
