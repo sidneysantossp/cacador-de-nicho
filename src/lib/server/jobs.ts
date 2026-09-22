@@ -4,6 +4,7 @@ import { scan } from './youtube';
 import { analyze } from './ai';
 import { providerAvailable } from './providers';
 import type { Channel, Run } from '@/lib/types';
+import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 
 export async function runRadar(cron=false){
   const config=await settings();
@@ -29,7 +30,7 @@ export async function runRadar(cron=false){
     type:cron?'Rotina diária':'Pesquisa manual',
     status:'running',
     startedAt,
-    message:'Descoberta ampla de oportunidades em execução.'
+    message:'Busca por oportunidades com filtros obrigatórios em execução.'
   };
   await put('radar_runs',key,run);
 
@@ -37,11 +38,11 @@ export async function runRadar(cron=false){
     const count=await scan(config);
     if(config.autoAnalyze&&policyApproved()&&await providerAvailable('openai')){
       const candidates=(await list<Channel>('radar_channels',1000))
-        .filter(c=>!c.analysis)
+        .filter(c=>c.discoverySource==='reference-adjacent'&&!c.analysis&&qualifiesOpportunityCandidate(c,config))
         .slice(0,config.maxAnalysesPerRun);
       for(const c of candidates)await analyze(c);
     }
-    const message=`Rodada concluída: ${count} canais/sinais foram capturados para investigação. Critérios configurados priorizam sinais, mas não eliminam oportunidades.`;
+    const message=`Rodada concluída: ${count} candidatos passaram por TODOS os filtros obrigatórios. Referências do PDF continuam monitoradas separadamente e não aparecem como oportunidades.`;
     await put('radar_runs',key,{...run,status:'completed',message});
     if(cron)checked(await db().rpc('finish_radar_job',{job_key:key,lease_token:token,success:true}));
     return message;
