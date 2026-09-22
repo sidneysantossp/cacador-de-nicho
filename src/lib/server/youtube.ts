@@ -38,7 +38,7 @@ type Item={
   contentDetails?:{duration?:string;relatedPlaylists?:{uploads:string}}
 };
 
-async function youtube(resource:string,params:Record<string,string>){
+async function youtubePage(resource:string,params:Record<string,string>){
   const query=new URLSearchParams({...params,key:await providerSecret('youtube')});
   const response=await fetch(`https://www.googleapis.com/youtube/v3/${resource}?${query}`,{
     signal:AbortSignal.timeout(20000),
@@ -52,8 +52,11 @@ async function youtube(resource:string,params:Record<string,string>){
       502
     );
   }
-  const body=await response.json() as {items?:Item[]};
-  return body.items??[];
+  const body=await response.json() as {items?:Item[];nextPageToken?:string};
+  return {items:body.items??[],nextPageToken:body.nextPageToken};
+}
+async function youtube(resource:string,params:Record<string,string>){
+  return (await youtubePage(resource,params)).items;
 }
 
 const thumb=(item:Item)=>
@@ -540,6 +543,7 @@ async function resolveChannelInput(input:string){
 export async function collectChannelStudyEvidence(input:string){
   const channel=await resolveChannelInput(input);
   const channelId=idOf(channel);
+  const observedAt=new Date().toISOString();
   const source={
     id:channelId,
     name:channel.snippet.title,
@@ -552,6 +556,8 @@ export async function collectChannelStudyEvidence(input:string){
     avatar:thumb(channel)
   };
 
+  // Global high-view candidates. Search is used only to obtain the strongest long-form
+  // videos; it is not presented as an exhaustive scan of the channel.
   const ids=new Set<string>();
   for(const videoDuration of ['medium','long'] as const){
     const found=await youtube('search',{
@@ -575,49 +581,157 @@ export async function collectChannelStudyEvidence(input:string){
       id:videoIds.slice(i,i+50).join(',')
     }));
   }
-
   const topItems=videos
     .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
     .sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))
     .slice(0,10);
+  if(!topItems.length)throw new HttpError('Não encontrei vídeos long form públicos suficientes neste canal.',422);
+
+  // Recent upload sample for contrast and sequence context. Up to 100 recent uploads are
+  // inspected; weak videos are explicitly described as weak WITHIN THIS SAMPLE.
+  const recentIds:string[]=[];
+  const uploads=channel.contentDetails?.relatedPlaylists?.uploads;
+  if(uploads){
+    let pageToken:string|undefined;
+    for(let page=0;page<2;page++){
+      const pageData=await youtubePage('playlistItems',{
+        part:'snippet',
+        playlistId:uploads,
+        maxResults:'50',
+        ...(pageToken?{pageToken}:{})
+      });
+      recentIds.push(...pageData.items.map(item=>item.snippet.resourceId?.videoId??'').filter(Boolean));
+      pageToken=pageData.nextPageToken;
+      if(!pageToken)break;
+    }
+  }
+  const recentItems:Item[]=[];
+  const uniqueRecent=[...new Set(recentIds)];
+  for(let i=0;i<uniqueRecent.length;i+=50){
+    recentItems.push(...await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:uniqueRecent.slice(i,i+50).join(',')
+    }));
+  }
+  const recentLong=recentItems
+    .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
+    .sort((a,b)=>Date.parse(a.snippet.publishedAt)-Date.parse(b.snippet.publishedAt));
+
+  const topIds=topItems.map(idOf);
+  type SnapshotRow={video_id:string;views:number;observed_at:string};
+  const snapshotRows:SnapshotRow[]=topIds.length
+    ?checked(await db().from('radar_snapshots').select('video_id,views,observed_at').eq('channel_id',channelId).in('video_id',topIds).order('observed_at',{ascending:true}).limit(500))
+    :[];
+
+  function snapshotData(video:Item){
+    const id=idOf(video);
+    const views=Number(video.statistics?.viewCount??0);
+    const prior=snapshotRows.filter(row=>row.video_id===id);
+    const previous=prior.at(-1);
+    const deltaHours=previous?Math.max(0,(Date.parse(observedAt)-Date.parse(previous.observed_at))/3600000):null;
+    const deltaViews=previous?Math.max(0,views-Number(previous.views)):null;
+    return {
+      snapshots:[
+        ...prior.map(row=>({observedAt:row.observed_at,views:Number(row.views)})),
+        {observedAt,views}
+      ],
+      velocity:{
+        baseline:!previous,
+        deltaViews,
+        deltaHours,
+        viewsPerHour:previous&&deltaHours&&deltaHours>0?Math.round(deltaViews!/deltaHours):null
+      }
+    };
+  }
+  function baseStudyVideo(video:Item):ChannelStudyVideo{
+    const velocity=snapshotData(video);
+    return {
+      id:idOf(video),
+      title:video.snippet.title,
+      publishedAt:video.snippet.publishedAt,
+      views:Number(video.statistics?.viewCount??0),
+      likes:video.statistics?.likeCount===undefined?null:Number(video.statistics.likeCount),
+      commentCount:video.statistics?.commentCount===undefined?null:Number(video.statistics.commentCount),
+      duration:video.contentDetails?.duration??'',
+      thumbnail:thumb(video),
+      url:`https://www.youtube.com/watch?v=${idOf(video)}`,
+      comments:[],
+      ...velocity
+    };
+  }
 
   const topVideos:ChannelStudyVideo[]=await mapLimit(topItems,4,async video=>({
-    id:idOf(video),
-    title:video.snippet.title,
-    publishedAt:video.snippet.publishedAt,
-    views:Number(video.statistics?.viewCount??0),
-    likes:video.statistics?.likeCount===undefined?null:Number(video.statistics.likeCount),
-    commentCount:video.statistics?.commentCount===undefined?null:Number(video.statistics.commentCount),
-    duration:video.contentDetails?.duration??'',
-    thumbnail:thumb(video),
-    url:`https://www.youtube.com/watch?v=${idOf(video)}`,
+    ...baseStudyVideo(video),
     comments:await youtubeComments(idOf(video))
   }));
 
-  if(!topVideos.length)throw new HttpError('Não encontrei vídeos long form públicos suficientes neste canal.',422);
-  const sortedViews=topVideos.map(v=>v.views).sort((a,b)=>a-b);
-  const medianTop10Views=sortedViews.length%2
-    ?sortedViews[Math.floor(sortedViews.length/2)]
-    :Math.round((sortedViews[sortedViews.length/2-1]+sortedViews[sortedViews.length/2])/2);
-  const top10Views=topVideos.reduce((sum,v)=>sum+v.views,0);
-  const top3Views=topVideos.slice(0,3).reduce((sum,v)=>sum+v.views,0);
+  // Store the new observation only after reading prior history, so the first run becomes
+  // an explicit baseline and subsequent runs produce an actual velocity.
+  for(const video of topVideos){
+    checked(await db().from('radar_snapshots').insert({
+      channel_id:channelId,
+      video_id:video.id,
+      views:video.views,
+      observed_at:observedAt
+    }));
+  }
+
+  const topSet=new Set(topVideos.map(video=>video.id));
+  const weakItems=recentLong
+    .filter(video=>!topSet.has(idOf(video)))
+    .sort((a,b)=>Number(a.statistics?.viewCount??0)-Number(b.statistics?.viewCount??0))
+    .slice(0,10);
+  const weakRecentVideos:ChannelStudyVideo[]=weakItems.map(baseStudyVideo);
+
+  const sequencePool=recentLong.map(video=>({
+    id:idOf(video),
+    title:video.snippet.title,
+    views:Number(video.statistics?.viewCount??0),
+    publishedAt:video.snippet.publishedAt
+  }));
+  const sequences=topVideos.slice(0,3).flatMap(hit=>{
+    const index=sequencePool.findIndex(item=>item.id===hit.id);
+    if(index<0)return [];
+    return [{
+      hitVideoId:hit.id,
+      hitTitle:hit.title,
+      before:sequencePool.slice(Math.max(0,index-2),index).map(({id,title,views})=>({id,title,views})),
+      after:sequencePool.slice(index+1,index+3).map(({id,title,views})=>({id,title,views}))
+    }];
+  });
+
+  const median=(values:number[])=>{
+    if(!values.length)return null;
+    const sorted=[...values].sort((a,b)=>a-b);
+    return sorted.length%2?sorted[Math.floor(sorted.length/2)]:Math.round((sorted[sorted.length/2-1]+sorted[sorted.length/2])/2);
+  };
+  const medianTop10Views=median(topVideos.map(video=>video.views))??0;
+  const weakMedianViews=median(weakRecentVideos.map(video=>video.views));
+  const top10Views=topVideos.reduce((sum,video)=>sum+video.views,0);
+  const top3Views=topVideos.slice(0,3).reduce((sum,video)=>sum+video.views,0);
   const videosAboveSubscribers=source.subscribers===null
     ?null
-    :topVideos.filter(v=>v.views>source.subscribers!).length;
+    :topVideos.filter(video=>video.views>source.subscribers!).length;
 
   return {
     source,
     topVideos,
-    scannedVideos:videoIds.length,
+    weakRecentVideos,
+    sequences,
+    scannedVideos:new Set([...videoIds,...uniqueRecent]).size,
     totalPublicVideos:source.videoCount,
-    scanTruncated:source.videoCount>videoIds.length,
-    commentSampleSize:topVideos.reduce((sum,v)=>sum+v.comments.length,0),
-    commentsAvailableVideos:topVideos.filter(v=>v.comments.length>0).length,
+    scanTruncated:source.videoCount>new Set([...videoIds,...uniqueRecent]).size,
+    comparisonSampleSize:recentLong.length,
+    commentSampleSize:topVideos.reduce((sum,video)=>sum+video.comments.length,0),
+    commentsAvailableVideos:topVideos.filter(video=>video.comments.length>0).length,
     metrics:{
       top10Views,
       top3Share:top10Views?top3Views/top10Views:0,
       medianTop10Views,
-      videosAboveSubscribers
+      weakMedianViews,
+      hitToWeakMedianRatio:weakMedianViews&&weakMedianViews>0?medianTop10Views/weakMedianViews:null,
+      videosAboveSubscribers,
+      velocityTrackedVideos:topVideos.filter(video=>!video.velocity.baseline).length
     }
   };
 }
