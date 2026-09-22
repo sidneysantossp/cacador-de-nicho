@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, BarChart3, BrainCircuit, Clock3, ExternalLink, Eye, MessageSquareText, Play, Search, Sparkles, Target, UsersRound } from 'lucide-react';
-import type { ChannelStudy } from '@/lib/types';
+import type { ChannelStudy, OpportunityReport } from '@/lib/types';
 
 function compact(n:number){
   return new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1}).format(n);
@@ -23,19 +23,24 @@ function ListBlock({title,items}:{title:string;items:string[]}){
 
 export default function ChannelAnalysis({
   studies,
+  reports,
   mode,
   busy,
-  onAnalyze
+  onAnalyze,
+  onGenerateReport
 }:{
   studies:ChannelStudy[];
+  reports:OpportunityReport[];
   mode:'demo'|'live';
   busy:string;
   onAnalyze:(input:string)=>Promise<boolean|undefined>;
+  onGenerateReport:(channelStudyId:string)=>Promise<boolean|undefined>;
 }){
   const [input,setInput]=useState('');
   const [selectedId,setSelectedId]=useState(studies[0]?.id??'');
   useEffect(()=>{if(studies.length&&!studies.some(s=>s.id===selectedId))setSelectedId(studies[0].id);},[studies,selectedId]);
   const study=useMemo(()=>studies.find(s=>s.id===selectedId)??studies[0]??null,[studies,selectedId]);
+  const report=useMemo(()=>study?reports.find(item=>item.channelStudyId===study.id)??null:null,[reports,study]);
 
   return <>
     <section className="channel-analysis-hero">
@@ -97,6 +102,113 @@ export default function ChannelAnalysis({
           <div><strong>Adjacências proibidas</strong><div className="study-chips danger">{study.nicheProfile.excludedAdjacentTopics.map(x=><span key={x}>{x}</span>)}</div></div>
           <div><strong>Assinatura de formato</strong><p>{study.nicheProfile.formatSignature}</p></div>
         </div>
+      </section>
+
+      <section className="opportunity-report-shell">
+        <div className="opportunity-report-head">
+          <div>
+            <span className="eyebrow">OPPORTUNITY REPORT <span>/</span> COPY THE CURVE, NOT THE NICHE</span>
+            <h2>{report?report.title:'Transforme esta anatomia em uma oportunidade executável.'}</h2>
+            <p>{report?report.thesis:'A engine abstrai a curva do canal, testa o quanto ela é estrutural, identifica saturação e lacunas e cria três transferências sem confundir hipótese com demanda comprovada.'}</p>
+          </div>
+          <button className="button primary opportunity-report-button" disabled={mode==='demo'||!!busy} onClick={()=>study&&void onGenerateReport(study.id)}>
+            <Sparkles size={17}/>{busy==='opportunityReport'?'Gerando relatório…':report?'Atualizar Opportunity Report':'Gerar Opportunity Report'}
+          </button>
+        </div>
+
+        {report&&<>
+          <div className="curve-card">
+            <span className="eyebrow">A CURVA</span>
+            <h3>{report.curve.thesis}</h3>
+            <div className="curve-flow">
+              <div><small>ASSUNTO</small><strong>{report.curve.subject}</strong></div>
+              <span>→</span>
+              <div><small>PROMESSA</small><strong>{report.curve.promise}</strong></div>
+              <span>→</span>
+              <div><small>ÂNGULO</small><strong>{report.curve.angle}</strong></div>
+              <span>→</span>
+              <div><small>MECANISMO</small><strong>{report.curve.narrativeMechanism}</strong></div>
+              <span>→</span>
+              <div><small>VISUAL</small><strong>{report.curve.visualMechanism}</strong></div>
+            </div>
+            <p><strong>Driver:</strong> {report.curve.emotionalDriver}</p>
+          </div>
+
+          <div className="report-validation">
+            <div>
+              <span className="eyebrow">VALIDAÇÃO ESTRUTURAL</span>
+              <strong className={`validation-state ${report.validation.classification}`}>{report.validation.classification}</strong>
+              <p>{report.validation.independentCreators} criador(es) independente(s) · {report.validation.supportingVideos} vídeo(s) usados como suporte da amostra.</p>
+            </div>
+            <ListBlock title="Evidência que sustenta a curva" items={report.validation.evidence}/>
+            <ListBlock title="Contraevidência / fragilidades" items={report.validation.counterEvidence}/>
+          </div>
+
+          <div className="viral-dna">
+            {([
+              ['Demanda',report.viralDNA.demand],
+              ['Repetibilidade',report.viralDNA.repeatability],
+              ['Breakout',report.viralDNA.breakout],
+              ['Saturação',report.viralDNA.saturation],
+              ['Lacuna',report.viralDNA.gap]
+            ] as const).map(([label,signal])=><div key={label} className={`dna-cell ${signal.level}`}><span>{label}</span><strong>{signal.level}</strong><p>{signal.rationale}</p></div>)}
+          </div>
+
+          <div className="report-three-column">
+            <ListBlock title="Já saturado na amostra" items={report.saturation.saturatedPatterns}/>
+            <ListBlock title="Ângulos pouco usados" items={report.saturation.underusedAngles}/>
+            <ListBlock title="Whitespace observado" items={report.saturation.whitespace}/>
+          </div>
+
+          <div className="section-heading report-section-title"><div><h2>Copie a curva. Não o canal.</h2><p>Três transferências deliberadas. O status de demanda mostra onde há evidência e onde ainda estamos criando uma hipótese.</p></div></div>
+          <div className="transfer-grid">
+            {report.transfers.map((transfer,index)=><article className="transfer-card" key={transfer.id}>
+              <div className="opportunity-top"><span className="big-number">{String(index+1).padStart(2,'0')}</span><span className={`tag ${transfer.demandStatus==='observed'?'green':transfer.demandStatus==='partial'?'blue':'orange'}`}>{transfer.demandStatus}</span></div>
+              <span className="transfer-label">{transfer.label}</span>
+              <h3>{transfer.targetNiche}</h3>
+              <p>{transfer.principle}</p>
+              <dl>
+                <dt>Mantém</dt><dd>{transfer.preservedMechanism}</dd>
+                <dt>Muda</dt><dd>{transfer.changedVariable}</dd>
+                <dt>Público</dt><dd>{transfer.targetAudience}</dd>
+                <dt>Lacuna</dt><dd>{transfer.gap}</dd>
+              </dl>
+              {transfer.demandEvidence.length>0&&<div className="transfer-evidence"><strong>Evidência disponível</strong>{transfer.demandEvidence.map((item,i)=><p key={i}>{item}</p>)}</div>}
+              <div className="transfer-titles"><strong>Primeiros títulos</strong><ol>{transfer.titles.map(title=><li key={title}>{title}</li>)}</ol></div>
+              {transfer.risks.length>0&&<div className="transfer-risks"><strong>Riscos</strong><ul>{transfer.risks.map(risk=><li key={risk}>{risk}</li>)}</ul></div>}
+            </article>)}
+          </div>
+
+          <section className="channel-blueprint">
+            <div className="channel-blueprint-head">
+              <div><span className="eyebrow">BUILD THIS CHANNEL</span><h2>{report.channelConcept.nameDirections[0]??'Channel concept'}</h2><p>{report.channelConcept.positioning}</p></div>
+              <div className="study-chips">{report.channelConcept.nameDirections.map(name=><span key={name}>{name}</span>)}</div>
+            </div>
+            <div className="blueprint-grid">
+              <div><span>Público</span><p>{report.channelConcept.audience}</p></div>
+              <div><span>Promessa</span><p>{report.channelConcept.promise}</p></div>
+              <div><span>Formato</span><p>{report.channelConcept.format}</p></div>
+              <div><span>Sistema de thumbnail</span><p>{report.channelConcept.thumbnailSystem}</p></div>
+              <div><span>Modelo de produção</span><p>{report.channelConcept.productionModel}</p></div>
+              <div><span>Próximo movimento</span><p>{report.nextMove}</p></div>
+            </div>
+            <div className="episode-plan"><span className="eyebrow">PRIMEIROS 10 EPISÓDIOS</span><ol>{report.channelConcept.firstEpisodes.map(title=><li key={title}>{title}</li>)}</ol></div>
+            <ListBlock title="Plano de teste" items={report.channelConcept.testPlan}/>
+          </section>
+
+          <div className="report-evidence">
+            <div>
+              <h3>Vídeos que sustentam a leitura</h3>
+              {report.evidence.topVideos.slice(0,5).map(video=><a key={video.id} href={video.url} target="_blank" rel="noreferrer"><span>{video.title}</span><strong>{compact(video.views)} views</strong></a>)}
+            </div>
+            <div>
+              <h3>Criadores independentes relacionados</h3>
+              {report.evidence.similarChannels.length?report.evidence.similarChannels.map(channel=><a key={channel.id} href={channel.url} target="_blank" rel="noreferrer"><span>{channel.name}</span><strong>{channel.similarityScore}% nicho · {compact(channel.videoViews)} views</strong></a>):<p>Nenhum outro canal passou os gates nesta rodada; por isso a curva não pode ser tratada como estrutural.</p>}
+            </div>
+          </div>
+
+          <ListBlock title="Limitações do Opportunity Report" items={[...report.validation.limitations,...report.limitations]}/>
+        </>}
       </section>
 
       <div className="section-heading"><div><h2>Top 10 long forms por views <span className="count-pill">{study.topVideos.length}</span></h2><p>Metadados públicos; comentários são uma amostra de relevância quando estão disponíveis.</p></div></div>
