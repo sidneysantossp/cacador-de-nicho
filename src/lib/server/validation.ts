@@ -243,5 +243,47 @@ export const episodeScriptPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const transcriptPayloadSchema=z.object({
+ kind:z.literal('transcript'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ scriptId:z.string().uuid(),
+ voiceAssetId:z.string().uuid(),
+ sourceType:z.enum(['alignment','scribe','imported']),
+ languageCode:z.string().trim().max(30).optional(),
+ text:z.string().trim().max(250000),
+ words:z.array(z.object({
+  id:z.string().uuid(),
+  text:z.string().trim().min(1).max(1000),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  type:z.enum(['word','audio_event']),
+  speakerId:z.string().trim().max(120).optional(),
+  confidence:z.number().min(-100).max(1).optional()
+ }).strict()).max(50000),
+ segments:z.array(z.object({
+  id:z.string().uuid(),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400).nullable(),
+  text:z.string().trim().min(1).max(10000),
+  wordIds:z.array(z.string().uuid()).max(500)
+ }).strict()).max(10000),
+ scriptMatchScore:z.number().min(0).max(1).nullable(),
+ scriptVersion:z.number().int().min(1).max(100000),
+ voiceTake:z.number().int().min(1).max(100000),
+ originalFormat:z.enum(['srt','vtt','txt','json']).optional(),
+ provenance:z.object({
+  provider:z.string().trim().max(120).optional(),
+  model:z.string().trim().max(120).optional(),
+  importedBy:z.literal('operator').optional()
+ }).strict(),
+ review:z.object({
+  scriptMismatchOverride:z.boolean(),
+  notes:z.string().trim().max(5000)
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
