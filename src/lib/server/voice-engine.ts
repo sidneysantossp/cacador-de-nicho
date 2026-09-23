@@ -7,13 +7,10 @@ import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { loadEpisodeScript } from './episode-script';
 import { loadProductionDna } from './production-dna';
+import { voiceAssetIsStale, voiceModelCharacterLimits } from '@/lib/voice-policy';
 
 const BUCKET='cacadores-media';
 const MAX_AUDIO_BYTES=100*1024*1024;
-const modelLimits:Record<string,number>={
-  eleven_flash_v2_5:40000,
-  eleven_multilingual_v2:10000
-};
 
 type ElevenAlignment={
   characters?:string[];
@@ -210,7 +207,7 @@ export async function listVoiceAssets(scriptId:string){
     return {
       ...asset,
       signedUrl,
-      stale:asset.scriptVersion!==script.version||asset.textHash!==textHash(script.content)
+      stale:voiceAssetIsStale(asset,script,textHash(script.content))
     };
   }));
 }
@@ -272,7 +269,7 @@ export async function generateElevenLabsVoice(input:{
   if(!voiceId)throw new HttpError('Selecione uma voz ElevenLabs antes de gerar a narração.',400);
 
   const modelId=(input.modelId??'eleven_flash_v2_5').trim();
-  const limit=modelLimits[modelId];
+  const limit=voiceModelCharacterLimits[modelId as keyof typeof voiceModelCharacterLimits];
   if(!limit)throw new HttpError('Modelo ElevenLabs não suportado pelo Voice Engine.',400);
   if(script.content.length>limit){
     throw new HttpError('O roteiro tem '+script.content.length+' caracteres e excede o limite de '+limit+' deste modelo. Escolha um modelo com limite maior ou divida a produção.',409);
