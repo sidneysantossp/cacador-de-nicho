@@ -63,7 +63,7 @@ export async function POST(request:Request){
 
     if(contentType.includes('multipart/form-data')){
       const size=Number(request.headers.get('content-length')??0);
-      if(size>2.5*1024*1024)throw new HttpError('Upload de thumbnail maior que 2 MB.',413);
+      if(size>52*1024*1024)throw new HttpError('Upload de thumbnail maior que 50 MB.',413);
       const form=await request.formData();
       const packageId=String(form.get('packageId')??'').trim();
       const expectedVersion=Number(form.get('expectedVersion'));
