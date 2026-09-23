@@ -358,6 +358,58 @@ export type ChannelBrainPayload = {
 };
 export type ChannelBrain = ChannelBrainPayload & { version: number };
 export type ChannelBrainVersion = { version: number; payload: ChannelBrainPayload; createdAt: string };
+export type ContentArc = {
+ id: string;
+ channelId: string;
+ sequence: number;
+ status: 'planned' | 'active' | 'completed' | 'paused';
+ name: string;
+ objective: string;
+ premise: string;
+ prerequisiteConcepts: string[];
+ targetConcepts: string[];
+ notes: string[];
+ createdAt: string;
+ updatedAt: string;
+};
+export type ChannelEpisode = {
+ id: string;
+ channelId: string;
+ arcId?: string;
+ sequence: number;
+ status: 'idea' | 'planned' | 'scripted' | 'producing' | 'published' | 'archived';
+ title: string;
+ thesis: string;
+ narrativeSummary: string;
+ prerequisiteConcepts: string[];
+ introducesConcepts: string[];
+ reinforcesConcepts: string[];
+ opensThreads: string[];
+ resolvesThreads: string[];
+ repetitionKeys: string[];
+ youtubeVideoId?: string;
+ publishedAt?: string;
+ createdAt: string;
+ updatedAt: string;
+};
+export type ChannelConcept = {
+ id: string;
+ channelId: string;
+ key: string;
+ label: string;
+ description: string;
+ status: 'unknown' | 'introduced' | 'partial' | 'established' | 'retired';
+ prerequisiteKeys: string[];
+ introducedEpisodeId?: string;
+ establishedEpisodeId?: string;
+ createdAt: string;
+ updatedAt: string;
+};
+export type NarrativeBundle = {
+ arcs: ContentArc[];
+ episodes: ChannelEpisode[];
+ concepts: ChannelConcept[];
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
