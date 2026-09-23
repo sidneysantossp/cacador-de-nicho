@@ -16,8 +16,16 @@ type State={
   publishedVideos:YouTubePublishJob[];
   analyticsScopeGranted:boolean;
   connection:YouTubeConnection|null;
+  learningLoop:{
+    brainVersion:number;
+    performanceLearningCount:number;
+    appliedReportIds:string[];
+  };
 };
-const EMPTY:State={observations:[],reports:[],publishedVideos:[],analyticsScopeGranted:false,connection:null};
+const EMPTY:State={
+  observations:[],reports:[],publishedVideos:[],analyticsScopeGranted:false,connection:null,
+  learningLoop:{brainVersion:0,performanceLearningCount:0,appliedReportIds:[]}
+};
 
 const metricLabels:Record<string,string>={
   views:'Views',
@@ -70,7 +78,12 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
         reports:body.reports??[],
         publishedVideos:body.publishedVideos??[],
         analyticsScopeGranted:Boolean(body.analyticsScopeGranted),
-        connection:body.connection??null
+        connection:body.connection??null,
+        learningLoop:{
+          brainVersion:Number(body.learningLoop?.brainVersion??0),
+          performanceLearningCount:Number(body.learningLoop?.performanceLearningCount??0),
+          appliedReportIds:Array.isArray(body.learningLoop?.appliedReportIds)?body.learningLoop.appliedReportIds:[]
+        }
       });
       setNotes(prev=>{
         const next={...prev};
@@ -122,7 +135,11 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
         <h2>Transforme desempenho em evidência, não em palpite.</h2>
         <p>O agente compara cada observação com expectativas explícitas ou histórico do próprio canal, localiza mudanças de retenção e entrega hipóteses concorrentes com um único próximo teste.</p>
       </div>
-      <BarChart3 size={37}/>
+      <div className="performance-brain-state">
+        <Sparkles size={18}/>
+        <strong>Brain v{state.learningLoop.brainVersion}</strong>
+        <span>{state.learningLoop.performanceLearningCount} learning(s) de performance</span>
+      </div>
     </section>
 
     {!state.connection&&<div className="performance-blocker"><AlertTriangle size={16}/><div><strong>YouTube ainda não conectado.</strong><p>Conecte o canal na etapa anterior para importar Analytics automaticamente.</p></div></div>}
@@ -158,6 +175,7 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
       <div className="performance-section-head"><div><span>REPORTS</span><h3>Diagnósticos baseados em evidência.</h3></div></div>
       <div className="performance-report-list">{state.reports.map(report=>{
         const observed=state.observations.find(item=>item.id===report.observationId);
+        const applied=state.learningLoop.appliedReportIds.includes(report.id);
         return <article key={report.id} className={'performance-report '+report.status}>
           <header>
             <div>
@@ -213,8 +231,13 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
             <div><span>HANDOFF → {report.handoff.nextAgent}</span><p>{report.handoff.question}</p></div>
             {report.status!=='approved'?<div className="performance-approve">
               <input value={notes[report.id]??''} onChange={e=>setNotes(prev=>({...prev,[report.id]:e.target.value}))} placeholder="Nota opcional do operador"/>
-              <button className="button primary" disabled={busy==='approve:'+report.id} onClick={()=>void action({action:'approve',reportId:report.id,expectedVersion:report.version,notes:notes[report.id]??''},'approve:'+report.id)}><ShieldCheck size={14}/>{busy==='approve:'+report.id?'Aprovando…':'Aprovar para Learning Loop'}</button>
-            </div>:<div className="performance-approved"><CheckCircle2 size={15}/>Aprovado</div>}
+              <button className="button primary" disabled={busy==='approve:'+report.id} onClick={()=>void action({action:'approve',reportId:report.id,expectedVersion:report.version,notes:notes[report.id]??''},'approve:'+report.id)}><ShieldCheck size={14}/>{busy==='approve:'+report.id?'Aprovando…':'Aprovar + aprender'}</button>
+            </div>:applied
+              ?<div className="performance-approved"><CheckCircle2 size={15}/>Learning Loop aplicado · Brain v{state.learningLoop.brainVersion}</div>
+              :<div className="performance-approve">
+                <span className="performance-approved"><CheckCircle2 size={15}/>Report aprovado</span>
+                <button className="button primary small" disabled={busy==='apply:'+report.id} onClick={()=>void action({action:'apply-learning-loop',reportId:report.id},'apply:'+report.id)}><Sparkles size={13}/>{busy==='apply:'+report.id?'Aplicando…':'Aplicar ao Brain'}</button>
+              </div>}
           </footer>
         </article>;
       })}</div>
