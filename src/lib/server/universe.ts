@@ -4,6 +4,7 @@ import type { ManagedChannel, UniverseCompetitor } from '@/lib/types';
 import { list, put } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA } from './ai';
+import { compareUniverseDnaPriority, universeCompetitorDue } from '@/lib/universe-policy';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -64,17 +65,10 @@ export async function importUniverseCompetitors(inputs:string[]){
 
 export async function refreshUniverseCompetitors(ids?:string[]){
   const all=await universeState();
-  const now=Date.now();
-  const cadenceHours:Record<UniverseCompetitor['monitoringTier'],number>={
-    hot:6,
-    active:24,
-    stable:72,
-    dormant:168
-  };
   const wanted=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
     :all
-      .filter(item=>now-Date.parse(item.lastMonitoredAt)>=cadenceHours[item.monitoringTier]*3600000)
+      .filter(item=>universeCompetitorDue(item))
       .sort((a,b)=>Date.parse(a.lastMonitoredAt)-Date.parse(b.lastMonitoredAt))
       .slice(0,25);
   const results=await mapLimit(wanted.slice(0,25),4,async competitor=>{
@@ -91,24 +85,9 @@ export async function refreshUniverseCompetitors(ids?:string[]){
 }
 export async function runUniverseIntelligence(ids?:string[]){
   const all=await universeState();
-  const statusRank:Record<UniverseCompetitor['status'],number>={
-    'production-reference':8,
-    'gap-found':7,
-    'structural-curve':6,
-    'emerging-curve':5,
-    'pattern':4,
-    'breakout':3,
-    'heating-up':2,
-    'watch':1
-  };
   const selected=(ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
-    :[...all].sort((a,b)=>{
-      const missingA=a.dna?1:0,missingB=b.dna?1:0;
-      if(missingA!==missingB)return missingA-missingB;
-      if(statusRank[b.status]!==statusRank[a.status])return statusRank[b.status]-statusRank[a.status];
-      return Date.parse(a.dna?.generatedAt??a.importedAt)-Date.parse(b.dna?.generatedAt??b.importedAt);
-    })
+    :[...all].sort(compareUniverseDnaPriority)
   ).slice(0,5);
   if(!selected.length)return {analyzed:0,updated:[],message:'Nenhum concorrente disponível para Channel DNA.'};
 
