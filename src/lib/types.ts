@@ -154,6 +154,39 @@ export type YouTubeSearchBudgetState = {
 };
 export type Run = { id: string; type: string; status: 'queued' | 'running' | 'completed' | 'failed'; startedAt: string; message: string };
 export type UniverseCompetitorStatus = 'watch' | 'heating-up' | 'breakout' | 'pattern' | 'emerging-curve' | 'structural-curve' | 'gap-found' | 'production-reference';
+export type UniverseSignal = {
+ kind: 'breakout' | 'internal-outlier' | 'acceleration' | 'repeat-hit' | 'cadence-shift';
+ strength: 'low' | 'medium' | 'high';
+ title: string;
+ evidence: string;
+ observedAt: string;
+};
+export type UniverseCompetitorSnapshot = {
+ observedAt: string;
+ subscribers: number | null;
+ videoCount: number;
+ recentAverageViews: number | null;
+ recentMedianViews: number | null;
+ uploadsLast30d: number;
+ strongestVideoId: string | null;
+ strongestVideoViews: number | null;
+};
+export type UniverseChannelDNA = {
+ generatedAt: string;
+ summary: string;
+ primaryNiche: string;
+ subniche: string;
+ audienceIntent: string;
+ editorialPromise: string;
+ formatSignature: string;
+ contentPillars: string[];
+ recurringEntities: string[];
+ titlePatterns: string[];
+ curiosityMechanisms: string[];
+ emotionalDrivers: string[];
+ differentiationSignals: string[];
+ limitations: string[];
+};
 export type UniverseCompetitor = {
  kind: 'competitor';
  id: string;
@@ -199,6 +232,9 @@ export type UniverseCompetitor = {
   url: string;
  }>;
  signals: string[];
+ signalDetails?: UniverseSignal[];
+ snapshots?: UniverseCompetitorSnapshot[];
+ dna?: UniverseChannelDNA;
  dnaTags: string[];
  gapSummary?: string;
  updatedAt: string;
