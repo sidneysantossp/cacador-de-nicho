@@ -86,30 +86,32 @@ function buildBrief(input:{
     }];
   }).slice(0,5);
 
-  const decisionsNeeded=input.reports.flatMap(report=>{
+  const decisionsNeeded:MissionBrief['decisionsNeeded']=[];
+  for(const report of input.reports){
+    if(decisionsNeeded.length>=5)break;
     const readiness=productionReadiness(report);
-    if(readiness.ready)return [];
+    if(readiness.ready)continue;
     const strongDemand=['medium','high'].includes(report.viralDNA.demand.level);
     const strongRepeatability=['medium','high'].includes(report.viralDNA.repeatability.level);
     const usefulGap=report.viralDNA.gap.level!=='low';
     if(report.validation.classification==='emerging'&&strongDemand&&strongRepeatability&&usefulGap){
-      return [{
-        type:'pilot-decision' as const,
+      decisionsNeeded.push({
+        type:'pilot-decision',
         title:report.title,
         reason:'A curva ainda é emergente, mas demanda, repetibilidade e lacuna justificam decidir se vale um piloto barato antes da validação estrutural.',
         reportId:report.id
-      }];
+      });
+      continue;
     }
     if(report.validation.classification==='structural'&&(report.viralDNA.saturation.level==='high'||report.viralDNA.gap.level==='low')){
-      return [{
-        type:'evidence-review' as const,
+      decisionsNeeded.push({
+        type:'evidence-review',
         title:report.title,
         reason:'A curva é estrutural, mas a saturação/lacuna atual reduz a clareza de entrada. Requer decisão humana antes de comprometer produção.',
         reportId:report.id
-      }];
+      });
     }
-    return [];
-  }).slice(0,5);
+  }
 
   return {
     kind:'mission-brief',
