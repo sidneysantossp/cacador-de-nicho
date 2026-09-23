@@ -169,6 +169,7 @@ async function persistAudio(
   if(upload.error){
     await db().from('radar_voice_assets').update({
       status:'failed',
+      selected:false,
       payload:{...metadata,error:'storage-upload-failed'},
       updated_at:new Date().toISOString()
     }).eq('id',reservation.id);
@@ -186,7 +187,17 @@ async function persistAudio(
     .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
     .single());
 
-  return normalizeAsset(row as never);
+  await db().rpc('select_voice_asset_if_none',{
+    p_script_id:script.id,
+    p_asset_id:reservation.id
+  });
+
+  const finalRow=checked(await db().from('radar_voice_assets')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .eq('id',reservation.id)
+    .single());
+
+  return normalizeAsset(finalRow as never);
 }
 
 export async function listVoiceAssets(scriptId:string){
