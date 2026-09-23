@@ -1,39 +1,66 @@
 # Estado da operação — 22/09/2026
 
-## Decisões do operador
+## Objetivo empresarial
 
-- Sempre inglês no mercado monitorado e conteúdo produzido; interface e análise em português.
-- Stack solicitada: GitHub + Vercel + Supabase + YouTube API + OpenAI.
-- Descoberta proativa, exemplos de sinal: canal recente, poucos vídeos, 500 mil views observadas em menos de 72 horas.
-- Produção audiovisual já existe fora da plataforma; foco aqui em pesquisa, inteligência e roteiros.
+O Caçadores de Nichos existe para encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita. A plataforma deve reduzir o trabalho do operador a decisões e produção, não a acionar manualmente cada ferramenta.
+
+## Mercado e critérios
+
+- Mercado monitorado: US.
+- Conteúdo: English.
+- Formato: long form, mínimo de 4 minutos.
+- Gates rígidos do Radar: vídeo >= 500 mil views, idade < 72h, canal <= 20 vídeos, canal <= 180 dias e breakout sobre inscritos quando a contagem é pública.
+- País e idioma ausentes/ambíguos são descartados; não são inferidos.
+- Princípio operacional: outlier não é mercado. Demanda estrutural exige repetição em vídeos, criadores e momentos independentes.
 
 ## Implementado
 
-- Next.js 16.3.5, React 19.3.0; dependências fixadas e lockfile.
-- UI responsiva: radar, filtros, dossiê, propostas, memória, roteiros, atividade, configuração.
-- Demonstração explícita com atlas original de três conceitos, sem dados reais.
-- API privada com cookie assinado, proteção de origem e limitação de login via Supabase.
-- SQL com RLS e acesso só service_role, jobs e retenção de dados.
-- Coleta YouTube limitada, análise OpenAI em etapas com pesquisa web, exportação de dossiê/roteiro.
-- Mercado inglês imposto no schema de configurações.
-- Central de credenciais para OpenAI e YouTube, com validação antes da gravação, máscara de quatro caracteres e remoção.
-- Supabase Vault preparado para cifrar as chaves; modelos de análise e roteiro escolhidos separadamente na interface.
+- Next.js 16.3.5, React 19.3.0.
+- Repositório privado GitHub: sidneysantossp/cacador-de-nicho, branch principal master.
+- Deploy Vercel ativo no projeto cacador-de-nicho do scope imperiodosapps-7952.
+- Radar estrito US + English + long form.
+- Análise de Canal com Top 10, comentários públicos, weak sample recente, snapshots/velocity, Niche Lock, Topic Genome, sustentabilidade, sequência editorial, thumbnails e busca de canais pequenos similares.
+- Opportunity Report com Curve Engine, validação estrutural, saturação/whitespace, Viral DNA, três transferências e blueprint de canal com 10 episódios.
+- Mission Orchestrator com orçamento conservador por execução.
+- Mission Control como home da operação, mostrando somente Production Ready, decisões humanas e bloqueios.
+- OpenAI/YouTube armazenáveis em cofre Supabase ou fallback de ambiente.
+- Autenticação privada por cookie assinado e proteção de origem.
+- Jobs com exclusão mútua, lease e histórico de atividade.
+- Erros de OpenAI tratados com causas acionáveis; módulos suplementares da Análise de Canal não apagam uma anatomia válida quando falham.
+- Modelos de API permitidos: GPT-5.6 Luna, Terra e Sol.
 
-## Infraestrutura
+## Mission Orchestrator
 
-Vercel projeto criado: cacadores-de-nichos, equipe auditseo.
-Project ID: prj_cF9scWeWLDSuM8RIplNBJDN4Fc1s.
-URL: https://cacadores-de-nichos.vercel.app
-Git local iniciado. Repositório remoto GitHub ainda não criado: conector não oferece criação e credencial CLI indisponível. Não foi feita publicação no GitHub.
-Supabase: nenhum projeto novo criado e nenhum SQL executado. Pergunta pendente ao operador sobre usar organização AUDITSEO PLATAFORM (qbrwkkrxqosocbwbjbnz) para projeto dedicado. Custo retornado no momento da consulta: US$ 0/mês. Não reutilizar bancos de outros projetos.
-Chaves YouTube/OpenAI e banco privado ainda ausentes. Não houve pesquisa ou chamada paga real. A nova central permanece bloqueada até Supabase e acesso privado serem provisionados.
+Uma missão manual autenticada executa, em ordem de prioridade:
 
-## Próximo passo
+1. Verifica saúde de YouTube e OpenAI.
+2. Fecha primeiro uma Análise de Canal existente que ainda esteja sem Opportunity Report fresco.
+3. Atualiza o Radar sem relaxar filtros.
+4. Seleciona no máximo um novo candidato por breakout, depois views e recência.
+5. Executa no máximo uma Análise de Canal profunda.
+6. Gera no máximo um Opportunity Report por missão.
+7. Recalcula a fila de produção e as decisões necessárias.
+8. Persiste um Mission Brief diário em radar_analyses.
 
-Confirmar organização do Supabase na pergunta pendente, criar banco dedicado conforme retorno de custo e instruções da ferramenta. Validar SQL real e políticas. Configurar segredos via ambiente seguro Vercel, nunca em contexto editorial ou Git. Verificar APIs reais com custos limitados; concluir enquadramento analytics antes de habilitar análises derivadas. Criar/conectar repositório privado quando houver acesso de criação. Só então ativar agendamento.
+Production Ready exige validação estrutural, demanda/repetibilidade pelo menos médias, lacuna não baixa e saturação não alta. Curvas emergentes podem aparecer somente como decisão de piloto; hipóteses fracas permanecem fora da fila do operador.
 
-## Verificação
+## Segurança e custos
 
-Primeiro build local e deploy passaram. Testes cobrem assinatura/expiração/origem, janela temporal e limites de configuração. Navegador confirmou radar e abertura de anatomia/cinco propostas. A gestão de canais adiciona cadastro, estágios, prioridade e conversão de perspectivas em iniciativas de portfólio; a tabela `radar_managed_channels` precisa estar aplicada no Supabase para persistência fora do modo demonstração. Alterações subsequentes precisam de build/deploy final registrado no encerramento desta tarefa.
+- Nenhuma recorrência do Mission Control é ativada automaticamente nesta etapa.
+- A primeira missão deve ser validada manualmente em produção antes de configurar execução diária.
+- Cada missão limita trabalho pesado para reduzir custo e risco de timeout.
+- YOUTUBE_ANALYTICS_APPROVED não é usado como trava global da inteligência editorial.
+- Segredos permanecem server-only.
 
-Verificação final: build local passou, 4 testes passaram e deploy da central de configuração READY (dpl_4QZPhfu8XeyMhg5BGnwt1qjKSNn9). Desktop e celular inspecionados. A rota de credenciais retorna 401 sem sessão, e o radar público não expõe padrões de segredo. O deploy anterior foi dpl_HAz2hccdMH83hgdk1VWuhFGxRGVR. Nenhum banco real ou chamada OpenAI/YouTube foi validado.
+## Estado de validação desta mudança
+
+Branch de implementação: feat/mission-orchestrator.
+
+Validação exigida antes de promoção:
+- npm run typecheck
+- npm test
+- npm run build
+- preview Vercel READY
+- comparação com master sem divergência destrutiva
+
+Depois da promoção, a primeira validação operacional é executar Mission Control uma vez com a sessão autenticada e confirmar o brief real gerado com as credenciais de produção.
