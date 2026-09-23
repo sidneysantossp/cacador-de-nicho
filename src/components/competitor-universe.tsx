@@ -138,6 +138,8 @@ export default function CompetitorUniverse({
   const [importText,setImportText]=useState('');
   const [section,setSection]=useState<'competitors'|'curves'|'gaps'>('competitors');
   const parsed=useMemo(()=>extractInputs(importText),[importText]);
+  const rawEntries=useMemo(()=>importText.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).length,[importText]);
+  const duplicateEntries=Math.max(0,rawEntries-parsed.length);
   const clusters=useMemo(()=>[...new Set(competitors.map(item=>item.cluster||'A classificar'))].sort(),[competitors]);
   const visible=useMemo(()=>competitors
     .filter(item=>(cluster==='Todos'||item.cluster===cluster)&&(status==='Todos'||item.status===status)&&(`${item.name} ${item.handle} ${item.cluster} ${item.subniche} ${item.description}`.toLowerCase().includes(query.toLowerCase())))
@@ -246,11 +248,17 @@ export default function CompetitorUniverse({
         <button className="universe-import-close" onClick={()=>setShowImport(false)} aria-label="Fechar"><X size={18}/></button>
         <span className="eyebrow">IMPORT COMPETITORS</span>
         <h2>Construa seu universo conhecido.</h2>
-        <p>Cole uma lista ou carregue CSV/TXT. Nesta fase aceitamos URL com <strong>@handle</strong>, URL <strong>/channel/UC…</strong>, <strong>@handle</strong> ou <strong>channelId</strong>. Nomes soltos não gastam search.list: ficam de fora até serem identificados.</p>
+        <p>Cole uma lista ou carregue um ou vários arquivos CSV/TXT. Duplicados são removidos antes da importação. Nesta fase aceitamos URL com <strong>@handle</strong>, URL <strong>/channel/UC…</strong>, <strong>@handle</strong> ou <strong>channelId</strong>. Nomes soltos não gastam search.list: ficam de fora até serem identificados.</p>
         <textarea value={importText} onChange={e=>setImportText(e.target.value)} placeholder={"https://youtube.com/@channel-one\n@channel-two\nUCxxxxxxxxxxxxxxxxxxxxxx"}/>
         <div className="universe-import-file">
-          <label className="button subtle"><FileUp size={15}/>Carregar CSV/TXT<input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={async e=>{const file=e.target.files?.[0];if(file)setImportText(await file.text());}}/></label>
-          <span>{parsed.length} canal(is) reconhecido(s)</span>
+          <label className="button subtle"><FileUp size={15}/>Carregar CSV/TXT<input type="file" multiple accept=".csv,.txt,text/csv,text/plain" onChange={async e=>{
+            const files=[...(e.target.files??[])];
+            if(!files.length)return;
+            const chunks=await Promise.all(files.map(file=>file.text()));
+            setImportText(prev=>[prev,...chunks].filter(Boolean).join('\n'));
+            e.currentTarget.value='';
+          }}/></label>
+          <span>{rawEntries} entrada(s) · {parsed.length} único(s){duplicateEntries>0?` · ${duplicateEntries} duplicada(s)`:''}</span>
         </div>
         <div className="universe-import-actions">
           <button className="button subtle" onClick={()=>setShowImport(false)}>Cancelar</button>
