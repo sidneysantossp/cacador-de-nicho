@@ -706,6 +706,52 @@ export type ScenePlanVersion = {
  payload: ScenePlanPayload;
  createdAt: string;
 };
+export type VisualCharacterReference = {
+ characterId: string;
+ refName: string;
+ prompt: string;
+ sceneIds: string[];
+ assetReady: boolean;
+};
+export type VisualScenePrompt = {
+ sceneId: string;
+ sequence: number;
+ timecodeLabel: string;
+ startSeconds: number;
+ endSeconds: number;
+ characterIds: string[];
+ referenceNames: string[];
+ direction: string;
+ prompt: string;
+};
+export type VisualPromptSetPayload = {
+ kind: 'visual-prompt-set';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scenePlanId: string;
+ scenePlanVersion: number;
+ productionDnaVersion: number;
+ styleLock: string;
+ workflowStage: 'references' | 'scenes' | 'complete';
+ characterReferences: VisualCharacterReference[];
+ scenePrompts: VisualScenePrompt[];
+ review: {
+  notes: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type VisualPromptSet = VisualPromptSetPayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+export type VisualPromptSetVersion = {
+ version: number;
+ status: VisualPromptSet['status'];
+ payload: VisualPromptSetPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
