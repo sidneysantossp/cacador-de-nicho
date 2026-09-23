@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowUpRight, BrainCircuit, FileUp, Flame, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
+import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
 import type { UniverseCompetitor, UniverseCompetitorStatus } from '@/lib/types';
 
 function compact(value:number|null){
