@@ -99,3 +99,21 @@ Implementado no branch `feat/competitor-universe`:
 - concorrentes separados da Gestão de Canais próprios.
 
 Esta entrega não inventa Channel DNA ou Gap: quando essas engines ainda não rodaram, o card mostra explicitamente que a camada está pendente.
+
+
+## Universe DNA + Signals Engine — 23/09/2026
+
+Implementado:
+- snapshots históricos resumidos por concorrente;
+- sinais estruturados de breakout, outlier, repeat-hit, aceleração e cadência;
+- Channel DNA estruturado em lotes de até 5 concorrentes;
+- clustering enriquecido pelo DNA;
+- prioridade automática sem score opaco;
+- cadência hot/active/stable/dormant;
+- botão "Rodar inteligência" no Universe;
+- geração/atualização de DNA por card;
+- Mission Control avança Universe automaticamente antes do Radar;
+- resumo da missão mostra concorrentes, canais com sinais e canais com DNA;
+- políticas de frequência/prioridade cobertas por testes.
+
+Validação do branch `feat/universe-dna-signals`: typecheck, testes e build/CI concluídos com sucesso.
