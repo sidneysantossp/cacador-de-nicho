@@ -6,6 +6,7 @@ RUN npm ci
 FROM node:24.15.0-bookworm-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run typecheck && npm test && npm run build
