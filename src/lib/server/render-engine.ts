@@ -206,6 +206,8 @@ export async function createRenderJob(input:{
   if(!validRenderCrf(crf))throw new HttpError('CRF deve ser um inteiro entre 18 e 30.',400);
   if(!validRenderAudioBitrate(audioBitrateKbps))throw new HttpError('Bitrate de áudio deve estar entre 96 e 320 kbps.',400);
 
+  const edit=await loadVideoEdit(input.videoEditId);
+  if(!edit)throw new HttpError('Video Edit não encontrado.',404);
   const manifest=await buildRenderManifest(input.videoEditId);
   const existing=checked(await db().from('radar_render_jobs')
     .select(selection)
@@ -230,8 +232,8 @@ export async function createRenderJob(input:{
   };
   const inserted=await db().from('radar_render_jobs').insert({
     id,
-    channel_id:manifest.visualClips.length?String((await loadVideoEdit(input.videoEditId))!.channelId):'',
-    episode_id:String((await loadVideoEdit(input.videoEditId))!.episodeId),
+    channel_id:edit.channelId,
+    episode_id:edit.episodeId,
     video_edit_id:manifest.videoEditId,
     video_edit_version:manifest.videoEditVersion,
     status:'queued',
