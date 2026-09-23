@@ -45,13 +45,15 @@ function CompetitorCard({
   busy,
   onRefresh,
   onAnalyze,
-  onIntelligence
+  onIntelligence,
+  onOpenDna
 }:{
   competitor:UniverseCompetitor;
   busy:string;
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
   onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
+  onOpenDna:(competitor:UniverseCompetitor)=>void;
 }){
   const status=statusMeta[competitor.status];
   const best=competitor.strongestRecentVideo;
@@ -102,6 +104,7 @@ function CompetitorCard({
     </div>
 
     <div className="universe-card-actions">
+      {competitor.dna&&<button className="button subtle small" onClick={()=>onOpenDna(competitor)}><BrainCircuit size={14}/>Ver DNA</button>}
       <button className="button subtle small" disabled={!!busy} onClick={()=>void onIntelligence([competitor.id])}><Sparkles size={14}/>{competitor.dna?'Atualizar DNA':'Gerar DNA'}</button>
       <button className="button subtle small" disabled={!!busy} onClick={()=>void onAnalyze(competitor)}><BrainCircuit size={14}/>Anatomia</button>
       <button className="button subtle small" disabled={!!busy} onClick={()=>void onRefresh([competitor.id])}><RefreshCw size={14}/>Atualizar</button>
@@ -139,6 +142,7 @@ export default function CompetitorUniverse({
   const [cluster,setCluster]=useState('Todos');
   const [status,setStatus]=useState('Todos');
   const [showImport,setShowImport]=useState(false);
+  const [dnaDetail,setDnaDetail]=useState<UniverseCompetitor|null>(null);
   const [importText,setImportText]=useState('');
   const [section,setSection]=useState<'competitors'|'curves'|'gaps'>('competitors');
   const parsed=useMemo(()=>extractInputs(importText),[importText]);
@@ -226,7 +230,7 @@ export default function CompetitorUniverse({
         <div><span className="eyebrow">CLUSTER</span><h2>{name}</h2></div>
         <p>{items.length} canal(is) · {items.filter(item=>item.signals.length).length} com sinal · {items.filter(item=>item.status==='breakout').length} breakout</p>
       </div>
-      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence}/>)}</div>
+      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence} onOpenDna={setDnaDetail}/>)}</div>
     </section>)}
 
     </>}
@@ -261,6 +265,79 @@ export default function CompetitorUniverse({
         </article>;
       })}</div>}
     </section>}
+
+
+    {dnaDetail?.dna&&<div className="universe-dna-overlay" role="presentation" onClick={event=>{if(event.target===event.currentTarget)setDnaDetail(null);}}>
+      <section className="universe-dna-panel" role="dialog" aria-modal="true" aria-label={`Channel DNA de ${dnaDetail.name}`}>
+        <button className="universe-import-close" onClick={()=>setDnaDetail(null)} aria-label="Fechar DNA"><X size={18}/></button>
+        <div className="universe-dna-panel-head">
+          <span className="eyebrow">CHANNEL DNA / COMPETITOR INTELLIGENCE</span>
+          <div className="universe-dna-title-row">
+            <div className="universe-identity">
+              {dnaDetail.avatar?<img src={dnaDetail.avatar} alt="" className="universe-avatar"/>:<span className="universe-avatar placeholder">{dnaDetail.name.slice(0,2).toUpperCase()}</span>}
+              <div><h2>{dnaDetail.name}</h2><p>{dnaDetail.handle||dnaDetail.channelId}</p></div>
+            </div>
+            <span className="universe-dna-ready">DNA READY</span>
+          </div>
+          <p className="universe-dna-generated">Gerado em {new Date(dnaDetail.dna.generatedAt).toLocaleString('pt-BR')}</p>
+        </div>
+
+        <div className="universe-dna-highlight">
+          <span>RESUMO EXECUTIVO</span>
+          <p>{dnaDetail.dna.summary}</p>
+        </div>
+
+        <div className="universe-dna-facts">
+          <div><span>NICHO</span><strong>{dnaDetail.dna.primaryNiche}</strong></div>
+          <div><span>SUBNICHO</span><strong>{dnaDetail.dna.subniche}</strong></div>
+          <div><span>FORMATO</span><strong>{dnaDetail.dna.formatSignature}</strong></div>
+        </div>
+
+        <div className="universe-dna-section">
+          <span>INTENÇÃO DA AUDIÊNCIA</span>
+          <p>{dnaDetail.dna.audienceIntent}</p>
+        </div>
+
+        <div className="universe-dna-section emphasis">
+          <span>PROMESSA EDITORIAL</span>
+          <p>{dnaDetail.dna.editorialPromise}</p>
+        </div>
+
+        <div className="universe-dna-grid">
+          <div className="universe-dna-list"><span>PILARES DE CONTEÚDO</span><ul>{dnaDetail.dna.contentPillars.map(item=><li key={item}>{item}</li>)}</ul></div>
+          <div className="universe-dna-list"><span>ENTIDADES RECORRENTES</span><ul>{dnaDetail.dna.recurringEntities.map(item=><li key={item}>{item}</li>)}</ul></div>
+          <div className="universe-dna-list wide"><span>PADRÕES DE TÍTULOS</span><ul>{dnaDetail.dna.titlePatterns.map(item=><li key={item}>{item}</li>)}</ul></div>
+          <div className="universe-dna-list"><span>MECANISMOS DE CURIOSIDADE</span><ul>{dnaDetail.dna.curiosityMechanisms.map(item=><li key={item}>{item}</li>)}</ul></div>
+          <div className="universe-dna-list"><span>DRIVERS EMOCIONAIS</span><ul>{dnaDetail.dna.emotionalDrivers.map(item=><li key={item}>{item}</li>)}</ul></div>
+        </div>
+
+        <div className="universe-dna-section">
+          <span>SINAIS DE DIFERENCIAÇÃO</span>
+          <ul>{dnaDetail.dna.differentiationSignals.map(item=><li key={item}>{item}</li>)}</ul>
+        </div>
+
+        <div className="universe-dna-section limitations">
+          <span>LIMITAÇÕES / O QUE NÃO PODEMOS CONCLUIR</span>
+          <ul>{dnaDetail.dna.limitations.map(item=><li key={item}>{item}</li>)}</ul>
+        </div>
+
+        <div className="universe-dna-evidence">
+          <span>EVIDÊNCIA OPERACIONAL DO CARD</span>
+          <div>
+            <strong>{compact(dnaDetail.subscribers)}</strong><small>inscritos</small>
+            <strong>{compact(dnaDetail.recentMedianViews)}</strong><small>mediana recente</small>
+            <strong>{dnaDetail.breakoutRatio!==null?`${dnaDetail.breakoutRatio.toFixed(1)}×`:'—'}</strong><small>breakout / inscritos</small>
+            <strong>{dnaDetail.signalDetails?.length??dnaDetail.signals.length}</strong><small>sinais observados</small>
+          </div>
+        </div>
+
+        <div className="universe-dna-panel-actions">
+          <button className="button subtle" onClick={()=>void onIntelligence([dnaDetail.id])} disabled={!!busy}><Sparkles size={15}/>Atualizar DNA</button>
+          <button className="button subtle" onClick={()=>void onAnalyze(dnaDetail)} disabled={!!busy}><BrainCircuit size={15}/>Abrir Anatomia</button>
+          <a className="button subtle" href={dnaDetail.url} target="_blank" rel="noreferrer">YouTube <ArrowUpRight size={15}/></a>
+        </div>
+      </section>
+    </div>}
 
     {showImport&&<div className="universe-import-overlay" role="presentation">
       <section className="universe-import-panel">
