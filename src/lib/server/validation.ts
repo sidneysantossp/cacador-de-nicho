@@ -398,5 +398,73 @@ export const timelinePayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const videoEditPayloadSchema=z.object({
+ kind:z.literal('video-edit'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ timelineId:z.string().uuid(),
+ timelineVersion:z.number().int().min(1).max(100000),
+ transcriptId:z.string().uuid(),
+ transcriptVersion:z.number().int().min(1).max(100000),
+ format:z.object({
+  width:z.number().int().min(240).max(7680),
+  height:z.number().int().min(240).max(7680),
+  fps:z.number().int().min(1).max(120),
+  aspectRatio:z.string().trim().min(1).max(30)
+ }).strict(),
+ durationSeconds:z.number().min(0).max(86400),
+ clipStyles:z.array(z.object({
+  timelineClipId:z.string().uuid(),
+  sceneId:z.string().uuid(),
+  motionPreset:z.enum(['none','zoom-in','zoom-out','pan-left','pan-right','custom']),
+  scaleStart:z.number().min(.1).max(5),
+  scaleEnd:z.number().min(.1).max(5),
+  xStart:z.number().min(-2).max(2),
+  xEnd:z.number().min(-2).max(2),
+  yStart:z.number().min(-2).max(2),
+  yEnd:z.number().min(-2).max(2),
+  transitionIn:z.enum(['none','fade','cross-dissolve']),
+  transitionOut:z.enum(['none','fade','cross-dissolve']),
+  transitionSeconds:z.number().min(0).max(5)
+ }).strict()).max(10000),
+ captions:z.object({
+  enabled:z.boolean(),
+  position:z.enum(['top','center','bottom']),
+  fontSize:z.number().min(10).max(160),
+  maxLines:z.number().int().min(1).max(6),
+  backgroundOpacity:z.number().min(0).max(1),
+  cues:z.array(z.object({
+   id:z.string().uuid(),
+   transcriptSegmentId:z.string().uuid(),
+   startSeconds:z.number().min(0).max(86400),
+   endSeconds:z.number().min(0).max(86400),
+   text:z.string().max(2000)
+  }).strict()).max(20000)
+ }).strict(),
+ overlays:z.array(z.object({
+  id:z.string().uuid(),
+  type:z.literal('text'),
+  text:z.string().max(500),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  x:z.number().min(0).max(1),
+  y:z.number().min(0).max(1),
+  width:z.number().min(.01).max(1),
+  height:z.number().min(.01).max(1),
+  opacity:z.number().min(0).max(1),
+  fontSize:z.number().min(10).max(200)
+ }).strict()).max(1000),
+ audioMix:z.object({
+  voiceVolume:z.number().min(0).max(2),
+  musicVolume:z.number().min(0).max(2),
+  sfxVolume:z.number().min(0).max(2),
+  normalizeVoice:z.boolean(),
+  duckMusicUnderVoice:z.boolean()
+ }).strict(),
+ review:z.object({notes:z.string().trim().max(5000)}).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
