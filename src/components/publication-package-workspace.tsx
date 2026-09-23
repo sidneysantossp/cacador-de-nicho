@@ -203,7 +203,7 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
               {pkg.thumbnailSignedUrl?<img src={pkg.thumbnailSignedUrl} alt={draft.thumbnail.altText||'Thumbnail'}/>:<div><ImageIcon size={30}/><span>Sem thumbnail</span></div>}
             </div>
             <div className="publication-thumbnail-controls">
-              <div><span>THUMBNAIL</span><strong>{draft.thumbnail.width&&draft.thumbnail.height?draft.thumbnail.width+'×'+draft.thumbnail.height:'JPEG/PNG · até 2 MB · 16:9'}</strong></div>
+              <div><span>THUMBNAIL</span><strong>{draft.thumbnail.width&&draft.thumbnail.height?draft.thumbnail.width+'×'+draft.thumbnail.height:'JPEG/PNG · até 50 MB · 16:9'}</strong></div>
               {!approved&&<label className="publication-upload"><Upload size={14}/>{busy==='thumb:'+pkg.id?'Enviando…':'Upload thumbnail'}<input type="file" accept="image/jpeg,image/png" disabled={busy==='thumb:'+pkg.id} onChange={e=>{void uploadThumbnail(pkg,e.target.files?.[0]??null);e.currentTarget.value='';}}/></label>}
               <label>Conceito<textarea disabled={approved} rows={3} value={draft.thumbnail.concept} onChange={e=>update(pkg.id,p=>({...p,thumbnail:{...p.thumbnail,concept:e.target.value}}))}/></label>
               <label>Texto visual<input disabled={approved} value={draft.thumbnail.overlayText} onChange={e=>update(pkg.id,p=>({...p,thumbnail:{...p.thumbnail,overlayText:e.target.value}}))}/></label>
