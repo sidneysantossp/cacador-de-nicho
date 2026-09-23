@@ -1,11 +1,11 @@
 {
   "id": "COLAB-001",
   "title": "Implantar o processo obrigatório de colaboração entre humanos e IAs",
-  "status": "in_progress",
+  "status": "done",
   "owner": "sidneysantossp / Codex / sessão de 2026-09-23",
   "branch": "task/COLAB-001-governanca-colaborativa",
   "created_at": "2026-09-23T02:25:41Z",
-  "updated_at": "2026-09-23T02:25:41Z",
+  "updated_at": "2026-09-23T16:07:51Z",
   "base_commit": "ff17c95baba26ef058e94d947aabcf1ab96fd8d8",
   "depends_on": [],
   "scope": [
@@ -26,47 +26,87 @@
   "checklist": [
     {
       "text": "Definir leitura obrigatória, reserva de escopo e encerramento de tarefas",
-      "done": false
+      "done": true
     },
     {
       "text": "Conectar AGENTS.md, CLAUDE.md e README ao protocolo",
-      "done": false
+      "done": true
     },
     {
       "text": "Implementar validação de tarefas, conflitos de escopo e integração no CI",
-      "done": false
+      "done": true
     },
     {
       "text": "Versionar o mapa do estúdio e indicar a próxima tarefa",
-      "done": false
+      "done": true
     },
     {
       "text": "Executar verificações e registrar resultados e limites",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": [
     {
       "text": "Toda alteração de implementação exige tarefa previamente reservada",
-      "done": false
+      "done": true
     },
     {
       "text": "Reservas simultâneas com arquivos ou diretórios sobrepostos são rejeitadas",
-      "done": false
+      "done": true
     },
     {
       "text": "Tarefa concluída exige checklist, critérios de aceite e evidências preenchidos",
-      "done": false
+      "done": true
     },
     {
       "text": "Limites do bloqueio local e da proteção no GitHub estão explícitos",
-      "done": false
+      "done": true
     }
   ],
-  "validation": [],
-  "result": "",
+  "validation": [
+    {
+      "command": "npm run test:collaboration",
+      "result": "passed",
+      "details": "25 testes passaram após integração da master 69dd27e: reservas concorrentes, escopo, baixa, dependências, stage, renomes, CLI, hooks existentes e base avançada."
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed",
+      "details": "TypeScript sem erros na versão integrada com 69dd27e."
+    },
+    {
+      "command": "npm test",
+      "result": "passed",
+      "details": "30 testes da plataforma passaram na versão integrada; runner Node com import de tsx."
+    },
+    {
+      "command": "npm run build",
+      "result": "passed",
+      "details": "Build de produção Next.js 16.3.5/Turbopack concluído na versão integrada; rotas e páginas geradas."
+    },
+    {
+      "command": "npm run tasks:check",
+      "result": "passed",
+      "details": "Reserva inicial, metadados e escopo validados contra origin/master 69dd27e; a implantação inicial permanece ancorada em ff17c95."
+    },
+    {
+      "command": "git diff --check; inspeção dos workflows YAML",
+      "result": "passed",
+      "details": "Sem erros de whitespace; workflows CI/Collaboration com jobs verify/collaboration e gatilhos de PR."
+    }
+  ],
+  "result": "Processo obrigatório de colaboração implementado e validado com 25 testes de colaboração, 30 testes da plataforma, typecheck e build. Publicação pela conexão GitHub, com registro anterior da reserva; baixa proposta para integração via PR. A proteção administrativa da master permanece pendente.",
   "notes": [
-    "Bootstrap único do protocolo: a reserva é registrada em commit local antes da implementação. Não há protocolo publicado na base ff17c95.",
-    "O usuário autorizou este processo antes do desenvolvimento do estúdio. Publicação e configuração remota serão verificadas após a validação local."
-  ]
+    "Bootstrap autorizado pelo operador. Registro criado no commit c699400 antes de qualquer implementação do protocolo, sobre a base ff17c95baba26ef058e94d947aabcf1ab96fd8d8.",
+    "Durante o trabalho, origin/master avançou até d2fbf6dfa03e0d25cea1cd76a556e87a64b2053a. Merge local 04c5960 incorporou o trabalho concorrente. Conflito em docs/PROJECT_STATE.md resolvido preservando todo o relato remoto e acrescentando a seção de colaboração.",
+    "Nenhum arquivo de src/ nem docs/backend.md difere de origin/master após a integração. O mapa do estúdio preserva a auditoria original e sinaliza reconferência antes do M0.",
+    "O runner anterior tsx --test falhou neste ambiente ao tentar criar socket IPC (EPERM). npm test passou a usar node --import tsx --test, modo documentado pelo tsx, e os 22 testes passaram. Referência: https://tsx.hirok.io/dev-api/node-cli .",
+    "git push --dry-run encontrou ausência de credencial de escrita para https://github.com. Nenhum envio, PR, merge remoto, deploy ou regra administrativa foi realizado nesta sessão.",
+    "done nesta branch significa conclusão proposta. A integração na master e a ativação dos checks obrigatórios collaboration e verify ainda precisam ser confirmadas após conectar o GitHub.",
+    "Retomada após conexão do GitHub: conta sidneysantossp confirmada, com acesso de escrita. A master avançou até 69dd27ef44abfa17deff4b40f96fb85c8914e62c e foi incorporada sem alterar arquivos da aplicação ou infraestrutura em relação à base.",
+    "Reserva publicada pelo conector GitHub no commit e036d21663ccfd5c170fc80ec5e5e1276c21a895, em branch própria. O commit preserva o registro inicial local c699400; hashes locais anteriores são evidências da preparação, não commits publicados.",
+    "A API de branches retornou protected=false para master e a consulta de rulesets retornou lista vazia em 23/09/2026. A leitura administrativa de branch protection respondeu 403 Resource not accessible by integration. Nenhuma proteção foi declarada ativa.",
+    "A publicação usa as operações Git autorizadas do conector; o terminal continua sem credencial de push. Os conteúdos publicados serão comparados à árvore local validada."
+  ],
+  "completed_at": "2026-09-23T16:07:51Z"
 }

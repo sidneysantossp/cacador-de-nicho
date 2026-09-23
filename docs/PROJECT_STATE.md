@@ -1,4 +1,16 @@
-# Estado da operação — 22/09/2026
+# Estado da operação — atualização de 23/09/2026
+
+## Colaboração e estúdio de vídeo
+
+- O operador autorizou um estúdio próprio e exigiu leitura obrigatória, registro prévio, responsável, checklist e baixa para toda tarefa.
+- O processo fica em `COLABORACAO.md`, `AGENTS.md`, `CLAUDE.md` e `TODO.md`; o registro desta entrega é `tasks/COLAB-001.json`.
+- Durante a implementação, a `master` avançou de `ff17c95` até `d2fbf6dfa03e0d25cea1cd76a556e87a64b2053a`. Esses commits foram incorporados sem reverter os módulos Mission Control, Quota Intelligence ou Universe. O estado anterior abaixo foi preservado.
+- `docs/estudio/MAPEAMENTO.md` contém o mapa de 54 recursos, 16 melhorias e fases M0–M4, auditado sobre `ff17c95`. É planejamento: os pontos de integração precisam ser reconferidos contra os módulos que chegaram depois. Próxima tarefa recomendada: essa reconferência e o contrato versionado de projeto/timeline do M0, com reserva prévia.
+- Não há estúdio, worker de vídeo ou migração de vídeo implantados por COLAB-001. Provisionamento, quotas e orçamento do estúdio permanecem por definir; o estado real dos serviços não foi reauditado nesta tarefa.
+- Na retomada, a conexão GitHub foi confirmada e a branch `task/COLAB-001-governanca-colaborativa` recebeu o registro prévio da tarefa. A base avançou novamente até `69dd27e` e foi incorporada. A validação local atual passou: 25 testes de colaboração, 30 testes da plataforma, typecheck e build. Consulte o PR da tarefa para o estado de CI/integração; isso não certifica deploy.
+- A API confirmou `master` sem proteção e nenhuma ruleset em 23/09/2026. O conector não possui acesso administrativo à proteção de branch (403). A ativação das regras da seção 8 de `COLABORACAO.md` continua pendente; CI versionada não significa bloqueio obrigatório de merge.
+
+## Estado integrado antes desta entrega
 
 ## Objetivo empresarial
 
