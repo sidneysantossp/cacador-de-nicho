@@ -64,9 +64,19 @@ export async function importUniverseCompetitors(inputs:string[]){
 
 export async function refreshUniverseCompetitors(ids?:string[]){
   const all=await universeState();
+  const now=Date.now();
+  const cadenceHours:Record<UniverseCompetitor['monitoringTier'],number>={
+    hot:6,
+    active:24,
+    stable:72,
+    dormant:168
+  };
   const wanted=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
-    :[...all].sort((a,b)=>Date.parse(a.lastMonitoredAt)-Date.parse(b.lastMonitoredAt)).slice(0,25);
+    :all
+      .filter(item=>now-Date.parse(item.lastMonitoredAt)>=cadenceHours[item.monitoringTier]*3600000)
+      .sort((a,b)=>Date.parse(a.lastMonitoredAt)-Date.parse(b.lastMonitoredAt))
+      .slice(0,25);
   const results=await mapLimit(wanted.slice(0,25),4,async competitor=>{
     try{
       const updated=await collectUniverseCompetitor(competitor.channelId,competitor);
