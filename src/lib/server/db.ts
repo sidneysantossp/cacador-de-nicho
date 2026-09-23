@@ -20,6 +20,7 @@ function normalizeChannelStudy(study:ChannelStudy):ChannelStudy{
  const sustainability=study.anatomy?.sustainability??{score:0,classification:'fragile' as const,rationale:'Análise anterior à métrica de sustentabilidade.',supportingSignals:[],riskSignals:['Reexecute a análise para calcular sustentabilidade com a metodologia atual.']};
  return {
   ...study,
+  topSampleScope:study.topSampleScope??'global-search-candidates',
   comparisonSampleSize:study.comparisonSampleSize??0,
   weakRecentVideos:(study.weakRecentVideos??[]).map(video=>({...video,snapshots:video.snapshots??[],velocity:video.velocity??{baseline:true,deltaViews:null,deltaHours:null,viewsPerHour:null}})),
   sequences:study.sequences??[],
