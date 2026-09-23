@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle,
-  RefreshCw, RotateCcw, Send, ShieldCheck, Unplug, Youtube
+  Play, RefreshCw, RotateCcw, Send, ShieldCheck, Unplug
 } from 'lucide-react';
 import type {
   ManagedChannel, PublicationPackage, YouTubeConnection, YouTubePublishJob
@@ -125,7 +125,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
         <h2>Publicação controlada, versionada e retomável.</h2>
         <p>O upload só parte de um Publication Package aprovado. O worker persiste progresso, retoma sessões interrompidas e nunca expõe refresh tokens ao navegador.</p>
       </div>
-      <Youtube size={39}/>
+      <Play size={39}/>
     </section>
 
     <section className="youtube-connection">
@@ -143,7 +143,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
       </div>}
 
       {connection&&<article className={'youtube-channel-card '+connection.status}>
-        {connection.youtubeThumbnail?<img src={connection.youtubeThumbnail} alt="Canal YouTube"/>:<div className="youtube-channel-avatar"><Youtube size={22}/></div>}
+        {connection.youtubeThumbnail?<img src={connection.youtubeThumbnail} alt="Canal YouTube"/>:<div className="youtube-channel-avatar"><Play size={22}/></div>}
         <div>
           <span>{connection.status.toUpperCase()}</span>
           <strong>{connection.youtubeTitle}</strong>
@@ -155,7 +155,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
 
       <div className="youtube-connection-actions">
         {state.configured&&(!connected||connection?.status==='needs-reauth'||connection?.status==='disconnected')&&
-          <a className="button primary" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(channel.id)}><Youtube size={14}/>{connection?'Reconectar YouTube':'Conectar YouTube'}</a>}
+          <a className="button primary" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(channel.id)}><Play size={14}/>{connection?'Reconectar YouTube':'Conectar YouTube'}</a>}
         {connected&&<>
           <button className="button subtle" disabled={busy==='validate'} onClick={()=>void connectionAction('validate')}><ShieldCheck size={14}/>{busy==='validate'?'Validando…':'Validar conexão'}</button>
           <button className="button subtle danger" disabled={busy==='disconnect'||active.length>0} onClick={()=>void connectionAction('disconnect')}><Unplug size={14}/>Desconectar</button>
@@ -206,7 +206,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
           </footer>
         </article>)}
       </div>
-      {!state.jobs.length&&<div className="youtube-empty"><Youtube size={28}/><h3>Nenhuma publicação ainda.</h3><p>Quando um package aprovado for enfileirado, ele aparecerá aqui.</p></div>}
+      {!state.jobs.length&&<div className="youtube-empty"><Play size={28}/><h3>Nenhuma publicação ainda.</h3><p>Quando um package aprovado for enfileirado, ele aparecerá aqui.</p></div>}
     </section>
   </div>;
 }
