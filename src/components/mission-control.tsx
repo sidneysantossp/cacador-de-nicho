@@ -70,7 +70,7 @@ export default function MissionControl({
         <span className={`mission-status ${brief.status}`}><CheckCircle2 size={15}/>{statusLabel(brief.status)}</span>
         <span>Última execução: {when(brief.completedAt)}</span>
         <span>{brief.market.qualifiedChannels} candidato(s) rígido(s) · {brief.market.channelStudies} análise(s) · {brief.market.opportunityReports} report(s)</span>
-        {(brief.market.competitors??0)>0&&<span>Universe: {brief.market.competitors} concorrente(s) · {brief.market.competitorSignals??0} com sinal · {brief.market.competitorDna??0} com DNA</span>}
+        {(brief.market.competitors??0)>0&&<span>Universe: {brief.market.competitors} concorrente(s) · {brief.market.competitorSignals??0} com sinal · {brief.market.competitorDna??0} com DNA · {brief.market.universeCurves??0} curva(s) · {brief.market.universeGaps??0} gap(s)</span>}
       </div>
 
       <section className="mission-priority">
