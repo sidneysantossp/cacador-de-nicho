@@ -171,8 +171,8 @@ export function publicationPackageIssues(
     if(!['image/jpeg','image/png'].includes(thumb.mimeType??'')){
       add('thumbnail-format','blocker','A thumbnail precisa ser JPEG ou PNG.');
     }
-    if((thumb.bytes??0)>2*1024*1024){
-      add('thumbnail-too-large','blocker','A thumbnail ultrapassa 2 MB.');
+    if((thumb.bytes??0)>50*1024*1024){
+      add('thumbnail-too-large','blocker','A thumbnail ultrapassa 50 MB.');
     }
     const width=thumb.width??0,height=thumb.height??0;
     if(width<640||height<360){
