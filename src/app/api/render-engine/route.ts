@@ -13,6 +13,7 @@ const schema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('create'),
     videoEditId:z.string().uuid(),
+    preset:z.enum(['source','hd-1080p30','draft-720p30']).optional(),
     crf:z.number().int().min(18).max(30).optional(),
     audioBitrateKbps:z.number().int().min(96).max(320).optional()
   }).strict(),
