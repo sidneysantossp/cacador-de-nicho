@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
-import type { UniverseCompetitor, UniverseCompetitorStatus } from '@/lib/types';
+import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseMarketIntelligence } from '@/lib/types';
 
 function compact(value:number|null){
   if(value===null)return '—';
@@ -45,13 +45,17 @@ function CompetitorCard({
   busy,
   onRefresh,
   onAnalyze,
-  onIntelligence
+  onIntelligence,
+  intelligence,
+  onCurves
 }:{
   competitor:UniverseCompetitor;
   busy:string;
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
   onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
+  intelligence?:UniverseMarketIntelligence|null;
+  onCurves:()=>Promise<boolean|undefined>;
 }){
   const status=statusMeta[competitor.status];
   const best=competitor.strongestRecentVideo;
@@ -132,6 +136,7 @@ export default function CompetitorUniverse({
   const [status,setStatus]=useState('Todos');
   const [showImport,setShowImport]=useState(false);
   const [importText,setImportText]=useState('');
+  const [section,setSection]=useState<'competitors'|'curves'|'gaps'>('competitors');
   const parsed=useMemo(()=>extractInputs(importText),[importText]);
   const clusters=useMemo(()=>[...new Set(competitors.map(item=>item.cluster||'A classificar'))].sort(),[competitors]);
   const visible=useMemo(()=>competitors
@@ -150,7 +155,9 @@ export default function CompetitorUniverse({
   const signals=competitors.filter(item=>item.signals.length>0).length;
   const breakout=competitors.filter(item=>item.status==='breakout').length;
   const dnaReady=competitors.filter(item=>!!item.dna).length;
-  const gaps=competitors.filter(item=>!!item.gapSummary).length;
+  const gaps=intelligence?.gaps.length??0;
+  const curves=intelligence?.curves.length??0;
+  const competitorName=(channelId:string)=>competitors.find(item=>item.channelId===channelId)?.name??channelId;
 
   return <div className="universe-page">
     <section className="universe-hero">
@@ -162,6 +169,7 @@ export default function CompetitorUniverse({
       <div className="universe-hero-actions">
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar atrasados'}</button>
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':'Rodar inteligência'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||dnaReady<2} onClick={()=>void onCurves()}><Layers3 size={16}/>{busy==='universeCurves'?'Extraindo…':'Extrair curvas'}</button>
         <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar concorrentes</button>
       </div>
     </section>
@@ -175,6 +183,13 @@ export default function CompetitorUniverse({
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
     </section>
 
+    <div className="universe-tabs">
+      <button className={section==='competitors'?'active':''} onClick={()=>setSection('competitors')}>Competitors <span>{competitors.length}</span></button>
+      <button className={section==='curves'?'active':''} onClick={()=>setSection('curves')}>Curves <span>{curves}</span></button>
+      <button className={section==='gaps'?'active':''} onClick={()=>setSection('gaps')}>Gaps <span>{gaps}</span></button>
+    </div>
+
+    {section==='competitors'&&<>
     <div className="universe-filterbar">
       <label><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar concorrente, nicho, formato…"/></label>
       <select value={cluster} onChange={e=>setCluster(e.target.value)}><option>Todos</option>{clusters.map(item=><option key={item}>{item}</option>)}</select>
@@ -192,6 +207,39 @@ export default function CompetitorUniverse({
       </div>
       <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence}/>)}</div>
     </section>)}
+
+    </>}
+
+    {section==='curves'&&<section className="universe-derived-view">
+      <div className="section-heading"><div><h2>Curvas detectadas <span className="count-pill">{curves}</span></h2><p>Mecanismos repetíveis comparados entre criadores independentes. A classificação é recalculada pelo backend, não pela IA.</p></div></div>
+      {!intelligence?.curves.length?<div className="universe-empty"><Layers3 size={30}/><h3>Nenhuma curva extraída ainda.</h3><p>Gere Channel DNA em pelo menos dois concorrentes e execute “Extrair curvas”. Curvas com 3+ criadores independentes podem atingir classificação estrutural.</p></div>:<div className="universe-market-grid">{intelligence.curves.map(curve=><article className="universe-curve-card" key={curve.id}>
+        <div className="universe-derived-head"><span className={`universe-status ${curve.classification==='structural'?'structural':curve.classification==='emerging'?'emerging':'watch'}`}>{curve.classification}</span><strong>{curve.independentCreators} criador(es)</strong></div>
+        <h3>{curve.name}</h3>
+        <p>{curve.thesis}</p>
+        <div className="universe-derived-block"><span>MECANISMO</span><ol>{curve.mechanismSteps.map(step=><li key={step}>{step}</li>)}</ol></div>
+        <div className="universe-derived-block"><span>EVIDÊNCIA</span><p>{curve.supportingChannelIds.map(competitorName).join(' · ')}</p>{curve.evidence.slice(0,3).map(item=><small key={item}>{item}</small>)}</div>
+        <div className="universe-tags">{curve.clusters.map(item=><em key={item}>{item}</em>)}</div>
+        <div className="universe-derived-block"><span>VARIÁVEIS TRANSFERÍVEIS</span><p>{curve.transferableVariables.join(' · ')}</p></div>
+      </article>)}</div>}
+      {intelligence?.limitations?.length?<div className="info-strip"><Globe2 size={18}/><span>{intelligence.limitations[0]}</span></div>:null}
+    </section>}
+
+    {section==='gaps'&&<section className="universe-derived-view">
+      <div className="section-heading"><div><h2>Gaps derivados <span className="count-pill">{gaps}</span></h2><p>Transferências que preservam uma curva observada e mudam uma variável. Sem evidência no target, o status permanece hypothesis.</p></div></div>
+      {!intelligence?.gaps.length?<div className="universe-empty"><Sparkles size={30}/><h3>Nenhum gap derivado ainda.</h3><p>Os gaps aparecem depois que o Universe encontra curvas comparáveis e existe base suficiente para testar transferências sem confundir criatividade com demanda.</p></div>:<div className="universe-market-grid">{intelligence.gaps.map(gap=>{
+        const curve=intelligence.curves.find(item=>item.id===gap.curveId);
+        return <article className="universe-gap-card" key={gap.id}>
+          <div className="universe-derived-head"><span className={`tag ${gap.demandStatus==='observed'?'green':gap.demandStatus==='partial'?'blue':'orange'}`}>{gap.demandStatus}</span><strong>Saturação da amostra: {gap.sampleSaturation}</strong></div>
+          <span className="eyebrow">FROM {curve?.name??'CURVE'}</span>
+          <h3>{gap.title}</h3>
+          <p>{gap.rationale}</p>
+          <dl><dt>Preserva</dt><dd>{gap.preservedMechanism}</dd><dt>Muda</dt><dd>{gap.changedVariable}</dd><dt>Target</dt><dd>{gap.targetSpace}</dd></dl>
+          {gap.demandEvidence.length>0&&<div className="universe-derived-block"><span>EVIDÊNCIA DO TARGET</span>{gap.demandEvidence.slice(0,4).map(item=><small key={item}>{item}</small>)}</div>}
+          <div className="universe-derived-block tests"><span>PRIMEIROS TESTES</span><ol>{gap.firstTests.map(title=><li key={title}>{title}</li>)}</ol></div>
+          {gap.risks.length>0&&<div className="universe-derived-block"><span>RISCOS</span><p>{gap.risks.slice(0,3).join(' · ')}</p></div>}
+        </article>;
+      })}</div>}
+    </section>}
 
     {showImport&&<div className="universe-import-overlay" role="presentation">
       <section className="universe-import-panel">
