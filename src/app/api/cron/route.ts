@@ -1,6 +1,35 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
+import { runUniverseIntelligence, runUniverseMarketIntelligence } from '@/lib/server/universe';
+
 export const runtime='nodejs';
 export const maxDuration=300;
 export const dynamic='force-dynamic';
-export async function GET(request:Request){try{if(!authConfigured()||!process.env.CRON_SECRET||process.env.CRON_SECRET.length<32||!equal(request.headers.get('authorization')??'',`Bearer ${process.env.CRON_SECRET}`))throw new HttpError('Acesso não autorizado.',401);return Response.json({message:await runRadar(true)});}catch(e){return errorResponse(e);}}
+
+function authorize(request:Request){
+  if(
+    !authConfigured()||
+    !process.env.CRON_SECRET||
+    process.env.CRON_SECRET.length<32||
+    !equal(request.headers.get('authorization')??'',`Bearer ${process.env.CRON_SECRET}`)
+  )throw new HttpError('Acesso não autorizado.',401);
+}
+
+export async function GET(request:Request){
+  try{
+    authorize(request);
+    const scope=new URL(request.url).searchParams.get('scope')??'radar';
+    if(scope==='universe'){
+      const result=await runUniverseIntelligence();
+      return Response.json({scope,result});
+    }
+    if(scope==='market'){
+      const result=await runUniverseMarketIntelligence();
+      return Response.json({scope,result});
+    }
+    if(scope!=='radar')throw new HttpError('Escopo de rotina inválido.',400);
+    return Response.json({scope,message:await runRadar(true)});
+  }catch(e){
+    return errorResponse(e);
+  }
+}
