@@ -74,14 +74,16 @@ export default function ChannelBrainPage({
   channel,
   brain,
   onBack,
-  onSaved
+  onSaved,
+  initialTab='constitution'
 }:{
   channel:ManagedChannel|null;
   brain:ChannelBrain|null;
   onBack:()=>void;
   onSaved:()=>Promise<void>;
+  initialTab?:Tab;
 }){
-  const [tab,setTab]=useState<Tab>('constitution');
+  const [tab,setTab]=useState<Tab>(initialTab);
   const [draft,setDraft]=useState<ChannelBrainPayload|null>(channel?(brain??blankBrain(channel)):null);
   const [current,setCurrent]=useState<ChannelBrain|null>(brain);
   const [history,setHistory]=useState<ChannelBrainVersion[]>([]);
@@ -91,6 +93,8 @@ export default function ChannelBrainPage({
   const [learningEvidence,setLearningEvidence]=useState('');
   const [learningType,setLearningType]=useState<ChannelBrainLearning['type']>('operator');
   const [learningConfidence,setLearningConfidence]=useState<ChannelBrainLearning['confidence']>('medium');
+
+  useEffect(()=>{setTab(initialTab);},[initialTab,channel?.id]);
 
   useEffect(()=>{
     if(!channel){setDraft(null);setCurrent(null);setHistory([]);return;}
