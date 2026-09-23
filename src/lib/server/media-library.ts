@@ -7,6 +7,9 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import {
+  normalizeMediaTags, sceneLibraryItemIsStale, voiceLibraryItemIsStale
+} from '@/lib/media-library-policy';
 
 const BUCKET='cacadores-media';
 
@@ -107,9 +110,12 @@ export async function listMediaLibrary(
       const scriptPayload=(scriptRow?.payload??{}) as Partial<EpisodeScriptPayload>;
       const scriptVersion=Number(payload.scriptVersion??0);
       const textHash=String(payload.textHash??'');
-      const stale=!scriptRow||
-        Number(scriptRow.version)!==scriptVersion||
-        (!!scriptPayload.content&&hash(String(scriptPayload.content))!==textHash);
+      const stale=!scriptRow||!scriptPayload.content||voiceLibraryItemIsStale({
+        assetScriptVersion:scriptVersion,
+        assetTextHash:textHash,
+        currentScriptVersion:Number(scriptRow.version),
+        currentTextHash:hash(String(scriptPayload.content))
+      });
 
       return {
         mediaKey:mediaKey('voice_asset',row.id),
@@ -148,10 +154,12 @@ export async function listMediaLibrary(
     const currentPayload=(currentRow?.payload??{}) as Partial<VisualPromptSetPayload>;
     const scenePrompts=Array.isArray(currentPayload.scenePrompts)?currentPayload.scenePrompts:[];
     const currentScene=scenePrompts.find(scene=>scene.sceneId===row.scene_id);
-    const stale=!currentRow||
-      Number(currentRow.version)!==Number(payload.promptSetVersion??0)||
-      !currentScene||
-      String(currentScene.prompt??'')!==String(payload.prompt??'');
+    const stale=!currentRow||sceneLibraryItemIsStale({
+      assetPromptSetVersion:Number(payload.promptSetVersion??0),
+      assetPrompt:String(payload.prompt??''),
+      currentPromptSetVersion:Number(currentRow.version),
+      currentPrompt:currentScene?String(currentScene.prompt??''):null
+    });
 
     const stock=payload.stock&&typeof payload.stock==='object'
       ?payload.stock as MediaLibraryItem['stock']
@@ -225,7 +233,7 @@ export async function saveMediaLibraryMetadata(input:{
     .maybeSingle());
   if(!exists)throw new HttpError('Mídia não encontrada neste canal.',404);
 
-  const tags=[...new Set(input.tags.map(tag=>tag.trim().toLowerCase()).filter(Boolean))].slice(0,50);
+  const tags=normalizeMediaTags(input.tags);
   const notes=input.notes.trim().slice(0,5000);
   const key=mediaKey(input.resourceType,input.resourceId);
   const result=await db().from('radar_media_library_metadata').upsert({
