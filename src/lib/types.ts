@@ -753,13 +753,29 @@ export type VisualPromptSetVersion = {
  createdAt: string;
 };
 export type SceneAssetKind = 'image' | 'video' | 'graphic';
-export type SceneAssetSource = 'generated' | 'uploaded';
+export type SceneAssetSource = 'generated' | 'uploaded' | 'stock';
 export type SceneAssetStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'rejected';
 export type SceneAssetLicense = {
  type: 'provider-terms' | 'owned' | 'licensed' | 'unknown';
  label: string;
  sourceUrl?: string;
  notes?: string;
+};
+export type StockMediaProvider = 'pexels' | 'pixabay';
+export type StockMediaResult = {
+ provider: StockMediaProvider;
+ providerAssetId: string;
+ kind: 'image' | 'video';
+ title: string;
+ previewUrl: string;
+ pageUrl: string;
+ creatorName: string;
+ creatorUrl?: string;
+ width: number | null;
+ height: number | null;
+ durationSeconds: number | null;
+ licenseLabel: string;
+ attributionLabel: string;
 };
 export type SceneAsset = {
  id: string;
