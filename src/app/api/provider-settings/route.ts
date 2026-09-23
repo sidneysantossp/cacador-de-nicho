@@ -6,7 +6,7 @@ import { modelOptions } from '@/lib/models';
 import { providerSecret, providerStatuses, removeProviderSecret, saveProviderSecret, testProvider } from '@/lib/server/providers';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-const provider=z.enum(['openai','youtube','elevenlabs','googleai']);
+const provider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay']);
 const schema=z.discriminatedUnion('action',[
  z.object({action:z.literal('saveSecret'),provider,key:z.string().trim().min(20).max(500)}).strict(),
  z.object({action:z.literal('test'),provider}).strict(),
