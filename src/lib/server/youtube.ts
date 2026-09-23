@@ -181,7 +181,10 @@ async function resolveReferenceIds(prior:Channel[]){
     if(ref)resolved.set(norm(ref.name),channel.id);
   }
 
-  const unresolved=REFERENCE_CHANNELS.filter(ref=>!resolved.has(norm(ref.name)));
+  // References are contextual evidence, not opportunity candidates. Resolve them
+  // progressively so a cold start cannot consume most of the granular search.list
+  // bucket before opportunity discovery begins.
+  const unresolved=REFERENCE_CHANNELS.filter(ref=>!resolved.has(norm(ref.name))).slice(0,7);
   for(let i=0;i<unresolved.length;i+=7){
     const group=unresolved.slice(i,i+7);
     const found=await youtube('search',{
@@ -319,7 +322,13 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
     .map(q=>q.trim())
     .filter(q=>q.length>=2&&!legacyGeneric.has(q.toLowerCase()));
 
-  const queries=[...new Set([...REFERENCE_DISCOVERY_QUERIES,...configured])];
+  const referenceSegments=new Set(
+    REFERENCE_DISCOVERY_QUERIES.flatMap(query=>query.split('|')).map(part=>norm(part))
+  );
+  // Do not pay twice for configured seeds already covered verbatim by one of the
+  // curated OR-groups. User-specific seeds that add a distinct concept are preserved.
+  const distinctConfigured=configured.filter(query=>!referenceSegments.has(norm(query)));
+  const queries=[...new Set([...REFERENCE_DISCOVERY_QUERIES,...distinctConfigured])];
   const videoIds=new Set<string>();
   const sourceByVideo=new Map<string,string>();
 
