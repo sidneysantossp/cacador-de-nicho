@@ -28,6 +28,7 @@ function parseTags(value:string){return value.split(',').map(item=>item.trim()).
 
 export default function PublicationPackageWorkspace({channel}:{channel:ManagedChannel}){
   const [packages,setPackages]=useState<PublicationPackage[]>([]);
+  const [qualityReports,setQualityReports]=useState<ProductionQualityReport[]>([]);
   const [eligible,setEligible]=useState<ProductionQualityReport[]>([]);
   const [renders,setRenders]=useState<RenderJob[]>([]);
   const [drafts,setDrafts]=useState<Record<string,PublicationPackagePayload>>({});
@@ -36,10 +37,8 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
   const [message,setMessage]=useState('');
 
   const qualityById=useMemo(()=>new Map(
-    [...eligible,...packages.map(pkg=>null)]
-      .filter((item):item is ProductionQualityReport=>Boolean(item))
-      .map(item=>[item.id,item])
-  ),[eligible,packages]);
+    qualityReports.map(item=>[item.id,item])
+  ),[qualityReports]);
   const renderById=useMemo(()=>new Map(renders.map(render=>[render.id,render])),[renders]);
 
   async function load(silent=false){
@@ -49,20 +48,14 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar Publication Packaging.');
       const nextPackages=(body.packages??[]) as PublicationPackage[];
+      const nextQuality=(body.qualityReports??[]) as ProductionQualityReport[];
       const nextEligible=(body.eligibleQualityReports??[]) as ProductionQualityReport[];
       const nextRenders=(body.renders??[]) as RenderJob[];
       setPackages(nextPackages);
+      setQualityReports(nextQuality);
       setEligible(nextEligible);
       setRenders(nextRenders);
-      setDrafts(prev=>{
-        const next={...prev};
-        for(const pkg of nextPackages){
-          if(!next[pkg.id]||pkg.version!==packages.find(item=>item.id===pkg.id)?.version){
-            next[pkg.id]=packagePayload(pkg);
-          }
-        }
-        return next;
-      });
+      setDrafts(Object.fromEntries(nextPackages.map(pkg=>[pkg.id,packagePayload(pkg)])));
     }catch(error){
       if(!silent)setMessage(error instanceof Error?error.message:'Falha ao carregar Publication Packaging.');
     }finally{
