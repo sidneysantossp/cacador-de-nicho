@@ -63,15 +63,15 @@ export async function importUniverseCompetitors(inputs:string[]){
   };
 }
 
-export async function refreshUniverseCompetitors(ids?:string[]){
+export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
   const all=await universeState();
   const wanted=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
     :all
       .filter(item=>universeCompetitorDue(item))
       .sort((a,b)=>Date.parse(a.lastMonitoredAt)-Date.parse(b.lastMonitoredAt))
-      .slice(0,25);
-  const results=await mapLimit(wanted.slice(0,25),4,async competitor=>{
+      .slice(0,maxItems);
+  const results=await mapLimit(wanted.slice(0,maxItems),4,async competitor=>{
     try{
       const updated=await collectUniverseCompetitor(competitor.channelId,competitor);
       await put('radar_managed_channels',updated.id,updated);
