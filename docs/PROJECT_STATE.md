@@ -117,3 +117,20 @@ Implementado:
 - políticas de frequência/prioridade cobertas por testes.
 
 Validação do branch `feat/universe-dna-signals`: typecheck, testes e build/CI concluídos com sucesso.
+
+
+## Universe Curves + Gap Engine — 23/09/2026
+
+Implementado:
+- biblioteca derivada de curvas cross-channel;
+- classificação hypothesis/emerging/structural por criadores independentes;
+- Gap Engine com demandStatus validado no backend;
+- sample saturation explicitamente restrita ao Universe analisado;
+- amostragem diversificada entre clusters;
+- views Competitors / Curves / Gaps;
+- primeiros testes dos gaps sempre destinados ao público em inglês;
+- atualização automática via Mission Control quando o DNA muda;
+- contagem de curves/gaps no Mission Brief;
+- regras de classificação, demanda e seleção cobertas por testes.
+
+Validação: CI completo aprovado no branch `feat/universe-curves-gaps`.
