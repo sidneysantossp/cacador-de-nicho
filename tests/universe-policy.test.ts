@@ -1,0 +1,82 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { compareUniverseDnaPriority, universeCompetitorDue } from '../src/lib/universe-policy';
+import type { UniverseCompetitor } from '../src/lib/types';
+
+function competitor(overrides:Partial<UniverseCompetitor>={}):UniverseCompetitor{
+  return {
+    kind:'competitor',
+    id:'competitor:UCtest',
+    channelId:'UCtest',
+    name:'Test Channel',
+    handle:'@test',
+    url:'https://youtube.com/channel/UCtest',
+    avatar:'',
+    country:'US',
+    language:'en',
+    cluster:'History',
+    subniche:'A classificar',
+    format:'Long form',
+    description:'',
+    subscribers:10000,
+    videoCount:20,
+    createdAt:'2026-01-01T00:00:00Z',
+    importedAt:'2026-09-01T00:00:00Z',
+    lastMonitoredAt:'2026-09-22T00:00:00Z',
+    monitoringTier:'active',
+    status:'watch',
+    recentAverageViews:100000,
+    recentMedianViews:80000,
+    recentVideoCount:10,
+    uploadsLast30d:4,
+    breakoutRatio:null,
+    strongestRecentVideo:null,
+    recentUploads:[],
+    signals:[],
+    signalDetails:[],
+    snapshots:[],
+    dnaTags:['History'],
+    updatedAt:'2026-09-22T00:00:00Z',
+    ...overrides
+  };
+}
+
+test('Universe monitoring cadence respects hot, active, stable and dormant tiers',()=>{
+  const now=Date.parse('2026-09-23T12:00:00Z');
+  assert.equal(universeCompetitorDue(competitor({monitoringTier:'hot',lastMonitoredAt:'2026-09-23T05:00:00Z'}),now),true);
+  assert.equal(universeCompetitorDue(competitor({monitoringTier:'active',lastMonitoredAt:'2026-09-22T13:00:00Z'}),now),false);
+  assert.equal(universeCompetitorDue(competitor({monitoringTier:'stable',lastMonitoredAt:'2026-09-20T11:00:00Z'}),now),true);
+  assert.equal(universeCompetitorDue(competitor({monitoringTier:'dormant',lastMonitoredAt:'2026-09-17T13:00:00Z'}),now),false);
+});
+
+test('DNA priority chooses missing DNA before a higher-status channel with fresh DNA',()=>{
+  const missing=competitor({id:'missing',channelId:'missing',status:'watch'});
+  const analyzed=competitor({
+    id:'breakout',
+    channelId:'breakout',
+    status:'breakout',
+    dna:{
+      generatedAt:'2026-09-23T08:00:00Z',
+      summary:'Resumo',
+      primaryNiche:'History',
+      subniche:'Military History',
+      audienceIntent:'Aprender',
+      editorialPromise:'Explicar eventos',
+      formatSignature:'Documentary',
+      contentPillars:['Wars','People'],
+      recurringEntities:[],
+      titlePatterns:['Why X','How X'],
+      curiosityMechanisms:['Hidden cause','Unexpected consequence'],
+      emotionalDrivers:['Curiosity'],
+      differentiationSignals:[],
+      limitations:['Sample only']
+    }
+  });
+  assert.equal([analyzed,missing].sort(compareUniverseDnaPriority)[0].id,'missing');
+});
+
+test('among channels missing DNA, stronger operational status has priority',()=>{
+  const watch=competitor({id:'watch',channelId:'watch',status:'watch'});
+  const breakout=competitor({id:'breakout',channelId:'breakout',status:'breakout'});
+  assert.equal([watch,breakout].sort(compareUniverseDnaPriority)[0].id,'breakout');
+});
