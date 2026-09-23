@@ -538,6 +538,43 @@ export type ContentProjectVersion = {
  payload: ContentProjectPayload;
  createdAt: string;
 };
+export type EpisodeScriptSection = {
+ id: string;
+ label: string;
+ purpose: string;
+ content: string;
+};
+export type EpisodeScriptPayload = {
+ kind: 'episode-script';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ contentProjectId: string;
+ title: string;
+ language: string;
+ sections: EpisodeScriptSection[];
+ content: string;
+ wordCount: number;
+ estimatedMinutes: number | null;
+ continuityNotes: string[];
+ factCheckWarnings: string[];
+ provenance: {
+  generatedBy: 'platform' | 'chatgpt' | 'codex' | 'external' | 'operator';
+  model?: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type EpisodeScript = EpisodeScriptPayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+export type EpisodeScriptVersion = {
+ version: number;
+ status: EpisodeScript['status'];
+ payload: EpisodeScriptPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
