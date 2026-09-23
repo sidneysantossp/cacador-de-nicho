@@ -124,7 +124,7 @@ export function videoEditStructuralIssues(
   for(const style of edit.clipStyles){
     if(styles.has(style.timelineClipId))issues.push('duplicate-clip-style');
     styles.set(style.timelineClipId,style);
-    if(style.scaleStart<.1||style.scaleStart>5||style.scaleEnd<.1||style.scaleEnd>5)issues.push('invalid-scale');
+    if(style.scaleStart<1||style.scaleStart>5||style.scaleEnd<1||style.scaleEnd>5)issues.push('invalid-scale');
     if([style.xStart,style.xEnd,style.yStart,style.yEnd].some(value=>value<-2||value>2))issues.push('invalid-pan');
   }
 
