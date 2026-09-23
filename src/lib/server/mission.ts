@@ -188,6 +188,7 @@ export async function runMission():Promise<MissionBrief>{
 
     // Keep the market fresh even when no immediate production candidate exists.
     let youtubeSearchAvailable=health.youtube;
+    const youtubeDataAvailable=health.youtube;
     if(health.youtube){
       try{
         const message=await runRadar(false,false);
@@ -214,17 +215,17 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    // Open at most one new deep investigation per mission. Skip this when the
-    // granular YouTube search bucket is exhausted, because Channel Study also
-    // depends on search.list for the strongest-video candidate set.
-    if(youtubeSearchAvailable&&health.openai&&Date.now()-startedMs<165000){
+    // Open at most one new deep investigation per mission. A known channel can
+    // still be analyzed when search.list is unavailable: Channel Study falls
+    // back to the uploads playlist and marks the sample scope explicitly.
+    if(youtubeDataAvailable&&health.openai&&Date.now()-startedMs<165000){
       const studiedIds=new Set(state.studies.map(study=>study.source.id));
       const candidate=state.channels.filter(channel=>!studiedIds.has(channel.id)).sort(compareMissionCandidates)[0];
       if(candidate){
         try{
           const study=await runChannelStudy(candidate.url||candidate.handle);
           studiesGenerated++;
-          workCompleted.push(`Análise de Canal concluída para ${study.source.name}.`);
+          workCompleted.push(`Análise de Canal concluída para ${study.source.name}${study.topSampleScope==='recent-uploads'?' em modo sem search.list':''}.`);
           state=await loadMissionState();
 
           // One report maximum per mission. If no older pending report consumed the slot,
