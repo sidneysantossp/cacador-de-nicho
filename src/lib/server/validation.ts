@@ -123,6 +123,7 @@ export const productionDnaPayloadSchema=z.object({
   cameraRules:shortList(80,500),
   motionRules:shortList(80,500),
   basePrompt:z.string().trim().max(12000),
+  scenePromptTemplate:z.string().trim().max(12000),
   negativePrompt:z.string().trim().max(12000),
   forbidden:shortList(100,500)
  }).strict(),
