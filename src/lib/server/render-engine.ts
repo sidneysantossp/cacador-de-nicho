@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  RenderJob, RenderJobPayload, RenderManifest, RenderManifestVisualClip,
+  RenderJob, RenderJobPayload, RenderManifest, RenderManifestVisualClip, RenderPreset,
   SceneAsset, VideoEdit
 } from '@/lib/types';
 import { checked, db } from './db';
@@ -17,7 +17,7 @@ import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
   DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF, renderManifestIssues,
-  renderOutputPath, validRenderAudioBitrate, validRenderCrf
+  renderOutputPath, renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '@/lib/render-policy';
 
 const BUCKET='cacadores-media';
@@ -236,9 +236,11 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
 
 export async function createRenderJob(input:{
   videoEditId:string;
+  preset?:RenderPreset;
   crf?:number;
   audioBitrateKbps?:number;
 }):Promise<RenderJob>{
+  const preset=input.preset??'source';
   const crf=input.crf??DEFAULT_RENDER_CRF;
   const audioBitrateKbps=input.audioBitrateKbps??DEFAULT_RENDER_AUDIO_KBPS;
   if(!validRenderCrf(crf))throw new HttpError('CRF deve ser um inteiro entre 18 e 30.',400);
@@ -259,12 +261,14 @@ export async function createRenderJob(input:{
 
   const id=crypto.randomUUID();
   const payload:RenderJobPayload={
-    preset:'source',
+    preset,
     videoCodec:'libx264',
+    fallbackVideoCodecs:['mpeg4'],
     crf,
     audioCodec:'aac',
     audioBitrateKbps,
-    compilerVersion:'render-v2',
+    outputFormat:renderPresetOutput(preset,manifest.format),
+    compilerVersion:'render-v3',
     requestedBy:'operator',
     manifest
   };
@@ -324,6 +328,7 @@ export async function retryRenderJob(jobId:string){
   }
   return createRenderJob({
     videoEditId:job.videoEditId,
+    preset:job.payload.preset??'source',
     crf:job.payload.crf,
     audioBitrateKbps:job.payload.audioBitrateKbps
   });
