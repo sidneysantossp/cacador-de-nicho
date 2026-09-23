@@ -108,3 +108,6 @@
 @media(max-width:1250px){.universe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.universe-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.universe-hero{grid-template-columns:1fr}.universe-filterbar{grid-template-columns:1fr 1fr}.universe-grid{grid-template-columns:1fr}.universe-cluster-head{align-items:flex-start;flex-direction:column}.universe-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.universe-summary,.universe-filterbar{grid-template-columns:1fr}.universe-hero-actions{align-items:stretch}.universe-hero-actions .button{width:100%}.universe-metrics{grid-template-columns:repeat(2,1fr)}.universe-import-panel{padding:24px 18px}.universe-import-file,.universe-import-actions{align-items:stretch;flex-direction:column}.universe-import-file .button,.universe-import-actions .button{width:100%}}
+
+.universe-dna-summary{font-weight:600;color:#5f5473!important;margin:0 0 7px!important}
+.universe-signal-title{display:block;font-size:9px;color:#4f6b56;margin-bottom:4px}
