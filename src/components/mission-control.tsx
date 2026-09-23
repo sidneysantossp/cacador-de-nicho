@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertCircle, ArrowUpRight, CheckCircle2, PlayCircle, Rocket, Sparkles } from 'lucide-react';
-import type { MissionBrief } from '@/lib/types';
+import type { MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
 
 function statusLabel(status:MissionBrief['status']){
   return status==='completed'?'Missão concluída':status==='partial'?'Missão parcial':'Missão bloqueada';
@@ -15,13 +15,15 @@ export default function MissionControl({
   mode,
   busy,
   onRun,
-  onOpenStudy
+  onOpenStudy,
+  searchBudget
 }:{
   brief?:MissionBrief|null;
   mode:'demo'|'live';
   busy:string;
   onRun:()=>Promise<boolean|undefined>;
   onOpenStudy:(channelStudyId:string)=>void;
+  searchBudget?:YouTubeSearchBudgetState|null;
 }){
   return <div className="mission-control">
     <section className="mission-hero">
@@ -34,6 +36,28 @@ export default function MissionControl({
         <Rocket size={18}/>{busy==='mission'?'Executando missão…':'Executar missão agora'}
       </button>
     </section>
+
+    {searchBudget&&<section className="youtube-budget">
+      <div className="youtube-budget-main">
+        <div>
+          <span className="eyebrow">YOUTUBE SEARCH BUDGET · DIA DO PACÍFICO</span>
+          <h3>{searchBudget.used}<small>/ {searchBudget.limit}</small> buscas usadas</h3>
+          <p>{searchBudget.blocked?'Bucket marcado como indisponível nesta data. O sistema trabalha em modo quota-degraded.':`${searchBudget.remaining} buscas ainda disponíveis. O Radar não pode consumir a reserva destinada a investigação.`}</p>
+        </div>
+        <span className={`tag ${searchBudget.blocked?'orange':'green'}`}>{searchBudget.blocked?'SEARCH PAUSADO':`${searchBudget.remaining} RESTANTES`}</span>
+      </div>
+      <div className="youtube-budget-bar"><span style={{width:`${Math.min(100,(searchBudget.used/searchBudget.limit)*100)}%`}}/></div>
+      <div className="youtube-budget-grid">
+        {([
+          ['Descoberta','radar-discovery'],
+          ['Análise','channel-study'],
+          ['Similares','similar-channels'],
+          ['Resolver canal','channel-resolution'],
+          ['Referências','reference-resolution']
+        ] as const).map(([label,key])=><div key={key}><span>{label}</span><strong>{searchBudget.byPurpose[key]} / {searchBudget.purposeLimits[key]}</strong></div>)}
+      </div>
+      {searchBudget.duplicateSkips>0&&<p className="youtube-budget-note">{searchBudget.duplicateSkips} busca(s) redundante(s) foram evitadas nas janelas recentes.</p>}
+    </section>}
 
     {!brief&&<section className="mission-empty">
       <Sparkles size={28}/>
