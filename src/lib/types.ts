@@ -481,6 +481,63 @@ export type ProductionDnaPayload = {
 };
 export type ProductionDNA = ProductionDnaPayload & { version: number };
 export type ProductionDnaVersion = { version: number; payload: ProductionDnaPayload; createdAt: string };
+export type ContentResearchSource = {
+ id: string;
+ title: string;
+ url: string;
+ sourceType: 'primary' | 'secondary' | 'reference';
+ claim: string;
+ checkedAt?: string;
+};
+export type ContentFactCheck = {
+ id: string;
+ claim: string;
+ status: 'unverified' | 'supported' | 'contradicted' | 'needs-review';
+ sourceIds: string[];
+ notes: string;
+};
+export type ContentProjectPayload = {
+ kind: 'content-project';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ opportunityId?: string;
+ brief: {
+  theme: string;
+  thesis: string;
+  angle: string;
+  promise: string;
+  workingTitle: string;
+  thumbnailConcept: string;
+  targetAudience: string;
+  objective: string;
+  previousEpisodeConnection: string;
+  arcConnection: string;
+ };
+ research: {
+  notes: string;
+  sources: ContentResearchSource[];
+  factChecks: ContentFactCheck[];
+ };
+ approval: {
+  status: 'draft' | 'ready' | 'approved' | 'blocked';
+  notes: string;
+  approvedAt?: string;
+  approvedBy?: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type ContentProject = ContentProjectPayload & {
+ version: number;
+ status: 'brief' | 'research' | 'review' | 'approved' | 'blocked';
+};
+export type ContentProjectVersion = {
+ version: number;
+ status: ContentProject['status'];
+ payload: ContentProjectPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
