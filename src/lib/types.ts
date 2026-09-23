@@ -822,6 +822,43 @@ export type SceneAsset = {
  createdAt: string;
  updatedAt: string;
 };
+export type ExternalImportKind = 'image' | 'video' | 'audio' | 'transcript' | 'other';
+export type ExternalImportItemStatus = 'pending' | 'processing' | 'ready' | 'unmatched' | 'failed' | 'skipped';
+export type ExternalImportItem = {
+ id: string;
+ batchId: string;
+ itemIndex: number;
+ kind: ExternalImportKind;
+ originalName: string;
+ mimeType: string;
+ bytes: number;
+ matchedSceneId?: string;
+ matchedTimeSeconds?: number;
+ status: ExternalImportItemStatus;
+ resourceType?: 'scene_asset' | 'voice_asset' | 'transcript';
+ resourceId?: string;
+ error?: string;
+ payload: {
+  detectedBy?: 'timecode' | 'scene-number' | 'manual' | 'none';
+  normalizedMarker?: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type ExternalImportBatch = {
+ id: string;
+ channelId: string;
+ scriptId: string;
+ visualPromptSetId?: string;
+ status: 'planned' | 'processing' | 'partial' | 'completed' | 'failed';
+ payload: {
+  voiceAssetId?: string;
+  sourceLabel?: string;
+ };
+ items: ExternalImportItem[];
+ createdAt: string;
+ updatedAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
