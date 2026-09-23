@@ -307,7 +307,58 @@ export type UniverseMarketIntelligence = {
  limitations: string[];
 };
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; createdAt: string; updatedAt: string };
+export type ChannelBrainCharacter = {
+ id: string;
+ name: string;
+ role: string;
+ traits: string[];
+ knows: string[];
+ doesNotKnow: string[];
+ rules: string[];
+};
+export type ChannelBrainLearning = {
+ id: string;
+ type: 'audience' | 'performance' | 'editorial' | 'production' | 'operator';
+ statement: string;
+ evidence: string[];
+ confidence: 'low' | 'medium' | 'high';
+ createdAt: string;
+};
+export type ChannelBrainPayload = {
+ kind: 'channel-brain';
+ channelId: string;
+ constitution: {
+  premise: string;
+  audience: string;
+  editorialPromise: string;
+  worldview: string;
+  tone: string[];
+  languageRules: string[];
+  humor: string[];
+  universeRules: string[];
+  forbidden: string[];
+  metaphors: string[];
+ };
+ characters: ChannelBrainCharacter[];
+ narrative: {
+  currentArc: string;
+  stateSummary: string;
+  lastEpisodeId?: string;
+  establishedConcepts: string[];
+  partialConcepts: string[];
+  unknownConcepts: string[];
+  openThreads: string[];
+  resolvedThreads: string[];
+  doNotRepeat: string[];
+  nextConcepts: string[];
+ };
+ learnings: ChannelBrainLearning[];
+ createdAt: string;
+ updatedAt: string;
+};
+export type ChannelBrain = ChannelBrainPayload & { version: number };
+export type ChannelBrainVersion = { version: number; payload: ChannelBrainPayload; createdAt: string };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
-export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
+export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
