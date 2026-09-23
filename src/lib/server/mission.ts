@@ -9,6 +9,7 @@ import { runRadar } from './jobs';
 import { runOpportunityReport } from './opportunity-report';
 import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
+import { isYouTubeSearchQuotaError } from './youtube';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
 
@@ -185,18 +186,27 @@ export async function runMission():Promise<MissionBrief>{
     }
 
     // Keep the market fresh even when no immediate production candidate exists.
+    let youtubeSearchAvailable=health.youtube;
     if(health.youtube){
       try{
         const message=await runRadar(false,false);
         workCompleted.push(message);
         state=await loadMissionState();
       }catch(error){
-        blockers.push(`Radar: ${error instanceof Error?error.message:'falha não identificada'}`);
+        if(isYouTubeSearchQuotaError(error)){
+          youtubeSearchAvailable=false;
+          blockers.push('Radar: cota de search.list do YouTube indisponível. Novas descobertas foram pausadas nesta missão.');
+          notes.push('Modo quota-degraded: o sistema continuou trabalhando apenas com estudos e Opportunity Reports já existentes.');
+        }else{
+          blockers.push(`Radar: ${error instanceof Error?error.message:'falha não identificada'}`);
+        }
       }
     }
 
-    // Open at most one new deep investigation per mission.
-    if(health.youtube&&health.openai&&Date.now()-startedMs<165000){
+    // Open at most one new deep investigation per mission. Skip this when the
+    // granular YouTube search bucket is exhausted, because Channel Study also
+    // depends on search.list for the strongest-video candidate set.
+    if(youtubeSearchAvailable&&health.openai&&Date.now()-startedMs<165000){
       const studiedIds=new Set(state.studies.map(study=>study.source.id));
       const candidate=state.channels.filter(channel=>!studiedIds.has(channel.id)).sort(compareMissionCandidates)[0];
       if(candidate){
