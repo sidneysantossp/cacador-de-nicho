@@ -47,16 +47,18 @@ create table if not exists public.radar_visual_prompt_sets(id uuid primary key,c
 create index if not exists radar_visual_prompt_sets_channel_updated on public.radar_visual_prompt_sets(channel_id,updated_at desc);
 create table if not exists public.radar_visual_prompt_set_versions(id bigint generated always as identity primary key,prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,version int not null check(version>=1),status text not null,payload jsonb not null,created_at timestamptz not null default now(),unique(prompt_set_id,version));
 create index if not exists radar_visual_prompt_set_versions_set_version on public.radar_visual_prompt_set_versions(prompt_set_id,version desc);
-create table if not exists public.radar_scene_assets(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,scene_plan_id uuid not null references public.radar_scene_plans(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,variant int not null check(variant>=1),asset_kind text not null check(asset_kind in ('image','video','graphic')),source_type text not null check(source_type in ('generated','uploaded')),provider text,status text not null default 'processing' check(status in ('queued','processing','ready','failed','rejected')),selected boolean not null default false,storage_path text not null default '',mime_type text not null default '',original_name text,bytes bigint not null default 0 check(bytes>=0),width int,height int,duration_seconds numeric,payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(visual_prompt_set_id,scene_id,variant));
+create table if not exists public.radar_scene_assets(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,scene_plan_id uuid not null references public.radar_scene_plans(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,variant int not null check(variant>=1),asset_kind text not null check(asset_kind in ('image','video','graphic')),source_type text not null check(source_type in ('generated','uploaded','stock')),provider text,status text not null default 'processing' check(status in ('queued','processing','ready','failed','rejected')),selected boolean not null default false,storage_path text not null default '',mime_type text not null default '',original_name text,bytes bigint not null default 0 check(bytes>=0),width int,height int,duration_seconds numeric,payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(visual_prompt_set_id,scene_id,variant));
 create index if not exists radar_scene_assets_channel_updated on public.radar_scene_assets(channel_id,updated_at desc);
 create index if not exists radar_scene_assets_scene_variant on public.radar_scene_assets(visual_prompt_set_id,scene_id,variant desc);
 create unique index if not exists radar_scene_assets_one_selected on public.radar_scene_assets(visual_prompt_set_id,scene_id) where selected=true;
+create table if not exists public.radar_stock_searches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,provider text not null check(provider in ('pexels','pixabay')),media_kind text not null check(media_kind in ('image','video')),query text not null,result_count int not null default 0 check(result_count>=0),payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
+create index if not exists radar_stock_searches_scene_created on public.radar_stock_searches(visual_prompt_set_id,scene_id,created_at desc);
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -84,7 +86,7 @@ declare next_variant int;
 begin
 perform pg_advisory_xact_lock(hashtext('scene-asset:'||p_visual_prompt_set_id::text||':'||p_scene_id::text));
 if p_asset_kind not in ('image','video','graphic') then raise exception 'invalid asset kind';end if;
-if p_source_type not in ('generated','uploaded') then raise exception 'invalid asset source';end if;
+if p_source_type not in ('generated','uploaded','stock') then raise exception 'invalid asset source';end if;
 if not exists(select 1 from public.radar_visual_prompt_sets v join public.radar_scene_plans s on s.id=v.scene_plan_id where v.id=p_visual_prompt_set_id and v.channel_id=p_channel_id and v.episode_id=p_episode_id and v.scene_plan_id=p_scene_plan_id and v.status='approved' and s.status='approved' and exists(select 1 from jsonb_array_elements(s.payload->'scenes') scene where scene->>'id'=p_scene_id::text)) then raise exception 'scene not eligible';end if;
 select coalesce(max(variant),0)+1 into next_variant from public.radar_scene_assets where visual_prompt_set_id=p_visual_prompt_set_id and scene_id=p_scene_id;
 insert into public.radar_scene_assets(id,channel_id,episode_id,scene_plan_id,visual_prompt_set_id,scene_id,variant,asset_kind,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload)
@@ -366,7 +368,7 @@ grant execute on function public.radar_allow_login(text) to service_role;
 create or replace function public.radar_get_secret(p_secret_name text) returns text
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') then raise exception 'secret not allowed';end if;
 return (select d.decrypted_secret from vault.decrypted_secrets d where d.name=p_secret_name limit 1);
 end $$;
 
@@ -374,7 +376,7 @@ create or replace function public.radar_set_secret(p_secret_name text,p_secret_v
 language plpgsql security definer set search_path='' as $$
 declare secret_id uuid;
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
 select d.id into secret_id from vault.decrypted_secrets d where d.name=p_secret_name limit 1;
 if secret_id is null then
  perform vault.create_secret(p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
@@ -386,13 +388,13 @@ end $$;
 create or replace function public.radar_delete_secret(p_secret_name text) returns void
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') then raise exception 'secret not allowed';end if;
 delete from vault.secrets where name=p_secret_name;
 end $$;
 
 create or replace function public.radar_secret_status() returns table(secret_name text,last4 text,updated_at timestamptz)
 language sql security definer set search_path='' as $$
-select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key');
+select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key');
 $$;
 
 revoke all on function public.radar_get_secret(text) from public,anon,authenticated;
