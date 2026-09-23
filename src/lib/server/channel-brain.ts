@@ -88,12 +88,18 @@ export async function saveChannelBrain(
     createdAt:current?.createdAt??payload.createdAt??now,
     updatedAt:now
   };
-  const result=checked(await db().rpc('save_channel_brain',{
+  const result=await db().rpc('save_channel_brain',{
     p_channel_id:payload.channelId,
     p_payload:normalized,
     p_expected_version:expectedVersion
-  }));
-  const version=Number(result);
+  });
+  if(result.error){
+    const message=String(result.error.message??'');
+    if(message.includes('channel brain version conflict'))throw new HttpError('Channel Brain desatualizado. Recarregue a página antes de salvar novamente.',409);
+    if(message.includes('managed channel not found'))throw new HttpError('Canal não encontrado na Gestão de Canais.',404);
+    throw new HttpError('Falha ao salvar o Channel Brain no Supabase.',502);
+  }
+  const version=Number(result.data);
   if(!Number.isFinite(version)||version<1)throw new HttpError('Falha ao versionar o Channel Brain.',502);
   return {...normalized,version};
 }
