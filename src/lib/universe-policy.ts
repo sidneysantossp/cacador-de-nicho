@@ -51,3 +51,12 @@ export function compareUniverseDnaPriority(a:UniverseCompetitor,b:UniverseCompet
 
   return Date.parse(a.dna?.generatedAt??a.importedAt)-Date.parse(b.dna?.generatedAt??b.importedAt);
 }
+
+
+export function selectUniverseDnaBatch(competitors:UniverseCompetitor[],maxItems=5){
+  const limit=Math.max(0,Math.min(maxItems,5));
+  return competitors
+    .filter(competitor=>!competitor.dna)
+    .sort(compareUniverseDnaPriority)
+    .slice(0,limit);
+}
