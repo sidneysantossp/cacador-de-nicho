@@ -79,12 +79,16 @@ create table if not exists public.radar_production_quality_reports(id uuid prima
 create index if not exists radar_production_quality_channel_updated on public.radar_production_quality_reports(channel_id,updated_at desc);
 create table if not exists public.radar_production_quality_versions(id bigint generated always as identity primary key,quality_report_id uuid not null references public.radar_production_quality_reports(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('blocked','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(quality_report_id,version));
 create index if not exists radar_production_quality_versions_report_version on public.radar_production_quality_versions(quality_report_id,version desc);
+create table if not exists public.radar_publication_packages(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,quality_report_id uuid not null unique references public.radar_production_quality_reports(id) on delete cascade,render_job_id uuid not null references public.radar_render_jobs(id) on delete cascade,version int not null default 1 check(version>=1),status text not null default 'draft' check(status in ('draft','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index if not exists radar_publication_packages_channel_updated on public.radar_publication_packages(channel_id,updated_at desc);
+create table if not exists public.radar_publication_package_versions(id bigint generated always as identity primary key,publication_package_id uuid not null references public.radar_publication_packages(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('draft','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(publication_package_id,version));
+create index if not exists radar_publication_package_versions_package_version on public.radar_publication_package_versions(publication_package_id,version desc);
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -107,6 +111,8 @@ revoke all on sequence public.radar_video_edit_versions_id_seq from anon,authent
 grant usage,select on sequence public.radar_video_edit_versions_id_seq to service_role;
 revoke all on sequence public.radar_production_quality_versions_id_seq from anon,authenticated;
 grant usage,select on sequence public.radar_production_quality_versions_id_seq to service_role;
+revoke all on sequence public.radar_publication_package_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_publication_package_versions_id_seq to service_role;
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('cacadores-media','cacadores-media',false,524288000,array['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/ogg','audio/flac','audio/webm','image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime'])
@@ -165,6 +171,30 @@ return next_version;
 end $$;
 revoke all on function public.save_production_quality_report(uuid,text,uuid,uuid,uuid,int,text,jsonb,int) from public,anon,authenticated;
 grant execute on function public.save_production_quality_report(uuid,text,uuid,uuid,uuid,int,text,jsonb,int) to service_role;
+
+create or replace function public.save_publication_package(p_package_id uuid,p_channel_id text,p_episode_id uuid,p_quality_report_id uuid,p_render_job_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
+language plpgsql security invoker set search_path='' as $$
+declare current_version int; next_version int;
+begin
+perform pg_advisory_xact_lock(hashtext('publication-package:'||p_package_id::text));
+if p_status not in ('draft','review','approved') then raise exception 'invalid publication package status';end if;
+if not exists(select 1 from public.radar_production_quality_reports q join public.radar_render_jobs r on r.id=q.render_job_id where q.id=p_quality_report_id and q.channel_id=p_channel_id and q.episode_id=p_episode_id and r.id=p_render_job_id and r.channel_id=p_channel_id and r.episode_id=p_episode_id and r.status='completed' and r.output_path is not null) then raise exception 'publication package source not eligible';end if;
+select version into current_version from public.radar_publication_packages where id=p_package_id for update;
+if current_version is null then
+  if exists(select 1 from public.radar_publication_packages where quality_report_id=p_quality_report_id) then raise exception 'quality report already has publication package';end if;
+  if p_expected_version is not null and p_expected_version not in (0,1) then raise exception 'publication package version conflict';end if;
+  insert into public.radar_publication_packages(id,channel_id,episode_id,quality_report_id,render_job_id,version,status,payload) values(p_package_id,p_channel_id,p_episode_id,p_quality_report_id,p_render_job_id,1,p_status,p_payload);
+  insert into public.radar_publication_package_versions(publication_package_id,version,status,payload) values(p_package_id,1,p_status,p_payload);
+  return 1;
+end if;
+if p_expected_version is not null and p_expected_version<>current_version then raise exception 'publication package version conflict';end if;
+next_version:=current_version+1;
+update public.radar_publication_packages set version=next_version,status=p_status,payload=p_payload,updated_at=now() where id=p_package_id;
+insert into public.radar_publication_package_versions(publication_package_id,version,status,payload) values(p_package_id,next_version,p_status,p_payload);
+return next_version;
+end $$;
+revoke all on function public.save_publication_package(uuid,text,uuid,uuid,uuid,text,jsonb,int) from public,anon,authenticated;
+grant execute on function public.save_publication_package(uuid,text,uuid,uuid,uuid,text,jsonb,int) to service_role;
 
 create or replace function public.save_video_edit(p_video_edit_id uuid,p_channel_id text,p_episode_id uuid,p_timeline_id uuid,p_transcript_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
 language plpgsql security invoker set search_path='' as $$
