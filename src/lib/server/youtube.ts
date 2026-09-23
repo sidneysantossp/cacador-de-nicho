@@ -14,8 +14,13 @@ import { evaluateOpportunityCandidate, isoDurationSeconds, MIN_LONG_FORM_SECONDS
 import { claimYouTubeSearch, markYouTubeSearchBlocked, YouTubeSearchBudgetError } from './youtube-search-budget';
 
 export class YouTubeSearchQuotaError extends HttpError {
-  constructor(public reason:string='searchQuotaExceeded'){
-    super('A cota de busca do YouTube (search.list) está indisponível nesta execução. O Radar pausou novas descobertas, mas a missão pode continuar usando dados já coletados.',429);
+  constructor(public reason:string='searchQuotaExceeded',public hardQuota=false){
+    super(
+      hardQuota
+        ?'A cota diária de busca do YouTube (search.list) foi esgotada. O sistema preservará o trabalho já coletado até o reset.'
+        :'O YouTube limitou temporariamente novas buscas. Esta execução parou novas pesquisas para evitar retries inúteis.',
+      429
+    );
     this.name='YouTubeSearchQuotaError';
   }
 }
@@ -60,9 +65,11 @@ async function youtubePage(resource:string,params:Record<string,string>){
       error?:{message?:string;errors?:Array<{reason?:string}>}
     }|null;
     const reasons=(errorBody?.error?.errors??[]).map(item=>String(item.reason??'')).filter(Boolean);
-    const quotaReasons=new Set(['quotaExceeded','dailyLimitExceeded','rateLimitExceeded','userRateLimitExceeded']);
-    const searchQuotaBlocked=resource==='search'&&(response.status===429||reasons.some(reason=>quotaReasons.has(reason)));
-    if(searchQuotaBlocked)throw new YouTubeSearchQuotaError(reasons[0]??`HTTP_${response.status}`);
+    const hardQuotaReasons=new Set(['quotaExceeded','dailyLimitExceeded']);
+    const transientReasons=new Set(['rateLimitExceeded','userRateLimitExceeded']);
+    const hardQuota=resource==='search'&&reasons.some(reason=>hardQuotaReasons.has(reason));
+    const transientSearchLimit=resource==='search'&&(response.status===429||reasons.some(reason=>transientReasons.has(reason)));
+    if(hardQuota||transientSearchLimit)throw new YouTubeSearchQuotaError(reasons[0]??`HTTP_${response.status}`,hardQuota);
     throw new HttpError(
       response.status===403
         ?'YouTube recusou a consulta: confira a chave, API habilitada e as cotas disponíveis.'
@@ -87,7 +94,7 @@ async function youtubeSearch(
   try{
     return await youtube('search',params);
   }catch(error){
-    if(error instanceof YouTubeSearchQuotaError){
+    if(error instanceof YouTubeSearchQuotaError&&error.hardQuota){
       await markYouTubeSearchBlocked(error.reason);
     }
     throw error;
