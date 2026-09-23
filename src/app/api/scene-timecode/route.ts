@@ -6,6 +6,8 @@ import {
   loadScenePlanHistory, saveScenePlan
 } from '@/lib/server/scene-timecode';
 import { scenePlanPayloadSchema } from '@/lib/server/validation';
+import { listTranscriptsByChannel, loadTranscript } from '@/lib/server/transcription-engine';
+import { loadProductionDna } from '@/lib/server/production-dna';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -35,11 +37,22 @@ export async function GET(request:Request){
         loadScenePlanHistory(planId,20)
       ]);
       if(!plan)throw new HttpError('Scene Plan não encontrado.',404);
-      return Response.json({plan,history},{headers:{'Cache-Control':'no-store'}});
+      const [transcript,productionDna]=await Promise.all([
+        loadTranscript(plan.transcriptId),
+        loadProductionDna(plan.channelId)
+      ]);
+      return Response.json({plan,history,transcript,productionDna},{headers:{'Cache-Control':'no-store'}});
     }
 
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
-    return Response.json({plans:await listScenePlans(channelId)},{headers:{'Cache-Control':'no-store'}});
+    const [plans,transcripts]=await Promise.all([
+      listScenePlans(channelId),
+      listTranscriptsByChannel(channelId)
+    ]);
+    return Response.json({
+      plans,
+      transcripts:transcripts.filter(item=>item.status==='approved')
+    },{headers:{'Cache-Control':'no-store'}});
   }catch(e){return errorResponse(e);}
 }
 
