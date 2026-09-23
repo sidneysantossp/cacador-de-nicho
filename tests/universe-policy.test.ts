@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareUniverseDnaPriority, universeCompetitorDue } from '../src/lib/universe-policy';
+import { compareUniverseDnaPriority, selectUniverseDnaBatch, universeCompetitorDue } from '../src/lib/universe-policy';
 import type { UniverseCompetitor } from '../src/lib/types';
 
 function competitor(overrides:Partial<UniverseCompetitor>={}):UniverseCompetitor{
@@ -123,4 +123,38 @@ test('breakout ratio breaks ties after status and signal strength',()=>{
     signalDetails:[{kind:'breakout',strength:'high',title:'Breakout',evidence:'x',observedAt:'2026-09-23T00:00:00Z'}]
   });
   assert.equal([smaller,larger].sort(compareUniverseDnaPriority)[0].id,'larger');
+});
+
+
+test('automatic DNA batches never reanalyze channels that already have DNA',()=>{
+  const ready=competitor({
+    id:'ready',
+    channelId:'ready',
+    status:'production-reference',
+    dna:{
+      generatedAt:'2026-09-23T08:00:00Z',
+      summary:'Resumo',
+      primaryNiche:'History',
+      subniche:'Military History',
+      audienceIntent:'Aprender',
+      editorialPromise:'Explicar eventos',
+      formatSignature:'Documentary',
+      contentPillars:['Wars','People'],
+      recurringEntities:[],
+      titlePatterns:['Why X','How X'],
+      curiosityMechanisms:['Hidden cause','Unexpected consequence'],
+      emotionalDrivers:['Curiosity'],
+      differentiationSignals:[],
+      limitations:['Sample only']
+    }
+  });
+  const pendingA=competitor({id:'pending-a',channelId:'pending-a',status:'watch'});
+  const pendingB=competitor({id:'pending-b',channelId:'pending-b',status:'breakout'});
+  const batch=selectUniverseDnaBatch([ready,pendingA,pendingB],5);
+  assert.deepEqual(batch.map(item=>item.id),['pending-b','pending-a']);
+});
+
+test('automatic DNA batches are capped at five competitors',()=>{
+  const items=Array.from({length:8},(_,index)=>competitor({id:`p-${index}`,channelId:`p-${index}`}));
+  assert.equal(selectUniverseDnaBatch(items,25).length,5);
 });
