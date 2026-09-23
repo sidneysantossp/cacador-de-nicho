@@ -14,8 +14,9 @@ import ProductionDnaEditor from './production-dna-editor';
 import ContentOsWorkspace from './content-os-workspace';
 import ScriptEngineWorkspace from './script-engine-workspace';
 import VoiceEngineWorkspace from './voice-engine-workspace';
+import TranscriptionEngineWorkspace from './transcription-engine-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -164,6 +165,7 @@ export default function ChannelBrainPage({
     {id:'content',label:'Content OS',icon:<Sparkles size={15}/>},
     {id:'scripts',label:'Script Engine',icon:<BrainCircuit size={15}/>},
     {id:'voice',label:'Voice Engine',icon:<Sparkles size={15}/>},
+    {id:'transcription',label:'Transcription',icon:<BrainCircuit size={15}/>},
     {id:'production',label:'Production DNA',icon:<Sparkles size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
@@ -234,6 +236,7 @@ export default function ChannelBrainPage({
     {tab==='content'&&<ContentOsWorkspace channel={channel} brain={current}/>}
     {tab==='scripts'&&<ScriptEngineWorkspace channel={channel}/>}
     {tab==='voice'&&<VoiceEngineWorkspace channel={channel}/>}
+    {tab==='transcription'&&<TranscriptionEngineWorkspace channel={channel}/>}
     {tab==='production'&&<ProductionDnaEditor channel={channel}/>}
 
     {tab==='characters'&&<div className="brain-content">
