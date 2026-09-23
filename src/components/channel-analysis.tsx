@@ -62,7 +62,7 @@ export default function ChannelAnalysis({
             </button>
           </div>
         </label>
-        <small>{mode==='demo'?'Entre na operação para analisar um canal real.':'US English + long form para a busca de similares. Os Top 10 pertencem ao canal informado.'}</small>
+        <small>{mode==='demo'?'Entre na operação para analisar um canal real.':'US English + long form para a busca de similares. Quando search.list estiver indisponível, a anatomia usa os uploads públicos recentes do próprio canal.'}</small>
       </form>
     </section>
 
@@ -214,7 +214,8 @@ export default function ChannelAnalysis({
         </>}
       </section>
 
-      <div className="section-heading"><div><h2>Top 10 long forms por views <span className="count-pill">{study.topVideos.length}</span></h2><p>Metadados públicos; comentários são uma amostra de relevância quando estão disponíveis.</p></div></div>
+      {study.topSampleScope==='recent-uploads'&&<div className="info-strip"><Clock3 size={18}/><span><strong>Modo sem search.list:</strong> estes são os long forms com mais views dentro de até 100 uploads públicos recentes inspecionados. Não representam necessariamente os maiores vídeos históricos do canal.</span></div>}
+      <div className="section-heading"><div><h2>{study.topSampleScope==='recent-uploads'?'Top long forms da amostra recente':'Top 10 long forms por views'} <span className="count-pill">{study.topVideos.length}</span></h2><p>Metadados públicos; comentários são uma amostra de relevância quando estão disponíveis.</p></div></div>
       <div className="study-video-list">
         {study.topVideos.map((video,index)=><article className="study-video" key={video.id}>
           <span className="study-rank">{String(index+1).padStart(2,'0')}</span>
@@ -351,7 +352,7 @@ export default function ChannelAnalysis({
       <section className="panel study-limitations">
         <div className="panel-heading"><BrainCircuit size={20}/><h2>Limites da evidência</h2></div>
         <ul>{study.anatomy.limitations.map((item,i)=><li key={i}>{item}</li>)}</ul>
-        {study.scanTruncated&&<p>A seleção dos Top 10 usa busca ordenada por views entre vídeos long form; o canal informa {study.totalPublicVideos} vídeos públicos e a amostra consultada foi menor que esse total.</p>}
+        {study.scanTruncated&&<p>{study.topSampleScope==='recent-uploads'?'A busca global estava indisponível; o canal informa '+study.totalPublicVideos+' vídeos públicos e a análise usou somente os uploads recentes inspecionados.':'A seleção dos Top 10 usa busca ordenada por views entre vídeos long form; o canal informa '+study.totalPublicVideos+' vídeos públicos e a amostra consultada foi menor que esse total.'}</p>}
       </section>
     </>}
   </>;
