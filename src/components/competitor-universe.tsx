@@ -267,71 +267,84 @@ export default function CompetitorUniverse({
     </section>}
 
 
-    {dnaDetail?.dna&&<div className="universe-dna-overlay" role="presentation" onClick={event=>{if(event.target===event.currentTarget)setDnaDetail(null);}}>
-      <section className="universe-dna-panel" role="dialog" aria-modal="true" aria-label={`Channel DNA de ${dnaDetail.name}`}>
+    {dnaDetail?.dna&&<div className="universe-import-overlay" role="presentation" onClick={event=>{if(event.target===event.currentTarget)setDnaDetail(null);}}>
+      <section className="universe-import-panel" role="dialog" aria-modal="true" aria-label={`Channel DNA de ${dnaDetail.name}`}>
         <button className="universe-import-close" onClick={()=>setDnaDetail(null)} aria-label="Fechar DNA"><X size={18}/></button>
-        <div className="universe-dna-panel-head">
-          <span className="eyebrow">CHANNEL DNA / COMPETITOR INTELLIGENCE</span>
-          <div className="universe-dna-title-row">
-            <div className="universe-identity">
-              {dnaDetail.avatar?<img src={dnaDetail.avatar} alt="" className="universe-avatar"/>:<span className="universe-avatar placeholder">{dnaDetail.name.slice(0,2).toUpperCase()}</span>}
-              <div><h2>{dnaDetail.name}</h2><p>{dnaDetail.handle||dnaDetail.channelId}</p></div>
-            </div>
-            <span className="universe-dna-ready">DNA READY</span>
+        <span className="eyebrow">CHANNEL DNA / COMPETITOR INTELLIGENCE</span>
+        <div className="universe-card-head" style={{marginTop:12,marginBottom:12}}>
+          <div className="universe-identity">
+            {dnaDetail.avatar?<img src={dnaDetail.avatar} alt="" className="universe-avatar"/>:<span className="universe-avatar placeholder">{dnaDetail.name.slice(0,2).toUpperCase()}</span>}
+            <div><h3>{dnaDetail.name}</h3><p>{dnaDetail.handle||dnaDetail.channelId}</p></div>
           </div>
-          <p className="universe-dna-generated">Gerado em {new Date(dnaDetail.dna.generatedAt).toLocaleString('pt-BR')}</p>
+          <span className="universe-status structural">DNA READY</span>
         </div>
 
-        <div className="universe-dna-highlight">
+        <div className="universe-intel-block dna">
           <span>RESUMO EXECUTIVO</span>
           <p>{dnaDetail.dna.summary}</p>
+          <small>Gerado em {new Date(dnaDetail.dna.generatedAt).toLocaleString('pt-BR')}</small>
         </div>
 
-        <div className="universe-dna-facts">
-          <div><span>NICHO</span><strong>{dnaDetail.dna.primaryNiche}</strong></div>
-          <div><span>SUBNICHO</span><strong>{dnaDetail.dna.subniche}</strong></div>
-          <div><span>FORMATO</span><strong>{dnaDetail.dna.formatSignature}</strong></div>
+        <div className="universe-metrics" style={{marginTop:10}}>
+          <div><small>NICHO</small><strong>{dnaDetail.dna.primaryNiche}</strong></div>
+          <div><small>SUBNICHO</small><strong>{dnaDetail.dna.subniche}</strong></div>
+          <div><small>FORMATO</small><strong>{dnaDetail.dna.formatSignature}</strong></div>
+          <div><small>STATUS</small><strong>{statusMeta[dnaDetail.status].label}</strong></div>
         </div>
 
-        <div className="universe-dna-section">
+        <div className="universe-derived-block">
           <span>INTENÇÃO DA AUDIÊNCIA</span>
           <p>{dnaDetail.dna.audienceIntent}</p>
         </div>
 
-        <div className="universe-dna-section emphasis">
+        <div className="universe-derived-block" style={{marginTop:8}}>
           <span>PROMESSA EDITORIAL</span>
           <p>{dnaDetail.dna.editorialPromise}</p>
         </div>
 
-        <div className="universe-dna-grid">
-          <div className="universe-dna-list"><span>PILARES DE CONTEÚDO</span><ul>{dnaDetail.dna.contentPillars.map(item=><li key={item}>{item}</li>)}</ul></div>
-          <div className="universe-dna-list"><span>ENTIDADES RECORRENTES</span><ul>{dnaDetail.dna.recurringEntities.map(item=><li key={item}>{item}</li>)}</ul></div>
-          <div className="universe-dna-list wide"><span>PADRÕES DE TÍTULOS</span><ul>{dnaDetail.dna.titlePatterns.map(item=><li key={item}>{item}</li>)}</ul></div>
-          <div className="universe-dna-list"><span>MECANISMOS DE CURIOSIDADE</span><ul>{dnaDetail.dna.curiosityMechanisms.map(item=><li key={item}>{item}</li>)}</ul></div>
-          <div className="universe-dna-list"><span>DRIVERS EMOCIONAIS</span><ul>{dnaDetail.dna.emotionalDrivers.map(item=><li key={item}>{item}</li>)}</ul></div>
+        <div className="universe-derived-block" style={{marginTop:8}}>
+          <span>PILARES DE CONTEÚDO</span>
+          <div className="universe-tags">{dnaDetail.dna.contentPillars.map(item=><em key={item}>{item}</em>)}</div>
         </div>
 
-        <div className="universe-dna-section">
+        <div className="universe-derived-block" style={{marginTop:8}}>
+          <span>ENTIDADES RECORRENTES</span>
+          <div className="universe-tags">{dnaDetail.dna.recurringEntities.map(item=><em key={item}>{item}</em>)}</div>
+        </div>
+
+        <div className="universe-derived-block" style={{marginTop:8}}>
+          <span>PADRÕES DE TÍTULOS</span>
+          <ol>{dnaDetail.dna.titlePatterns.map(item=><li key={item}>{item}</li>)}</ol>
+        </div>
+
+        <div className="universe-derived-block" style={{marginTop:8}}>
+          <span>MECANISMOS DE CURIOSIDADE</span>
+          <ol>{dnaDetail.dna.curiosityMechanisms.map(item=><li key={item}>{item}</li>)}</ol>
+        </div>
+
+        <div className="universe-derived-block" style={{marginTop:8}}>
+          <span>DRIVERS EMOCIONAIS</span>
+          <div className="universe-tags">{dnaDetail.dna.emotionalDrivers.map(item=><em key={item}>{item}</em>)}</div>
+        </div>
+
+        <div className="universe-derived-block" style={{marginTop:8}}>
           <span>SINAIS DE DIFERENCIAÇÃO</span>
-          <ul>{dnaDetail.dna.differentiationSignals.map(item=><li key={item}>{item}</li>)}</ul>
+          <ol>{dnaDetail.dna.differentiationSignals.map(item=><li key={item}>{item}</li>)}</ol>
         </div>
 
-        <div className="universe-dna-section limitations">
+        <div className="universe-intel-block gap" style={{marginTop:8}}>
           <span>LIMITAÇÕES / O QUE NÃO PODEMOS CONCLUIR</span>
-          <ul>{dnaDetail.dna.limitations.map(item=><li key={item}>{item}</li>)}</ul>
+          {dnaDetail.dna.limitations.map(item=><p key={item} style={{marginBottom:6}}>• {item}</p>)}
         </div>
 
-        <div className="universe-dna-evidence">
-          <span>EVIDÊNCIA OPERACIONAL DO CARD</span>
-          <div>
-            <strong>{compact(dnaDetail.subscribers)}</strong><small>inscritos</small>
-            <strong>{compact(dnaDetail.recentMedianViews)}</strong><small>mediana recente</small>
-            <strong>{dnaDetail.breakoutRatio!==null?`${dnaDetail.breakoutRatio.toFixed(1)}×`:'—'}</strong><small>breakout / inscritos</small>
-            <strong>{dnaDetail.signalDetails?.length??dnaDetail.signals.length}</strong><small>sinais observados</small>
-          </div>
+        <div className="universe-metrics" style={{marginTop:10}}>
+          <div><small>INSCRITOS</small><strong>{compact(dnaDetail.subscribers)}</strong></div>
+          <div><small>MEDIANA RECENTE</small><strong>{compact(dnaDetail.recentMedianViews)}</strong></div>
+          <div><small>BREAKOUT</small><strong>{dnaDetail.breakoutRatio!==null?`${dnaDetail.breakoutRatio.toFixed(1)}×`:'—'}</strong></div>
+          <div><small>SINAIS</small><strong>{dnaDetail.signalDetails?.length??dnaDetail.signals.length}</strong></div>
         </div>
 
-        <div className="universe-dna-panel-actions">
+        <div className="universe-card-actions" style={{marginTop:16}}>
           <button className="button subtle" onClick={()=>void onIntelligence([dnaDetail.id])} disabled={!!busy}><Sparkles size={15}/>Atualizar DNA</button>
           <button className="button subtle" onClick={()=>void onAnalyze(dnaDetail)} disabled={!!busy}><BrainCircuit size={15}/>Abrir Anatomia</button>
           <a className="button subtle" href={dnaDetail.url} target="_blank" rel="noreferrer">YouTube <ArrowUpRight size={15}/></a>
