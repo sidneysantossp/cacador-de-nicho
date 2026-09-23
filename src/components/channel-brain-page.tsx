@@ -9,8 +9,9 @@ import type {
   ChannelBrain, ChannelBrainCharacter, ChannelBrainLearning, ChannelBrainPayload,
   ChannelBrainVersion, ManagedChannel
 } from '@/lib/types';
+import NarrativeStrategy from './narrative-strategy';
 
-type Tab='constitution'|'narrative'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -154,6 +155,7 @@ export default function ChannelBrainPage({
   const tabs:Array<{id:Tab;label:string;icon:React.ReactNode;count?:number}>=[
     {id:'constitution',label:'Constituição',icon:<ShieldCheck size={15}/>},
     {id:'narrative',label:'Narrative State',icon:<Workflow size={15}/>},
+    {id:'arcs',label:'Arcos & Progressão',icon:<BrainCircuit size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
     {id:'history',label:'Versões',icon:<History size={15}/>,count:history.length}
@@ -217,6 +219,8 @@ export default function ChannelBrainPage({
       </div>
       <ListField label="PRÓXIMOS CONCEITOS POSSÍVEIS" value={draft.narrative.nextConcepts} onChange={v=>narrative('nextConcepts',v)}/>
     </div>}
+
+    {tab==='arcs'&&<NarrativeStrategy channel={channel} brain={current}/>}
 
     {tab==='characters'&&<div className="brain-content">
       <div className="brain-section-head"><div><span>CHARACTER KNOWLEDGE</span><h2>O personagem também tem memória.</h2><p>Defina o que cada personagem sabe, ainda não sabe e nunca deve contradizer.</p></div><button className="button subtle" onClick={addCharacter}><Plus size={15}/>Novo personagem</button></div>
