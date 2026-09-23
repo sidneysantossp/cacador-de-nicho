@@ -1356,6 +1356,66 @@ export type PublicationPackageVersion = {
  payload: PublicationPackagePayload;
  createdAt: string;
 };
+
+export type YouTubeConnectionStatus = 'connected' | 'needs-reauth' | 'disconnected';
+export type YouTubeConnection = {
+ id: string;
+ channelId: string;
+ youtubeChannelId: string;
+ youtubeTitle: string;
+ youtubeHandle?: string;
+ youtubeThumbnail?: string;
+ scopes: string[];
+ status: YouTubeConnectionStatus;
+ lastValidatedAt?: string;
+ error?: string;
+ createdAt: string;
+ updatedAt: string;
+};
+export type YouTubePublishJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type YouTubePublishPayload = {
+ kind: 'youtube-publish-job';
+ channelId: string;
+ packageId: string;
+ packageVersion: number;
+ connectionId: string;
+ youtubeChannelId: string;
+ renderOutputPath: string;
+ thumbnailStoragePath: string;
+ video: {
+  title: string;
+  description: string;
+  tags: string[];
+  categoryId: string;
+  defaultLanguage: string;
+  privacyStatus: PublicationPackageVisibility;
+  license: 'youtube' | 'creativeCommon';
+  selfDeclaredMadeForKids: boolean;
+  containsSyntheticMedia: boolean;
+ };
+ requestedBy: 'operator';
+ createdAt: string;
+};
+export type YouTubePublishJob = {
+ id: string;
+ channelId: string;
+ packageId: string;
+ packageVersion: number;
+ connectionId: string;
+ status: YouTubePublishJobStatus;
+ progress: number;
+ stage: string;
+ attempts: number;
+ youtubeVideoId?: string;
+ youtubeUrl?: string;
+ actualPrivacyStatus?: string;
+ error?: string;
+ payload: YouTubePublishPayload;
+ createdAt: string;
+ startedAt?: string;
+ completedAt?: string;
+ updatedAt: string;
+};
 export type PublicationPackageIssue = {
  code:
   | 'quality-not-approved'
