@@ -94,3 +94,26 @@ Cadência de monitoramento:
 - dormant: 168h.
 
 Mission Control atualiza até 10 concorrentes vencidos e executa um lote de Channel DNA antes de gastar quota de busca no Radar externo. O mercado conhecido é, portanto, a fonte primária de inteligência; search.list atua como complemento.
+
+
+## Universe Curves + Gap Engine
+
+O Universe agrega Channel DNA e sinais estruturados em mecanismos editoriais comparáveis entre criadores independentes.
+
+Regras determinísticas:
+- 1 criador independente = hypothesis;
+- 2 criadores = emerging;
+- 3+ criadores = structural;
+- demandStatus de gap só pode ser observed quando a curva é structural e existem pelo menos 2 targetEvidenceChannelIds válidos;
+- com 1 target evidence, o gap é partial;
+- sem target evidence, permanece hypothesis;
+- sampleSaturation descreve apenas a amostra do Universe, nunca o YouTube inteiro.
+
+A seleção de evidência usa até 40 concorrentes com DNA, com limite por cluster para impedir que um único nicho domine toda a análise. A IA sugere curvas e transferências; o backend valida IDs, recalcula classificação e persiste o relatório como `universe-market-intelligence:latest`.
+
+A UI do Universe possui três visões:
+- Competitors;
+- Curves;
+- Gaps.
+
+Mission Control reexecuta Curves + Gaps somente quando existe Channel DNA novo desde o último relatório e quando há tempo operacional disponível.
