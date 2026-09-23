@@ -18,8 +18,9 @@ import TranscriptionEngineWorkspace from './transcription-engine-workspace';
 import SceneTimecodeWorkspace from './scene-timecode-workspace';
 import VisualPromptEngineWorkspace from './visual-prompt-engine-workspace';
 import AssetFactoryWorkspace from './asset-factory-workspace';
+import StockMediaWorkspace from './stock-media-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -172,6 +173,7 @@ export default function ChannelBrainPage({
     {id:'scenes',label:'Scene Timecode',icon:<Sparkles size={15}/>},
     {id:'visual',label:'Visual Prompt Engine',icon:<Sparkles size={15}/>},
     {id:'assets',label:'Asset Factory',icon:<Sparkles size={15}/>},
+    {id:'stock',label:'Stock Media',icon:<Sparkles size={15}/>},
     {id:'production',label:'Production DNA',icon:<Sparkles size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
@@ -246,6 +248,7 @@ export default function ChannelBrainPage({
     {tab==='scenes'&&<SceneTimecodeWorkspace channel={channel}/>}
     {tab==='visual'&&<VisualPromptEngineWorkspace channel={channel}/>}
     {tab==='assets'&&<AssetFactoryWorkspace channel={channel}/>}
+    {tab==='stock'&&<StockMediaWorkspace channel={channel}/>}
     {tab==='production'&&<ProductionDnaEditor channel={channel}/>}
 
     {tab==='characters'&&<div className="brain-content">
