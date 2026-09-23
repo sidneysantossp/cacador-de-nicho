@@ -165,6 +165,8 @@ export default function CompetitorUniverse({
   const signals=competitors.filter(item=>item.signals.length>0).length;
   const breakout=competitors.filter(item=>item.status==='breakout').length;
   const dnaReady=competitors.filter(item=>!!item.dna).length;
+  const dnaPending=Math.max(0,competitors.length-dnaReady);
+  const dnaProgressPct=competitors.length?Math.round((dnaReady/competitors.length)*100):0;
   const gaps=intelligence?.gaps.length??0;
   const curves=intelligence?.curves.length??0;
   const competitorName=(channelId:string)=>competitors.find(item=>item.channelId===channelId)?.name??channelId;
@@ -178,7 +180,7 @@ export default function CompetitorUniverse({
       </div>
       <div className="universe-hero-actions">
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar atrasados'}</button>
-        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':'Rodar inteligência'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length||dnaPending===0} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':dnaPending===0?'DNA completo':'Gerar próximo lote DNA'}</button>
         <button className="button subtle" disabled={mode==='demo'||!!busy||dnaReady<2} onClick={()=>void onCurves()}><Layers3 size={16}/>{busy==='universeCurves'?'Extraindo…':'Extrair curvas'}</button>
         <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar concorrentes</button>
       </div>
@@ -192,6 +194,21 @@ export default function CompetitorUniverse({
       <div><BrainCircuit size={18}/><span>DNA PRONTO</span><strong>{dnaReady}</strong></div>
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
     </section>
+
+    {competitors.length>0&&<section className="universe-bootstrap">
+      <div className="universe-bootstrap-head">
+        <div>
+          <span className="eyebrow">CHANNEL DNA / PIPELINE</span>
+          <h3>{dnaReady} de {competitors.length} concorrentes com DNA persistido</h3>
+          <p>{dnaPending} pendente(s) · lotes de até 5 · prioridade por status, sinais fortes, breakout e atividade recente</p>
+        </div>
+        <button className="button primary small" disabled={mode==='demo'||!!busy||dnaPending===0} onClick={()=>void onIntelligence([])}>
+          <Sparkles size={15}/>{busy==='universeIntelligence'?'Gerando lote…':dnaPending===0?'DNA concluído':'Gerar próximo lote'}
+        </button>
+      </div>
+      <div className="universe-bootstrap-bar"><span style={{width:`${dnaProgressPct}%`}}/></div>
+      <small>{dnaProgressPct}% concluído. Canais já analisados não entram novamente nos lotes automáticos; “Atualizar DNA” continua disponível individualmente.</small>
+    </section>}
 
     {queue&&queue.total>0&&<section className="universe-bootstrap">
       <div className="universe-bootstrap-head">
@@ -284,6 +301,12 @@ export default function CompetitorUniverse({
           <p>{dnaDetail.dna.summary}</p>
           <small>Gerado em {new Date(dnaDetail.dna.generatedAt).toLocaleString('pt-BR')}</small>
         </div>
+
+        {dnaDetail.dna.provenance&&<div className="universe-derived-block" style={{marginTop:8}}>
+          <span>PROCEDÊNCIA / AUDITORIA</span>
+          <p>{dnaDetail.dna.provenance.generatedBy} · schema v{dnaDetail.dna.provenance.schemaVersion}{dnaDetail.dna.provenance.model?` · ${dnaDetail.dna.provenance.model}`:''}</p>
+          <small>{dnaDetail.dna.provenance.sourceVideoCount} vídeo(s) + {dnaDetail.dna.provenance.sourceSignalCount} sinal(is) na evidência · snapshot {new Date(dnaDetail.dna.provenance.observedAt).toLocaleString('pt-BR')}</small>
+        </div>}
 
         <div className="universe-metrics" style={{marginTop:10}}>
           <div><small>NICHO</small><strong>{dnaDetail.dna.primaryNiche}</strong></div>
