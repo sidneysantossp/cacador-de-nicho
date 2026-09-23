@@ -69,6 +69,14 @@ export async function listPerformanceObservations(channelId:string):Promise<Perf
   return (rows??[]).map(row=>normalizeObservation(row as ObservationRow));
 }
 
+export async function loadPerformanceObservation(observationId:string):Promise<PerformanceObservation|null>{
+  const row=checked(await db().from('radar_performance_observations')
+    .select(observationSelection)
+    .eq('id',observationId)
+    .maybeSingle());
+  return row?normalizeObservation(row as ObservationRow):null;
+}
+
 export async function listPerformanceReports(channelId:string):Promise<PerformanceReport[]>{
   const rows=checked(await db().from('radar_performance_reports')
     .select(reportSelection)
