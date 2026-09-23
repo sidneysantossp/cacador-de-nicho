@@ -295,7 +295,19 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
                currentSource?.signedUrl&&currentSource.kind==='video'?<video src={currentSource.signedUrl} muted autoPlay={playing} loop playsInline/>:
                <div className="video-preview-missing"><AlertTriangle size={28}/>Preview indisponível</div>}
             </div>
-            {currentCue&&<div className={'video-preview-caption '+draft.captions.position} style={{fontSize:Math.max(12,draft.captions.fontSize*.42),background:'rgba(0,0,0,'+draft.captions.backgroundOpacity+')'}}>{currentCue.text}</div>}
+            {currentCue&&<div className={'video-preview-caption '+draft.captions.position} style={{
+              fontSize:Math.max(12,draft.captions.fontSize*.42),
+              background:'rgba(0,0,0,'+draft.captions.backgroundOpacity+')',
+              color:draft.captions.style.primaryColor,
+              fontFamily:draft.captions.style.fontFamily,
+              fontWeight:draft.captions.style.fontWeight,
+              textTransform:draft.captions.style.uppercase?'uppercase':'none',
+              WebkitTextStroke:Math.max(0,draft.captions.style.outlineWidth*.35)+'px '+draft.captions.style.outlineColor
+            }}>{currentCue.words.length?currentCue.words.map((word,index)=>{
+              const active=draft.captions.style.highlightMode==='active-word'&&playhead>=word.startSeconds&&playhead<word.endSeconds;
+              const keyword=draft.captions.style.highlightMode==='keywords'&&word.highlighted;
+              return <span key={word.id} style={{color:active||keyword?draft.captions.style.highlightColor:draft.captions.style.primaryColor}}>{index?' ':''}{word.text}</span>;
+            }):currentCue.text}</div>}
             {currentOverlays.map(overlay=><div key={overlay.id} className="video-preview-overlay" style={{
               left:(overlay.x*100)+'%',top:(overlay.y*100)+'%',width:(overlay.width*100)+'%',height:(overlay.height*100)+'%',
               opacity:overlay.opacity,fontSize:Math.max(10,overlay.fontSize*.38)
@@ -337,15 +349,34 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
       {tab==='captions'&&<div className="video-editor-content">
         <section className="video-settings-card">
-          <div className="video-section-head"><div><span>CAPTION STYLE</span><h3>Legendas sincronizadas ao transcript.</h3></div><label className="video-toggle"><input type="checkbox" checked={draft.captions.enabled} onChange={e=>setDraft({...draft,captions:{...draft.captions,enabled:e.target.checked}})}/><span>Ativas</span></label></div>
+          <div className="video-section-head"><div><span>CAPTION SYSTEM</span><h3>Estilo do canal + word timing + destaque.</h3><p>{draft.captions.styleDescription||'Sem descrição de estilo no Production DNA.'}</p></div><label className="video-toggle"><input type="checkbox" checked={draft.captions.enabled} onChange={e=>setDraft({...draft,captions:{...draft.captions,enabled:e.target.checked}})}/><span>Ativas</span></label></div>
           <div className="video-grid four">
             <label>Posição<select value={draft.captions.position} onChange={e=>setDraft({...draft,captions:{...draft.captions,position:e.target.value as VideoEditPayload['captions']['position']}})}><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
             <label>Font size<input type="number" min="10" max="160" value={draft.captions.fontSize} onChange={e=>setDraft({...draft,captions:{...draft.captions,fontSize:Number(e.target.value)}})}/></label>
             <label>Max lines<input type="number" min="1" max="6" value={draft.captions.maxLines} onChange={e=>setDraft({...draft,captions:{...draft.captions,maxLines:Number(e.target.value)}})}/></label>
             <label>Background<input type="number" min="0" max="1" step=".05" value={draft.captions.backgroundOpacity} onChange={e=>setDraft({...draft,captions:{...draft.captions,backgroundOpacity:Number(e.target.value)}})}/></label>
+            <label>Font family<input value={draft.captions.style.fontFamily} onChange={e=>updateCaptionStyle({fontFamily:e.target.value})}/></label>
+            <label>Weight<select value={draft.captions.style.fontWeight} onChange={e=>updateCaptionStyle({fontWeight:Number(e.target.value) as VideoEditPayload['captions']['style']['fontWeight']})}><option value="400">400</option><option value="500">500</option><option value="600">600</option><option value="700">700</option><option value="800">800</option><option value="900">900</option></select></label>
+            <label>Highlight<select value={draft.captions.style.highlightMode} onChange={e=>updateCaptionStyle({highlightMode:e.target.value as VideoEditPayload['captions']['style']['highlightMode']})}><option value="none">None</option><option value="keywords">Keywords</option><option value="active-word">Active word</option></select></label>
+            <label>Words / line<input type="number" min="2" max="20" value={draft.captions.style.maxWordsPerLine} onChange={e=>updateCaptionStyle({maxWordsPerLine:Number(e.target.value)})}/></label>
+            <label>Primary color<input type="color" value={draft.captions.style.primaryColor} onChange={e=>updateCaptionStyle({primaryColor:e.target.value.toUpperCase()})}/></label>
+            <label>Highlight color<input type="color" value={draft.captions.style.highlightColor} onChange={e=>updateCaptionStyle({highlightColor:e.target.value.toUpperCase()})}/></label>
+            <label>Outline color<input type="color" value={draft.captions.style.outlineColor} onChange={e=>updateCaptionStyle({outlineColor:e.target.value.toUpperCase()})}/></label>
+            <label>Outline width<input type="number" min="0" max="12" step=".5" value={draft.captions.style.outlineWidth} onChange={e=>updateCaptionStyle({outlineWidth:Number(e.target.value)})}/></label>
+            <label>Safe margin %<input type="number" min="0" max="25" step=".5" value={draft.captions.style.safeMarginPercent} onChange={e=>updateCaptionStyle({safeMarginPercent:Number(e.target.value)})}/></label>
+          </div>
+          <div className="video-caption-toggles">
+            <label className="video-check"><input type="checkbox" checked={draft.captions.style.smartBreaks} onChange={e=>updateCaptionStyle({smartBreaks:e.target.checked})}/><span>Quebras inteligentes</span></label>
+            <label className="video-check"><input type="checkbox" checked={draft.captions.style.uppercase} onChange={e=>updateCaptionStyle({uppercase:e.target.checked})}/><span>Uppercase</span></label>
           </div>
         </section>
-        <div className="video-caption-list">{draft.captions.cues.map(cue=><article key={cue.id}><div><strong>{time(cue.startSeconds)} → {time(cue.endSeconds)}</strong><small>{cue.transcriptSegmentId.slice(0,8)}</small></div><textarea rows={2} value={cue.text} onChange={e=>setDraft({...draft,captions:{...draft.captions,cues:draft.captions.cues.map(item=>item.id===cue.id?{...item,text:e.target.value}:item)}})}/></article>)}</div>
+        <div className="video-caption-list">{draft.captions.cues.map(cue=><article key={cue.id}>
+          <div><strong>{time(cue.startSeconds)} → {time(cue.endSeconds)}</strong><small>{cue.transcriptSegmentId.slice(0,8)}</small></div>
+          <div className="video-caption-edit">
+            <textarea rows={2} value={cue.text} onChange={e=>setDraft({...draft,captions:{...draft.captions,cues:draft.captions.cues.map(item=>item.id===cue.id?{...item,text:e.target.value}:item)}})}/>
+            {!!cue.words.length&&<div className="video-caption-words">{cue.words.map(word=><button key={word.id} className={word.highlighted?'active':''} onClick={()=>toggleCaptionWord(cue.id,word.id)} title={time(word.startSeconds)+' → '+time(word.endSeconds)}>{word.text}</button>)}</div>}
+          </div>
+        </article>)}</div>
       </div>}
 
       {tab==='overlays'&&<div className="video-editor-content">
@@ -365,14 +396,40 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
       {tab==='audio'&&<div className="video-editor-content">
         <section className="video-settings-card">
-          <div className="video-section-head"><div><span>AUDIO MIX</span><h3>Mix não destrutivo para o render.</h3></div><Volume2 size={21}/></div>
+          <div className="video-section-head"><div><span>AUDIO MIX</span><h3>Narração, música e efeitos.</h3><p>Volumes globais são multiplicados pelos volumes de cada faixa/evento no render.</p></div><Volume2 size={21}/></div>
           <div className="video-grid three">
             <label>Voice volume<input type="number" min="0" max="2" step=".05" value={draft.audioMix.voiceVolume} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,voiceVolume:Number(e.target.value)}})}/></label>
-            <label>Music volume<input type="number" min="0" max="2" step=".05" value={draft.audioMix.musicVolume} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,musicVolume:Number(e.target.value)}})}/></label>
-            <label>SFX volume<input type="number" min="0" max="2" step=".05" value={draft.audioMix.sfxVolume} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,sfxVolume:Number(e.target.value)}})}/></label>
+            <label>Music master<input type="number" min="0" max="2" step=".05" value={draft.audioMix.musicVolume} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,musicVolume:Number(e.target.value)}})}/></label>
+            <label>SFX master<input type="number" min="0" max="2" step=".05" value={draft.audioMix.sfxVolume} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,sfxVolume:Number(e.target.value)}})}/></label>
           </div>
           <label className="video-check"><input type="checkbox" checked={draft.audioMix.normalizeVoice} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,normalizeVoice:e.target.checked}})}/><span>Normalizar narração no render</span></label>
-          <label className="video-check"><input type="checkbox" checked={draft.audioMix.duckMusicUnderVoice} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,duckMusicUnderVoice:e.target.checked}})}/><span>Duck de música durante a voz</span></label>
+          <label className="video-check"><input type="checkbox" checked={draft.audioMix.duckMusicUnderVoice} onChange={e=>setDraft({...draft,audioMix:{...draft.audioMix,duckMusicUnderVoice:e.target.checked}})}/><span>Permitir ducking de música durante a voz</span></label>
+        </section>
+
+        <section className="video-settings-card">
+          <div className="video-section-head"><div><span>MUSIC TRACK</span><h3>Trilha principal do episódio.</h3></div><label className="video-audio-upload">Upload music<input type="file" accept="audio/*" disabled={busy==='audio-upload'} onChange={e=>{void uploadAudio('music',e.target.files?.[0]??null);e.currentTarget.value='';}}/></label></div>
+          <div className="video-grid three">
+            <label>Asset<select value={draft.musicTrack?.assetId??''} onChange={e=>selectMusic(e.target.value)}><option value="">Sem música</option>{musicAssets.map(asset=><option key={asset.id} value={asset.id}>{asset.originalName??asset.id.slice(0,8)} · {asset.durationSeconds?time(asset.durationSeconds):'?'}</option>)}</select></label>
+            {draft.musicTrack&&<><label>Track volume<input type="number" min="0" max="2" step=".05" value={draft.musicTrack.volume} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,volume:Number(e.target.value)}})}/></label>
+            <label>Ducking strength<input type="number" min="0" max="1" step=".05" value={draft.musicTrack.duckingStrength} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,duckingStrength:Number(e.target.value)}})}/></label>
+            <label>Start<input type="number" min="0" max={draft.durationSeconds} step=".05" value={draft.musicTrack.startSeconds} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,startSeconds:Number(e.target.value)}})}/></label>
+            <label>End<input type="number" min="0" max={draft.durationSeconds} step=".05" value={draft.musicTrack.endSeconds} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,endSeconds:Number(e.target.value)}})}/></label>
+            <label>Source start<input type="number" min="0" step=".05" value={draft.musicTrack.sourceStartSeconds} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,sourceStartSeconds:Number(e.target.value)}})}/></label>
+            <label>Fade in<input type="number" min="0" max="60" step=".1" value={draft.musicTrack.fadeInSeconds} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,fadeInSeconds:Number(e.target.value)}})}/></label>
+            <label>Fade out<input type="number" min="0" max="60" step=".1" value={draft.musicTrack.fadeOutSeconds} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,fadeOutSeconds:Number(e.target.value)}})}/></label></>}
+          </div>
+          {draft.musicTrack&&<div className="video-caption-toggles"><label className="video-check"><input type="checkbox" checked={draft.musicTrack.loop} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,loop:e.target.checked}})}/><span>Loop</span></label><label className="video-check"><input type="checkbox" checked={draft.musicTrack.duckUnderVoice} onChange={e=>setDraft({...draft,musicTrack:{...draft.musicTrack!,duckUnderVoice:e.target.checked}})}/><span>Duck under voice</span></label></div>}
+          {!musicAssets.length&&<div className="video-empty-inline">Nenhuma música na Audio Library deste canal.</div>}
+        </section>
+
+        <section className="video-settings-card">
+          <div className="video-section-head"><div><span>SFX EVENTS</span><h3>Efeitos pontuais na timeline.</h3><p>Posicione o playhead para adicionar manualmente ou use Auto SFX.</p></div><div className="video-audio-actions"><button className="button subtle small" disabled={!sfxAssets.length} onClick={autoSfx}><Sparkles size={13}/>Auto SFX</button><label className="video-audio-upload">Upload SFX<input type="file" accept="audio/*" disabled={busy==='audio-upload'} onChange={e=>{void uploadAudio('sfx',e.target.files?.[0]??null);e.currentTarget.value='';}}/></label></div></div>
+          <div className="video-sfx-add"><select defaultValue="" onChange={e=>{addSfx(e.target.value);e.currentTarget.value='';}}><option value="">Adicionar SFX no playhead ({time(playhead)})</option>{sfxAssets.map(asset=><option key={asset.id} value={asset.id}>{asset.originalName??asset.id.slice(0,8)} · {(asset.tags??[]).join(', ')}</option>)}</select></div>
+          <div className="video-sfx-list">{draft.sfxEvents.map(event=>{
+            const asset=audioAssets.find(item=>item.id===event.assetId);
+            return <article key={event.id}><div><strong>{event.eventType}</strong><span>{asset?.originalName??event.assetId.slice(0,8)}</span></div><div className="video-grid four"><label>Start<input type="number" min="0" max={draft.durationSeconds} step=".05" value={event.startSeconds} onChange={e=>setDraft({...draft,sfxEvents:draft.sfxEvents.map(item=>item.id===event.id?{...item,startSeconds:Number(e.target.value)}:item)})}/></label><label>Duration<input type="number" min=".01" max="300" step=".05" value={event.durationSeconds} onChange={e=>setDraft({...draft,sfxEvents:draft.sfxEvents.map(item=>item.id===event.id?{...item,durationSeconds:Number(e.target.value)}:item)})}/></label><label>Volume<input type="number" min="0" max="2" step=".05" value={event.volume} onChange={e=>setDraft({...draft,sfxEvents:draft.sfxEvents.map(item=>item.id===event.id?{...item,volume:Number(e.target.value)}:item)})}/></label><label>Source start<input type="number" min="0" step=".05" value={event.sourceStartSeconds} onChange={e=>setDraft({...draft,sfxEvents:draft.sfxEvents.map(item=>item.id===event.id?{...item,sourceStartSeconds:Number(e.target.value)}:item)})}/></label></div><button className="button subtle small" onClick={()=>setDraft({...draft,sfxEvents:draft.sfxEvents.filter(item=>item.id!==event.id)})}><Trash2 size={13}/>Remover</button></article>;
+          })}</div>
+          {!sfxAssets.length&&<div className="video-empty-inline">Nenhum SFX na Audio Library. Faça upload e use tags como transition, whoosh, pop ou emphasis para automação.</div>}
         </section>
       </div>}
 
