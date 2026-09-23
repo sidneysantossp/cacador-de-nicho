@@ -319,5 +319,37 @@ export const scenePlanPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const visualPromptSetPayloadSchema=z.object({
+ kind:z.literal('visual-prompt-set'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ scenePlanId:z.string().uuid(),
+ scenePlanVersion:z.number().int().min(1).max(100000),
+ productionDnaVersion:z.number().int().min(1).max(100000),
+ styleLock:z.string().trim().max(16000),
+ workflowStage:z.enum(['references','scenes','complete']),
+ characterReferences:z.array(z.object({
+  characterId:z.string().trim().min(1).max(120),
+  refName:z.string().trim().regex(/^#[A-Za-z][A-Za-z0-9]*$/).max(120),
+  prompt:z.string().trim().min(1).max(16000),
+  sceneIds:z.array(z.string().uuid()).max(5000),
+  assetReady:z.boolean()
+ }).strict()).max(100),
+ scenePrompts:z.array(z.object({
+  sceneId:z.string().uuid(),
+  sequence:z.number().int().min(1).max(100000),
+  timecodeLabel:z.string().trim().regex(/^#\d+-\d{2}$/).max(20),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  characterIds:shortList(50,120),
+  referenceNames:z.array(z.string().trim().regex(/^@[A-Za-z][A-Za-z0-9]*$/).max(120)).max(50),
+  direction:z.string().trim().min(1).max(10000),
+  prompt:z.string().trim().min(1).max(30000)
+ }).strict()).max(5000),
+ review:z.object({notes:z.string().trim().max(5000)}).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
