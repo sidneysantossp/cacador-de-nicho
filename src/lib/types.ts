@@ -113,6 +113,9 @@ export type MissionBrief = {
   channelStudies: number;
   opportunityReports: number;
   productionReady: number;
+  competitors?: number;
+  competitorSignals?: number;
+  competitorDna?: number;
  };
  workCompleted: string[];
  productionQueue: Array<{
