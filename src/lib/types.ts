@@ -978,12 +978,54 @@ export type VideoEditClipStyle = {
  transitionOut: VideoEditTransition;
  transitionSeconds: number;
 };
+export type AudioLibraryAsset = {
+ id: string;
+ channelId: string;
+ kind: 'music' | 'sfx';
+ sourceType: 'uploaded' | 'generated' | 'stock';
+ provider?: string;
+ status: 'processing' | 'ready' | 'failed';
+ storagePath: string;
+ mimeType: string;
+ originalName?: string;
+ bytes: number;
+ durationSeconds: number | null;
+ bpm: number | null;
+ favorite: boolean;
+ tags: string[];
+ notes: string;
+ license: SceneAssetLicense;
+ signedUrl: string | null;
+ createdAt: string;
+ updatedAt: string;
+};
+export type VideoEditCaptionWord = {
+ id: string;
+ text: string;
+ startSeconds: number;
+ endSeconds: number;
+ highlighted: boolean;
+};
 export type VideoEditCaptionCue = {
  id: string;
  transcriptSegmentId: string;
  startSeconds: number;
  endSeconds: number;
  text: string;
+ words: VideoEditCaptionWord[];
+};
+export type VideoEditCaptionStyle = {
+ fontFamily: string;
+ fontWeight: 400 | 500 | 600 | 700 | 800 | 900;
+ primaryColor: string;
+ highlightColor: string;
+ outlineColor: string;
+ outlineWidth: number;
+ uppercase: boolean;
+ maxWordsPerLine: number;
+ smartBreaks: boolean;
+ highlightMode: 'none' | 'keywords' | 'active-word';
+ safeMarginPercent: number;
 };
 export type VideoEditOverlay = {
  id: string;
@@ -997,6 +1039,28 @@ export type VideoEditOverlay = {
  height: number;
  opacity: number;
  fontSize: number;
+};
+export type VideoEditMusicTrack = {
+ assetId: string;
+ startSeconds: number;
+ endSeconds: number;
+ sourceStartSeconds: number;
+ loop: boolean;
+ volume: number;
+ fadeInSeconds: number;
+ fadeOutSeconds: number;
+ duckUnderVoice: boolean;
+ duckingStrength: number;
+};
+export type VideoEditSfxEvent = {
+ id: string;
+ assetId: string;
+ eventType: 'scene-transition' | 'emphasis' | 'custom';
+ sceneId?: string;
+ startSeconds: number;
+ sourceStartSeconds: number;
+ durationSeconds: number;
+ volume: number;
 };
 export type VideoEditPayload = {
  kind: 'video-edit';
@@ -1021,6 +1085,8 @@ export type VideoEditPayload = {
   fontSize: number;
   maxLines: number;
   backgroundOpacity: number;
+  styleDescription: string;
+  style: VideoEditCaptionStyle;
   cues: VideoEditCaptionCue[];
  };
  overlays: VideoEditOverlay[];
@@ -1031,6 +1097,8 @@ export type VideoEditPayload = {
   normalizeVoice: boolean;
   duckMusicUnderVoice: boolean;
  };
+ musicTrack: VideoEditMusicTrack | null;
+ sfxEvents: VideoEditSfxEvent[];
  review: {
   notes: string;
  };
@@ -1084,6 +1152,20 @@ export type RenderManifest = {
   storagePath: string;
   mimeType: string;
  };
+ music: {
+  assetId: string;
+  storagePath: string;
+  mimeType: string;
+  durationSeconds: number | null;
+  placement: VideoEditMusicTrack;
+ } | null;
+ sfxEvents: Array<{
+  event: VideoEditSfxEvent;
+  assetId: string;
+  storagePath: string;
+  mimeType: string;
+  durationSeconds: number | null;
+ }>;
  captions: VideoEditPayload['captions'];
  overlays: VideoEditOverlay[];
  audioMix: VideoEditPayload['audioMix'];
@@ -1094,7 +1176,7 @@ export type RenderJobPayload = {
  crf: number;
  audioCodec: 'aac';
  audioBitrateKbps: number;
- compilerVersion: 'render-v1';
+ compilerVersion: 'render-v1' | 'render-v2';
  requestedBy: 'operator';
  manifest: RenderManifest;
 };
