@@ -351,6 +351,7 @@ async function muxVoice(manifest,videoPath,voicePath,outputPath,payload){
   const filters=[];
   if(manifest.audioMix.normalizeVoice)filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   filters.push('volume='+Number(manifest.audioMix.voiceVolume).toFixed(4));
+  filters.push('apad=whole_dur='+rounded(manifest.durationSeconds));
   await run(FFMPEG,[
     '-hide_banner','-loglevel','error','-y',
     '-i',videoPath,
@@ -361,7 +362,6 @@ async function muxVoice(manifest,videoPath,voicePath,outputPath,payload){
     '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
     '-t',String(rounded(manifest.durationSeconds)),
     '-movflags','+faststart',
-    '-shortest',
     outputPath
   ]);
 }
