@@ -29,3 +29,21 @@ Testes locais cobrem sessão, falsificação, expiração, origem e janela de ob
 A tela inicial da operação é o Mission Control. A missão empresarial é encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita. O operador pode executar uma missão manual autenticada por `POST /api/actions` com `{action:"mission"}`.
 
 A missão não relaxa os gates do Radar. Ela prioriza trabalho próximo de produção, atualiza o mercado, aprofunda no máximo um novo candidato e grava um `mission-brief` em `radar_analyses`. O brief mostra somente fila pronta para produção, decisões humanas necessárias e bloqueios reais. Uma oportunidade só entra em Production Ready quando a curva é estrutural e os sinais mínimos de demanda, repetibilidade, lacuna e saturação passam pelas regras determinísticas em `src/lib/mission.ts`.
+
+
+## YouTube Quota Intelligence
+
+Desde junho de 2026, `search.list` usa um bucket granular próprio. O projeto adota um teto operacional de 100 buscas/dia, alinhado à alocação padrão atual, com reset pelo dia do Pacífico.
+
+O orçamento é dividido por finalidade:
+- reference-resolution: 4
+- radar-discovery: 48
+- channel-resolution: 8
+- channel-study: 16
+- similar-channels: 24
+
+O estado diário é persistido em `radar_analyses` como `kind: youtube-search-budget`, portanto não exige migration adicional. Buscas de descoberta e resolução de referências são deduplicadas em janelas de 6 horas. O Radar não pode consumir a reserva de investigação.
+
+Quando o orçamento de uma finalidade se esgota, somente essa finalidade para. Quando o teto global ou uma quota externa dura é atingida, novas buscas são pausadas e o Mission Control continua trabalhando com dados já coletados. Limites temporários 429 não marcam automaticamente o dia inteiro como esgotado.
+
+O Mission Control exibe consumo total, saldo restante, uso por finalidade e quantas buscas redundantes foram evitadas.
