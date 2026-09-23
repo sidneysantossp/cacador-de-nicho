@@ -134,3 +134,16 @@ Implementado:
 - regras de classificação, demanda e seleção cobertas por testes.
 
 Validação: CI completo aprovado no branch `feat/universe-curves-gaps`.
+
+
+## Universe Bootstrap — 228 concorrentes reais
+
+Em 23/09/2026, os três arquivos de concorrentes fornecidos pelo operador foram consolidados em 228 canais únicos e inseridos no Supabase correto `Caçador de Nichos` como fila persistente.
+
+Infraestrutura aplicada:
+- `radar_managed_channels` criada no Supabase;
+- `radar_universe_queue` criada com RLS e grants apenas para service_role;
+- 228 itens inseridos inicialmente com status pending;
+- processamento em lotes de até 25;
+- progresso exposto no dashboard;
+- Mission Control prioriza bootstrap do Universe antes do Radar externo.
