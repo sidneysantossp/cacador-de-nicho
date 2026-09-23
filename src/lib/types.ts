@@ -95,9 +95,50 @@ export type Channel = { id: string; name: string; handle: string; niche: string;
 export type Decision = { id: string; channelId: string; opportunityId?: string; decision: 'approved' | 'rejected' | 'note'; reason: string; createdAt: string };
 export type ResearchContext = { id: string; title: string; content: string; createdAt: string };
 export type Script = { id: string; channelId: string; opportunityId: string; title: string; content: string; createdAt: string; status: 'draft' };
+export type MissionBrief = {
+ kind: 'mission-brief';
+ id: string;
+ objective: string;
+ status: 'completed' | 'partial' | 'blocked';
+ startedAt: string;
+ completedAt: string;
+ health: {
+  supabase: boolean;
+  youtube: boolean;
+  openai: boolean;
+  blockers: string[];
+ };
+ market: {
+  qualifiedChannels: number;
+  channelStudies: number;
+  opportunityReports: number;
+  productionReady: number;
+ };
+ workCompleted: string[];
+ productionQueue: Array<{
+  reportId: string;
+  channelStudyId: string;
+  sourceChannelId: string;
+  title: string;
+  sourceChannel: string;
+  conceptName: string;
+  firstEpisode: string;
+  readiness: 'production-ready';
+  reasons: string[];
+  nextAction: string;
+ }>;
+ decisionsNeeded: Array<{
+  type: 'pilot-decision' | 'evidence-review';
+  title: string;
+  reason: string;
+  reportId?: string;
+ }>;
+ blockers: string[];
+ notes: string[];
+};
 export type Run = { id: string; type: string; status: 'queued' | 'running' | 'completed' | 'failed'; startedAt: string; message: string };
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; createdAt: string; updatedAt: string };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
-export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
+export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
