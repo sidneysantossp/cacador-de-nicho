@@ -156,6 +156,65 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
  }));
 }
 
+const universeCurveCandidate=z.object({
+ key:z.string(),
+ name:z.string(),
+ thesis:z.string(),
+ mechanismSteps:z.array(z.string()).min(3).max(7),
+ supportingChannelIds:z.array(z.string()).min(1).max(12),
+ clusters:z.array(z.string()).max(8),
+ evidence:z.array(z.string()).min(1).max(10),
+ counterEvidence:z.array(z.string()).max(8),
+ recurringTitlePatterns:z.array(z.string()).max(10),
+ transferableVariables:z.array(z.string()).min(1).max(8),
+ limitations:z.array(z.string()).min(1).max(8)
+});
+const universeGapCandidate=z.object({
+ curveKey:z.string(),
+ title:z.string(),
+ targetSpace:z.string(),
+ preservedMechanism:z.string(),
+ changedVariable:z.string(),
+ targetEvidenceChannelIds:z.array(z.string()).max(8),
+ demandEvidence:z.array(z.string()).max(8),
+ sampleSaturation:z.enum(['low','medium','high','uncertain']),
+ rationale:z.string(),
+ risks:z.array(z.string()).max(8),
+ firstTests:z.array(z.string()).min(3).max(5)
+});
+
+export async function analyzeUniverseCurvesAndGaps(competitors:UniverseCompetitor[]){
+ const sample=competitors.filter(item=>!!item.dna).slice(0,40).map(item=>({
+  channelId:item.channelId,
+  name:item.name,
+  cluster:item.cluster,
+  subniche:item.subniche,
+  status:item.status,
+  subscribers:item.subscribers,
+  recentAverageViews:item.recentAverageViews,
+  recentMedianViews:item.recentMedianViews,
+  breakoutRatio:item.breakoutRatio,
+  signals:item.signalDetails??[],
+  dna:item.dna,
+  recentUploads:item.recentUploads.slice(0,8).map(video=>({
+   title:video.title,
+   views:video.views,
+   publishedAt:video.publishedAt
+  }))
+ }));
+ if(sample.length<2)throw new HttpError('O Universe ainda precisa de Channel DNA em pelo menos 2 concorrentes para comparar curvas.',409);
+ return structured(
+  z.object({
+   curves:z.array(universeCurveCandidate).min(1).max(8),
+   gaps:z.array(universeGapCandidate).max(10),
+   limitations:z.array(z.string()).min(1).max(12)
+  }),
+  'universe_curves_gaps',
+  'Compare os concorrentes como evidência de mercado. CURVA significa um mecanismo editorial repetível compartilhado entre canais: combinação de promessa, ângulo, curiosidade, estrutura ou payoff. Não agrupe canais somente porque pertencem ao mesmo tema. Cada supportingChannelId e targetEvidenceChannelId deve existir exatamente na evidência recebida; nunca invente IDs, canais ou vídeos. A classificação hipótese/emergente/estrutural será calculada pelo backend, então NÃO tente classificá-la. GAPS devem preservar uma curva observada e alterar deliberadamente uma variável (tema, perspectiva, público, entidade, formato ou contexto). sampleSaturation descreve apenas a amostra fornecida, nunca o YouTube inteiro. demandEvidence precisa citar evidência realmente fornecida; se não houver evidência no targetSpace, deixe targetEvidenceChannelIds vazio e trate como hipótese na justificativa. firstTests são títulos de vídeos destinados ao público e devem ser em INGLÊS. Explicações, tese, rationale, riscos e limitações devem ser em português. Não infira CTR, retenção, receita, RPM, causalidade ou demanda fora da amostra.',
+  {competitors:sample}
+ );
+}
+
 const channelThumbnailAnalysis=z.object({
  inspected:z.boolean(),
  hitPatterns:z.array(z.string()).max(10),
