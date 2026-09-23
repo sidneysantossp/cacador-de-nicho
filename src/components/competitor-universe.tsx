@@ -27,15 +27,14 @@ const statusMeta:Record<UniverseCompetitorStatus,{label:string;className:string;
 
 function extractInputs(text:string){
   const found:string[]=[];
-  for(const rawLine of text.split(/?
-/)){
+  for(const rawLine of text.split(/\r?\n/)){
     const line=rawLine.trim();
     if(!line)continue;
-    const url=line.match(/https?://(?:www.)?youtube.com/(?:channel/UC[w-]+|user/[w.-]+|@[w.-]+)/i)?.[0];
+    const url=line.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:channel\/UC[\w-]+|user\/[\w.-]+|@[\w.-]+)/i)?.[0];
     if(url){found.push(url.replace(/[),;"']+$/,''));continue;}
-    const channelId=line.match(/UC[w-]{20,}/)?.[0];
+    const channelId=line.match(/\bUC[\w-]{20,}\b/)?.[0];
     if(channelId){found.push(channelId);continue;}
-    const handle=line.match(/(?:^|[s,;"])@[w.-]{2,}/)?.[0]?.trim().replace(/^[,;"]+/,'');
+    const handle=line.match(/(?:^|[\s,;"])@[\w.-]{2,}/)?.[0]?.trim().replace(/^[,;"]+/,'');
     if(handle){found.push(handle);}
   }
   return [...new Set(found)];
