@@ -606,6 +606,60 @@ export type VoiceAsset = {
  createdAt: string;
  updatedAt: string;
 };
+export type TranscriptWord = {
+ id: string;
+ text: string;
+ startSeconds: number;
+ endSeconds: number;
+ type: 'word' | 'audio_event';
+ speakerId?: string;
+ confidence?: number;
+};
+export type TranscriptSegment = {
+ id: string;
+ startSeconds: number;
+ endSeconds: number | null;
+ text: string;
+ wordIds: string[];
+};
+export type TranscriptPayload = {
+ kind: 'transcript';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scriptId: string;
+ voiceAssetId: string;
+ sourceType: 'alignment' | 'scribe' | 'imported';
+ languageCode?: string;
+ text: string;
+ words: TranscriptWord[];
+ segments: TranscriptSegment[];
+ scriptMatchScore: number | null;
+ scriptVersion: number;
+ voiceTake: number;
+ originalFormat?: 'srt' | 'vtt' | 'txt' | 'json';
+ provenance: {
+  provider?: string;
+  model?: string;
+  importedBy?: 'operator';
+ };
+ review: {
+  scriptMismatchOverride: boolean;
+  notes: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type Transcript = TranscriptPayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+export type TranscriptVersion = {
+ version: number;
+ status: Transcript['status'];
+ payload: TranscriptPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
