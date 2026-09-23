@@ -11,8 +11,10 @@ import {
 import { loadScenePlan } from './scene-timecode';
 import { loadTranscript } from './transcription-engine';
 import {
-  buildInitialVideoEdit, normalizeVideoEdit, videoEditApprovalIssues
+  buildInitialVideoEdit, normalizeVideoEdit, upgradeVideoEditPayload, videoEditApprovalIssues
 } from '@/lib/video-editor-policy';
+import { loadProductionDna } from './production-dna';
+import { listAudioAssets } from './audio-library';
 
 type Row={
   id:string;channel_id:string;episode_id:string;timeline_id:string;transcript_id:string;
@@ -20,7 +22,7 @@ type Row={
 };
 
 function normalizeRow(row:Row):VideoEdit{
-  const payload=row.payload as VideoEditPayload;
+  const payload=upgradeVideoEditPayload(row.payload as Record<string,unknown>);
   return {
     ...payload,
     id:row.id,
@@ -69,7 +71,7 @@ export async function loadVideoEditHistory(videoEditId:string,limit=20):Promise<
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as VideoEdit['status'],
-    payload:row.payload as VideoEditPayload,
+    payload:upgradeVideoEditPayload(row.payload as Record<string,unknown>),
     createdAt:String(row.created_at)
   }));
 }
@@ -99,7 +101,8 @@ export async function createVideoEditFromTimeline(timelineId:string):Promise<Vid
   const existing=await loadVideoEditByTimeline(timelineId);
   if(existing)return existing;
   const {timeline,transcript}=await eligibleContext(timelineId);
-  return saveVideoEdit(buildInitialVideoEdit(timeline,transcript),'draft',0);
+  const dna=await loadProductionDna(timeline.channelId);
+  return saveVideoEdit(buildInitialVideoEdit(timeline,transcript,dna),'draft',0);
 }
 
 export async function saveVideoEdit(
@@ -122,7 +125,8 @@ export async function saveVideoEdit(
   });
 
   if(status==='approved'){
-    const issues=videoEditApprovalIssues(normalized,timeline,transcript);
+    const audioAssets=await listAudioAssets(normalized.channelId);
+    const issues=videoEditApprovalIssues(normalized,timeline,transcript,audioAssets);
     if(issues.length)throw new HttpError('Video Edit ainda não pode ser aprovado: '+issues.join(' · ')+'.',409);
   }
 
@@ -163,11 +167,17 @@ export async function videoEditorChannelState(channelId:string){
 
 export async function loadVideoEditWorkspace(edit:VideoEdit){
   const context=await eligibleContext(edit.timelineId);
-  const sources=await loadTimelineSources(context.timeline);
+  const [sources,audioAssets,productionDna]=await Promise.all([
+    loadTimelineSources(context.timeline),
+    listAudioAssets(edit.channelId),
+    loadProductionDna(edit.channelId)
+  ]);
   return {
     timeline:context.timeline,
     transcript:context.transcript,
     scenePlan:context.scenePlan,
-    sources
+    sources,
+    audioAssets,
+    productionDna
   };
 }
