@@ -1048,6 +1048,46 @@ export type VideoEditVersion = {
  createdAt: string;
 };
 export type RenderJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type RenderManifestVisualClip = {
+ clipId: string;
+ sceneId: string;
+ assetId: string;
+ kind: 'image' | 'video';
+ storagePath: string;
+ mimeType: string;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ sourceStartSeconds: number | null;
+ sourceEndSeconds: number | null;
+ playback: 'hold' | 'trim' | 'loop';
+ fit: 'cover' | 'contain' | 'stretch';
+ style: VideoEditClipStyle;
+};
+export type RenderManifest = {
+ videoEditId: string;
+ videoEditVersion: number;
+ timelineId: string;
+ timelineVersion: number;
+ transcriptId: string;
+ transcriptVersion: number;
+ format: {
+  width: number;
+  height: number;
+  fps: number;
+  aspectRatio: string;
+ };
+ durationSeconds: number;
+ visualClips: RenderManifestVisualClip[];
+ voice: {
+  assetId: string;
+  storagePath: string;
+  mimeType: string;
+ };
+ captions: VideoEditPayload['captions'];
+ overlays: VideoEditOverlay[];
+ audioMix: VideoEditPayload['audioMix'];
+};
 export type RenderJobPayload = {
  preset: 'source';
  videoCodec: 'libx264';
@@ -1056,6 +1096,7 @@ export type RenderJobPayload = {
  audioBitrateKbps: number;
  compilerVersion: 'render-v1';
  requestedBy: 'operator';
+ manifest: RenderManifest;
 };
 export type RenderJob = {
  id: string;
