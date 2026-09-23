@@ -24,8 +24,9 @@ import MediaLibraryWorkspace from './media-library-workspace';
 import TimelineEngineWorkspace from './timeline-engine-workspace';
 import VideoEditorWorkspace from './video-editor-workspace';
 import RenderEngineWorkspace from './render-engine-workspace';
+import ProductionQualityWorkspace from './production-quality-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'quality'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -184,6 +185,7 @@ export default function ChannelBrainPage({
     {id:'timeline',label:'Timeline Engine',icon:<Clapperboard size={15}/>},
     {id:'video',label:'Video Editor',icon:<Clapperboard size={15}/>},
     {id:'render',label:'Render Engine',icon:<Clapperboard size={15}/>},
+    {id:'quality',label:'Production QA',icon:<ShieldCheck size={15}/>},
     {id:'production',label:'Production DNA',icon:<Sparkles size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
@@ -264,7 +266,8 @@ export default function ChannelBrainPage({
     {tab==='timeline'&&<TimelineEngineWorkspace channel={channel}/>}
     {tab==='video'&&<VideoEditorWorkspace channel={channel}/>}
     {tab==='render'&&<RenderEngineWorkspace channel={channel}/>}
-    {tab==='production'&&<ProductionDnaEditor channel={channel}/>}
+    {tab==='quality'&&<ProductionQualityWorkspace channel={channel}/>}
+    {tab==='production'&&<ProductionDnaEditor channel={channel}/>} 
 
     {tab==='characters'&&<div className="brain-content">
       <div className="brain-section-head"><div><span>CHARACTER KNOWLEDGE</span><h2>O personagem também tem memória.</h2><p>Defina o que cada personagem sabe, ainda não sabe e nunca deve contradizer.</p></div><button className="button subtle" onClick={addCharacter}><Plus size={15}/>Novo personagem</button></div>
