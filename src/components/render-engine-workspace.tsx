@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Download, Film, LoaderCircle, RefreshCw,
   RotateCcw, Sparkles, Square, XCircle
 } from 'lucide-react';
-import type { ManagedChannel, RenderJob, VideoEdit } from '@/lib/types';
+import type { ManagedChannel, RenderJob, RenderPreset, VideoEdit } from '@/lib/types';
 
 function when(value?:string){
   if(!value)return '—';
@@ -26,6 +26,8 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
   const [jobs,setJobs]=useState<RenderJob[]>([]);
   const [edits,setEdits]=useState<VideoEdit[]>([]);
   const [videoEditId,setVideoEditId]=useState('');
+  const [preset,setPreset]=useState<RenderPreset>('source');
+  const [liveStatus,setLiveStatus]=useState<'connecting'|'live'|'fallback'>('connecting');
   const [crf,setCrf]=useState(20);
   const [audioBitrateKbps,setAudioBitrateKbps]=useState(192);
   const [loading,setLoading]=useState(true);
@@ -55,10 +57,27 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
 
   useEffect(()=>{void load();},[channel.id]);
   useEffect(()=>{
-    if(!active)return;
+    setLiveStatus('connecting');
+    const source=new EventSource('/api/render-engine/events?channelId='+encodeURIComponent(channel.id));
+    const onJobs=(event:Event)=>{
+      try{
+        const body=JSON.parse((event as MessageEvent<string>).data) as {jobs?:RenderJob[]};
+        if(Array.isArray(body.jobs))setJobs(body.jobs);
+      }catch{}
+    };
+    source.addEventListener('jobs',onJobs);
+    source.onopen=()=>setLiveStatus('live');
+    source.onerror=()=>setLiveStatus('fallback');
+    return()=>{
+      source.removeEventListener('jobs',onJobs);
+      source.close();
+    };
+  },[channel.id]);
+  useEffect(()=>{
+    if(!active||liveStatus!=='fallback')return;
     const id=window.setInterval(()=>void load(true),4000);
     return()=>window.clearInterval(id);
-  },[active,channel.id]);
+  },[active,channel.id,liveStatus]);
 
   async function action(body:Record<string,unknown>,key:string){
     setBusy(key);setMessage('');
@@ -88,18 +107,19 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     </section>
 
     <section className="render-create">
-      <div className="render-section-head"><div><span>NEW RENDER</span><h3>Render source-quality.</h3><p>H.264 + AAC, resolução e FPS herdados do Video Edit aprovado.</p></div></div>
-      <div className="render-grid three">
+      <div className="render-section-head"><div><span>NEW RENDER · V3</span><h3>Preset versionado + fallback de encoder.</h3><p>Novos jobs usam render-v3 com saída explícita e fallback libx264 → MPEG-4.</p></div></div>
+      <div className="render-grid four">
         <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.format.width}×{edit.format.height}</option>)}</select></label>
+        <label>Preset<select value={preset} onChange={e=>setPreset(e.target.value as RenderPreset)}><option value="source">Source</option><option value="hd-1080p30">HD 1080p · 30 fps</option><option value="draft-720p30">Draft 720p · 30 fps</option></select></label>
         <label>Qualidade CRF<input type="number" min="18" max="30" step="1" value={crf} onChange={e=>setCrf(Number(e.target.value))}/><small>18 = maior qualidade/arquivo · 30 = menor arquivo</small></label>
         <label>Áudio AAC<input type="number" min="96" max="320" step="16" value={audioBitrateKbps} onChange={e=>setAudioBitrateKbps(Number(e.target.value))}/><small>kbps</small></label>
       </div>
       {selectedEdit&&<div className="render-edit-summary"><strong>Video Edit v{selectedEdit.version}</strong><span>{duration(selectedEdit.durationSeconds)}</span><span>{selectedEdit.clipStyles.length} clips</span><span>{selectedEdit.captions.cues.length} captions</span><span>{selectedEdit.overlays.length} overlays</span></div>}
-      <button className="button primary" disabled={!videoEditId||busy==='create'} onClick={()=>void action({action:'create',videoEditId,crf,audioBitrateKbps},'create')}><Film size={15}/>{busy==='create'?'Enfileirando…':'Enfileirar render'}</button>
+      <button className="button primary" disabled={!videoEditId||busy==='create'} onClick={()=>void action({action:'create',videoEditId,preset,crf,audioBitrateKbps},'create')}><Film size={15}/>{busy==='create'?'Enfileirando…':'Enfileirar render'}</button>
     </section>
 
     <section className="render-jobs">
-      <div className="render-section-head"><div><span>RENDER QUEUE</span><h3>Jobs e outputs.</h3><p>Atualização automática a cada 4 segundos enquanto houver render ativo.</p></div><button className="button subtle small" disabled={busy==='refresh'} onClick={()=>{setBusy('refresh');void load().finally(()=>setBusy(''));}}><RefreshCw size={14}/>Atualizar</button></div>
+      <div className="render-section-head"><div><span>RENDER QUEUE · {liveStatus==='live'?'LIVE SSE':liveStatus==='fallback'?'POLLING FALLBACK':'CONNECTING'}</span><h3>Jobs e outputs.</h3><p>Progresso via SSE em tempo real; polling de 4 s entra somente como fallback de conexão.</p></div><button className="button subtle small" disabled={busy==='refresh'} onClick={()=>{setBusy('refresh');void load().finally(()=>setBusy(''));}}><RefreshCw size={14}/>Atualizar</button></div>
 
       <div className="render-job-list">{jobs.map(job=><article key={job.id} className={job.status}>
         <div className="render-job-top">
@@ -116,10 +136,12 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
         <div className="render-progress"><span style={{width:Math.max(0,Math.min(100,job.progress))+'%'}}/><em>{job.progress}%</em></div>
 
         <div className="render-job-details">
+          <span>{job.payload.compilerVersion}</span>
+          <span>{job.payload.preset??'source'}</span>
           <span>CRF {job.payload.crf}</span>
           <span>AAC {job.payload.audioBitrateKbps} kbps</span>
-          <span>{job.payload.manifest.format.width}×{job.payload.manifest.format.height}</span>
-          <span>{job.payload.manifest.format.fps} fps</span>
+          <span>{(job.payload.outputFormat??job.payload.manifest.format).width}×{(job.payload.outputFormat??job.payload.manifest.format).height}</span>
+          <span>{(job.payload.outputFormat??job.payload.manifest.format).fps} fps</span>
           <span>{duration(job.payload.manifest.durationSeconds)}</span>
           {job.outputBytes!==undefined&&<span>{bytes(job.outputBytes)}</span>}
         </div>
