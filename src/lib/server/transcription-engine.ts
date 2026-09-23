@@ -41,6 +41,15 @@ export async function listTranscripts(scriptId:string):Promise<Transcript[]>{
   return (rows??[]).map(row=>normalizeRow(row as never));
 }
 
+export async function listTranscriptsByChannel(channelId:string):Promise<Transcript[]>{
+  const rows=checked(await db().from('radar_transcripts')
+    .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,payload,created_at,updated_at')
+    .eq('channel_id',channelId)
+    .order('updated_at',{ascending:false})
+    .limit(300));
+  return (rows??[]).map(row=>normalizeRow(row as never));
+}
+
 export async function loadTranscript(transcriptId:string):Promise<Transcript|null>{
   const row=checked(await db().from('radar_transcripts')
     .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,payload,created_at,updated_at')
