@@ -18,6 +18,7 @@ export async function runChannelStudy(input:string):Promise<ChannelStudy>{
   // an otherwise valid channel anatomy when quota/model/network issues affect this stage.
   let similarCandidates:SimilarChannelMatch[]=[];
   const supplementaryLimitations:string[]=[];
+  if(evidence.topSampleScope==='recent-uploads')supplementaryLimitations.push('A busca global do YouTube estava indisponível. O Top sample foi calculado a partir de até 100 uploads públicos recentes do canal, ordenados por views; não representa necessariamente os maiores vídeos históricos do canal.');
   try{
     const config=await settings();
     const candidates=await findNicheLockedSimilarCandidates(nicheProfile,config,evidence.source.id);
@@ -41,6 +42,7 @@ export async function runChannelStudy(input:string):Promise<ChannelStudy>{
     id:`channel-study:${evidence.source.id}`,
     input,
     source:evidence.source,
+    topSampleScope:evidence.topSampleScope,
     scannedVideos:evidence.scannedVideos,
     totalPublicVideos:evidence.totalPublicVideos,
     scanTruncated:evidence.scanTruncated,
