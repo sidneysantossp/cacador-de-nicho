@@ -1,31 +1,32 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { BrainCircuit, Check, ExternalLink, KeyRound, Play, ShieldCheck, Trash2 } from 'lucide-react';
+import { BrainCircuit, Check, ExternalLink, KeyRound, Mic2, Play, ShieldCheck, Trash2 } from 'lucide-react';
 import { modelOptions as fallbackModels } from '@/lib/models';
 import { defaultSettings } from '@/lib/types';
 
-type Provider='openai'|'youtube';
+type Provider='openai'|'youtube'|'elevenlabs';
 type Status={provider:Provider;configured:boolean;source:'vault'|'environment'|null;last4:string|null};
 type Model={id:string;name:string;description:string};
 type Payload={providers:Status[];models:readonly Model[];selection:{analysisModel:string;scriptModel:string};message?:string};
 
 export default function ProviderSettings({authenticated,supabaseConfigured,environmentProviders,onSaved,onMessage}:{authenticated:boolean;supabaseConfigured:boolean;environmentProviders:{openai:boolean;youtube:boolean};onSaved:()=>void;onMessage:(message:string)=>void}){
- const [providers,setProviders]=useState<Status[]>(()=>['openai','youtube'].map(provider=>({provider:provider as Provider,configured:environmentProviders[provider as Provider],source:environmentProviders[provider as Provider]?'environment':null,last4:null})));
+ const [providers,setProviders]=useState<Status[]>(()=>['openai','youtube','elevenlabs'].map(provider=>{const env=provider==='openai'?environmentProviders.openai:provider==='youtube'?environmentProviders.youtube:false;return {provider:provider as Provider,configured:env,source:env?'environment':null,last4:null};}));
  const [models,setModels]=useState<readonly Model[]>(fallbackModels);
  const [analysisModel,setAnalysisModel]=useState(defaultSettings.analysisModel),[scriptModel,setScriptModel]=useState(defaultSettings.scriptModel);
- const [openaiKey,setOpenaiKey]=useState(''),[youtubeKey,setYoutubeKey]=useState(''),[busy,setBusy]=useState('');
+ const [openaiKey,setOpenaiKey]=useState(''),[youtubeKey,setYoutubeKey]=useState(''),[elevenlabsKey,setElevenlabsKey]=useState(''),[busy,setBusy]=useState('');
  async function load(){if(!authenticated||!supabaseConfigured)return;try{const response=await fetch('/api/provider-settings',{cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.message??'Não foi possível abrir o cofre.');apply(body);}catch(error){onMessage(error instanceof Error?error.message:'Não foi possível abrir o cofre.');}}
  useEffect(()=>{void load();},[authenticated,supabaseConfigured]);
  function apply(body:Payload){setProviders(body.providers);setModels(body.models);setAnalysisModel(body.selection.analysisModel);setScriptModel(body.selection.scriptModel);}
  async function send(body:Record<string,unknown>,key:string){setBusy(key);try{const response=await fetch('/api/provider-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.message??'Não foi possível salvar a configuração.');apply(result);onMessage(result.message);onSaved();return true;}catch(error){onMessage(error instanceof Error?error.message:'Não foi possível salvar a configuração.');return false;}finally{setBusy('');}}
  const ready=authenticated&&supabaseConfigured;
- const openai=providers.find(x=>x.provider==='openai')!,youtube=providers.find(x=>x.provider==='youtube')!;
+ const openai=providers.find(x=>x.provider==='openai')!,youtube=providers.find(x=>x.provider==='youtube')!,elevenlabs=providers.find(x=>x.provider==='elevenlabs')!;
  return <section className="provider-section">
   <div className="settings-section-head"><div><span className="eyebrow">CREDENCIAIS & MODELOS</span><h2>Central de inteligência</h2><p>Conecte as fontes da operação e escolha quanto poder usar em cada etapa.</p></div><span className={`vault-state ${ready?'ready':''}`}><ShieldCheck size={16}/>{ready?'Cofre disponível':'Cofre aguardando acesso'}</span></div>
   {!ready&&<div className="config-gate"><KeyRound size={19}/><div><strong>{authenticated?'Supabase ainda não configurado':'Entre na operação para configurar'}</strong><p>{authenticated?'A base privada precisa estar ativa antes de receber chaves.':'As credenciais só podem ser vistas e alteradas depois do login.'}</p></div></div>}
   <div className="provider-grid">
    <CredentialCard provider="openai" title="OpenAI API" description="Pesquisa, anatomia, crítica e roteiros." status={openai} value={openaiKey} onChange={setOpenaiKey} disabled={!ready} busy={busy} icon={<BrainCircuit size={20}/>} placeholder="sk-…" onSave={async()=>{if(await send({action:'saveSecret',provider:'openai',key:openaiKey},'openai-save'))setOpenaiKey('');}} onTest={()=>void send({action:'test',provider:'openai'},'openai-test')} onRemove={()=>void send({action:'removeSecret',provider:'openai'},'openai-remove')}/>
    <CredentialCard provider="youtube" title="YouTube Data API" description="Descoberta e estatísticas públicas dos canais." status={youtube} value={youtubeKey} onChange={setYoutubeKey} disabled={!ready} busy={busy} icon={<Play size={20}/>} placeholder="AIza…" onSave={async()=>{if(await send({action:'saveSecret',provider:'youtube',key:youtubeKey},'youtube-save'))setYoutubeKey('');}} onTest={()=>void send({action:'test',provider:'youtube'},'youtube-test')} onRemove={()=>void send({action:'removeSecret',provider:'youtube'},'youtube-remove')}/>
+   <CredentialCard provider="elevenlabs" title="ElevenLabs" description="Narração e vozes do Voice Engine." status={elevenlabs} value={elevenlabsKey} onChange={setElevenlabsKey} disabled={!ready} busy={busy} icon={<Mic2 size={20}/>} placeholder="sk_…" onSave={async()=>{if(await send({action:'saveSecret',provider:'elevenlabs',key:elevenlabsKey},'elevenlabs-save'))setElevenlabsKey('');}} onTest={()=>void send({action:'test',provider:'elevenlabs'},'elevenlabs-test')} onRemove={()=>void send({action:'removeSecret',provider:'elevenlabs'},'elevenlabs-remove')}/>
   </div>
   <div className="model-panel">
    <div className="model-copy"><span className="integration-icon openai"><BrainCircuit size={18}/></span><div><strong>Modelos da operação</strong><p>A pesquisa e a anatomia usam o modelo de inteligência. O roteiro pode usar um modelo diferente.</p></div></div>
@@ -36,6 +37,6 @@ export default function ProviderSettings({authenticated,supabaseConfigured,envir
 }
 
 function CredentialCard({provider,title,description,status,value,onChange,disabled,busy,icon,placeholder,onSave,onTest,onRemove}:{provider:Provider;title:string;description:string;status:Status;value:string;onChange:(value:string)=>void;disabled:boolean;busy:string;icon:React.ReactNode;placeholder:string;onSave:()=>void;onTest:()=>void;onRemove:()=>void}){
- const prefix=provider==='openai'?'openai':'youtube';
+ const prefix=provider==='openai'?'openai':provider==='youtube'?'youtube':'elevenlabs';
  return <article className="credential-card"><div className="credential-head"><span className={`integration-icon ${prefix}`}>{icon}</span><div><h3>{title}</h3><p>{description}</p></div><span className={`tag ${status.configured?'green':''}`}>{status.configured?(status.last4?`Chave salva · ••••${status.last4}`:'Chave salva'):'Pendente'}</span></div><label>Chave privada<input type="password" autoComplete="new-password" spellCheck={false} placeholder={status.configured?'Cole uma nova chave para substituir':placeholder} value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}/></label><p className="credential-note">{status.source==='vault'?'Cifrada no Supabase Vault. Use “Testar conexão” para validar acesso e quota.':status.source==='environment'?'Definida no ambiente de hospedagem. Use “Testar conexão” para validar acesso e quota.':'O valor nunca retorna para o navegador.'}</p><div className="credential-actions"><button className="button primary small" disabled={disabled||value.trim().length<20||!!busy} onClick={onSave}>{busy===`${prefix}-save`?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy===`${prefix}-test`?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label={`Remover chave ${title}`} disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div></article>;
 }
