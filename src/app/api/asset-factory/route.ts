@@ -1,0 +1,96 @@
+import { z } from 'zod';
+import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
+import { dbConfigured } from '@/lib/server/db';
+import {
+  deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
+  selectSceneAsset, startGoogleVideo, uploadSceneAsset
+} from '@/lib/server/asset-factory';
+
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=300;
+
+const schema=z.discriminatedUnion('action',[
+  z.object({
+    action:z.literal('generateImage'),
+    promptSetId:z.string().uuid(),
+    sceneId:z.string().uuid(),
+    modelId:z.enum(['gemini-3.1-flash-image','gemini-3.1-flash-lite-image','gemini-3-pro-image']).optional(),
+    imageSize:z.enum(['1K','2K','4K']).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('startVideo'),
+    promptSetId:z.string().uuid(),
+    sceneId:z.string().uuid(),
+    modelId:z.enum(['veo-3.1-generate-preview','veo-3.1-fast-generate-preview','veo-3.1-lite-generate-preview']).optional(),
+    resolution:z.enum(['720p','1080p','4k']).optional(),
+    durationSeconds:z.union([z.literal(4),z.literal(6),z.literal(8)]).optional()
+  }).strict(),
+  z.object({action:z.literal('refreshVideo'),assetId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('select'),assetId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('delete'),assetId:z.string().uuid()}).strict()
+]);
+
+export async function GET(request:Request){
+  try{
+    if(!authenticated(request))throw new HttpError('Entre com a senha da operação para continuar.',401);
+    if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Asset Factory.',503);
+    const promptSetId=new URL(request.url).searchParams.get('promptSetId')?.trim();
+    if(!promptSetId||!z.string().uuid().safeParse(promptSetId).success)throw new HttpError('Visual Prompt Set inválido.',400);
+    return Response.json({assets:await listSceneAssets(promptSetId)},{headers:{'Cache-Control':'no-store'}});
+  }catch(e){return errorResponse(e);}
+}
+
+export async function POST(request:Request){
+  try{
+    requireOperator(request);
+    if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Asset Factory.',503);
+    const contentType=request.headers.get('content-type')??'';
+
+    if(contentType.includes('multipart/form-data')){
+      const size=Number(request.headers.get('content-length')??0);
+      if(size>260*1024*1024)throw new HttpError('Upload maior que 250 MB.',413);
+      const form=await request.formData();
+      const promptSetId=String(form.get('promptSetId')??'').trim();
+      const sceneId=String(form.get('sceneId')??'').trim();
+      const file=form.get('file');
+      const licenseType=String(form.get('licenseType')??'owned');
+      if(!z.string().uuid().safeParse(promptSetId).success||!z.string().uuid().safeParse(sceneId).success)throw new HttpError('Cena ou prompt set inválido.',400);
+      if(!(file instanceof File))throw new HttpError('Selecione uma imagem ou vídeo.',400);
+      if(!['owned','licensed','unknown'].includes(licenseType))throw new HttpError('Licença de asset inválida.',400);
+      const asset=await uploadSceneAsset({
+        promptSetId,sceneId,file,
+        license:{
+          type:licenseType as 'owned'|'licensed'|'unknown',
+          label:licenseType==='owned'?'Operator-owned external asset':licenseType==='licensed'?'Externally licensed asset':'License not declared'
+        }
+      });
+      return Response.json({message:'Asset externo salvo como nova variante.',asset,assets:await listSceneAssets(promptSetId)});
+    }
+
+    if(Number(request.headers.get('content-length')??0)>20000)throw new HttpError('Solicitação muito extensa.',413);
+    const parsed=schema.safeParse(await request.json());
+    if(!parsed.success)throw new HttpError('Revise os campos do Asset Factory.',400);
+    const body=parsed.data;
+
+    if(body.action==='generateImage'){
+      const asset=await generateGoogleImage(body);
+      return Response.json({message:'Imagem gerada e salva como nova variante.',asset,assets:await listSceneAssets(body.promptSetId)});
+    }
+    if(body.action==='startVideo'){
+      const asset=await startGoogleVideo(body);
+      return Response.json({message:'Job Veo iniciado. Atualize o status até a variante ficar pronta.',asset,assets:await listSceneAssets(body.promptSetId)});
+    }
+    if(body.action==='refreshVideo'){
+      const asset=await refreshGoogleVideo(body.assetId);
+      return Response.json({message:asset?.status==='ready'?'Vídeo Veo concluído e salvo.':asset?.status==='failed'?'O job Veo falhou.':'O vídeo ainda está sendo processado.',asset});
+    }
+    if(body.action==='select'){
+      await selectSceneAsset(body.assetId);
+      return Response.json({message:'Variante selecionada para esta cena.'});
+    }
+
+    await deleteSceneAsset(body.assetId);
+    return Response.json({message:'Variante removida.'});
+  }catch(e){return errorResponse(e);}
+}
