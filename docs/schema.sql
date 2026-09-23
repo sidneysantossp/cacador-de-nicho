@@ -83,12 +83,17 @@ create table if not exists public.radar_publication_packages(id uuid primary key
 create index if not exists radar_publication_packages_channel_updated on public.radar_publication_packages(channel_id,updated_at desc);
 create table if not exists public.radar_publication_package_versions(id bigint generated always as identity primary key,publication_package_id uuid not null references public.radar_publication_packages(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('draft','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(publication_package_id,version));
 create index if not exists radar_publication_package_versions_package_version on public.radar_publication_package_versions(publication_package_id,version desc);
+create table if not exists public.radar_youtube_connections(id uuid primary key,channel_id text not null unique references public.radar_managed_channels(id) on delete cascade,youtube_channel_id text not null,youtube_title text not null default '',youtube_handle text,youtube_thumbnail text,scopes text[] not null default '{}',refresh_token_ciphertext text not null,status text not null default 'connected' check(status in ('connected','needs-reauth','disconnected')),last_validated_at timestamptz,error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index if not exists radar_youtube_connections_status_updated on public.radar_youtube_connections(status,updated_at desc);
+create table if not exists public.radar_youtube_publish_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,package_id uuid not null unique references public.radar_publication_packages(id) on delete cascade,package_version int not null check(package_version>=1),connection_id uuid not null references public.radar_youtube_connections(id) on delete cascade,status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,youtube_video_id text,youtube_url text,actual_privacy_status text,error text,payload jsonb not null,resumable_uri_ciphertext text,upload_bytes bigint not null default 0 check(upload_bytes>=0),upload_total_bytes bigint check(upload_total_bytes is null or upload_total_bytes>=0),created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
+create index if not exists radar_youtube_publish_jobs_channel_created on public.radar_youtube_publish_jobs(channel_id,created_at desc);
+create index if not exists radar_youtube_publish_jobs_queue on public.radar_youtube_publish_jobs(status,created_at) where status in ('queued','processing');
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -147,6 +152,37 @@ return found;
 end $$;
 revoke all on function public.heartbeat_render_job(uuid,uuid,int,text,int) from public,anon,authenticated;
 grant execute on function public.heartbeat_render_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.claim_youtube_publish_job(p_worker_token uuid,p_lease_seconds int default 1800) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>7200 then raise exception 'invalid youtube publish lease';end if;
+update public.radar_youtube_publish_jobs set status='queued',stage='requeued-after-lease',worker_token=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+select j.id into picked from public.radar_youtube_publish_jobs j join public.radar_youtube_connections c on c.id=j.connection_id
+where j.status='queued' and c.status='connected' order by j.created_at asc for update of j skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_youtube_publish_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_youtube_publish_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_youtube_publish_job(uuid,int) to service_role;
+
+create or replace function public.heartbeat_youtube_publish_job(p_job_id uuid,p_worker_token uuid,p_progress int,p_stage text,p_lease_seconds int default 1800) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_youtube_publish_jobs
+set progress=greatest(progress,least(99,greatest(1,p_progress))),stage=left(coalesce(p_stage,'processing'),120),
+lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) to service_role;
 
 create or replace function public.save_production_quality_report(p_report_id uuid,p_channel_id text,p_episode_id uuid,p_render_job_id uuid,p_video_edit_id uuid,p_video_edit_version int,p_status text,p_payload jsonb,p_expected_version int default null) returns int
 language plpgsql security invoker set search_path='' as $$
