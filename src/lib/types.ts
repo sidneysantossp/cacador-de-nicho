@@ -1577,6 +1577,75 @@ export type PerformanceReportVersion = {
  payload: PerformanceReportPayload;
  createdAt: string;
 };
+
+export type AudienceSentiment = 'positive' | 'neutral' | 'negative' | 'mixed';
+export type AudienceIntent =
+  | 'praise'
+  | 'question'
+  | 'confusion'
+  | 'request'
+  | 'objection'
+  | 'follow-up'
+  | 'topic'
+  | 'debate';
+
+export type AudienceCommentClassification = {
+ commentRef: string;
+ sentiment: AudienceSentiment;
+ intents: AudienceIntent[];
+};
+
+export type AudienceTheme = {
+ id: string;
+ kind: AudienceIntent;
+ label: string;
+ insight: string;
+ commentRefs: string[];
+ nextAction: string;
+ confidence: 'low' | 'medium' | 'high';
+ sampleSharePercent: number;
+ totalLikesInEvidence: number;
+};
+
+export type AudienceIntelligencePayload = {
+ kind: 'audience-intelligence';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ performanceReportId: string;
+ performanceReportVersion: number;
+ observationId: string;
+ externalVideoId?: string;
+ sampleSize: number;
+ analyzedCommentRefs: string[];
+ sentimentSampleCounts: Record<AudienceSentiment,number>;
+ classifications: AudienceCommentClassification[];
+ themes: AudienceTheme[];
+ limitations: string[];
+ provenance: {
+  model: string;
+  sourceLabel: string;
+ };
+ review: {
+  notes: string;
+  approvedAt?: string;
+  approvedBy?: 'operator';
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+
+export type AudienceIntelligenceReport = AudienceIntelligencePayload & {
+ version: number;
+ status: 'review' | 'approved';
+};
+
+export type AudienceIntelligenceVersion = {
+ version: number;
+ status: AudienceIntelligenceReport['status'];
+ payload: AudienceIntelligencePayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
