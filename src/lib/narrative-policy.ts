@@ -46,3 +46,31 @@ export function narrativeProgress(concepts:ChannelConcept[]){
   const unknown=concepts.filter(item=>item.status==='unknown').length;
   return {total,established,active,unknown,progressPct:total?Math.round((established/total)*100):0};
 }
+
+
+export function detectConceptDependencyCycles(concepts:ChannelConcept[]){
+  const graph=new Map(concepts.map(item=>[item.key,item.prerequisiteKeys]));
+  const visiting=new Set<string>();
+  const visited=new Set<string>();
+  const cycle=new Set<string>();
+
+  function visit(key:string,trail:string[]){
+    if(visiting.has(key)){
+      const start=trail.indexOf(key);
+      for(const item of trail.slice(start))cycle.add(item);
+      cycle.add(key);
+      return;
+    }
+    if(visited.has(key))return;
+    visiting.add(key);
+    const next=graph.get(key)??[];
+    for(const dep of next){
+      if(graph.has(dep))visit(dep,[...trail,key]);
+    }
+    visiting.delete(key);
+    visited.add(key);
+  }
+
+  for(const key of graph.keys())visit(key,[]);
+  return [...cycle];
+}
