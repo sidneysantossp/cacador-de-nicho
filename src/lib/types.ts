@@ -810,6 +810,13 @@ export type SceneAsset = {
   durationSeconds?: number;
  };
  license: SceneAssetLicense;
+ stock?: {
+  providerAssetId: string;
+  pageUrl: string;
+  creatorName: string;
+  creatorUrl?: string;
+  attributionLabel: string;
+ };
  costUsd: number | null;
  error?: string;
  createdAt: string;
