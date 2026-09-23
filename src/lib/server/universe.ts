@@ -1,7 +1,7 @@
 import 'server-only';
 
-import type { ManagedChannel, UniverseCompetitor, UniverseMarketIntelligence } from '@/lib/types';
-import { list, put } from './db';
+import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import { checked, db, list, put } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
 import { compareUniverseDnaPriority, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
@@ -29,6 +29,98 @@ export async function universeState(){
   return records.filter(isCompetitor);
 }
 
+type UniverseQueueRow={
+  id:string;
+  input:string;
+  status:'pending'|'processing'|'completed'|'failed';
+  attempts:number;
+  last_error:string|null;
+  created_at:string;
+  updated_at:string;
+};
+
+function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseCompetitor):UniverseCompetitor{
+  if(!prior)return snapshot;
+  return {
+    ...snapshot,
+    importedAt:prior.importedAt,
+    subniche:prior.subniche,
+    monitoringTier:prior.monitoringTier,
+    status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
+    snapshots:[...(snapshot.snapshots??[]),...(prior.snapshots??[])].filter((item,index,array)=>array.findIndex(other=>other.observedAt===item.observedAt)===index).slice(0,30),
+    dna:prior.dna,
+    dnaTags:prior.dnaTags.length?prior.dnaTags:snapshot.dnaTags,
+    gapSummary:prior.gapSummary
+  };
+}
+
+export async function universeQueueSummary():Promise<UniverseImportQueueSummary>{
+  const rows=checked(await db().from('radar_universe_queue').select('status,attempts')) as Array<Pick<UniverseQueueRow,'status'|'attempts'>>;
+  const count=(status:UniverseQueueRow['status'])=>rows.filter(row=>row.status===status).length;
+  const completed=count('completed');
+  const total=rows.length;
+  return {
+    total,
+    pending:count('pending'),
+    processing:count('processing'),
+    completed,
+    failed:count('failed'),
+    retryable:rows.filter(row=>row.status==='failed'&&row.attempts<3).length,
+    progressPct:total?Math.round((completed/total)*100):0
+  };
+}
+
+export async function processUniverseImportQueue(maxItems=25){
+  const cutoff=new Date(Date.now()-30*60_000).toISOString();
+  checked(await db().from('radar_universe_queue')
+    .update({status:'pending',updated_at:new Date().toISOString()})
+    .eq('status','processing')
+    .lt('updated_at',cutoff));
+
+  const rows=checked(await db().from('radar_universe_queue')
+    .select('*')
+    .in('status',['pending','failed'])
+    .lt('attempts',3)
+    .order('created_at',{ascending:true})
+    .limit(Math.max(1,Math.min(maxItems,50)))) as UniverseQueueRow[];
+
+  if(!rows.length)return {processed:0,succeeded:0,failed:0,summary:await universeQueueSummary()};
+
+  const existing=await universeState();
+  const byChannel=new Map(existing.map(item=>[item.channelId,item]));
+
+  const results=await mapLimit(rows,4,async row=>{
+    const nextAttempt=row.attempts+1;
+    checked(await db().from('radar_universe_queue')
+      .update({status:'processing',attempts:nextAttempt,last_error:null,updated_at:new Date().toISOString()})
+      .eq('id',row.id));
+
+    try{
+      const snapshot=await collectUniverseCompetitor(row.input);
+      const merged=mergeCompetitorSnapshot(snapshot,byChannel.get(snapshot.channelId));
+      await put('radar_managed_channels',merged.id,merged);
+      byChannel.set(merged.channelId,merged);
+      checked(await db().from('radar_universe_queue')
+        .update({status:'completed',last_error:null,updated_at:new Date().toISOString()})
+        .eq('id',row.id));
+      return {ok:true as const,id:row.id,name:merged.name};
+    }catch(error){
+      const message=(error instanceof Error?error.message:'Falha não identificada.').slice(0,1000);
+      checked(await db().from('radar_universe_queue')
+        .update({status:'failed',last_error:message,updated_at:new Date().toISOString()})
+        .eq('id',row.id));
+      return {ok:false as const,id:row.id,error:message};
+    }
+  });
+
+  return {
+    processed:results.length,
+    succeeded:results.filter(result=>result.ok).length,
+    failed:results.filter(result=>!result.ok).length,
+    summary:await universeQueueSummary()
+  };
+}
+
 export async function importUniverseCompetitors(inputs:string[]){
   const clean=[...new Set(inputs.map(input=>input.trim()).filter(Boolean))].slice(0,25);
   const existing=await universeState();
@@ -37,17 +129,7 @@ export async function importUniverseCompetitors(inputs:string[]){
     try{
       const snapshot=await collectUniverseCompetitor(input);
       const prior=byChannel.get(snapshot.channelId);
-      const merged=prior?{
-        ...snapshot,
-        importedAt:prior.importedAt,
-        subniche:prior.subniche,
-        monitoringTier:prior.monitoringTier,
-        status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
-        snapshots:[...(snapshot.snapshots??[]),...(prior.snapshots??[])].filter((item,index,array)=>array.findIndex(other=>other.observedAt===item.observedAt)===index).slice(0,30),
-        dna:prior.dna,
-        dnaTags:prior.dnaTags.length?prior.dnaTags:snapshot.dnaTags,
-        gapSummary:prior.gapSummary
-      }:snapshot;
+      const merged=mergeCompetitorSnapshot(snapshot,prior);
       await put('radar_managed_channels',merged.id,merged);
       return {ok:true as const,input,name:merged.name,id:merged.id};
     }catch(error){
