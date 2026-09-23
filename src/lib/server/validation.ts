@@ -466,5 +466,115 @@ export const videoEditPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+const performanceMetricsSchema=z.object({
+ views:z.number().min(0).max(1e15).optional(),
+ impressions:z.number().min(0).max(1e15).optional(),
+ ctrPercent:z.number().min(0).max(100).optional(),
+ retentionFirstSecondsPercent:z.number().min(0).max(500).optional(),
+ retention30Percent:z.number().min(0).max(500).optional(),
+ averageViewDurationSeconds:z.number().min(0).max(86400).optional(),
+ averagePercentageViewed:z.number().min(0).max(500).optional(),
+ watchTimeMinutes:z.number().min(0).max(1e15).optional(),
+ likes:z.number().min(0).max(1e15).optional(),
+ commentCount:z.number().min(0).max(1e15).optional(),
+ shares:z.number().min(0).max(1e15).optional(),
+ subscribersGained:z.number().min(0).max(1e12).optional(),
+ subscribersLost:z.number().min(0).max(1e12).optional(),
+ conversions:z.number().min(0).max(1e15).optional(),
+ revenue:z.number().min(0).max(1e15).optional(),
+ rpm:z.number().min(0).max(1e9).optional()
+}).strict();
+
+export const performanceObservationPayloadSchema=z.object({
+ kind:z.literal('performance-observation'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ externalVideoId:z.string().trim().min(1).max(200).optional(),
+ sourceType:z.enum(['manual','imported','youtube-analytics']),
+ observedAt:z.string().datetime(),
+ metrics:performanceMetricsSchema,
+ retentionCurve:z.array(z.object({
+  second:z.number().min(0).max(86400),
+  audiencePercent:z.number().min(0).max(500)
+ }).strict()).max(10000),
+ trafficSources:z.array(z.object({
+  source:z.string().trim().min(1).max(200),
+  views:z.number().min(0).max(1e15),
+  watchTimeMinutes:z.number().min(0).max(1e15).optional()
+ }).strict()).max(500),
+ comments:z.array(z.object({
+  text:z.string().trim().min(1).max(2000),
+  likes:z.number().min(0).max(1e12).optional()
+ }).strict()).max(1000),
+ expectations:performanceMetricsSchema,
+ experiment:z.object({
+  changedVariables:z.array(z.string().trim().min(1).max(200)).max(50),
+  notes:z.string().trim().max(5000)
+ }).strict(),
+ provenance:z.object({
+  sourceLabel:z.string().trim().max(250).optional(),
+  importedFileName:z.string().trim().max(500).optional()
+ }).strict(),
+ createdAt:z.string().datetime()
+}).strict();
+
+export const performanceReportPayloadSchema=z.object({
+ kind:z.literal('performance-report'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ observationId:z.string().uuid(),
+ observedAt:z.string().datetime(),
+ comparisons:z.array(z.object({
+  metric:z.enum(['views','impressions','ctrPercent','retentionFirstSecondsPercent','retention30Percent','averageViewDurationSeconds','averagePercentageViewed','watchTimeMinutes','likes','commentCount','shares','subscribersGained','subscribersLost','conversions','revenue','rpm']),
+  current:z.number().nullable(),
+  baseline:z.number().nullable(),
+  delta:z.number().nullable(),
+  deltaPercent:z.number().nullable(),
+  relation:z.enum(['above','below','equal','unavailable']),
+  baselineSource:z.enum(['operator-expectation','channel-median','none']),
+  baselineSampleSize:z.number().int().min(0).max(100000)
+ }).strict()).max(50),
+ retentionEvents:z.array(z.object({
+  type:z.enum(['drop','peak']),
+  fromSecond:z.number().min(0).max(86400),
+  toSecond:z.number().min(0).max(86400),
+  deltaPercentPoints:z.number().min(-500).max(500),
+  fromAudiencePercent:z.number().min(0).max(500),
+  toAudiencePercent:z.number().min(0).max(500)
+ }).strict()).max(20),
+ trafficSummary:z.array(z.object({
+  source:z.string().trim().min(1).max(200),
+  views:z.number().min(0).max(1e15),
+  viewSharePercent:z.number().min(0).max(100).nullable()
+ }).strict()).max(500),
+ commentSummary:z.object({
+  sampledComments:z.number().int().min(0).max(1000),
+  totalLikesInSample:z.number().min(0).max(1e15)
+ }).strict(),
+ diagnoses:z.array(z.object({
+  id:z.string().uuid(),
+  code:z.enum(['packaging-underperforming-content-holding','promise-attracts-delivery-loses','topic-package-hook-all-under-pressure','mid-video-drop','interest-with-low-conversion']),
+  area:z.enum(['packaging','hook','topic','audience','mid-video','cta']),
+  evidence:z.array(z.string().trim().min(1).max(1000)).max(20),
+  hypothesis:z.string().trim().min(1).max(3000),
+  competingExplanation:z.string().trim().min(1).max(3000),
+  nextTest:z.string().trim().min(1).max(3000),
+  confidence:z.enum(['low','medium','high'])
+ }).strict()).max(50),
+ strongestSignals:z.array(z.string().trim().min(1).max(1000)).max(20),
+ weakestSignals:z.array(z.string().trim().min(1).max(1000)).max(20),
+ limitations:z.array(z.string().trim().min(1).max(2000)).max(50),
+ handoff:z.object({
+  nextAgent:z.literal('Learning Loop'),
+  question:z.literal('Qual parte é evidência repetível e qual pode ser acaso?'),
+  candidateHypothesisIds:z.array(z.string().uuid()).max(50)
+ }).strict(),
+ review:z.object({notes:z.string().trim().max(5000)}).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
+
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
