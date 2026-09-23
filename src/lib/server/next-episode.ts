@@ -66,6 +66,24 @@ export async function loadNextEpisodePlanHistory(planId:string,limit=30):Promise
   }));
 }
 
+async function claimCandidate(planId:string,expectedVersion:number,candidateId:string){
+  const result=await db().rpc('claim_next_episode_candidate',{
+    p_plan_id:planId,
+    p_expected_version:expectedVersion,
+    p_candidate_id:candidateId
+  });
+  if(result.error){
+    const message=String(result.error.message??'');
+    if(message.includes('next episode plan version conflict'))throw new HttpError('Next Episode Plan desatualizado.',409);
+    if(message.includes('next episode acceptance already claimed'))throw new HttpError('Outro candidato já foi reservado para este plano. Recarregue a decisão.',409);
+    if(message.includes('next episode plan already accepted'))throw new HttpError('Este plano já foi aceito.',409);
+    if(message.includes('candidate does not belong to plan'))throw new HttpError('Candidato inválido para este plano.',400);
+    if(message.includes('next episode plan not found'))throw new HttpError('Next Episode Plan não encontrado.',404);
+    throw new HttpError('Falha ao reservar o candidato do próximo episódio.',502);
+  }
+  return result.data===true;
+}
+
 async function savePlan(
   payload:NextEpisodePlanPayload,
   status:NextEpisodePlan['status'],
@@ -212,6 +230,8 @@ export async function acceptNextEpisodeCandidate(input:{
     );
   }
 
+  await claimCandidate(plan.id,plan.version,candidate.id);
+
   const now=new Date().toISOString();
   const episodeId=candidate.id;
   const existingEpisode=bundle.episodes.find(item=>item.id===episodeId);
@@ -239,12 +259,18 @@ export async function acceptNextEpisodeCandidate(input:{
     const arcName=candidate.arcId
       ?bundle.arcs.find(item=>item.id===candidate.arcId)?.name??''
       :'';
-    project=await saveContentProject(
-      contentProjectFromCandidate({
-        plan,candidate,channel:managed,episodeId:episode.id,arcName
-      }),
-      0
-    );
+    try{
+      project=await saveContentProject(
+        contentProjectFromCandidate({
+          plan,candidate,channel:managed,episodeId:episode.id,arcName
+        }),
+        0
+      );
+    }catch(error){
+      const concurrent=await loadContentProject(plan.id);
+      if(!concurrent||concurrent.episodeId!==episode.id)throw error;
+      project=concurrent;
+    }
   }
 
   const {version:_version,status:_status,...payload}=plan;
@@ -261,14 +287,31 @@ export async function acceptNextEpisodeCandidate(input:{
     },
     updatedAt:acceptedAt
   };
-  const saved=await savePlan(next,'accepted',plan.version);
-
-  return {
-    plan:saved,
-    episodeId:episode.id,
-    contentProjectId:project.id,
-    alreadyAccepted:false
-  };
+  try{
+    const saved=await savePlan(next,'accepted',plan.version);
+    return {
+      plan:saved,
+      episodeId:episode.id,
+      contentProjectId:project.id,
+      alreadyAccepted:false
+    };
+  }catch(error){
+    if(!(error instanceof HttpError)||error.status!==409)throw error;
+    const concurrent=await loadNextEpisodePlan(plan.id);
+    if(
+      concurrent?.status==='accepted'&&
+      concurrent.review.acceptedCandidateId===candidate.id&&
+      concurrent.review.acceptedEpisodeId===episode.id
+    ){
+      return {
+        plan:concurrent,
+        episodeId:concurrent.review.acceptedEpisodeId,
+        contentProjectId:concurrent.review.acceptedContentProjectId,
+        alreadyAccepted:true
+      };
+    }
+    throw error;
+  }
 }
 
 export async function nextEpisodeChannelState(channelId:string){
