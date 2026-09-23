@@ -312,11 +312,13 @@ async function uploadVideo(job,token,accessToken,videoPath,totalBytes){
       if(bytesRead<=0)throw new Error('Unexpected EOF while reading render output.');
       const chunk=bytesRead===buffer.length?buffer:buffer.subarray(0,bytesRead);
 
+      const chunkStart=offset;
       let response=null;
       let lastError=null;
+      let restartChunk=false;
       for(let attempt=0;attempt<MAX_RETRIES;attempt++){
         try{
-          response=await uploadChunk(sessionUri,accessToken,chunk,offset,totalBytes);
+          response=await uploadChunk(sessionUri,accessToken,chunk,chunkStart,totalBytes);
           if(response.status===308||response.status===200||response.status===201)break;
           if(response.status===404||response.status===410){
             const error=new Error('UPLOAD_SESSION_EXPIRED');
@@ -344,11 +346,12 @@ async function uploadVideo(job,token,accessToken,videoPath,totalBytes){
         }
         offset=state.offset;
         await updateOwned(job.id,token,{upload_bytes:offset});
-        if(offset>=totalBytes){
-          const finalState=await queryUploadStatus(sessionUri,accessToken,totalBytes);
-          if(finalState.kind==='completed')return finalState.videoId;
+        if(offset!==chunkStart){
+          restartChunk=true;
+          break;
         }
       }
+      if(restartChunk)continue;
       if(!response||!(response.status===308||response.status===200||response.status===201)){
         throw lastError||new Error('YouTube upload exhausted retries.');
       }
