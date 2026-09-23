@@ -6,11 +6,12 @@ import {
   History, Layers3, Pause, Play, Plus, Save, Sparkles, Trash2, Volume2
 } from 'lucide-react';
 import type {
-  ManagedChannel, Timeline, Transcript, VideoEdit, VideoEditClipStyle,
-  VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload, VideoEditVersion
+  AudioLibraryAsset, ManagedChannel, Timeline, Transcript, VideoEdit, VideoEditClipStyle,
+  VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload, VideoEditSfxEvent, VideoEditVersion
 } from '@/lib/types';
 import {
-  motionPresetValues, normalizeVideoEdit, videoEditStructuralIssues
+  motionPresetValues, normalizeVideoEdit, suggestSfxEvents,
+  videoEditAudioAssetIssues, videoEditStructuralIssues
 } from '@/lib/video-editor-policy';
 
 type Source={
@@ -42,6 +43,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   const [timeline,setTimeline]=useState<Timeline|null>(null);
   const [transcript,setTranscript]=useState<Transcript|null>(null);
   const [sources,setSources]=useState<Source[]>([]);
+  const [audioAssets,setAudioAssets]=useState<AudioLibraryAsset[]>([]);
   const [history,setHistory]=useState<VideoEditVersion[]>([]);
   const [tab,setTab]=useState<Tab>('editor');
   const [selectedClipId,setSelectedClipId]=useState('');
@@ -54,8 +56,13 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   const editTimelineIds=useMemo(()=>new Set(edits.map(edit=>edit.timelineId)),[edits]);
   const eligibleTimelines=useMemo(()=>timelines.filter(item=>!editTimelineIds.has(item.id)),[timelines,editTimelineIds]);
   const sourceMap=useMemo(()=>new Map(sources.map(source=>[source.assetId,source])),[sources]);
+  const musicAssets=useMemo(()=>audioAssets.filter(asset=>asset.kind==='music'&&asset.status==='ready'),[audioAssets]);
+  const sfxAssets=useMemo(()=>audioAssets.filter(asset=>asset.kind==='sfx'&&asset.status==='ready'),[audioAssets]);
   const visualClips=useMemo(()=>timeline?.tracks.find(track=>track.type==='visual')?.clips??[],[timeline]);
-  const structuralIssues=useMemo(()=>draft&&timeline&&transcript?videoEditStructuralIssues(normalizeVideoEdit(draft),timeline,transcript):[],[draft,timeline,transcript]);
+  const structuralIssues=useMemo(()=>draft&&timeline&&transcript?[...new Set([
+    ...videoEditStructuralIssues(normalizeVideoEdit(draft),timeline,transcript),
+    ...videoEditAudioAssetIssues(draft,audioAssets)
+  ])]:[],[draft,timeline,transcript,audioAssets]);
   const dirty=useMemo(()=>draft&&current?comparable(draft)!==comparable(payloadOnly(current)):!!draft,[draft,current]);
 
   const currentClip=useMemo(()=>{
@@ -106,6 +113,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setTimeline(body.timeline);
       setTranscript(body.transcript);
       setSources(body.sources??[]);
+      setAudioAssets(body.audioAssets??[]);
       setHistory(body.history??[]);
       const first=body.videoEdit.clipStyles?.[0]?.timelineClipId??'';
       setSelectedClipId(first);
@@ -149,6 +157,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setTimeline(body.timeline);
       setTranscript(body.transcript);
       setSources(body.sources??[]);
+      setAudioAssets(body.audioAssets??[]);
       setHistory(body.history??[]);
       setEdits(prev=>[body.videoEdit,...prev.filter(item=>item.id!==body.videoEdit.id)]);
       setMessage(body.message??'Video Edit salvo.');
@@ -167,6 +176,70 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
   function updateOverlay(id:string,patch:Partial<VideoEditOverlay>){
     setDraft(prev=>prev?{...prev,overlays:prev.overlays.map(item=>item.id===id?{...item,...patch}:item)}:prev);
+  }
+
+  function updateCaptionStyle(patch:Partial<VideoEditPayload['captions']['style']>){
+    setDraft(prev=>prev?{...prev,captions:{...prev.captions,style:{...prev.captions.style,...patch}}}:prev);
+  }
+
+  function toggleCaptionWord(cueId:string,wordId:string){
+    setDraft(prev=>prev?{
+      ...prev,
+      captions:{...prev.captions,cues:prev.captions.cues.map(cue=>cue.id===cueId?{
+        ...cue,words:cue.words.map(word=>word.id===wordId?{...word,highlighted:!word.highlighted}:word)
+      }:cue)}
+    }:prev);
+  }
+
+  function selectMusic(assetId:string){
+    if(!draft)return;
+    if(!assetId){setDraft({...draft,musicTrack:null});return;}
+    setDraft({...draft,musicTrack:{
+      assetId,startSeconds:0,endSeconds:draft.durationSeconds,sourceStartSeconds:0,
+      loop:true,volume:1,fadeInSeconds:.5,fadeOutSeconds:.8,
+      duckUnderVoice:true,duckingStrength:.7
+    }});
+  }
+
+  function addSfx(assetId:string){
+    if(!draft||!assetId)return;
+    const asset=audioAssets.find(item=>item.id===assetId);
+    if(!asset)return;
+    const remaining=Math.max(.01,draft.durationSeconds-playhead);
+    const event:VideoEditSfxEvent={
+      id:crypto.randomUUID(),assetId,eventType:'custom',
+      startSeconds:Math.min(playhead,draft.durationSeconds-.01),
+      sourceStartSeconds:0,
+      durationSeconds:Math.max(.01,Math.min(asset.durationSeconds??.6,2,remaining)),
+      volume:.7
+    };
+    setDraft({...draft,sfxEvents:[...draft.sfxEvents,event]});
+  }
+
+  function autoSfx(){
+    if(!draft||!timeline)return;
+    const suggested=suggestSfxEvents(draft,timeline,audioAssets);
+    if(!suggested.length){setMessage('Nenhum SFX compatível encontrado. Use tags como transition, whoosh, pop ou emphasis.');return;}
+    setDraft({...draft,sfxEvents:[...draft.sfxEvents,...suggested]});
+    setMessage(suggested.length+' SFX sugerido(s) a partir de transições e palavras destacadas.');
+  }
+
+  async function uploadAudio(kind:'music'|'sfx',file:File|null){
+    if(!file)return;
+    setBusy('audio-upload');setMessage('');
+    try{
+      const form=new FormData();
+      form.set('channelId',channel.id);
+      form.set('kind',kind);
+      form.set('file',file);
+      form.set('tags',kind==='music'?'music':'sfx');
+      const res=await fetch('/api/audio-library',{method:'POST',body:form});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha no upload de áudio.');
+      setAudioAssets(body.assets??[]);
+      setMessage(body.message??'Áudio salvo na biblioteca.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha no upload de áudio.');}
+    finally{setBusy('');}
   }
 
   function addOverlay(){
