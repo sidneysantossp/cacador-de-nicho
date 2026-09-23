@@ -64,3 +64,19 @@ Validação exigida antes de promoção:
 - comparação com master sem divergência destrutiva
 
 Depois da promoção, a primeira validação operacional é executar Mission Control uma vez com a sessão autenticada e confirmar o brief real gerado com as credenciais de produção.
+
+
+## YouTube Quota Intelligence — 23/09/2026
+
+Implementado controle persistente do bucket granular `search.list`:
+- teto operacional: 100 buscas/dia;
+- reset pelo calendário do Pacífico;
+- reservas independentes para descoberta, resolução, análise de canal e similares;
+- deduplicação de descoberta em janela de 6h;
+- referências resolvidas progressivamente e sem poder bloquear o Radar principal;
+- diferenciação entre quota dura e throttling temporário;
+- modo quota-degraded preserva Opportunity Reports e análises já coletadas;
+- orçamento visível no Mission Control;
+- nenhuma migration de Supabase necessária.
+
+Validação: CI completo passou no branch `feat/youtube-quota-intelligence`.
