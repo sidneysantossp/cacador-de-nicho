@@ -1,12 +1,12 @@
 import 'server-only';
-import { checked, cleanup, db, list, policyApproved, put, settings } from './db';
+import { checked, cleanup, db, list, put, settings } from './db';
 import { scan } from './youtube';
 import { analyze } from './ai';
 import { providerAvailable } from './providers';
 import type { Channel, Run } from '@/lib/types';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 
-export async function runRadar(cron=false){
+export async function runRadar(cron=false,allowAutoAnalyze=true){
   const config=await settings();
   await cleanup();
   if(cron&&!config.enabled)return 'Monitoramento automático desativado.';
@@ -36,7 +36,7 @@ export async function runRadar(cron=false){
 
   try{
     const count=await scan(config);
-    if(config.autoAnalyze&&policyApproved()&&await providerAvailable('openai')){
+    if(allowAutoAnalyze&&config.autoAnalyze&&await providerAvailable('openai')){
       const candidates=(await list<Channel>('radar_channels',1000))
         .filter(c=>c.discoverySource==='reference-adjacent'&&!c.analysis&&qualifiesOpportunityCandidate(c,config))
         .slice(0,config.maxAnalysesPerRun);
