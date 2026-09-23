@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor } from '@/lib/types';
+import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor, UniverseMarketIntelligence } from '@/lib/types';
 import { compareMissionCandidates, productionReadiness } from '@/lib/mission';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { runChannelStudy } from './channel-study';
@@ -11,7 +11,7 @@ import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 import { isYouTubeSearchQuotaError, YouTubeSearchQuotaError } from './youtube';
 import { YouTubeSearchBudgetError } from './youtube-search-budget';
-import { refreshUniverseCompetitors, runUniverseIntelligence, universeState } from './universe';
+import { refreshUniverseCompetitors, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeMarketIntelligenceState, universeState } from './universe';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
 
@@ -70,6 +70,7 @@ function buildBrief(input:{
   studies:ChannelStudy[];
   reports:OpportunityReport[];
   universe:UniverseCompetitor[];
+  universeIntelligence:UniverseMarketIntelligence|null;
   workCompleted:string[];
   blockers:string[];
   notes:string[];
@@ -133,7 +134,9 @@ function buildBrief(input:{
       productionReady:productionQueue.length,
       competitors:input.universe.length,
       competitorSignals:input.universe.filter(item=>(item.signalDetails?.length??item.signals.length)>0).length,
-      competitorDna:input.universe.filter(item=>!!item.dna).length
+      competitorDna:input.universe.filter(item=>!!item.dna).length,
+      universeCurves:input.universeIntelligence?.curves.length??0,
+      universeGaps:input.universeIntelligence?.gaps.length??0
     },
     workCompleted:input.workCompleted,
     productionQueue,
@@ -169,6 +172,7 @@ export async function runMission():Promise<MissionBrief>{
 
     let state=await loadMissionState();
     let universe=await universeState();
+    let universeIntelligence=await universeMarketIntelligenceState();
     let reportsGenerated=0;
     let studiesGenerated=0;
 
@@ -211,6 +215,18 @@ export async function runMission():Promise<MissionBrief>{
         universe=await universeState();
       }catch(error){
         blockers.push(`Universe Intelligence: ${error instanceof Error?error.message:'falha não identificada'}`);
+      }
+    }
+
+    if(health.openai&&Date.now()-startedMs<145000){
+      try{
+        if(await shouldRefreshUniverseMarketIntelligence()){
+          universeIntelligence=await runUniverseMarketIntelligence();
+          workCompleted.push(`Universe Market Intelligence: ${universeIntelligence.curves.length} curva(s) e ${universeIntelligence.gaps.length} gap(s) organizados.`);
+          universe=await universeState();
+        }
+      }catch(error){
+        blockers.push(`Universe Curves & Gaps: ${error instanceof Error?error.message:'falha não identificada'}`);
       }
     }
 
@@ -289,6 +305,7 @@ export async function runMission():Promise<MissionBrief>{
       studies:state.studies,
       reports:state.reports,
       universe,
+      universeIntelligence,
       workCompleted,
       blockers,
       notes
