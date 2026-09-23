@@ -172,10 +172,23 @@ async function safeDownload(url:string,provider:StockMediaProvider,maxBytes:numb
   throw new HttpError('O arquivo stock excedeu o limite de redirects.',502);
 }
 
-function choosePexelsVideo(files:Record<string,unknown>[]){
-  const mp4=files.filter(item=>String(item.file_type??'').startsWith('video/mp4')&&typeof item.link==='string');
+type PexelsVideoFile=Record<string,unknown>&{
+  link:string;
+  w:number;
+  h:number;
+};
+
+function choosePexelsVideo(files:Record<string,unknown>[]):PexelsVideoFile|null{
+  const mp4=files.filter((item):item is Record<string,unknown>&{link:string}=>
+    String(item.file_type??'').startsWith('video/mp4')&&typeof item.link==='string'
+  );
   if(!mp4.length)return null;
-  const sized=mp4.map(item=>({...item,w:Number(item.width??0),h:Number(item.height??0)}));
+  const sized:PexelsVideoFile[]=mp4.map(item=>({
+    ...item,
+    link:item.link,
+    w:Number(item.width??0),
+    h:Number(item.height??0)
+  }));
   const under=sized.filter(item=>item.w>0&&item.w<=1920).sort((a,b)=>b.w-a.w);
   return under[0]??sized.sort((a,b)=>a.w-b.w)[0]??null;
 }
