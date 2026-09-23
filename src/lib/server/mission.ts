@@ -10,6 +10,7 @@ import { runOpportunityReport } from './opportunity-report';
 import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 import { isYouTubeSearchQuotaError } from './youtube';
+import { YouTubeSearchBudgetError } from './youtube-search-budget';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
 
@@ -194,9 +195,14 @@ export async function runMission():Promise<MissionBrief>{
         state=await loadMissionState();
       }catch(error){
         if(isYouTubeSearchQuotaError(error)){
-          youtubeSearchAvailable=false;
-          blockers.push('Radar: cota de search.list do YouTube indisponível. Novas descobertas foram pausadas nesta missão.');
-          notes.push('Modo quota-degraded: o sistema continuou trabalhando apenas com estudos e Opportunity Reports já existentes.');
+          const discoveryOnly=error instanceof YouTubeSearchBudgetError&&error.reason==='purpose-limit';
+          youtubeSearchAvailable=discoveryOnly;
+          blockers.push(discoveryOnly
+            ?'Radar: orçamento diário de descoberta atingido. A reserva de busca para Análise de Canal e similares permanece disponível.'
+            :'Radar: cota global de search.list do YouTube indisponível. Novas buscas foram pausadas nesta missão.');
+          notes.push(discoveryOnly
+            ?'Quota Intelligence preservou o orçamento reservado para aprofundar candidatos já encontrados.'
+            :'Modo quota-degraded: o sistema continuou trabalhando apenas com estudos e Opportunity Reports já existentes.');
         }else{
           blockers.push(`Radar: ${error instanceof Error?error.message:'falha não identificada'}`);
         }
