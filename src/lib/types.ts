@@ -180,6 +180,14 @@ export type UniverseCompetitorSnapshot = {
 };
 export type UniverseChannelDNA = {
  generatedAt: string;
+ provenance?: {
+  schemaVersion: 1;
+  generatedBy: 'platform' | 'chatgpt' | 'codex' | 'external-agent' | 'operator';
+  model?: string;
+  sourceVideoCount: number;
+  sourceSignalCount: number;
+  observedAt: string;
+ };
  summary: string;
  primaryNiche: string;
  subniche: string;
