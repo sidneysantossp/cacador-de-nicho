@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings, YouTubeSearchPurpose } from '@/lib/types';
+import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings, UniverseCompetitor, YouTubeSearchPurpose } from '@/lib/types';
 import {
   REFERENCE_CHANNELS,
   REFERENCE_DISCOVERY_QUERIES,
@@ -599,6 +599,128 @@ async function resolveChannelInput(input:string){
   const channel=channels[0];
   if(!channel)throw new HttpError('Canal do YouTube não encontrado.',404);
   return channel;
+}
+
+async function resolveUniverseChannelDirect(input:string){
+  const raw=input.trim();
+  if(!raw)throw new HttpError('Informe uma URL, @handle ou channelId do YouTube.',400);
+  let id='';
+  let handle='';
+  let username='';
+  try{
+    const url=new URL(/^https?:\/\//i.test(raw)?raw:`https://youtube.com/${raw.replace(/^\/+/, '')}`);
+    const parts=url.pathname.split('/').filter(Boolean);
+    if(parts[0]==='channel'&&parts[1])id=parts[1];
+    else if(parts[0]?.startsWith('@'))handle=parts[0];
+    else if(parts[0]==='user'&&parts[1])username=parts[1];
+    else if(parts[0]?.startsWith('UC'))id=parts[0];
+  }catch{}
+  if(!id&&raw.startsWith('UC'))id=raw;
+  if(!handle&&raw.startsWith('@'))handle=raw;
+  let channels:Item[]=[];
+  if(id)channels=await youtube('channels',{part:'snippet,statistics,contentDetails',id});
+  else if(handle)channels=await youtube('channels',{part:'snippet,statistics,contentDetails',forHandle:handle.replace(/^@/,'')});
+  else if(username)channels=await youtube('channels',{part:'snippet,statistics,contentDetails',forUsername:username});
+  else throw new HttpError('Para importar sem gastar search.list, use URL com @handle, URL /channel/UC..., @handle ou channelId.',422);
+  const channel=channels[0];
+  if(!channel)throw new HttpError('Canal do YouTube não encontrado.',404);
+  return channel;
+}
+
+function medianNumber(values:number[]){
+  if(!values.length)return null;
+  const sorted=[...values].sort((a,b)=>a-b);
+  const mid=Math.floor(sorted.length/2);
+  return sorted.length%2?sorted[mid]:Math.round((sorted[mid-1]+sorted[mid])/2);
+}
+
+export async function collectUniverseCompetitor(input:string,existing?:UniverseCompetitor):Promise<UniverseCompetitor>{
+  const channel=await resolveUniverseChannelDirect(input);
+  const channelId=idOf(channel);
+  const now=new Date();
+  const observedAt=now.toISOString();
+  const uploadIds:string[]=[];
+  const uploads=channel.contentDetails?.relatedPlaylists?.uploads;
+  if(uploads){
+    const page=await youtubePage('playlistItems',{part:'snippet',playlistId:uploads,maxResults:'20'});
+    uploadIds.push(...page.items.map(item=>item.snippet.resourceId?.videoId??'').filter(Boolean));
+  }
+  const items:Item[]=[];
+  if(uploadIds.length){
+    items.push(...await youtube('videos',{
+      part:'snippet,statistics,contentDetails',
+      id:[...new Set(uploadIds)].slice(0,50).join(',')
+    }));
+  }
+  const recentUploads=items
+    .map(video=>({
+      id:idOf(video),
+      title:video.snippet.title,
+      publishedAt:video.snippet.publishedAt,
+      views:Number(video.statistics?.viewCount??0),
+      duration:video.contentDetails?.duration??'',
+      thumbnail:thumb(video),
+      url:`https://www.youtube.com/watch?v=${idOf(video)}`
+    }))
+    .sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt));
+  const longFormItems=items.filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS);
+  const strongest=longFormItems.sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))[0]??items.sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))[0]??null;
+  const strongestRecentVideo=strongest?{
+    id:idOf(strongest),
+    title:strongest.snippet.title,
+    publishedAt:strongest.snippet.publishedAt,
+    views:Number(strongest.statistics?.viewCount??0),
+    duration:strongest.contentDetails?.duration??'',
+    thumbnail:thumb(strongest),
+    url:`https://www.youtube.com/watch?v=${idOf(strongest)}`
+  }:null;
+  const views=recentUploads.map(video=>video.views);
+  const average=views.length?Math.round(views.reduce((sum,value)=>sum+value,0)/views.length):null;
+  const median=medianNumber(views);
+  const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
+  const breakoutRatio=strongestRecentVideo&&subscribers&&subscribers>0?strongestRecentVideo.views/subscribers:null;
+  const uploadsLast30d=recentUploads.filter(video=>now.getTime()-Date.parse(video.publishedAt)<=30*86400000).length;
+  const signals:string[]=[];
+  if(breakoutRatio!==null&&breakoutRatio>1)signals.push(`Breakout público: melhor vídeo recente tem ${breakoutRatio.toFixed(1)}× a base atual de inscritos.`);
+  if(strongestRecentVideo&&median&&median>0&&strongestRecentVideo.views>=median*2)signals.push(`Outlier interno: melhor vídeo recente alcançou ${(strongestRecentVideo.views/median).toFixed(1)}× a mediana da amostra.`);
+  if(uploadsLast30d>=4)signals.push(`Cadência ativa: ${uploadsLast30d} uploads observados nos últimos 30 dias.`);
+  const status:UniverseCompetitor['status']=breakoutRatio!==null&&breakoutRatio>1?'breakout':strongestRecentVideo&&median&&median>0&&strongestRecentVideo.views>=median*2?'heating-up':'watch';
+  const cluster=strongest?inferNiche(strongest):existing?.cluster??'A classificar';
+  const format=strongest?inferFormat(strongest,''):existing?.format??'Unknown';
+  const language=(strongest?.snippet.defaultAudioLanguage??strongest?.snippet.defaultLanguage??channel.snippet.defaultLanguage??existing?.language??'').toLowerCase();
+  return {
+    kind:'competitor',
+    id:`competitor:${channelId}`,
+    channelId,
+    name:channel.snippet.title,
+    handle:channel.snippet.customUrl??existing?.handle??'',
+    url:`https://www.youtube.com/channel/${channelId}`,
+    avatar:thumb(channel),
+    country:channel.snippet.country,
+    language,
+    cluster,
+    subniche:existing?.subniche??'A classificar',
+    format,
+    description:channel.snippet.description.slice(0,3000),
+    subscribers,
+    videoCount:Number(channel.statistics?.videoCount??0),
+    createdAt:channel.snippet.publishedAt,
+    importedAt:existing?.importedAt??observedAt,
+    lastMonitoredAt:observedAt,
+    monitoringTier:existing?.monitoringTier??(status==='breakout'?'hot':uploadsLast30d>=4?'active':'stable'),
+    status:existing?.status&&['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(existing.status)?existing.status:status,
+    recentAverageViews:average,
+    recentMedianViews:median,
+    recentVideoCount:recentUploads.length,
+    uploadsLast30d,
+    breakoutRatio,
+    strongestRecentVideo,
+    recentUploads,
+    signals,
+    dnaTags:existing?.dnaTags??[cluster,format].filter(Boolean),
+    gapSummary:existing?.gapSummary,
+    updatedAt:observedAt
+  };
 }
 
 export async function collectChannelStudyEvidence(input:string){
