@@ -225,3 +225,11 @@
 .concept-table{display:grid;gap:6px}.concept-table article{display:grid;grid-template-columns:30px minmax(120px,1.2fr) minmax(160px,1.5fr) minmax(110px,.8fr) 130px;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:9px;padding:10px 12px}.concept-table article>div:first-child{color:#71816c}.concept-table strong{display:block;font-size:10px;color:#4f5b4a}.concept-table small{display:block;font-size:8px;color:#9ba298}.concept-prereqs{display:flex;gap:5px;flex-wrap:wrap}.concept-prereqs em,.concept-prereqs span{font-style:normal;font-size:8px;background:#f2f3ef;border-radius:999px;padding:4px 7px;color:#7c8678}.concept-ready,.concept-blocked{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.45px}.concept-ready{color:#62815a}.concept-blocked{color:#ae7040}
 @media(max-width:1000px){.narrative-command{grid-template-columns:1fr}.narrative-next-grid{grid-template-columns:1fr}.narrative-form-grid.three{grid-template-columns:1fr}.concept-table article{grid-template-columns:30px 1fr 120px}.concept-prereqs,.concept-ready,.concept-blocked{grid-column:2/-1}.narrative-episode-list article{grid-template-columns:54px 1fr}.narrative-episode-list select{grid-column:1/-1}}
 @media(max-width:700px){.narrative-form-grid{grid-template-columns:1fr}.narrative-section-head{align-items:flex-start;flex-direction:column}.narrative-arc header{flex-direction:column}.narrative-arc header select{width:100%}.concept-table article{grid-template-columns:1fr}.concept-table article>div,.concept-prereqs,.concept-ready,.concept-blocked,.concept-table select{grid-column:auto}}
+
+.narrative-dimensions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.narrative-dimensions article{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px}
+.narrative-dimensions span{display:block;font-size:7px;font-weight:800;letter-spacing:.65px;color:#929b8f;margin-bottom:7px}
+.narrative-dimensions strong{display:block;font:700 17px Manrope,var(--font);color:#4f5b4a}
+.narrative-dimensions small{display:block;font-size:8px;line-height:1.5;color:#939b90;margin-top:4px}
+@media(max-width:900px){.narrative-dimensions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.narrative-dimensions{grid-template-columns:1fr}}
