@@ -660,5 +660,52 @@ export const performanceReportPayloadSchema=z.object({
  updatedAt:z.string().datetime()
 }).strict();
 
+export const audienceIntelligencePayloadSchema=z.object({
+ kind:z.literal('audience-intelligence'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ performanceReportId:z.string().uuid(),
+ performanceReportVersion:z.number().int().min(1).max(100000),
+ observationId:z.string().uuid(),
+ externalVideoId:z.string().trim().min(1).max(200).optional(),
+ sampleSize:z.number().int().min(1).max(80),
+ analyzedCommentRefs:z.array(z.string().regex(/^c\d+$/)).max(80),
+ sentimentSampleCounts:z.object({
+  positive:z.number().int().min(0).max(80),
+  neutral:z.number().int().min(0).max(80),
+  negative:z.number().int().min(0).max(80),
+  mixed:z.number().int().min(0).max(80)
+ }).strict(),
+ classifications:z.array(z.object({
+  commentRef:z.string().regex(/^c\d+$/),
+  sentiment:z.enum(['positive','neutral','negative','mixed']),
+  intents:z.array(z.enum(['praise','question','confusion','request','objection','follow-up','topic','debate'])).max(4)
+ }).strict()).max(80),
+ themes:z.array(z.object({
+  id:z.string().uuid(),
+  kind:z.enum(['praise','question','confusion','request','objection','follow-up','topic','debate']),
+  label:z.string().trim().min(1).max(180),
+  insight:z.string().trim().min(1).max(2000),
+  commentRefs:z.array(z.string().regex(/^c\d+$/)).min(1).max(30),
+  nextAction:z.string().trim().min(1).max(2000),
+  confidence:z.enum(['low','medium','high']),
+  sampleSharePercent:z.number().min(0).max(100),
+  totalLikesInEvidence:z.number().min(0).max(1e15)
+ }).strict()).max(16),
+ limitations:z.array(z.string().trim().min(1).max(2000)).max(30),
+ provenance:z.object({
+  model:z.string().trim().min(1).max(160),
+  sourceLabel:z.string().trim().min(1).max(500)
+ }).strict(),
+ review:z.object({
+  notes:z.string().trim().max(5000),
+  approvedAt:z.string().datetime().optional(),
+  approvedBy:z.literal('operator').optional()
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
+
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
