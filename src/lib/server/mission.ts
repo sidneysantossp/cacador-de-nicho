@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor, UniverseMarketIntelligence } from '@/lib/types';
+import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
 import { compareMissionCandidates, productionReadiness } from '@/lib/mission';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { runChannelStudy } from './channel-study';
@@ -11,7 +11,7 @@ import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 import { isYouTubeSearchQuotaError, YouTubeSearchQuotaError } from './youtube';
 import { YouTubeSearchBudgetError } from './youtube-search-budget';
-import { refreshUniverseCompetitors, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeMarketIntelligenceState, universeState } from './universe';
+import { processUniverseImportQueue, refreshUniverseCompetitors, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeMarketIntelligenceState, universeQueueSummary, universeState } from './universe';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
 
@@ -71,6 +71,7 @@ function buildBrief(input:{
   reports:OpportunityReport[];
   universe:UniverseCompetitor[];
   universeIntelligence:UniverseMarketIntelligence|null;
+  universeQueue:UniverseImportQueueSummary;
   workCompleted:string[];
   blockers:string[];
   notes:string[];
@@ -136,7 +137,9 @@ function buildBrief(input:{
       competitorSignals:input.universe.filter(item=>(item.signalDetails?.length??item.signals.length)>0).length,
       competitorDna:input.universe.filter(item=>!!item.dna).length,
       universeCurves:input.universeIntelligence?.curves.length??0,
-      universeGaps:input.universeIntelligence?.gaps.length??0
+      universeGaps:input.universeIntelligence?.gaps.length??0,
+      universeQueuePending:input.universeQueue.pending+input.universeQueue.retryable+input.universeQueue.processing,
+      universeQueueCompleted:input.universeQueue.completed
     },
     workCompleted:input.workCompleted,
     productionQueue,
@@ -173,6 +176,7 @@ export async function runMission():Promise<MissionBrief>{
     let state=await loadMissionState();
     let universe=await universeState();
     let universeIntelligence=await universeMarketIntelligenceState();
+    let universeQueue=await universeQueueSummary();
     let reportsGenerated=0;
     let studiesGenerated=0;
 
@@ -196,8 +200,24 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
+    // Bootstrap the known market before refreshing it or spending scarce search quota outside it.
+    if(health.youtube&&(universeQueue.pending+universeQueue.retryable>0)&&Date.now()-startedMs<80000){
+      try{
+        const imported=await processUniverseImportQueue(25);
+        universeQueue=imported.summary;
+        if(imported.succeeded>0)workCompleted.push(`Universe bootstrap: ${imported.succeeded} concorrente(s) resolvido(s) e enriquecido(s).`);
+        if(imported.failed>0)blockers.push(`Universe bootstrap: ${imported.failed} item(ns) falharam neste lote; serão retentados até o limite configurado.`);
+        universe=await universeState();
+        if(universeQueue.pending+universeQueue.retryable>0){
+          notes.push(`Universe bootstrap em progresso: ${universeQueue.completed}/${universeQueue.total} concluídos; ${universeQueue.pending+universeQueue.retryable} aguardando.`);
+        }
+      }catch(error){
+        blockers.push(`Universe bootstrap: ${error instanceof Error?error.message:'falha não identificada'}`);
+      }
+    }
+
     // Keep the known market fresh before spending scarce search quota outside it.
-    if(health.youtube&&universe.length&&Date.now()-startedMs<90000){
+    if(health.youtube&&universe.length&&Date.now()-startedMs<105000){
       try{
         const refreshed=await refreshUniverseCompetitors(undefined,10);
         if(refreshed.refreshed>0)workCompleted.push(`Universe: ${refreshed.refreshed} concorrente(s) vencido(s) atualizado(s).`);
@@ -208,7 +228,7 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    if(health.openai&&universe.length&&Date.now()-startedMs<125000){
+    if(health.openai&&universe.length&&Date.now()-startedMs<140000){
       try{
         const intelligence=await runUniverseIntelligence();
         if(intelligence.analyzed>0)workCompleted.push(intelligence.message);
@@ -218,7 +238,7 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    if(health.openai&&Date.now()-startedMs<145000){
+    if(health.openai&&Date.now()-startedMs<160000){
       try{
         if(await shouldRefreshUniverseMarketIntelligence()){
           universeIntelligence=await runUniverseMarketIntelligence();
@@ -232,7 +252,7 @@ export async function runMission():Promise<MissionBrief>{
 
     // Keep the external market fresh only after the known Universe has advanced.
     const youtubeDataAvailable=health.youtube;
-    if(health.youtube&&Date.now()-startedMs<150000){
+    if(health.youtube&&Date.now()-startedMs<175000){
       try{
         const message=await runRadar(false,false);
         workCompleted.push(message);
@@ -260,7 +280,7 @@ export async function runMission():Promise<MissionBrief>{
     // Open at most one new deep investigation per mission. A known channel can
     // still be analyzed when search.list is unavailable: Channel Study falls
     // back to the uploads playlist and marks the sample scope explicitly.
-    if(youtubeDataAvailable&&health.openai&&Date.now()-startedMs<165000){
+    if(youtubeDataAvailable&&health.openai&&Date.now()-startedMs<195000){
       const studiedIds=new Set(state.studies.map(study=>study.source.id));
       const candidate=state.channels.filter(channel=>!studiedIds.has(channel.id)).sort(compareMissionCandidates)[0];
       if(candidate){
@@ -306,6 +326,7 @@ export async function runMission():Promise<MissionBrief>{
       reports:state.reports,
       universe,
       universeIntelligence,
+      universeQueue,
       workCompleted,
       blockers,
       notes
