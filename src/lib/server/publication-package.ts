@@ -271,7 +271,7 @@ export async function savePublicationPackage(input:{
 
 function probeImage(filePath:string){
   return new Promise<{width:number;height:number}>((resolve,reject)=>{
-    const child=spawn(FFPROBE,[
+    const child=spawn(/* turbopackIgnore: true */ FFPROBE,[
       '-v','error','-select_streams','v:0',
       '-show_entries','stream=width,height','-of','json',filePath
     ],{stdio:['ignore','pipe','pipe']});
