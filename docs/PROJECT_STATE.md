@@ -80,3 +80,22 @@ Implementado controle persistente do bucket granular `search.list`:
 - nenhuma migration de Supabase necessária.
 
 Validação: CI completo passou no branch `feat/youtube-quota-intelligence`.
+
+
+## Competitor Universe — primeira entrega
+
+Implementado no branch `feat/competitor-universe`:
+- novo módulo Universe na navegação;
+- cards agrupados por cluster;
+- resumo executivo do universo;
+- busca e filtros por cluster/status;
+- importação em lote por colagem, CSV ou TXT;
+- armazenamento persistente sem migration nova;
+- resolução direta de canais sem search.list;
+- snapshot de uploads recentes;
+- sinais iniciais de breakout/outlier/cadência;
+- monitoramento hot/active/stable/dormant;
+- ações de Anatomia, Atualizar e abrir YouTube;
+- concorrentes separados da Gestão de Canais próprios.
+
+Esta entrega não inventa Channel DNA ou Gap: quando essas engines ainda não rodaram, o card mostra explicitamente que a camada está pendente.
