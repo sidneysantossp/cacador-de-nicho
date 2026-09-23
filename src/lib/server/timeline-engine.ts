@@ -13,7 +13,7 @@ import { loadProductionDna } from './production-dna';
 import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
 import { assetIsStale } from '@/lib/asset-factory-policy';
-import { voiceAssetIsStale } from '@/lib/media-library-policy';
+import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import {
   buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
   timelineAssetIssues, type TimelineVisualAssetRef
@@ -157,7 +157,7 @@ function currentAssetIssues(input:{
     selected.set(row.scene_id,{id:row.id,stale,ready:row.status==='ready'});
   }
 
-  const voiceStale=voiceAssetIsStale({
+  const voiceStale=voiceLibraryItemIsStale({
     assetScriptVersion:input.voiceAsset.scriptVersion,
     assetTextHash:input.voiceAsset.textHash,
     currentScriptVersion:input.scriptVersion,
