@@ -97,5 +97,79 @@ export const channelConceptSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const productionDnaPayloadSchema=z.object({
+ kind:z.literal('production-dna'),
+ channelId:z.string().uuid(),
+ format:z.object({
+  aspectRatio:z.string().trim().min(1).max(30),
+  width:z.number().int().min(240).max(7680),
+  height:z.number().int().min(240).max(4320),
+  fps:z.number().int().min(1).max(120),
+  targetDurationMinutes:z.object({
+   min:z.number().min(0).max(360).nullable(),
+   max:z.number().min(0).max(360).nullable()
+  }).strict(),
+  sceneDurationSeconds:z.object({
+   min:z.number().min(0).max(600).nullable(),
+   preferred:z.number().min(0).max(600).nullable(),
+   max:z.number().min(0).max(600).nullable()
+  }).strict()
+ }).strict(),
+ visual:z.object({
+  styleName:z.string().trim().max(180),
+  styleDescription:z.string().trim().max(5000),
+  palette:shortList(40,120),
+  compositionRules:shortList(80,500),
+  cameraRules:shortList(80,500),
+  motionRules:shortList(80,500),
+  basePrompt:z.string().trim().max(12000),
+  negativePrompt:z.string().trim().max(12000),
+  forbidden:shortList(100,500)
+ }).strict(),
+ characters:z.array(z.object({
+  id:z.string().trim().min(1).max(120),
+  name:z.string().trim().min(1).max(180),
+  description:z.string().trim().max(3000),
+  visualRules:shortList(100,500),
+  forbidden:shortList(100,500),
+  referenceAssets:shortList(100,1000)
+ }).strict()).max(30),
+ voice:z.object({
+  language:z.string().trim().max(80),
+  providerPreference:shortList(20,120),
+  voiceId:z.string().trim().max(250),
+  voiceName:z.string().trim().max(250),
+  narrationStyle:shortList(60,500),
+  paceWpm:z.number().min(40).max(400).nullable(),
+  pronunciationRules:shortList(100,500)
+ }).strict(),
+ captions:z.object({
+  enabled:z.boolean(),
+  styleDescription:z.string().trim().max(3000),
+  position:z.string().trim().max(120),
+  maxWordsPerCaption:z.number().int().min(1).max(30).nullable(),
+  highlightKeywords:z.boolean()
+ }).strict(),
+ editing:z.object({
+  transitions:shortList(50,160),
+  defaultTransition:z.string().trim().max(160),
+  kenBurns:z.boolean(),
+  musicStyle:shortList(60,500),
+  sfxRules:shortList(100,500),
+  pacingRules:shortList(100,500)
+ }).strict(),
+ thumbnail:z.object({
+  styleRules:shortList(100,500),
+  forbidden:shortList(100,500)
+ }).strict(),
+ providers:z.object({
+  image:shortList(30,160),
+  video:shortList(30,160),
+  voice:shortList(30,160),
+  stock:shortList(30,160)
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
