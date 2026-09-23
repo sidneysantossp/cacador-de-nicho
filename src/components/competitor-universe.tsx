@@ -44,12 +44,14 @@ function CompetitorCard({
   competitor,
   busy,
   onRefresh,
-  onAnalyze
+  onAnalyze,
+  onIntelligence
 }:{
   competitor:UniverseCompetitor;
   busy:string;
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
+  onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
 }){
   const status=statusMeta[competitor.status];
   const best=competitor.strongestRecentVideo;
@@ -79,14 +81,19 @@ function CompetitorCard({
     </a>:<div className="universe-best-video empty"><Video size={20}/><span>Nenhum upload público carregado nesta rodada.</span></div>}
 
     <div className="universe-intel-block dna">
-      <span>CHANNEL DNA</span>
+      <span>CHANNEL DNA {competitor.dna?'· READY':'· PENDENTE'}</span>
+      {competitor.dna&&<p className="universe-dna-summary">{competitor.dna.editorialPromise}</p>}
       <div className="universe-tags">{competitor.dnaTags.length?competitor.dnaTags.slice(0,5).map(tag=><em key={tag}>{tag}</em>):<em>DNA pendente</em>}</div>
+      {competitor.dna&&<small>{competitor.dna.audienceIntent}</small>}
     </div>
 
     <div className="universe-intel-block signal">
       <span>CURRENT SIGNAL</span>
-      <p>{competitor.signals[0]??'Nenhum sinal anormal sustentado pela amostra recente.'}</p>
-      {competitor.signals.length>1&&<small>+{competitor.signals.length-1} sinal(is) observado(s)</small>}
+      {competitor.signalDetails?.[0]?<>
+        <strong className="universe-signal-title">{competitor.signalDetails[0].title}</strong>
+        <p>{competitor.signalDetails[0].evidence}</p>
+      </>:<p>{competitor.signals[0]??'Nenhum sinal anormal sustentado pela amostra recente.'}</p>}
+      {(competitor.signalDetails?.length??competitor.signals.length)>1&&<small>+{(competitor.signalDetails?.length??competitor.signals.length)-1} sinal(is) observado(s)</small>}
     </div>
 
     <div className="universe-intel-block gap">
@@ -95,6 +102,7 @@ function CompetitorCard({
     </div>
 
     <div className="universe-card-actions">
+      <button className="button subtle small" disabled={!!busy} onClick={()=>void onIntelligence([competitor.id])}><Sparkles size={14}/>{competitor.dna?'Atualizar DNA':'Gerar DNA'}</button>
       <button className="button subtle small" disabled={!!busy} onClick={()=>void onAnalyze(competitor)}><BrainCircuit size={14}/>Anatomia</button>
       <button className="button subtle small" disabled={!!busy} onClick={()=>void onRefresh([competitor.id])}><RefreshCw size={14}/>Atualizar</button>
       <a className="button subtle small" href={competitor.url} target="_blank" rel="noreferrer">YouTube <ArrowUpRight size={14}/></a>
@@ -108,7 +116,8 @@ export default function CompetitorUniverse({
   busy,
   onImport,
   onRefresh,
-  onAnalyze
+  onAnalyze,
+  onIntelligence
 }:{
   competitors:UniverseCompetitor[];
   mode:'demo'|'live';
@@ -116,6 +125,7 @@ export default function CompetitorUniverse({
   onImport:(inputs:string[])=>Promise<void>;
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
+  onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
 }){
   const [query,setQuery]=useState('');
   const [cluster,setCluster]=useState('Todos');
@@ -139,7 +149,7 @@ export default function CompetitorUniverse({
   const newVideos24h=competitors.reduce((sum,item)=>sum+item.recentUploads.filter(video=>now-Date.parse(video.publishedAt)<=86400000).length,0);
   const signals=competitors.filter(item=>item.signals.length>0).length;
   const breakout=competitors.filter(item=>item.status==='breakout').length;
-  const heating=competitors.filter(item=>item.status==='heating-up').length;
+  const dnaReady=competitors.filter(item=>!!item.dna).length;
   const gaps=competitors.filter(item=>!!item.gapSummary).length;
 
   return <div className="universe-page">
@@ -151,6 +161,7 @@ export default function CompetitorUniverse({
       </div>
       <div className="universe-hero-actions">
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar atrasados'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':'Rodar inteligência'}</button>
         <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar concorrentes</button>
       </div>
     </section>
@@ -160,7 +171,7 @@ export default function CompetitorUniverse({
       <div><Video size={18}/><span>NOVOS VÍDEOS 24H</span><strong>{newVideos24h}</strong></div>
       <div><Sparkles size={18}/><span>COM SINAL</span><strong>{signals}</strong></div>
       <div><TrendingUp size={18}/><span>BREAKOUT</span><strong>{breakout}</strong></div>
-      <div><Flame size={18}/><span>HEATING UP</span><strong>{heating}</strong></div>
+      <div><BrainCircuit size={18}/><span>DNA PRONTO</span><strong>{dnaReady}</strong></div>
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
     </section>
 
@@ -179,7 +190,7 @@ export default function CompetitorUniverse({
         <div><span className="eyebrow">CLUSTER</span><h2>{name}</h2></div>
         <p>{items.length} canal(is) · {items.filter(item=>item.signals.length).length} com sinal · {items.filter(item=>item.status==='breakout').length} breakout</p>
       </div>
-      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze}/>)}</div>
+      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence}/>)}</div>
     </section>)}
 
     {showImport&&<div className="universe-import-overlay" role="presentation">
