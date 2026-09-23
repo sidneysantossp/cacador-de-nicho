@@ -217,5 +217,31 @@ export const contentProjectPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const episodeScriptPayloadSchema=z.object({
+ kind:z.literal('episode-script'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ contentProjectId:z.string().uuid(),
+ title:z.string().trim().min(1).max(300),
+ language:z.string().trim().min(2).max(80),
+ sections:z.array(z.object({
+  id:z.string().uuid(),
+  label:z.string().trim().min(1).max(120),
+  purpose:z.string().trim().max(1000),
+  content:z.string().trim().min(1).max(40000)
+ }).strict()).min(1).max(80),
+ content:z.string().trim().min(1).max(200000),
+ wordCount:z.number().int().min(1).max(50000),
+ estimatedMinutes:z.number().min(0).max(600).nullable(),
+ continuityNotes:shortList(100,1000),
+ factCheckWarnings:shortList(100,1000),
+ provenance:z.object({
+  generatedBy:z.enum(['platform','chatgpt','codex','external','operator']),
+  model:z.string().trim().max(120).optional()
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
