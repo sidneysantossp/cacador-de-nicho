@@ -18,7 +18,7 @@ import {
 
 const BUCKET='cacadores-media';
 const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
-const MAX_THUMBNAIL_BYTES=2*1024*1024;
+const MAX_THUMBNAIL_BYTES=50*1024*1024;
 
 type Row={
   id:string;
@@ -302,7 +302,7 @@ export async function uploadPublicationThumbnail(input:{
   if(current.version!==input.expectedVersion)throw new HttpError('Publication Package desatualizado. Recarregue antes do upload.',409);
   if(current.status==='approved')throw new HttpError('Package aprovado é imutável.',409);
   if(input.file.size<=0)throw new HttpError('A thumbnail está vazia.',400);
-  if(input.file.size>MAX_THUMBNAIL_BYTES)throw new HttpError('A thumbnail excede o limite de 2 MB.',413);
+  if(input.file.size>MAX_THUMBNAIL_BYTES)throw new HttpError('A thumbnail excede o limite de 50 MB.',413);
 
   const mime=input.file.type==='image/jpg'?'image/jpeg':input.file.type;
   if(mime!=='image/jpeg'&&mime!=='image/png'){
