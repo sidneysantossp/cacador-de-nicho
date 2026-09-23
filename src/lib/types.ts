@@ -1118,6 +1118,143 @@ export type RenderJob = {
  completedAt?: string;
  updatedAt: string;
 };
+export type PerformanceMetricKey =
+  | 'views'
+  | 'impressions'
+  | 'ctrPercent'
+  | 'retentionFirstSecondsPercent'
+  | 'retention30Percent'
+  | 'averageViewDurationSeconds'
+  | 'averagePercentageViewed'
+  | 'watchTimeMinutes'
+  | 'likes'
+  | 'commentCount'
+  | 'shares'
+  | 'subscribersGained'
+  | 'subscribersLost'
+  | 'conversions'
+  | 'revenue'
+  | 'rpm';
+
+export type PerformanceMetrics = Partial<Record<PerformanceMetricKey,number>>;
+
+export type PerformanceObservationPayload = {
+ kind: 'performance-observation';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ externalVideoId?: string;
+ sourceType: 'manual' | 'imported' | 'youtube-analytics';
+ observedAt: string;
+ metrics: PerformanceMetrics;
+ retentionCurve: Array<{
+  second: number;
+  audiencePercent: number;
+ }>;
+ trafficSources: Array<{
+  source: string;
+  views: number;
+  watchTimeMinutes?: number;
+ }>;
+ comments: Array<{
+  text: string;
+  likes?: number;
+ }>;
+ expectations: PerformanceMetrics;
+ experiment: {
+  changedVariables: string[];
+  notes: string;
+ };
+ provenance: {
+  sourceLabel?: string;
+  importedFileName?: string;
+ };
+ createdAt: string;
+};
+
+export type PerformanceObservation = PerformanceObservationPayload;
+
+export type PerformanceMetricComparison = {
+ metric: PerformanceMetricKey;
+ current: number | null;
+ baseline: number | null;
+ delta: number | null;
+ deltaPercent: number | null;
+ relation: 'above' | 'below' | 'equal' | 'unavailable';
+ baselineSource: 'operator-expectation' | 'channel-median' | 'none';
+ baselineSampleSize: number;
+};
+
+export type PerformanceRetentionEvent = {
+ type: 'drop' | 'peak';
+ fromSecond: number;
+ toSecond: number;
+ deltaPercentPoints: number;
+ fromAudiencePercent: number;
+ toAudiencePercent: number;
+};
+
+export type PerformanceDiagnosis = {
+ id: string;
+ code:
+  | 'packaging-underperforming-content-holding'
+  | 'promise-attracts-delivery-loses'
+  | 'topic-package-hook-all-under-pressure'
+  | 'mid-video-drop'
+  | 'interest-with-low-conversion';
+ area: 'packaging' | 'hook' | 'topic' | 'audience' | 'mid-video' | 'cta';
+ evidence: string[];
+ hypothesis: string;
+ competingExplanation: string;
+ nextTest: string;
+ confidence: 'low' | 'medium' | 'high';
+};
+
+export type PerformanceReportPayload = {
+ kind: 'performance-report';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ observationId: string;
+ observedAt: string;
+ comparisons: PerformanceMetricComparison[];
+ retentionEvents: PerformanceRetentionEvent[];
+ trafficSummary: Array<{
+  source: string;
+  views: number;
+  viewSharePercent: number | null;
+ }>;
+ commentSummary: {
+  sampledComments: number;
+  totalLikesInSample: number;
+ };
+ diagnoses: PerformanceDiagnosis[];
+ strongestSignals: string[];
+ weakestSignals: string[];
+ limitations: string[];
+ handoff: {
+  nextAgent: 'Learning Loop';
+  question: 'Qual parte é evidência repetível e qual pode ser acaso?';
+  candidateHypothesisIds: string[];
+ };
+ review: {
+  notes: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+
+export type PerformanceReport = PerformanceReportPayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+
+export type PerformanceReportVersion = {
+ version: number;
+ status: PerformanceReport['status'];
+ payload: PerformanceReportPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
