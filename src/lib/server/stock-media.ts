@@ -6,6 +6,7 @@ import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { persistStockSceneAsset } from './asset-factory';
+import { stockDownloadHostAllowed, validStockQuery } from '@/lib/stock-media-policy';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
@@ -99,8 +100,7 @@ export async function searchStockMedia(input:{
 }){
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   const query=input.query.trim();
-  if(!query)throw new HttpError('Digite uma busca para Stock Media.',400);
-  if(query.length>100)throw new HttpError('A busca deve ter no máximo 100 caracteres.',400);
+  if(!validStockQuery(query))throw new HttpError('A busca deve ter entre 1 e 100 caracteres.',400);
 
   let results:StockMediaResult[]=[];
   let remaining:string|null=null;
@@ -151,19 +151,10 @@ export async function searchStockMedia(input:{
   return {results,rateLimit:{remaining,reset}};
 }
 
-function allowedHost(host:string,provider:StockMediaProvider){
-  const lower=host.toLowerCase();
-  if(provider==='pexels')return [
-    'images.pexels.com','videos.pexels.com','static-videos.pexels.com',
-    'player.vimeo.com','vod-progressive.akamaized.net'
-  ].some(item=>lower===item||lower.endsWith('.'+item));
-  return ['cdn.pixabay.com','pixabay.com'].some(item=>lower===item||lower.endsWith('.'+item));
-}
-
 async function safeDownload(url:string,provider:StockMediaProvider,maxBytes:number){
   let current=new URL(url);
   for(let i=0;i<6;i++){
-    if(current.protocol!=='https:'||!allowedHost(current.hostname,provider))throw new HttpError('O provider devolveu uma origem de mídia não permitida.',502);
+    if(current.protocol!=='https:'||!stockDownloadHostAllowed(provider,current.hostname))throw new HttpError('O provider devolveu uma origem de mídia não permitida.',502);
     const response=await fetch(current,{redirect:'manual',signal:AbortSignal.timeout(120000),cache:'no-store'});
     if(response.status>=300&&response.status<400){
       const location=response.headers.get('location');
