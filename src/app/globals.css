@@ -69,3 +69,19 @@
 .mission-blockers .info-strip{margin-bottom:8px}
 @media(max-width:900px){.mission-hero{grid-template-columns:1fr}.mission-production-grid,.mission-decision-list{grid-template-columns:1fr}}
 @media(max-width:680px){.mission-hero{padding:20px}.mission-run{width:100%}}
+
+/* YouTube Search Budget */
+.youtube-budget{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+.youtube-budget-main{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}
+.youtube-budget-main h3{font:700 24px Manrope,var(--font);margin:5px 0;color:#3f493a}
+.youtube-budget-main h3 small{font-size:13px;color:#969c91;font-weight:600}
+.youtube-budget-main p{font-size:10px;color:#7a8375;line-height:1.55;margin:0;max-width:700px}
+.youtube-budget-bar{height:8px;border-radius:999px;background:#eef0ea;overflow:hidden;margin:16px 0 13px}
+.youtube-budget-bar span{display:block;height:100%;background:linear-gradient(90deg,#7f966e,#c48a4d);border-radius:999px;transition:width .25s ease}
+.youtube-budget-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.youtube-budget-grid>div{background:#f7f8f3;border-radius:8px;padding:10px 12px}
+.youtube-budget-grid span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.45px;color:#989f93;margin-bottom:4px}
+.youtube-budget-grid strong{font-size:11px;color:#596454}
+.youtube-budget-note{font-size:9px;color:#8a9286;margin:10px 0 0}
+@media(max-width:900px){.youtube-budget-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.youtube-budget-main{flex-direction:column}.youtube-budget-grid{grid-template-columns:1fr}}
