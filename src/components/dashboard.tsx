@@ -3,15 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Radar, Telescope, Layers3, BookOpen, FileText, Settings2, Search, ArrowUpRight, ArrowRight, ChevronDown, X, Play, Bookmark, Check, Clock3, Sparkles, Globe2, ScanLine, CircleHelp, RefreshCw, Plus, ExternalLink, Download, LogIn, LogOut, Menu, Activity, ShieldCheck, CircleDot, AlertCircle, SlidersHorizontal, BrainCircuit, FolderKanban } from 'lucide-react';
 import { demoData } from '@/lib/demo';
-import type { Channel, ManagedChannel, Opportunity, RadarData, Settings } from '@/lib/types';
+import type { Channel, ManagedChannel, Opportunity, RadarData, Settings, UniverseCompetitor } from '@/lib/types';
 import ProviderSettings from './provider-settings';
 import ChannelManagement from './channel-management';
 import ChannelAnalysis from './channel-analysis';
 import MissionControl from './mission-control';
+import CompetitorUniverse from './competitor-universe';
 
-type View = 'mission' | 'radar' | 'analysis' | 'reports' | 'opportunities' | 'management' | 'memory' | 'scripts' | 'activity' | 'settings';
-const nav = [{id:'mission',label:'Mission Control',icon:Sparkles},{id:'radar',label:'Radar de nichos',icon:Radar},{id:'analysis',label:'Análise de Canal',icon:BrainCircuit},{id:'reports',label:'Opportunity Reports',icon:Sparkles},{id:'opportunities',label:'Oportunidades',icon:Layers3},{id:'management',label:'Gestão de canais',icon:FolderKanban},{id:'memory',label:'Memória & pesquisa',icon:BookOpen},{id:'scripts',label:'Roteiros',icon:FileText},{id:'activity',label:'Atividade',icon:Activity}] as const;
-const titles: Record<View,string> = {mission:'Mission Control',radar:'Radar de nichos',analysis:'Análise de Canal',reports:'Opportunity Reports',opportunities:'Oportunidades',management:'Gestão de canais',memory:'Memória & pesquisa',scripts:'Estúdio de roteiros',activity:'Atividade da operação',settings:'Configuração do radar'};
+type View = 'mission' | 'universe' | 'radar' | 'analysis' | 'reports' | 'opportunities' | 'management' | 'memory' | 'scripts' | 'activity' | 'settings';
+const nav = [{id:'mission',label:'Mission Control',icon:Sparkles},{id:'universe',label:'Universe',icon:Globe2},{id:'radar',label:'Radar de nichos',icon:Radar},{id:'analysis',label:'Análise de Canal',icon:BrainCircuit},{id:'reports',label:'Opportunity Reports',icon:Sparkles},{id:'opportunities',label:'Oportunidades',icon:Layers3},{id:'management',label:'Gestão de canais',icon:FolderKanban},{id:'memory',label:'Memória & pesquisa',icon:BookOpen},{id:'scripts',label:'Roteiros',icon:FileText},{id:'activity',label:'Atividade',icon:Activity}] as const;
+const titles: Record<View,string> = {mission:'Mission Control',universe:'Competitor Universe',radar:'Radar de nichos',analysis:'Análise de Canal',reports:'Opportunity Reports',opportunities:'Oportunidades',management:'Gestão de canais',memory:'Memória & pesquisa',scripts:'Estúdio de roteiros',activity:'Atividade da operação',settings:'Configuração do radar'};
 function compact(n:number){return new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1}).format(n);}
 function date(s:string){return new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
 function age(c:Channel){return Math.max(0,Math.floor((new Date(c.observedAt).getTime()-new Date(c.video.publishedAt).getTime())/3600000));}
@@ -30,6 +31,29 @@ export default function Dashboard(){
  function demoSave(next:RadarData){setData(next);localStorage.setItem(STORAGE,JSON.stringify({managedChannels:next.managedChannels,decisions:next.decisions,contexts:next.contexts,settings:next.settings}));}
  function saveManagedChannel(managedChannel:ManagedChannel){if(data.mode==='demo'){const exists=data.managedChannels.some(item=>item.id===managedChannel.id);demoSave({...data,managedChannels:exists?data.managedChannels.map(item=>item.id===managedChannel.id?managedChannel:item):[managedChannel,...data.managedChannels]});setToast(exists?'Canal atualizado no portfólio desta demonstração.':'Canal adicionado ao portfólio desta demonstração.');return;}void action({action:'managedChannel',managedChannel},'managedChannel');}
  async function action(payload:Record<string,unknown>,key:string){setBusy(key);try{const res=await fetch('/api/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await res.json();if(!res.ok)throw new Error(result.error??result.message??'Não foi possível concluir.');setToast(result.message??'Solicitação registrada.');await refresh();return true;}catch(e){setToast(e instanceof Error?e.message:'Falha na solicitação.');return false;}finally{setBusy('');}}
+ async function importUniverse(inputs:string[]){
+  setBusy('universeImport');
+  let imported=0,failed=0;
+  try{
+   for(let i=0;i<inputs.length;i+=25){
+    const batch=inputs.slice(i,i+25);
+    const res=await fetch('/api/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'universeImport',universeInputs:batch})});
+    const result=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(result.error??result.message??'Falha ao importar lote do Universe.');
+    imported+=Number(result.details?.imported??0);
+    failed+=Number(result.details?.failed??0);
+   }
+   await refresh();
+   setToast(`Universe atualizado: ${imported} canal(is) importado(s) e ${failed} falha(s).`);
+  }catch(e){
+   setToast(e instanceof Error?e.message:'Falha ao importar concorrentes.');
+   await refresh();
+  }finally{setBusy('');}
+ }
+ async function analyzeUniverseCompetitor(competitor:UniverseCompetitor){
+  const ok=await action({action:'channelStudy',channelInput:competitor.url},'channelStudy');
+  if(ok){setAnalysisFocusId(`channel-study:${competitor.channelId}`);setView('analysis');}
+ }
  function switchView(id:View){setView(id);setMobile(false);}
  function open(c:Channel,tab='anatomy'){setSelected(c);setDetailTab(tab);setNote('');}
  function remember(c:Channel,o?:Opportunity,decision:'approved'|'rejected'|'note'='approved'){
@@ -47,7 +71,7 @@ export default function Dashboard(){
    <a className="brand" href="/" aria-label="Caçadores de Nichos, início"><span className="brand-mark"><Radar size={25}/></span><span>caçadores<span className="brand-bottom">DE NICHOS</span></span></a>
    <div className="workspace-chip"><span className="workspace-avatar">CN</span><span>Minha operação<small>Inteligência editorial</small></span><ChevronDown size={14}/></div>
    <span className="nav-label">EXPLORAR</span>
-   <nav aria-label="Navegação principal">{nav.map(n=><button key={n.id} className={`nav-item ${view===n.id?'active':''}`} onClick={()=>switchView(n.id)}><n.icon size={19}/>{n.label}{n.id==='mission'&&((data.missionBrief?.productionQueue.length??0)+(data.missionBrief?.decisionsNeeded.length??0))>0&&<span className="nav-count">{(data.missionBrief?.productionQueue.length??0)+(data.missionBrief?.decisionsNeeded.length??0)}</span>}{n.id==='reports'&&(data.opportunityReports?.length??0)>0&&<span className="nav-count">{data.opportunityReports?.length??0}</span>}{n.id==='opportunities'&&(allOpportunities.length+gapCount)>0&&<span className="nav-count">{allOpportunities.length+gapCount}</span>}</button>)}</nav>
+   <nav aria-label="Navegação principal">{nav.map(n=><button key={n.id} className={`nav-item ${view===n.id?'active':''}`} onClick={()=>switchView(n.id)}><n.icon size={19}/>{n.label}{n.id==='mission'&&((data.missionBrief?.productionQueue.length??0)+(data.missionBrief?.decisionsNeeded.length??0))>0&&<span className="nav-count">{(data.missionBrief?.productionQueue.length??0)+(data.missionBrief?.decisionsNeeded.length??0)}</span>}{n.id==='universe'&&(data.universeCompetitors?.length??0)>0&&<span className="nav-count">{data.universeCompetitors?.length??0}</span>}{n.id==='reports'&&(data.opportunityReports?.length??0)>0&&<span className="nav-count">{data.opportunityReports?.length??0}</span>}{n.id==='opportunities'&&(allOpportunities.length+gapCount)>0&&<span className="nav-count">{allOpportunities.length+gapCount}</span>}</button>)}</nav>
    <div className="sidebar-bottom"><div className="operation-state"><span className={`status-orb ${data.settings.enabled&&data.mode==='live'?'on':''}`}/><span>{data.mode==='demo'?'Modo demonstração':data.settings.enabled?'Radar habilitado':'Radar pausado'}<small>{data.mode==='demo'?'Explore antes de conectar':'Pesquisas com limites definidos'}</small></span></div><button className={`nav-item ${view==='settings'?'active':''}`} onClick={()=>switchView('settings')}><Settings2 size={19}/>Configurações</button><button className="nav-item" onClick={()=>{setView('settings');setToast('As conexões são configuradas no ambiente seguro da aplicação.');}}><CircleHelp size={19}/>Conexões & ajuda</button><div className="profile"><span>CN</span><div>Caçadores de Nichos<small>Operação independente</small></div></div></div>
   </aside>
   <div className="main-shell">
@@ -55,7 +79,7 @@ export default function Dashboard(){
    <main>
     {radarError&&data.mode==='live'&&<div className="info-strip"><AlertCircle size={18}/><span><strong>Operação autenticada, mas os dados reais não carregaram.</strong> {radarError}</span></div>}
     {data.mode==='demo'&&<div className="demo-notice"><span><CircleDot size={15}/><strong>Demonstração</strong><span>Canais e números fictícios. Nenhuma pesquisa real foi executada.</span></span><button onClick={()=>switchView('settings')}>Configurar conexões <ArrowRight size={14}/></button></div>}
-    <div className="page-heading"><div><div className="eyebrow">CAÇADORES DE NICHOS <span>/</span> INTELIGÊNCIA EDITORIAL</div><h1>{titles[view]}<span className="heading-dot">.</span></h1><p>{({mission:'Abra a plataforma e encontre apenas o que exige decisão ou produção.',radar:'Os próximos grandes canais começam com um sinal.',analysis:'Desmonte o que viralizou e encontre pequenos canais do mesmo nicho.',reports:'Transforme análises de canal em curvas, lacunas e conceitos executáveis.',opportunities:'Novas perspectivas para demandas que merecem investigação.',management:'Do insight editorial à carteira de canais que você decide construir.',memory:'O contexto que transforma a próxima decisão.',scripts:'Da hipótese editorial ao texto pronto para revisar.',activity:'Cada pesquisa, análise e decisão em um só lugar.',settings:'Defina onde procurar e quando uma descoberta merece atenção.'})[view]}</p></div>{view==='radar'&&<button className="button primary" disabled={!!busy} onClick={()=>data.mode==='demo'?(setView('settings'),setToast('Conecte a operação para executar a primeira pesquisa real.')):void action({action:'scan'},'scan')}><ScanLine size={18} className={busy==='scan'?'spin':''}/>{busy==='scan'?'Iniciando…':'Pesquisar agora'}</button>}</div>
+    <div className="page-heading"><div><div className="eyebrow">CAÇADORES DE NICHOS <span>/</span> INTELIGÊNCIA EDITORIAL</div><h1>{titles[view]}<span className="heading-dot">.</span></h1><p>{({mission:'Abra a plataforma e encontre apenas o que exige decisão ou produção.',universe:'Seu mercado conhecido organizado para revelar sinais, curvas e lacunas.',radar:'Os próximos grandes canais começam com um sinal.',analysis:'Desmonte o que viralizou e encontre pequenos canais do mesmo nicho.',reports:'Transforme análises de canal em curvas, lacunas e conceitos executáveis.',opportunities:'Novas perspectivas para demandas que merecem investigação.',management:'Do insight editorial à carteira de canais que você decide construir.',memory:'O contexto que transforma a próxima decisão.',scripts:'Da hipótese editorial ao texto pronto para revisar.',activity:'Cada pesquisa, análise e decisão em um só lugar.',settings:'Defina onde procurar e quando uma descoberta merece atenção.'})[view]}</p></div>{view==='radar'&&<button className="button primary" disabled={!!busy} onClick={()=>data.mode==='demo'?(setView('settings'),setToast('Conecte a operação para executar a primeira pesquisa real.')):void action({action:'scan'},'scan')}><ScanLine size={18} className={busy==='scan'?'spin':''}/>{busy==='scan'?'Iniciando…':'Pesquisar agora'}</button>}</div>
     {view==='mission'&&<MissionControl
       brief={data.missionBrief}
       mode={data.mode}
@@ -63,6 +87,14 @@ export default function Dashboard(){
       searchBudget={data.youtubeSearchBudget}
       onRun={()=>action({action:'mission'},'mission')}
       onOpenStudy={(channelStudyId)=>{setAnalysisFocusId(channelStudyId);setView('analysis');}}
+    />}
+    {view==='universe'&&<CompetitorUniverse
+      competitors={data.universeCompetitors??[]}
+      mode={data.mode}
+      busy={busy}
+      onImport={importUniverse}
+      onRefresh={(ids)=>action({action:'universeRefresh',universeIds:ids},'universeRefresh')}
+      onAnalyze={analyzeUniverseCompetitor}
     />}
     {view==='radar'&&<>
      <div className="metrics"><div className="metric"><span className="metric-icon"><Telescope size={20}/></span><div><span>Canais no radar</span><strong>{String(data.channels.length).padStart(2,'0')}</strong></div><small>{data.mode==='demo'?'exemplos de canais':'canais encontrados'}</small></div><div className="metric"><span className="metric-icon"><ScanLine size={20}/></span><div><span>Prontos para investigar</span><strong>{String(data.channels.filter(c=>c.status==='new').length).padStart(2,'0')}</strong></div><small>aguardando análise</small></div><div className="metric"><span className="metric-icon orange"><Sparkles size={20}/></span><div><span>Lacunas mapeadas</span><strong>{String(gapCount).padStart(2,'0')}</strong></div><small>{data.mode==='demo'?'hipóteses ilustrativas':'combinações para investigar'}</small></div></div>
