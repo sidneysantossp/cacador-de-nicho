@@ -90,11 +90,12 @@ function edit():VideoEditPayload{
 
 function audioAsset(input:Partial<AudioLibraryAsset> & Pick<AudioLibraryAsset,'id'|'kind'>):AudioLibraryAsset{
   return {
-    id:input.id,channelId:timeline.channelId,kind:input.kind,sourceType:'uploaded',provider:'external',
+    channelId:timeline.channelId,sourceType:'uploaded',provider:'external',
     status:'ready',storagePath:'channels/x/'+input.id+'.mp3',mimeType:'audio/mpeg',
-    originalName:input.kind+'.mp3',bytes:1000,durationSeconds:input.durationSeconds??2,bpm:null,
-    favorite:false,tags:input.tags??[],notes:'',license:{type:'owned',label:'Owned'},
-    signedUrl:null,createdAt:now,updatedAt:now,...input
+    originalName:input.kind+'.mp3',bytes:1000,durationSeconds:2,bpm:null,
+    favorite:false,tags:[],notes:'',license:{type:'owned',label:'Owned'},
+    signedUrl:null,createdAt:now,updatedAt:now,...input,
+    id:input.id,kind:input.kind
   };
 }
 
