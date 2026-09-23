@@ -1654,6 +1654,7 @@ export type NextEpisodeCandidate = {
  thesis: string;
  angle: string;
  promise: string;
+ thumbnailConcept: string;
  targetAudience: string;
  objective: string;
  previousEpisodeConnection: string;
