@@ -34,7 +34,15 @@ export async function importUniverseCompetitors(inputs:string[]){
     try{
       const snapshot=await collectUniverseCompetitor(input);
       const prior=byChannel.get(snapshot.channelId);
-      const merged=prior?await collectUniverseCompetitor(snapshot.channelId,prior):snapshot;
+      const merged=prior?{
+        ...snapshot,
+        importedAt:prior.importedAt,
+        subniche:prior.subniche,
+        monitoringTier:prior.monitoringTier,
+        status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
+        dnaTags:prior.dnaTags.length?prior.dnaTags:snapshot.dnaTags,
+        gapSummary:prior.gapSummary
+      }:snapshot;
       await put('radar_managed_channels',merged.id,merged);
       return {ok:true as const,input,name:merged.name,id:merged.id};
     }catch(error){
