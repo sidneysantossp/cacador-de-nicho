@@ -16,6 +16,7 @@ function parseLines(value:string){return value.split('\n').map(item=>item.trim()
 function lines(value:string[]){return value.join('\n');}
 function num(value:string){if(!value.trim())return null;const n=Number(value);return Number.isFinite(n)?n:null;}
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
+function payloadOnly(value:ProductionDNA):ProductionDnaPayload{const {version:_version,...payload}=value;return payload;}
 function blank(channel:ManagedChannel):ProductionDnaPayload{
   const now=new Date().toISOString();
   return {
@@ -51,7 +52,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
         if(!res.ok)throw new Error(body.message??'Falha ao carregar Production DNA.');
         if(cancelled)return;
         setCurrent(body.dna??null);
-        setDraft(body.dna??blank(channel));
+        setDraft(body.dna?payloadOnly(body.dna):blank(channel));
         setHistory(body.history??[]);
       })
       .catch(error=>{if(!cancelled)setMessage(error instanceof Error?error.message:'Falha ao carregar Production DNA.');})
@@ -75,7 +76,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Production DNA.');
-      setCurrent(body.dna);setDraft(body.dna);setHistory(body.history??[]);
+      setCurrent(body.dna);setDraft(payloadOnly(body.dna));setHistory(body.history??[]);
       setMessage(body.message??'Production DNA salvo.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar Production DNA.');}
     finally{setBusy(false);}
