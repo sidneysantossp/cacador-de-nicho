@@ -45,17 +45,13 @@ function CompetitorCard({
   busy,
   onRefresh,
   onAnalyze,
-  onIntelligence,
-  intelligence,
-  onCurves
+  onIntelligence
 }:{
   competitor:UniverseCompetitor;
   busy:string;
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
   onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
-  intelligence?:UniverseMarketIntelligence|null;
-  onCurves:()=>Promise<boolean|undefined>;
 }){
   const status=statusMeta[competitor.status];
   const best=competitor.strongestRecentVideo;
