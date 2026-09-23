@@ -25,6 +25,7 @@ export function createDefaultProductionDna(channel:ManagedChannel):ProductionDna
       cameraRules:[],
       motionRules:[],
       basePrompt:'',
+      scenePromptTemplate:'{{scene_direction}} + {{character_bible}} + {{visual_bible}} + {{negative_rules}} + {{aspect_ratio}}',
       negativePrompt:'',
       forbidden:[]
     },
