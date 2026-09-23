@@ -52,6 +52,7 @@ function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
 function lines(value:string[]){return value.join('\n');}
 function parseLines(value:string){return value.split('\n').map(item=>item.trim()).filter(Boolean);}
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
+function brainPayload(value:ChannelBrain):ChannelBrainPayload{const {version:_version,...payload}=value;return payload;}
 
 export default function ChannelBrainPage({
   channel,
@@ -85,7 +86,7 @@ export default function ChannelBrainPage({
         const body=await res.json().catch(()=>({}));
         if(!res.ok)throw new Error(body.message??'Falha ao carregar histórico.');
         if(cancelled)return;
-        if(body.brain){setCurrent(body.brain);setDraft(body.brain);}
+        if(body.brain){setCurrent(body.brain);setDraft(brainPayload(body.brain));}
         setHistory(body.history??[]);
       })
       .catch(error=>{if(!cancelled)setMessage(error instanceof Error?error.message:'Falha ao carregar Channel Brain.');});
@@ -113,7 +114,7 @@ export default function ChannelBrainPage({
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Não foi possível salvar o Channel Brain.');
       setCurrent(body.brain);
-      setDraft(body.brain);
+      setDraft(brainPayload(body.brain));
       setHistory(body.history??[]);
       setMessage(body.message??'Channel Brain salvo.');
       await onSaved();
