@@ -121,7 +121,9 @@ export default function CompetitorUniverse({
   onImport,
   onRefresh,
   onAnalyze,
-  onIntelligence
+  onIntelligence,
+  intelligence,
+  onCurves
 }:{
   competitors:UniverseCompetitor[];
   mode:'demo'|'live';
@@ -130,6 +132,8 @@ export default function CompetitorUniverse({
   onRefresh:(ids:string[])=>Promise<boolean|undefined>;
   onAnalyze:(competitor:UniverseCompetitor)=>Promise<void>;
   onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
+  intelligence?:UniverseMarketIntelligence|null;
+  onCurves:()=>Promise<boolean|undefined>;
 }){
   const [query,setQuery]=useState('');
   const [cluster,setCluster]=useState('Todos');
