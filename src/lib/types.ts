@@ -1047,6 +1047,36 @@ export type VideoEditVersion = {
  payload: VideoEditPayload;
  createdAt: string;
 };
+export type RenderJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type RenderJobPayload = {
+ preset: 'source';
+ videoCodec: 'libx264';
+ crf: number;
+ audioCodec: 'aac';
+ audioBitrateKbps: number;
+ compilerVersion: 'render-v1';
+ requestedBy: 'operator';
+};
+export type RenderJob = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ videoEditId: string;
+ videoEditVersion: number;
+ status: RenderJobStatus;
+ progress: number;
+ stage: string;
+ attempts: number;
+ outputPath?: string;
+ outputBytes?: number;
+ outputSignedUrl?: string | null;
+ error?: string;
+ payload: RenderJobPayload;
+ createdAt: string;
+ startedAt?: string;
+ completedAt?: string;
+ updatedAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
