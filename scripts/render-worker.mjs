@@ -295,12 +295,61 @@ function assAlpha(opacity){
   return alpha.toString(16).padStart(2,'0').toUpperCase();
 }
 
+function assColor(hex,alpha='00'){
+  const match=String(hex||'').match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if(!match)return '&H'+alpha+'FFFFFF';
+  return '&H'+alpha+match[3].toUpperCase()+match[2].toUpperCase()+match[1].toUpperCase();
+}
+
+function captionText(cue,style){
+  const source=(cue.words?.length?cue.words:null);
+  const baseWords=source??String(cue.text||'').split(/\s+/).filter(Boolean).map((text,index)=>({
+    id:String(index),text,startSeconds:cue.startSeconds,endSeconds:cue.endSeconds,highlighted:false
+  }));
+  const words=baseWords.map(word=>({...word,text:style.uppercase?String(word.text).toUpperCase():String(word.text)}));
+  const primary=assColor(style.primaryColor||'#FFFFFF');
+  const highlight=assColor(style.highlightColor||'#F4C95D');
+  const maxWords=Math.max(2,Number(style.maxWordsPerLine||6));
+  const tokens=[];
+  let lineCount=0;
+
+  words.forEach((word,index)=>{
+    let token=assEscape(word.text);
+    if(style.highlightMode==='keywords'&&word.highlighted){
+      token='{\\c'+highlight+'}'+token+'{\\c'+primary+'}';
+    }else if(style.highlightMode==='active-word'&&source){
+      const cs=Math.max(1,Math.round((Number(word.endSeconds)-Number(word.startSeconds))*100));
+      token='{\\k'+cs+'}'+token;
+    }
+    tokens.push(token);
+    lineCount++;
+    const punctuation=/[.!?,;:]$/.test(word.text);
+    const remaining=words.length-index-1;
+    if(remaining>0&&style.smartBreaks&&(lineCount>=maxWords||(lineCount>=Math.ceil(maxWords*.6)&&punctuation))){
+      tokens.push('\\N');
+      lineCount=0;
+    }
+  });
+  return tokens.join(' ').replace(/ \\N /g,'\\N');
+}
+
 function buildAss(manifest){
   const w=manifest.format.width,h=manifest.format.height;
-  const position=manifest.captions.position;
+  const captions=manifest.captions||{};
+  const style=captions.style||{
+    fontFamily:'DejaVu Sans',fontWeight:800,primaryColor:'#FFFFFF',
+    highlightColor:'#F4C95D',outlineColor:'#000000',outlineWidth:2,
+    uppercase:false,maxWordsPerLine:6,smartBreaks:true,highlightMode:'none',safeMarginPercent:6
+  };
+  const position=captions.position||'bottom';
   const align=position==='top'?8:position==='center'?5:2;
-  const marginV=Math.round(h*.06);
-  const bg='&H'+assAlpha(manifest.captions.backgroundOpacity)+'000000';
+  const marginV=Math.round(h*(Number(style.safeMarginPercent||6)/100));
+  const bg='&H'+assAlpha(captions.backgroundOpacity??.35)+'000000';
+  const primary=assColor(style.highlightMode==='active-word'?style.highlightColor:style.primaryColor);
+  const secondary=assColor(style.primaryColor);
+  const outline=assColor(style.outlineColor);
+  const font=String(style.fontFamily||'DejaVu Sans').replace(/,/g,' ');
+  const bold=Number(style.fontWeight||800)>=700?-1:0;
   const lines=[
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -310,19 +359,19 @@ function buildAss(manifest){
     '',
     '[V4+ Styles]',
     'Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding',
-    'Style: Caption,DejaVu Sans,'+manifest.captions.fontSize+',&H00FFFFFF,&H00FFFFFF,&H00000000,'+bg+',-1,0,0,0,100,100,0,0,3,1,0,'+align+',80,80,'+marginV+',1',
+    'Style: Caption,'+font+','+(captions.fontSize||52)+','+primary+','+secondary+','+outline+','+bg+','+bold+',0,0,0,100,100,0,0,3,'+Number(style.outlineWidth||0)+',0,'+align+',80,80,'+marginV+',1',
     'Style: Overlay,DejaVu Sans,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1',
     '',
     '[Events]',
     'Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text'
   ];
 
-  if(manifest.captions.enabled){
-    for(const cue of manifest.captions.cues){
-      lines.push('Dialogue: 0,'+assTime(cue.startSeconds)+','+assTime(cue.endSeconds)+',Caption,,0,0,0,,'+assEscape(cue.text));
+  if(captions.enabled){
+    for(const cue of captions.cues??[]){
+      lines.push('Dialogue: 0,'+assTime(cue.startSeconds)+','+assTime(cue.endSeconds)+',Caption,,0,0,0,,'+captionText(cue,style));
     }
   }
-  for(const overlay of manifest.overlays){
+  for(const overlay of manifest.overlays??[]){
     const x=Math.round((overlay.x+overlay.width/2)*w);
     const y=Math.round((overlay.y+overlay.height/2)*h);
     const alpha=assAlpha(overlay.opacity);
@@ -333,7 +382,7 @@ function buildAss(manifest){
 }
 
 async function burnText(manifest,inputPath,assPath,outputPath,crf){
-  const hasText=(manifest.captions.enabled&&manifest.captions.cues.length>0)||manifest.overlays.length>0;
+  const hasText=(manifest.captions?.enabled&&(manifest.captions.cues??[]).length>0)||(manifest.overlays??[]).length>0;
   if(!hasText)return inputPath;
   await writeFile(assPath,buildAss(manifest),'utf8');
   await run(FFMPEG,[
@@ -347,23 +396,102 @@ async function burnText(manifest,inputPath,assPath,outputPath,crf){
   return outputPath;
 }
 
-async function muxVoice(manifest,videoPath,voicePath,outputPath,payload){
+async function muxAudio(manifest,videoPath,paths,outputPath,payload){
+  const voicePath=paths.get(manifest.voice.assetId);
+  if(!voicePath)throw new Error('Narration source missing.');
+
+  const args=['-hide_banner','-loglevel','error','-y','-i',videoPath,'-i',voicePath];
+  let inputIndex=2;
+  let musicIndex=null;
+  const music=manifest.music??null;
+  if(music){
+    const musicPath=paths.get(music.assetId);
+    if(!musicPath)throw new Error('Music source missing.');
+    if(music.placement.loop)args.push('-stream_loop','-1');
+    if(Number(music.placement.sourceStartSeconds||0)>0)args.push('-ss',String(rounded(music.placement.sourceStartSeconds)));
+    args.push('-i',musicPath);
+    musicIndex=inputIndex++;
+  }
+
+  const sfxInputs=[];
+  for(const item of manifest.sfxEvents??[]){
+    const sfxPath=paths.get(item.assetId);
+    if(!sfxPath)throw new Error('SFX source missing: '+item.assetId);
+    if(Number(item.event.sourceStartSeconds||0)>0)args.push('-ss',String(rounded(item.event.sourceStartSeconds)));
+    args.push('-i',sfxPath);
+    sfxInputs.push({index:inputIndex++,item});
+  }
+
   const filters=[];
-  if(manifest.audioMix.normalizeVoice)filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
-  filters.push('volume='+Number(manifest.audioMix.voiceVolume).toFixed(4));
-  filters.push('apad=whole_dur='+rounded(manifest.durationSeconds));
-  await run(FFMPEG,[
-    '-hide_banner','-loglevel','error','-y',
-    '-i',videoPath,
-    '-i',voicePath,
-    '-map','0:v:0','-map','1:a:0',
+  const voiceFilters=[];
+  if(manifest.audioMix.normalizeVoice)voiceFilters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  voiceFilters.push('volume='+Number(manifest.audioMix.voiceVolume).toFixed(4));
+  voiceFilters.push('apad=whole_dur='+rounded(manifest.durationSeconds));
+  voiceFilters.push('atrim=duration='+rounded(manifest.durationSeconds));
+  voiceFilters.push('asetpts=PTS-STARTPTS');
+
+  const mixLabels=[];
+  const shouldDuck=Boolean(music&&music.placement.duckUnderVoice&&manifest.audioMix.duckMusicUnderVoice);
+  if(shouldDuck){
+    filters.push('[1:a]'+voiceFilters.join(',')+',asplit=2[voice_mix][voice_side]');
+    mixLabels.push('[voice_mix]');
+  }else{
+    filters.push('[1:a]'+voiceFilters.join(',')+'[voice_mix]');
+    mixLabels.push('[voice_mix]');
+  }
+
+  if(music&&musicIndex!==null){
+    const p=music.placement;
+    const span=Math.max(.01,Number(p.endSeconds)-Number(p.startSeconds));
+    const musicFilters=[
+      'atrim=duration='+rounded(span),
+      'asetpts=PTS-STARTPTS',
+      'volume='+(Number(p.volume)*Number(manifest.audioMix.musicVolume)).toFixed(4)
+    ];
+    if(Number(p.fadeInSeconds)>0)musicFilters.push('afade=t=in:st=0:d='+rounded(p.fadeInSeconds));
+    if(Number(p.fadeOutSeconds)>0){
+      musicFilters.push('afade=t=out:st='+rounded(Math.max(0,span-p.fadeOutSeconds))+':d='+rounded(p.fadeOutSeconds));
+    }
+    if(Number(p.startSeconds)>0)musicFilters.push('adelay='+Math.round(Number(p.startSeconds)*1000)+':all=1');
+    filters.push('['+musicIndex+':a]'+musicFilters.join(',')+'[music_raw]');
+    if(shouldDuck){
+      const ratio=(1+Number(p.duckingStrength)*15).toFixed(2);
+      filters.push('[music_raw][voice_side]sidechaincompress=threshold=0.025:ratio='+ratio+':attack=20:release=350[music_mix]');
+      mixLabels.push('[music_mix]');
+    }else{
+      mixLabels.push('[music_raw]');
+    }
+  }
+
+  sfxInputs.forEach(({index,item},n)=>{
+    const e=item.event;
+    const sfxFilters=[
+      'atrim=duration='+rounded(e.durationSeconds),
+      'asetpts=PTS-STARTPTS',
+      'volume='+(Number(e.volume)*Number(manifest.audioMix.sfxVolume)).toFixed(4)
+    ];
+    if(Number(e.startSeconds)>0)sfxFilters.push('adelay='+Math.round(Number(e.startSeconds)*1000)+':all=1');
+    const label='sfx_'+n;
+    filters.push('['+index+':a]'+sfxFilters.join(',')+'['+label+']');
+    mixLabels.push('['+label+']');
+  });
+
+  if(mixLabels.length===1){
+    filters.push(mixLabels[0]+'anull[aout]');
+  }else{
+    filters.push(mixLabels.join('')+'amix=inputs='+mixLabels.length+':normalize=0:duration=longest,atrim=duration='+rounded(manifest.durationSeconds)+',alimiter=limit=.95[aout]');
+  }
+
+  args.push(
+    '-filter_complex',filters.join(';'),
+    '-map','0:v:0','-map','[aout]',
     '-c:v','copy',
-    '-af',filters.join(','),
     '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
     '-t',String(rounded(manifest.durationSeconds)),
     '-movflags','+faststart',
     outputPath
-  ]);
+  );
+  await run(FFMPEG,args);
 }
 
 async function processJob(jobId,token){
@@ -372,7 +500,7 @@ async function processJob(jobId,token){
     const job=await assertActive(jobId,token);
     const payload=job.payload;
     const manifest=payload?.manifest;
-    if(!manifest||payload.compilerVersion!=='render-v1')throw new Error('Unsupported render manifest.');
+    if(!manifest||!['render-v1','render-v2'].includes(payload.compilerVersion))throw new Error('Unsupported render manifest.');
 
     await heartbeat(jobId,token,3,'downloading-sources');
     const inputDir=path.join(root,'inputs');
@@ -383,7 +511,9 @@ async function processJob(jobId,token){
     const paths=new Map();
     const unique=[
       ...manifest.visualClips.map(clip=>({id:clip.assetId,storagePath:clip.storagePath})),
-      {id:manifest.voice.assetId,storagePath:manifest.voice.storagePath}
+      {id:manifest.voice.assetId,storagePath:manifest.voice.storagePath},
+      ...(manifest.music?[{id:manifest.music.assetId,storagePath:manifest.music.storagePath}]:[]),
+      ...(manifest.sfxEvents??[]).map(item=>({id:item.assetId,storagePath:item.storagePath}))
     ];
     const dedup=[...new Map(unique.map(item=>[item.id,item])).values()];
 
@@ -422,10 +552,8 @@ async function processJob(jobId,token){
 
     await assertActive(jobId,token);
     await heartbeat(jobId,token,90,'mixing-audio');
-    const voicePath=paths.get(manifest.voice.assetId);
-    if(!voicePath)throw new Error('Narration source missing.');
     const finalPath=path.join(root,'render.mp4');
-    await muxVoice(manifest,textVideo,voicePath,finalPath,payload);
+    await muxAudio(manifest,textVideo,paths,finalPath,payload);
 
     await assertActive(jobId,token);
     await heartbeat(jobId,token,96,'uploading-output');
