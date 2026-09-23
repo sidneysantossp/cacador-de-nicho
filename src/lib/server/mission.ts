@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run } from '@/lib/types';
+import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor } from '@/lib/types';
 import { compareMissionCandidates, productionReadiness } from '@/lib/mission';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { runChannelStudy } from './channel-study';
@@ -11,6 +11,7 @@ import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 import { isYouTubeSearchQuotaError, YouTubeSearchQuotaError } from './youtube';
 import { YouTubeSearchBudgetError } from './youtube-search-budget';
+import { refreshUniverseCompetitors, runUniverseIntelligence, universeState } from './universe';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
 
@@ -68,6 +69,7 @@ function buildBrief(input:{
   channels:Channel[];
   studies:ChannelStudy[];
   reports:OpportunityReport[];
+  universe:UniverseCompetitor[];
   workCompleted:string[];
   blockers:string[];
   notes:string[];
@@ -128,7 +130,10 @@ function buildBrief(input:{
       qualifiedChannels:input.channels.length,
       channelStudies:input.studies.length,
       opportunityReports:input.reports.length,
-      productionReady:productionQueue.length
+      productionReady:productionQueue.length,
+      competitors:input.universe.length,
+      competitorSignals:input.universe.filter(item=>(item.signalDetails?.length??item.signals.length)>0).length,
+      competitorDna:input.universe.filter(item=>!!item.dna).length
     },
     workCompleted:input.workCompleted,
     productionQueue,
@@ -163,6 +168,7 @@ export async function runMission():Promise<MissionBrief>{
     };
 
     let state=await loadMissionState();
+    let universe=await universeState();
     let reportsGenerated=0;
     let studiesGenerated=0;
 
@@ -186,10 +192,31 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    // Keep the market fresh even when no immediate production candidate exists.
-    let youtubeSearchAvailable=health.youtube;
+    // Keep the known market fresh before spending scarce search quota outside it.
+    if(health.youtube&&universe.length&&Date.now()-startedMs<90000){
+      try{
+        const refreshed=await refreshUniverseCompetitors(undefined,10);
+        if(refreshed.refreshed>0)workCompleted.push(`Universe: ${refreshed.refreshed} concorrente(s) vencido(s) atualizado(s).`);
+        if(refreshed.failed>0)blockers.push(`Universe: ${refreshed.failed} atualização(ões) de concorrente falharam.`);
+        universe=await universeState();
+      }catch(error){
+        blockers.push(`Universe refresh: ${error instanceof Error?error.message:'falha não identificada'}`);
+      }
+    }
+
+    if(health.openai&&universe.length&&Date.now()-startedMs<125000){
+      try{
+        const intelligence=await runUniverseIntelligence();
+        if(intelligence.analyzed>0)workCompleted.push(intelligence.message);
+        universe=await universeState();
+      }catch(error){
+        blockers.push(`Universe Intelligence: ${error instanceof Error?error.message:'falha não identificada'}`);
+      }
+    }
+
+    // Keep the external market fresh only after the known Universe has advanced.
     const youtubeDataAvailable=health.youtube;
-    if(health.youtube){
+    if(health.youtube&&Date.now()-startedMs<150000){
       try{
         const message=await runRadar(false,false);
         workCompleted.push(message);
@@ -198,7 +225,6 @@ export async function runMission():Promise<MissionBrief>{
         if(isYouTubeSearchQuotaError(error)){
           const discoveryOnly=error instanceof YouTubeSearchBudgetError&&error.reason==='purpose-limit';
           const transient=error instanceof YouTubeSearchQuotaError&&!error.hardQuota;
-          youtubeSearchAvailable=discoveryOnly;
           blockers.push(discoveryOnly
             ?'Radar: orçamento diário de descoberta atingido. A reserva de busca para Análise de Canal e similares permanece disponível.'
             :transient
@@ -262,6 +288,7 @@ export async function runMission():Promise<MissionBrief>{
       channels:state.channels,
       studies:state.studies,
       reports:state.reports,
+      universe,
       workCompleted,
       blockers,
       notes
