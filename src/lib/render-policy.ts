@@ -75,6 +75,50 @@ export function renderManifestIssues(
 
   if(!manifest.voice.assetId||!manifest.voice.storagePath)issues.push('render-voice-source-missing');
 
+  const music=manifest.music??null;
+  if(Boolean(edit.musicTrack)!==Boolean(music))issues.push('render-music-selection-mismatch');
+  if(music){
+    const placement=music.placement;
+    if(!music.assetId||!music.storagePath)issues.push('render-music-source-missing');
+    if(edit.musicTrack&&(
+      edit.musicTrack.assetId!==music.assetId||
+      edit.musicTrack.startSeconds!==placement.startSeconds||
+      edit.musicTrack.endSeconds!==placement.endSeconds
+    ))issues.push('render-music-selection-mismatch');
+    if(placement.endSeconds<=placement.startSeconds)issues.push('render-music-duration-invalid');
+    if(placement.startSeconds<0||placement.endSeconds>manifest.durationSeconds+.03)issues.push('render-music-outside-timeline');
+    if(placement.sourceStartSeconds<0)issues.push('render-music-source-start-invalid');
+    if(placement.volume<0||placement.volume>2)issues.push('render-music-volume-invalid');
+    if(placement.duckingStrength<0||placement.duckingStrength>1)issues.push('render-music-ducking-invalid');
+    const span=placement.endSeconds-placement.startSeconds;
+    if(placement.fadeInSeconds<0||placement.fadeOutSeconds<0||placement.fadeInSeconds+placement.fadeOutSeconds>span+.03){
+      issues.push('render-music-fade-invalid');
+    }
+    if(!placement.loop&&music.durationSeconds!==null&&placement.sourceStartSeconds+span>music.durationSeconds+.03){
+      issues.push('render-music-source-too-short');
+    }
+  }
+
+  const sfxEvents=manifest.sfxEvents??[];
+  if(sfxEvents.length!==edit.sfxEvents.length)issues.push('render-sfx-selection-mismatch');
+  const editSfx=new Map(edit.sfxEvents.map(event=>[event.id,event]));
+  for(const item of sfxEvents){
+    const event=item.event;
+    const current=editSfx.get(event.id);
+    if(!item.assetId||!item.storagePath)issues.push('render-sfx-source-missing');
+    if(!current||current.assetId!==item.assetId||current.startSeconds!==event.startSeconds){
+      issues.push('render-sfx-selection-mismatch');
+    }
+    if(event.durationSeconds<=0||event.startSeconds<0||event.startSeconds+event.durationSeconds>manifest.durationSeconds+.03){
+      issues.push('render-sfx-outside-timeline');
+    }
+    if(event.sourceStartSeconds<0)issues.push('render-sfx-source-start-invalid');
+    if(event.volume<0||event.volume>2)issues.push('render-sfx-volume-invalid');
+    if(item.durationSeconds!==null&&event.sourceStartSeconds+event.durationSeconds>item.durationSeconds+.03){
+      issues.push('render-sfx-source-too-short');
+    }
+  }
+
   for(const cue of manifest.captions.cues){
     if(cue.endSeconds<=cue.startSeconds)issues.push('render-caption-duration-invalid');
     if(cue.startSeconds<0||cue.endSeconds>manifest.durationSeconds+.03)issues.push('render-caption-outside-timeline');
