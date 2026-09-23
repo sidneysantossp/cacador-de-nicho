@@ -575,6 +575,37 @@ export type EpisodeScriptVersion = {
  payload: EpisodeScriptPayload;
  createdAt: string;
 };
+export type VoiceAlignment = {
+ characters: string[];
+ characterStartTimesSeconds: number[];
+ characterEndTimesSeconds: number[];
+};
+export type VoiceAsset = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scriptId: string;
+ take: number;
+ sourceType: 'uploaded' | 'generated';
+ provider?: string;
+ status: 'processing' | 'ready' | 'failed';
+ selected: boolean;
+ storagePath: string;
+ mimeType: string;
+ originalName?: string;
+ bytes: number;
+ scriptVersion: number;
+ scriptWordCount: number;
+ textHash: string;
+ modelId?: string;
+ voiceId?: string;
+ voiceName?: string;
+ durationSeconds: number | null;
+ characterCount: number;
+ alignment?: VoiceAlignment;
+ createdAt: string;
+ updatedAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
