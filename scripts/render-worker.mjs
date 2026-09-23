@@ -133,6 +133,58 @@ async function run(command,args,{cwd}={}){
   });
 }
 
+function codecArgs(codec,crf,preset='medium'){
+  if(codec==='libx264'){
+    return ['-c:v','libx264','-preset',preset,'-crf',String(crf)];
+  }
+  if(codec==='mpeg4'){
+    const q=Math.max(2,Math.min(12,Math.round((Number(crf)-16)/2+2)));
+    return ['-c:v','mpeg4','-q:v',String(q)];
+  }
+  throw new Error('Unsupported video encoder: '+codec);
+}
+
+function encoderCandidates(payload){
+  const primary=payload?.videoCodec||'libx264';
+  const fallback=payload?.compilerVersion==='render-v3'?(payload.fallbackVideoCodecs??[]):[];
+  return [...new Set([primary,...fallback])];
+}
+
+async function runVideoEncode(baseArgs,outputPath,payload,{crf,preset='medium'}={}){
+  const failures=[];
+  for(const codec of encoderCandidates(payload)){
+    try{
+      await run(FFMPEG,[
+        ...baseArgs,
+        ...codecArgs(codec,crf??payload?.crf??20,preset),
+        '-pix_fmt','yuv420p',
+        outputPath
+      ]);
+      if(failures.length){
+        console.log(JSON.stringify({
+          event:'render-encoder-fallback',
+          codec,
+          failedCodecs:failures.map(item=>item.codec)
+        }));
+      }
+      return codec;
+    }catch(error){
+      failures.push({codec,error:safeError(error)});
+    }
+  }
+  throw new Error('All video encoders failed: '+failures.map(item=>item.codec+': '+item.error).join(' | '));
+}
+
+function renderOutputFormat(payload,manifest){
+  const raw=payload?.compilerVersion==='render-v3'&&payload.outputFormat
+    ?payload.outputFormat
+    :manifest.format;
+  const width=Math.max(2,Math.round(Number(raw.width)/2)*2);
+  const height=Math.max(2,Math.round(Number(raw.height)/2)*2);
+  const fps=Math.max(1,Math.min(120,Math.round(Number(raw.fps))));
+  return {width,height,fps};
+}
+
 function fitFilter(kind,width,height){
   if(kind==='contain'){
     return 'scale='+width+':'+height+':force_original_aspect_ratio=decrease,'+
@@ -179,7 +231,7 @@ function effectiveCrossDuration(left,right){
   return Math.max(0,Math.min(requested,left.durationSeconds/2,right.durationSeconds/2));
 }
 
-async function prepareSegment(clip,inputPath,outputPath,manifest,index){
+async function prepareSegment(clip,inputPath,outputPath,manifest,index,payload){
   const width=manifest.format.width;
   const height=manifest.format.height;
   const fps=manifest.format.fps;
@@ -223,21 +275,18 @@ async function prepareSegment(clip,inputPath,outputPath,manifest,index){
     '-vf',filters.join(','),
     '-an',
     '-t',String(rounded(outputDuration)),
-    '-c:v','libx264','-preset','veryfast','-crf','18',
-    '-pix_fmt','yuv420p',
-    '-r',String(fps),
-    outputPath
+    '-r',String(fps)
   );
-  await run(FFMPEG,args);
+  await runVideoEncode(args,outputPath,payload,{crf:18,preset:'veryfast'});
 }
 
-async function assembleSegments(manifest,segmentPaths,outputPath,crf){
+async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
   const args=['-hide_banner','-loglevel','error','-y'];
   for(const file of segmentPaths)args.push('-i',file);
 
   if(segmentPaths.length===1){
-    args.push('-map','0:v:0','-an','-c:v','libx264','-preset','medium','-crf',String(crf),'-pix_fmt','yuv420p',outputPath);
-    await run(FFMPEG,args);
+    args.push('-map','0:v:0','-an');
+    await runVideoEncode(args,outputPath,payload,{crf,preset:'medium'});
     return;
   }
 
@@ -265,12 +314,9 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf){
     '-map','['+current+']',
     '-an',
     '-t',String(rounded(manifest.durationSeconds)),
-    '-c:v','libx264','-preset','medium','-crf',String(crf),
-    '-pix_fmt','yuv420p',
-    '-r',String(manifest.format.fps),
-    outputPath
+    '-r',String(manifest.format.fps)
   );
-  await run(FFMPEG,args);
+  await runVideoEncode(args,outputPath,payload,{crf,preset:'medium'});
 }
 
 function assEscape(value){
@@ -381,18 +427,15 @@ function buildAss(manifest){
   return lines.join('\n')+'\n';
 }
 
-async function burnText(manifest,inputPath,assPath,outputPath,crf){
+async function burnText(manifest,inputPath,assPath,outputPath,crf,payload){
   const hasText=(manifest.captions?.enabled&&(manifest.captions.cues??[]).length>0)||(manifest.overlays??[]).length>0;
   if(!hasText)return inputPath;
   await writeFile(assPath,buildAss(manifest),'utf8');
-  await run(FFMPEG,[
+  await runVideoEncode([
     '-hide_banner','-loglevel','error','-y','-i',inputPath,
     '-vf','ass='+assPath,
-    '-an',
-    '-c:v','libx264','-preset','medium','-crf',String(crf),
-    '-pix_fmt','yuv420p',
-    outputPath
-  ]);
+    '-an'
+  ],outputPath,payload,{crf,preset:'medium'});
   return outputPath;
 }
 
@@ -484,7 +527,23 @@ async function muxAudio(manifest,videoPath,paths,outputPath,payload){
 
   args.push(
     '-filter_complex',filters.join(';'),
-    '-map','0:v:0','-map','[aout]',
+    '-map','0:v:0','-map','[aout]'
+  );
+
+  if(payload.compilerVersion==='render-v3'){
+    const format=renderOutputFormat(payload,manifest);
+    args.push(
+      '-vf','scale='+format.width+':'+format.height+':force_original_aspect_ratio=decrease,'+
+        'pad='+format.width+':'+format.height+':(ow-iw)/2:(oh-ih)/2:black,fps='+format.fps,
+      '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
+      '-t',String(rounded(manifest.durationSeconds)),
+      '-movflags','+faststart'
+    );
+    await runVideoEncode(args,outputPath,payload,{crf:payload.crf,preset:'medium'});
+    return;
+  }
+
+  args.push(
     '-c:v','copy',
     '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
     '-t',String(rounded(manifest.durationSeconds)),
@@ -500,7 +559,7 @@ async function processJob(jobId,token){
     const job=await assertActive(jobId,token);
     const payload=job.payload;
     const manifest=payload?.manifest;
-    if(!manifest||!['render-v1','render-v2'].includes(payload.compilerVersion))throw new Error('Unsupported render manifest.');
+    if(!manifest||!['render-v1','render-v2','render-v3'].includes(payload.compilerVersion))throw new Error('Unsupported render manifest.');
 
     await heartbeat(jobId,token,3,'downloading-sources');
     const inputDir=path.join(root,'inputs');
@@ -534,7 +593,7 @@ async function processJob(jobId,token){
       const input=paths.get(clip.assetId);
       if(!input)throw new Error('Missing local source for '+clip.assetId);
       const output=path.join(segDir,String(i).padStart(4,'0')+'.mp4');
-      await prepareSegment(clip,input,output,manifest,i);
+      await prepareSegment(clip,input,output,manifest,i,payload);
       segmentPaths.push(output);
       await heartbeat(jobId,token,20+Math.round((i+1)/manifest.visualClips.length*45),'rendering-clips');
     }
@@ -542,12 +601,12 @@ async function processJob(jobId,token){
     await assertActive(jobId,token);
     await heartbeat(jobId,token,70,'assembling-timeline');
     const assembled=path.join(root,'assembled.mp4');
-    await assembleSegments(manifest,segmentPaths,assembled,payload.crf);
+    await assembleSegments(manifest,segmentPaths,assembled,payload.crf,payload);
 
     await assertActive(jobId,token);
     await heartbeat(jobId,token,82,'burning-text');
     const textVideo=await burnText(
-      manifest,assembled,path.join(root,'overlays.ass'),path.join(root,'text.mp4'),payload.crf
+      manifest,assembled,path.join(root,'overlays.ass'),path.join(root,'text.mp4'),payload.crf,payload
     );
 
     await assertActive(jobId,token);
