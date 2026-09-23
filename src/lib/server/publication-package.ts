@@ -366,6 +366,7 @@ export async function publicationPackageChannelState(channelId:string){
   const packageQuality=new Set(packages.map(pkg=>pkg.qualityReportId));
   return {
     packages,
+    qualityReports,
     eligibleQualityReports:qualityReports.filter(report=>report.status==='approved'&&!packageQuality.has(report.id)),
     renders:renders.filter(render=>render.status==='completed')
   };
