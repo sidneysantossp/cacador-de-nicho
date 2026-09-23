@@ -6,6 +6,7 @@ import {
   Library, Search, Sparkles, Tag, X
 } from 'lucide-react';
 import type { ManagedChannel, MediaLibraryItem } from '@/lib/types';
+import { mediaLibrarySearch, normalizeMediaTags } from '@/lib/media-library-policy';
 
 type KindFilter='all'|'image'|'video'|'audio';
 type SourceFilter='all'|'generated'|'uploaded'|'stock';
@@ -27,7 +28,7 @@ function icon(kind:MediaLibraryItem['mediaKind']){
   return <FileAudio size={16}/>;
 }
 function normalizeTagInput(value:string){
-  return [...new Set(value.split(',').map(tag=>tag.trim().toLowerCase()).filter(Boolean))].slice(0,50);
+  return normalizeMediaTags(value.split(','));
 }
 
 export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}){
@@ -63,21 +64,9 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
 
   useEffect(()=>{void fetchPage(1,false);},[channel.id]);
 
-  const filtered=useMemo(()=>{
-    const q=query.trim().toLowerCase();
-    return items.filter(item=>{
-      if(kind!=='all'&&item.mediaKind!==kind)return false;
-      if(source!=='all'&&item.sourceType!==source)return false;
-      if(favoritesOnly&&!item.favorite)return false;
-      if(staleOnly&&!item.stale)return false;
-      if(!q)return true;
-      const haystack=[
-        item.title,item.originalName,item.provider,item.sourceType,item.timecodeLabel,
-        item.prompt,item.notes,...item.tags,item.stock?.creatorName,item.stock?.attributionLabel
-      ].filter(Boolean).join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
-  },[items,query,kind,source,favoritesOnly,staleOnly]);
+  const filtered=useMemo(()=>mediaLibrarySearch(items,{
+    query,kind,source,favoritesOnly,staleOnly
+  }),[items,query,kind,source,favoritesOnly,staleOnly]);
 
   function open(item:MediaLibraryItem){
     setSelected(item);
