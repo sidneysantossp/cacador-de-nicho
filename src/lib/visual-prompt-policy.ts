@@ -65,10 +65,13 @@ export function compileScenePrompt(
   scene:SceneTimecode,
   dna:ProductionDNA,
   characterIds:string[],
-  direction:string
+  direction:string,
+  referenceCharacterIds:string[]=[]
 ):VisualScenePrompt{
   const known=new Map(dna.characters.map(character=>[character.id,character]));
+  const referenceSet=new Set(referenceCharacterIds);
   const references=characterIds
+    .filter(id=>referenceSet.has(id))
     .map(id=>known.get(id))
     .filter((item):item is ProductionDnaCharacter=>!!item)
     .map(character=>'@'+visualReferenceName(character).slice(1));
@@ -81,7 +84,7 @@ export function compileScenePrompt(
     scene.shotType.trim(),
     references.join(', '),
     directionText,
-    negative?('avoid '+negative):''
+    negative
   ].filter(Boolean);
 
   let prompt=pieces.join(', ').replace(/\s+/g,' ').trim();
@@ -105,8 +108,14 @@ export function buildInitialVisualPromptSet(
   dna:ProductionDNA
 ):VisualPromptSetPayload{
   const now=new Date().toISOString();
-  const scenePrompts=plan.scenes.map(scene=>compileScenePrompt(scene,dna,scene.characterIds,scene.promptDirection||scene.visualIntent||scene.narration));
-  const recurring=recurringCharacterIds(scenePrompts);
+  const recurring=recurringCharacterIds(plan.scenes.map(scene=>({sceneId:scene.id,characterIds:scene.characterIds})));
+  const scenePrompts=plan.scenes.map(scene=>compileScenePrompt(
+    scene,
+    dna,
+    scene.characterIds,
+    scene.promptDirection||scene.visualIntent||scene.narration,
+    recurring
+  ));
   const references=recurring.flatMap(characterId=>{
     const character=dna.characters.find(item=>item.id===characterId);
     if(!character)return [];
