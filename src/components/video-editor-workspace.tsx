@@ -255,8 +255,8 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
               <label>Transition in<select value={selectedStyle.transitionIn} onChange={e=>updateStyle(selectedStyle.timelineClipId,{transitionIn:e.target.value as VideoEditClipStyle['transitionIn']})}><option value="none">None</option><option value="fade">Fade</option><option value="cross-dissolve">Cross dissolve</option></select></label>
               <label>Transition out<select value={selectedStyle.transitionOut} onChange={e=>updateStyle(selectedStyle.timelineClipId,{transitionOut:e.target.value as VideoEditClipStyle['transitionOut']})}><option value="none">None</option><option value="fade">Fade</option><option value="cross-dissolve">Cross dissolve</option></select></label>
               <label>Transition seconds<input type="number" min="0" max={Math.max(0,(clip?.durationSeconds??0)/2)} step=".05" value={selectedStyle.transitionSeconds} onChange={e=>updateStyle(selectedStyle.timelineClipId,{transitionSeconds:Number(e.target.value)})}/></label>
-              <label>Scale start<input type="number" min=".1" max="5" step=".01" value={selectedStyle.scaleStart} onChange={e=>updateStyle(selectedStyle.timelineClipId,{motionPreset:'custom',scaleStart:Number(e.target.value)})}/></label>
-              <label>Scale end<input type="number" min=".1" max="5" step=".01" value={selectedStyle.scaleEnd} onChange={e=>updateStyle(selectedStyle.timelineClipId,{motionPreset:'custom',scaleEnd:Number(e.target.value)})}/></label>
+              <label>Scale start<input type="number" min="1" max="5" step=".01" value={selectedStyle.scaleStart} onChange={e=>updateStyle(selectedStyle.timelineClipId,{motionPreset:'custom',scaleStart:Number(e.target.value)})}/></label>
+              <label>Scale end<input type="number" min="1" max="5" step=".01" value={selectedStyle.scaleEnd} onChange={e=>updateStyle(selectedStyle.timelineClipId,{motionPreset:'custom',scaleEnd:Number(e.target.value)})}/></label>
             </div>
           </section>;
         })()}
