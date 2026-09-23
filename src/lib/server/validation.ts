@@ -243,6 +243,47 @@ export const episodeScriptPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const publicationPackagePayloadSchema=z.object({
+ kind:z.literal('publication-package'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ qualityReportId:z.string().uuid(),
+ qualityReportVersion:z.number().int().min(1).max(100000),
+ renderJobId:z.string().uuid(),
+ renderOutputPath:z.string().trim().min(1).max(3000),
+ metadata:z.object({
+  title:z.string().max(100),
+  description:z.string().max(5000),
+  tags:z.array(z.string().trim().min(1).max(100)).max(50),
+  language:z.string().trim().max(30),
+  categoryId:z.string().trim().max(20),
+  visibility:z.enum(['private','unlisted','public']),
+  audience:z.enum(['unset','made-for-kids','not-made-for-kids']),
+  syntheticMediaDisclosure:z.enum(['review','yes','no']),
+  license:z.enum(['youtube','creativeCommon'])
+ }).strict(),
+ thumbnail:z.object({
+  source:z.enum(['none','uploaded','generated','frame']),
+  storagePath:z.string().max(3000).nullable(),
+  mimeType:z.string().max(120).nullable(),
+  originalName:z.string().max(500).nullable(),
+  bytes:z.number().int().min(0).max(20*1024*1024).nullable(),
+  width:z.number().int().min(1).max(10000).nullable(),
+  height:z.number().int().min(1).max(10000).nullable(),
+  concept:z.string().max(4000),
+  overlayText:z.string().max(500),
+  altText:z.string().max(1000)
+ }).strict(),
+ review:z.object({
+  notes:z.string().max(5000),
+  approvedAt:z.string().datetime().optional(),
+  approvedBy:z.literal('operator').optional()
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
+
 export const transcriptPayloadSchema=z.object({
  kind:z.literal('transcript'),
  id:z.string().uuid(),
