@@ -111,3 +111,18 @@
 
 .universe-dna-summary{font-weight:600;color:#5f5473!important;margin:0 0 7px!important}
 .universe-signal-title{display:block;font-size:9px;color:#4f6b56;margin-bottom:4px}
+
+/* Universe Curves & Gaps */
+.universe-tabs{display:flex;gap:7px;align-items:center;border-bottom:1px solid #dcded5;padding-bottom:9px}
+.universe-tabs button{border:0;background:transparent;color:#7d8579;padding:8px 11px;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer}
+.universe-tabs button span{margin-left:5px;background:#eceee8;border-radius:999px;padding:2px 6px;font-size:8px}
+.universe-tabs button.active{background:#242922;color:#f4f1e8}.universe-tabs button.active span{background:#3a4136;color:#dfd9ca}
+.universe-derived-view{display:grid;gap:12px}
+.universe-market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.universe-curve-card,.universe-gap-card{background:#fff;border:1px solid #dcddd6;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 24px rgba(54,63,48,.035)}
+.universe-curve-card h3,.universe-gap-card h3{font:700 19px Manrope,var(--font);margin:0;color:#40493c;letter-spacing:-.35px}
+.universe-curve-card>p,.universe-gap-card>p{font-size:10px;line-height:1.55;color:#737b6f;margin:0}
+.universe-derived-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.universe-derived-head>strong{font-size:8px;text-transform:uppercase;letter-spacing:.45px;color:#92998e}
+.universe-derived-block{background:#f7f8f4;border-radius:8px;padding:11px}.universe-derived-block>span{display:block;font-size:7px;font-weight:700;letter-spacing:.55px;color:#8a9386;margin-bottom:6px}.universe-derived-block p{font-size:9px;line-height:1.5;color:#626c5f;margin:0}.universe-derived-block small{display:block;font-size:8.5px;line-height:1.45;color:#717a6d;margin-top:5px}.universe-derived-block ol{margin:0;padding-left:18px}.universe-derived-block li{font-size:9px;line-height:1.5;color:#626c5f;margin:4px 0}
+.universe-gap-card dl{display:grid;grid-template-columns:70px 1fr;gap:7px 10px;margin:0}.universe-gap-card dt{font-size:7px;text-transform:uppercase;letter-spacing:.45px;color:#999f95}.universe-gap-card dd{font-size:9px;line-height:1.45;color:#5f685b;margin:0}.universe-derived-block.tests{background:#f6efe3}.universe-derived-block.tests>span{color:#9b713f}
+@media(max-width:900px){.universe-market-grid{grid-template-columns:1fr}}
