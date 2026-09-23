@@ -826,3 +826,38 @@
 .audience-approve{display:flex;gap:7px;align-items:center}.audience-approve input{min-width:220px;border:1px solid #dfe4dc;border-radius:8px;padding:8px;font-size:8px}.audience-approved{display:flex;gap:6px;align-items:center;color:#50644a;font-size:8px;font-weight:800}.audience-approved.muted{color:#7c8579}
 .audience-empty,.audience-empty-inline{display:grid;justify-items:center;text-align:center;gap:6px;padding:22px;color:#879083}.audience-empty h3{font-size:12px;color:#657060;margin:0}.audience-empty p,.audience-empty-inline{font-size:9px;margin:0}
 @media(max-width:640px){.audience-hero,.audience-section-head,.audience-eligible-list article,.audience-report footer{align-items:stretch;flex-direction:column}.audience-brain-state{justify-items:start;min-width:0}.audience-sentiment{grid-template-columns:repeat(2,minmax(0,1fr))}.audience-approve{align-items:stretch;flex-direction:column}.audience-approve input{min-width:0}}
+
+
+/* Next Episode Strategist */
+.next-episode-strategist{display:grid;gap:14px}
+.next-episode-loading{display:flex;align-items:center;gap:9px;padding:22px;color:#768071;font-size:10px}
+.next-episode-message{display:flex;align-items:center;gap:8px;background:#edf5e9;border:1px solid #d4e2cf;color:#4f604a;border-radius:9px;padding:10px 12px;font-size:9px}
+.next-episode-hero,.next-episode-command,.next-episode-plan,.next-episode-history{background:#fff;border:1px solid #e3e7e0;border-radius:12px;padding:16px}
+.next-episode-hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;background:linear-gradient(135deg,#fafcf8,#f5f7f2)}
+.next-episode-hero span,.next-episode-command span,.next-episode-plan header span,.next-episode-section-head span,.next-episode-candidate-top span,.next-episode-brief-grid span{font-size:8px;font-weight:900;letter-spacing:.6px;color:#768071}
+.next-episode-hero h2,.next-episode-command h3,.next-episode-plan h3,.next-episode-section-head h3{margin:4px 0;color:#354031}
+.next-episode-hero h2{font-size:20px}.next-episode-hero p,.next-episode-command p,.next-episode-plan header p{font-size:9px;line-height:1.55;color:#7c8579;margin:4px 0 0}
+.next-episode-state{min-width:170px;display:grid;gap:4px;border:1px solid #dfe5db;background:#fff;border-radius:10px;padding:11px;color:#5d6c57}
+.next-episode-state strong{font-size:10px}.next-episode-state span{font-size:8px;font-weight:600;letter-spacing:0}
+.next-episode-command,.next-episode-section-head,.next-episode-plan>header{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.next-episode-command>div:last-child{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.next-episode-stale{display:flex;gap:8px;align-items:flex-start;border:1px solid #ead9ae;background:#fff9ec;color:#866c31;border-radius:9px;padding:10px 12px;font-size:9px;line-height:1.45}
+.next-episode-limitations{display:grid;gap:5px;border:1px solid #e5e8e1;background:#fafbf8;border-radius:9px;padding:10px;margin-top:12px}
+.next-episode-limitations p,.next-episode-risks p{display:flex;gap:6px;align-items:flex-start;margin:0;font-size:8px;line-height:1.5;color:#747d70}
+.next-episode-candidates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.next-episode-candidate{display:grid;gap:10px;border:1px solid #e3e7e0;border-radius:10px;padding:12px;background:#fff;min-width:0}
+.next-episode-candidate.recommended{border-color:#9daf95;box-shadow:0 0 0 1px #dce7d7 inset;background:#fcfefb}
+.next-episode-candidate.blocked{border-color:#ead4cf;background:#fffafa}
+.next-episode-candidate-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.next-episode-candidate-top>div{display:flex;gap:5px;align-items:center;flex-wrap:wrap}.next-episode-candidate-top b{font-size:7px;color:#fff;background:#62715d;border-radius:999px;padding:3px 6px}.next-episode-candidate-top em{font-size:7px;font-style:normal;color:#7e887a;text-align:right}
+.next-episode-candidate>h3{font-size:13px;margin:0;color:#3f4b3b}.next-episode-thesis{font-size:9px;line-height:1.55;color:#5f695b;margin:0;font-weight:600}
+.next-episode-brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.next-episode-brief-grid>div{border:1px solid #e7eae4;background:#fafbf8;border-radius:8px;padding:8px}.next-episode-brief-grid p{margin:3px 0 0;font-size:8px;line-height:1.45;color:#687263}
+.next-episode-connection{font-size:8px;line-height:1.5;color:#657060;border-left:3px solid #93a28d;padding:7px 9px;background:#f7f9f5}
+.next-episode-evidence{display:grid;gap:6px}.next-episode-evidence>strong,.next-episode-risks>strong{font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:#657060}.next-episode-evidence>div{position:relative;border:1px solid #e5e9e2;border-radius:7px;padding:7px 8px;background:#fafbf8}.next-episode-evidence span{display:block;font-size:7px;font-weight:800;color:#899286}.next-episode-evidence p{font-size:8px;line-height:1.45;color:#616c5d;margin:3px 30px 0 0}.next-episode-evidence em{position:absolute;top:7px;right:7px;font-size:7px;font-style:normal;color:#71806a}
+.next-episode-rationale{display:flex;gap:7px;align-items:flex-start;border:1px solid #dfe6db;background:#f7faf5;border-radius:8px;padding:8px;color:#5b6856}.next-episode-rationale p{font-size:8px;line-height:1.5;margin:0}
+.next-episode-risks{display:grid;gap:5px}.next-episode-risks p{color:#886a42}
+.next-episode-blockers{display:flex;gap:5px;flex-wrap:wrap}.next-episode-blockers span{font-size:7px;background:#fff0ee;color:#985148;border:1px solid #efd4cf;border-radius:999px;padding:4px 6px}
+.next-episode-notes{display:grid;gap:5px;margin-top:12px;font-size:8px;font-weight:800;color:#657060;text-transform:uppercase;letter-spacing:.35px}.next-episode-notes textarea{width:100%;box-sizing:border-box;border:1px solid #dfe4dc;background:#fbfcfa;border-radius:8px;padding:9px 10px;font:inherit;font-size:9px;color:#455141;text-transform:none;letter-spacing:0}
+.next-episode-history>div:last-of-type{display:grid;gap:7px}.next-episode-history article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;border:1px solid #e5e9e2;border-radius:8px;padding:9px;background:#fafbf8}.next-episode-history article>div{display:flex;gap:8px;align-items:center}.next-episode-history strong{font-size:8px;color:#566151}.next-episode-history span,.next-episode-history small{font-size:7px;color:#8a9387}.next-episode-history p{grid-column:1/-1;font-size:9px;margin:0;color:#667061}
+.next-episode-empty-inline{text-align:center;padding:18px;color:#8b9487;font-size:9px}
+@media(max-width:1180px){.next-episode-candidates{grid-template-columns:1fr}.next-episode-state{min-width:0}}
+@media(max-width:640px){.next-episode-hero,.next-episode-command,.next-episode-plan>header,.next-episode-section-head{flex-direction:column}.next-episode-brief-grid{grid-template-columns:1fr}}
