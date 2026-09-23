@@ -47,3 +47,28 @@ O estado diário é persistido em `radar_analyses` como `kind: youtube-search-bu
 Quando o orçamento de uma finalidade se esgota, somente essa finalidade para. Quando o teto global ou uma quota externa dura é atingida, novas buscas são pausadas e o Mission Control continua trabalhando com dados já coletados. Limites temporários 429 não marcam automaticamente o dia inteiro como esgotado.
 
 O Mission Control exibe consumo total, saldo restante, uso por finalidade e quantas buscas redundantes foram evitadas.
+
+
+## Competitor Universe
+
+O Universe é o mercado conhecido da operação e não se confunde com o Radar. Concorrentes são persistidos em `radar_managed_channels` com `kind: competitor`, separados logicamente dos canais próprios da Gestão de Canais. Isso evita nova migration e mantém os concorrentes fora da política de expiração de 30 dias do Radar.
+
+Importação:
+- aceita URL com @handle, URL /channel/UC..., @handle e channelId;
+- processa até 25 entradas por request;
+- o frontend divide listas grandes em lotes automaticamente;
+- não usa search.list para resolver concorrentes conhecidos;
+- erros individuais não cancelam o restante do lote.
+
+Snapshot inicial por concorrente:
+- metadados do canal;
+- até 20 uploads públicos recentes;
+- melhor vídeo recente da amostra;
+- média e mediana da amostra;
+- uploads nos últimos 30 dias;
+- breakout público sobre inscritos quando disponível;
+- cluster e formato inferidos de metadados observados;
+- status inicial watch / heating-up / breakout;
+- monitoring tier hot / active / stable / dormant.
+
+A UI Universe agrupa os concorrentes por cluster e apresenta cards com métricas, melhor vídeo recente, DNA inicial, sinais observados e espaço reservado para Gap Engine. Anatomia de Canal e atualização manual podem ser acionadas diretamente de cada card.
