@@ -285,5 +285,39 @@ export const transcriptPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const scenePlanPayloadSchema=z.object({
+ kind:z.literal('scene-plan'),
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ episodeId:z.string().uuid(),
+ scriptId:z.string().uuid(),
+ voiceAssetId:z.string().uuid(),
+ transcriptId:z.string().uuid(),
+ transcriptVersion:z.number().int().min(1).max(100000),
+ voiceTake:z.number().int().min(1).max(100000),
+ audioDurationSeconds:z.number().min(0).max(86400),
+ scenes:z.array(z.object({
+  id:z.string().uuid(),
+  sequence:z.number().int().min(1).max(100000),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  durationSeconds:z.number().min(0).max(86400),
+  narration:z.string().trim().max(20000),
+  transcriptSegmentIds:z.array(z.string().uuid()).max(200),
+  transcriptWordIds:z.array(z.string().uuid()).max(2000),
+  visualIntent:z.string().trim().max(5000),
+  shotType:z.string().trim().max(500),
+  characterIds:shortList(50,120),
+  assetMode:z.enum(['image','video','stock','mixed','none']),
+  promptDirection:z.string().trim().max(8000),
+  notes:z.string().trim().max(4000)
+ }).strict()).min(1).max(5000),
+ review:z.object({
+  notes:z.string().trim().max(5000),
+  durationWarningsAccepted:z.boolean()
+ }).strict(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
