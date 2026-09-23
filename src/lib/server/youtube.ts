@@ -12,6 +12,16 @@ import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { evaluateOpportunityCandidate, isoDurationSeconds, MIN_LONG_FORM_SECONDS } from '@/lib/opportunity-criteria';
 
+export class YouTubeSearchQuotaError extends HttpError {
+  constructor(public reason:string='searchQuotaExceeded'){
+    super('A cota de busca do YouTube (search.list) está indisponível nesta execução. O Radar pausou novas descobertas, mas a missão pode continuar usando dados já coletados.',429);
+    this.name='YouTubeSearchQuotaError';
+  }
+}
+export function isYouTubeSearchQuotaError(error:unknown){
+  return error instanceof YouTubeSearchQuotaError;
+}
+
 type Item={
   id:string|{videoId?:string;channelId?:string};
   snippet:{
@@ -45,9 +55,16 @@ async function youtubePage(resource:string,params:Record<string,string>){
     cache:'no-store'
   });
   if(!response.ok){
+    const errorBody=await response.json().catch(()=>null) as {
+      error?:{message?:string;errors?:Array<{reason?:string}>}
+    }|null;
+    const reasons=(errorBody?.error?.errors??[]).map(item=>String(item.reason??'')).filter(Boolean);
+    const quotaReasons=new Set(['quotaExceeded','dailyLimitExceeded','rateLimitExceeded','userRateLimitExceeded']);
+    const searchQuotaBlocked=resource==='search'&&(response.status===429||reasons.some(reason=>quotaReasons.has(reason)));
+    if(searchQuotaBlocked)throw new YouTubeSearchQuotaError(reasons[0]??`HTTP_${response.status}`);
     throw new HttpError(
       response.status===403
-        ?'YouTube recusou a consulta: confira a chave, API habilitada e cota de pesquisa.'
+        ?'YouTube recusou a consulta: confira a chave, API habilitada e as cotas disponíveis.'
         :`YouTube indisponível (HTTP ${response.status}).`,
       502
     );
