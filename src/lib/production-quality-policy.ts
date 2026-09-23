@@ -178,24 +178,33 @@ export function structuralQualityChecks(input:{
     ));
   }
 
-  const characters=input.characterFacts??[];
-  const unready=characters.filter(item=>item.sceneCount>=2&&!item.referenceReady);
-  const recurring=characters.filter(item=>item.sceneCount>=2);
-  checks.push(check(
-    'character-continuity','visual','Consistência de personagem',
-    unready.length?'blocker':recurring.length?'manual-review':'pass',
-    unready.length
-      ?'Há personagem recorrente sem referência visual pronta.'
-      :recurring.length
-        ?'Referências estão prontas, mas continuidade visual entre cenas exige inspeção visual.'
-        :'Não há personagem recorrente que exija validação de continuidade.',
-    unready.length
-      ?unready.map(item=>`${item.name||item.characterId}: referência não pronta`)
-      :recurring.length
-        ?recurring.map(item=>`${item.name||item.characterId}: ${item.sceneCount} cenas`)
-        :['nenhum personagem recorrente'],
-    {recurringCharacters:recurring.length,unreadyReferences:unready.length}
-  ));
+  if(input.characterFacts===undefined){
+    checks.push(check(
+      'character-continuity','visual','Consistência de personagem','manual-review',
+      'O contexto de personagens desta versão não pôde ser reconstruído automaticamente.',
+      ['character context unavailable'],
+      {recurringCharacters:null,unreadyReferences:null}
+    ));
+  }else{
+    const characters=input.characterFacts;
+    const unready=characters.filter(item=>item.sceneCount>=2&&!item.referenceReady);
+    const recurring=characters.filter(item=>item.sceneCount>=2);
+    checks.push(check(
+      'character-continuity','visual','Consistência de personagem',
+      unready.length?'blocker':recurring.length?'manual-review':'pass',
+      unready.length
+        ?'Há personagem recorrente sem referência visual pronta.'
+        :recurring.length
+          ?'Referências estão prontas, mas continuidade visual entre cenas exige inspeção visual.'
+          :'Não há personagem recorrente que exija validação de continuidade.',
+      unready.length
+        ?unready.map(item=>`${item.name||item.characterId}: referência não pronta`)
+        :recurring.length
+          ?recurring.map(item=>`${item.name||item.characterId}: ${item.sceneCount} cenas`)
+          :['nenhum personagem recorrente'],
+      {recurringCharacters:recurring.length,unreadyReferences:unready.length}
+    ));
+  }
 
   const text=[
     ...cues.map(cue=>cue.text),
