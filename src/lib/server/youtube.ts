@@ -617,22 +617,29 @@ export async function collectChannelStudyEvidence(input:string){
     avatar:thumb(channel)
   };
 
-  // Global high-view candidates. Search is used only to obtain the strongest long-form
-  // videos; it is not presented as an exhaustive scan of the channel.
+  // Prefer global high-view candidates when search.list is available. When the
+  // granular search bucket is unavailable, fall back to the public uploads
+  // playlist instead of failing the whole Channel Study.
   const ids=new Set<string>();
-  for(const videoDuration of ['medium','long'] as const){
-    const found=await youtubeSearch({
-      part:'snippet',
-      type:'video',
-      channelId,
-      order:'viewCount',
-      maxResults:'25',
-      videoDuration
-    },'channel-study',`${channelId}:${videoDuration}`);
-    for(const item of found){
-      const id=idOf(item);
-      if(id)ids.add(id);
+  let searchSampleFallback=false;
+  try{
+    for(const videoDuration of ['medium','long'] as const){
+      const found=await youtubeSearch({
+        part:'snippet',
+        type:'video',
+        channelId,
+        order:'viewCount',
+        maxResults:'25',
+        videoDuration
+      },'channel-study',`${channelId}:${videoDuration}`);
+      for(const item of found){
+        const id=idOf(item);
+        if(id)ids.add(id);
+      }
     }
+  }catch(error){
+    if(isYouTubeSearchQuotaError(error))searchSampleFallback=true;
+    else throw error;
   }
   const videoIds=[...ids];
   const videos:Item[]=[];
@@ -642,11 +649,10 @@ export async function collectChannelStudyEvidence(input:string){
       id:videoIds.slice(i,i+50).join(',')
     }));
   }
-  const topItems=videos
+  let topItems=videos
     .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
     .sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))
     .slice(0,10);
-  if(!topItems.length)throw new HttpError('Não encontrei vídeos long form públicos suficientes neste canal.',422);
 
   // Recent upload sample for contrast and sequence context. Up to 100 recent uploads are
   // inspected; weak videos are explicitly described as weak WITHIN THIS SAMPLE.
@@ -677,6 +683,14 @@ export async function collectChannelStudyEvidence(input:string){
   const recentLong=recentItems
     .filter(video=>isoDurationSeconds(video.contentDetails?.duration??'')>=MIN_LONG_FORM_SECONDS)
     .sort((a,b)=>Date.parse(a.snippet.publishedAt)-Date.parse(b.snippet.publishedAt));
+
+  if(!topItems.length&&searchSampleFallback){
+    topItems=[...recentLong]
+      .sort((a,b)=>Number(b.statistics?.viewCount??0)-Number(a.statistics?.viewCount??0))
+      .slice(0,10);
+  }
+  if(!topItems.length)throw new HttpError('Não encontrei vídeos long form públicos suficientes neste canal.',422);
+  const topSampleScope=searchSampleFallback?'recent-uploads' as const:'global-search-candidates' as const;
 
   const topIds=topItems.map(idOf);
   type SnapshotRow={video_id:string;views:number;observed_at:string};
@@ -776,6 +790,7 @@ export async function collectChannelStudyEvidence(input:string){
 
   return {
     source,
+    topSampleScope,
     topVideos,
     weakRecentVideos,
     sequences,
