@@ -121,6 +121,13 @@ export default function NarrativeStrategy({channel,brain}:{channel:ManagedChanne
       </div>
     </section>
 
+    <section className="narrative-dimensions">
+      <article><span>NARRATIVE FIT</span><strong>${next.filter(concept=>concept.status!=='unknown'||conceptPrerequisitesMet(concept,bundle.concepts).ready).length}</strong><small>conceito(s) narrativamente utilizáveis agora</small></article>
+      <article><span>MARKET SIGNAL</span><strong>{channel.opportunityId?'VINCULADO':'PENDENTE'}</strong><small>{channel.opportunityId?'Canal nasceu de uma oportunidade registrada.':'Será alimentado por Intelligence OS / Opportunities.'}</small></article>
+      <article><span>AUDIENCE DEMAND</span><strong>SEM DADO</strong><small>Será alimentado pelo YouTube OAuth + Audience Intelligence. Não inferimos demanda sem evidência.</small></article>
+      <article><span>REPETITION RISK</span><strong>{brain?.narrative.doNotRepeat.length??0}</strong><small>bloqueio(s) explícito(s) registrados no Brain</small></article>
+    </section>
+
     <section className="narrative-next-grid">
       {next.length?next.map((concept,index)=>{
         const readiness=conceptPrerequisitesMet(concept,bundle.concepts);
