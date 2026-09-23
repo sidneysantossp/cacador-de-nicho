@@ -124,7 +124,8 @@ export default function CompetitorUniverse({
   intelligence,
   onCurves,
   queue,
-  onQueue
+  onQueue,
+  onOpenDna
 }:{
   competitors:UniverseCompetitor[];
   mode:'demo'|'live';
@@ -137,12 +138,12 @@ export default function CompetitorUniverse({
   onCurves:()=>Promise<boolean|undefined>;
   queue?:UniverseImportQueueSummary|null;
   onQueue:()=>Promise<boolean|undefined>;
+  onOpenDna:(competitor:UniverseCompetitor)=>void;
 }){
   const [query,setQuery]=useState('');
   const [cluster,setCluster]=useState('Todos');
   const [status,setStatus]=useState('Todos');
   const [showImport,setShowImport]=useState(false);
-  const [dnaDetail,setDnaDetail]=useState<UniverseCompetitor|null>(null);
   const [importText,setImportText]=useState('');
   const [section,setSection]=useState<'competitors'|'curves'|'gaps'>('competitors');
   const parsed=useMemo(()=>extractInputs(importText),[importText]);
@@ -247,7 +248,7 @@ export default function CompetitorUniverse({
         <div><span className="eyebrow">CLUSTER</span><h2>{name}</h2></div>
         <p>{items.length} canal(is) · {items.filter(item=>item.signals.length).length} com sinal · {items.filter(item=>item.status==='breakout').length} breakout</p>
       </div>
-      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence} onOpenDna={setDnaDetail}/>)}</div>
+      <div className="universe-grid">{items.map(item=><CompetitorCard key={item.id} competitor={item} busy={busy} onRefresh={onRefresh} onAnalyze={onAnalyze} onIntelligence={onIntelligence} onOpenDna={onOpenDna}/>)}</div>
     </section>)}
 
     </>}
@@ -283,97 +284,6 @@ export default function CompetitorUniverse({
       })}</div>}
     </section>}
 
-
-    {dnaDetail?.dna&&<div className="universe-import-overlay" role="presentation" onClick={event=>{if(event.target===event.currentTarget)setDnaDetail(null);}}>
-      <section className="universe-import-panel" role="dialog" aria-modal="true" aria-label={`Channel DNA de ${dnaDetail.name}`}>
-        <button className="universe-import-close" onClick={()=>setDnaDetail(null)} aria-label="Fechar DNA"><X size={18}/></button>
-        <span className="eyebrow">CHANNEL DNA / COMPETITOR INTELLIGENCE</span>
-        <div className="universe-card-head" style={{marginTop:12,marginBottom:12}}>
-          <div className="universe-identity">
-            {dnaDetail.avatar?<img src={dnaDetail.avatar} alt="" className="universe-avatar"/>:<span className="universe-avatar placeholder">{dnaDetail.name.slice(0,2).toUpperCase()}</span>}
-            <div><h3>{dnaDetail.name}</h3><p>{dnaDetail.handle||dnaDetail.channelId}</p></div>
-          </div>
-          <span className="universe-status structural">DNA READY</span>
-        </div>
-
-        <div className="universe-intel-block dna">
-          <span>RESUMO EXECUTIVO</span>
-          <p>{dnaDetail.dna.summary}</p>
-          <small>Gerado em {new Date(dnaDetail.dna.generatedAt).toLocaleString('pt-BR')}</small>
-        </div>
-
-        {dnaDetail.dna.provenance&&<div className="universe-derived-block" style={{marginTop:8}}>
-          <span>PROCEDÊNCIA / AUDITORIA</span>
-          <p>{dnaDetail.dna.provenance.generatedBy} · schema v{dnaDetail.dna.provenance.schemaVersion}{dnaDetail.dna.provenance.model?` · ${dnaDetail.dna.provenance.model}`:''}</p>
-          <small>{dnaDetail.dna.provenance.sourceVideoCount} vídeo(s) + {dnaDetail.dna.provenance.sourceSignalCount} sinal(is) na evidência · snapshot {new Date(dnaDetail.dna.provenance.observedAt).toLocaleString('pt-BR')}</small>
-        </div>}
-
-        <div className="universe-metrics" style={{marginTop:10}}>
-          <div><small>NICHO</small><strong>{dnaDetail.dna.primaryNiche}</strong></div>
-          <div><small>SUBNICHO</small><strong>{dnaDetail.dna.subniche}</strong></div>
-          <div><small>FORMATO</small><strong>{dnaDetail.dna.formatSignature}</strong></div>
-          <div><small>STATUS</small><strong>{statusMeta[dnaDetail.status].label}</strong></div>
-        </div>
-
-        <div className="universe-derived-block">
-          <span>INTENÇÃO DA AUDIÊNCIA</span>
-          <p>{dnaDetail.dna.audienceIntent}</p>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>PROMESSA EDITORIAL</span>
-          <p>{dnaDetail.dna.editorialPromise}</p>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>PILARES DE CONTEÚDO</span>
-          <div className="universe-tags">{dnaDetail.dna.contentPillars.map(item=><em key={item}>{item}</em>)}</div>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>ENTIDADES RECORRENTES</span>
-          <div className="universe-tags">{dnaDetail.dna.recurringEntities.map(item=><em key={item}>{item}</em>)}</div>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>PADRÕES DE TÍTULOS</span>
-          <ol>{dnaDetail.dna.titlePatterns.map(item=><li key={item}>{item}</li>)}</ol>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>MECANISMOS DE CURIOSIDADE</span>
-          <ol>{dnaDetail.dna.curiosityMechanisms.map(item=><li key={item}>{item}</li>)}</ol>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>DRIVERS EMOCIONAIS</span>
-          <div className="universe-tags">{dnaDetail.dna.emotionalDrivers.map(item=><em key={item}>{item}</em>)}</div>
-        </div>
-
-        <div className="universe-derived-block" style={{marginTop:8}}>
-          <span>SINAIS DE DIFERENCIAÇÃO</span>
-          <ol>{dnaDetail.dna.differentiationSignals.map(item=><li key={item}>{item}</li>)}</ol>
-        </div>
-
-        <div className="universe-intel-block gap" style={{marginTop:8}}>
-          <span>LIMITAÇÕES / O QUE NÃO PODEMOS CONCLUIR</span>
-          {dnaDetail.dna.limitations.map(item=><p key={item} style={{marginBottom:6}}>• {item}</p>)}
-        </div>
-
-        <div className="universe-metrics" style={{marginTop:10}}>
-          <div><small>INSCRITOS</small><strong>{compact(dnaDetail.subscribers)}</strong></div>
-          <div><small>MEDIANA RECENTE</small><strong>{compact(dnaDetail.recentMedianViews)}</strong></div>
-          <div><small>BREAKOUT</small><strong>{dnaDetail.breakoutRatio!==null?`${dnaDetail.breakoutRatio.toFixed(1)}×`:'—'}</strong></div>
-          <div><small>SINAIS</small><strong>{dnaDetail.signalDetails?.length??dnaDetail.signals.length}</strong></div>
-        </div>
-
-        <div className="universe-card-actions" style={{marginTop:16}}>
-          <button className="button subtle" onClick={()=>void onIntelligence([dnaDetail.id])} disabled={!!busy}><Sparkles size={15}/>Atualizar DNA</button>
-          <button className="button subtle" onClick={()=>void onAnalyze(dnaDetail)} disabled={!!busy}><BrainCircuit size={15}/>Abrir Anatomia</button>
-          <a className="button subtle" href={dnaDetail.url} target="_blank" rel="noreferrer">YouTube <ArrowUpRight size={15}/></a>
-        </div>
-      </section>
-    </div>}
 
     {showImport&&<div className="universe-import-overlay" role="presentation">
       <section className="universe-import-panel">
