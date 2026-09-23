@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, BrainCircuit, CheckCircle2, Clock3, History, Plus, Save,
+  ArrowLeft, BrainCircuit, CheckCircle2, Clock3, FolderUp, History, Plus, Save,
   ShieldCheck, Sparkles, Trash2, UserRound, Workflow
 } from 'lucide-react';
 import type {
@@ -19,8 +19,9 @@ import SceneTimecodeWorkspace from './scene-timecode-workspace';
 import VisualPromptEngineWorkspace from './visual-prompt-engine-workspace';
 import AssetFactoryWorkspace from './asset-factory-workspace';
 import StockMediaWorkspace from './stock-media-workspace';
+import ExternalImportWorkspace from './external-import-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -174,6 +175,7 @@ export default function ChannelBrainPage({
     {id:'visual',label:'Visual Prompt Engine',icon:<Sparkles size={15}/>},
     {id:'assets',label:'Asset Factory',icon:<Sparkles size={15}/>},
     {id:'stock',label:'Stock Media',icon:<Sparkles size={15}/>},
+    {id:'external',label:'External Import',icon:<FolderUp size={15}/>},
     {id:'production',label:'Production DNA',icon:<Sparkles size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
@@ -249,6 +251,7 @@ export default function ChannelBrainPage({
     {tab==='visual'&&<VisualPromptEngineWorkspace channel={channel}/>}
     {tab==='assets'&&<AssetFactoryWorkspace channel={channel}/>}
     {tab==='stock'&&<StockMediaWorkspace channel={channel}/>}
+    {tab==='external'&&<ExternalImportWorkspace channel={channel}/>}
     {tab==='production'&&<ProductionDnaEditor channel={channel}/>}
 
     {tab==='characters'&&<div className="brain-content">
