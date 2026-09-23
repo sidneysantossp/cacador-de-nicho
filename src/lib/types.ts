@@ -136,9 +136,25 @@ export type MissionBrief = {
  blockers: string[];
  notes: string[];
 };
+export type YouTubeSearchPurpose = 'reference-resolution' | 'radar-discovery' | 'channel-resolution' | 'channel-study' | 'similar-channels';
+export type YouTubeSearchBudgetState = {
+ kind: 'youtube-search-budget';
+ id: string;
+ pacificDate: string;
+ limit: number;
+ used: number;
+ remaining: number;
+ byPurpose: Record<YouTubeSearchPurpose,number>;
+ purposeLimits: Record<YouTubeSearchPurpose,number>;
+ duplicateSkips: number;
+ blocked: boolean;
+ blockedReason?: string;
+ recentKeys: string[];
+ updatedAt: string;
+};
 export type Run = { id: string; type: string; status: 'queued' | 'running' | 'completed' | 'failed'; startedAt: string; message: string };
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; createdAt: string; updatedAt: string };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
-export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
+export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
