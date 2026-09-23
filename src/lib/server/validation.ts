@@ -434,12 +434,33 @@ export const videoEditPayloadSchema=z.object({
   fontSize:z.number().min(10).max(160),
   maxLines:z.number().int().min(1).max(6),
   backgroundOpacity:z.number().min(0).max(1),
+  styleDescription:z.string().max(3000),
+  style:z.object({
+   fontFamily:z.string().trim().min(1).max(120),
+   fontWeight:z.union([z.literal(400),z.literal(500),z.literal(600),z.literal(700),z.literal(800),z.literal(900)]),
+   primaryColor:z.string().regex(/^#[0-9a-fA-F]{6}$/),
+   highlightColor:z.string().regex(/^#[0-9a-fA-F]{6}$/),
+   outlineColor:z.string().regex(/^#[0-9a-fA-F]{6}$/),
+   outlineWidth:z.number().min(0).max(12),
+   uppercase:z.boolean(),
+   maxWordsPerLine:z.number().int().min(2).max(20),
+   smartBreaks:z.boolean(),
+   highlightMode:z.enum(['none','keywords','active-word']),
+   safeMarginPercent:z.number().min(0).max(25)
+  }).strict(),
   cues:z.array(z.object({
    id:z.string().uuid(),
    transcriptSegmentId:z.string().uuid(),
    startSeconds:z.number().min(0).max(86400),
    endSeconds:z.number().min(0).max(86400),
-   text:z.string().max(2000)
+   text:z.string().max(2000),
+   words:z.array(z.object({
+    id:z.string().uuid(),
+    text:z.string().max(300),
+    startSeconds:z.number().min(0).max(86400),
+    endSeconds:z.number().min(0).max(86400),
+    highlighted:z.boolean()
+   }).strict()).max(200)
   }).strict()).max(20000)
  }).strict(),
  overlays:z.array(z.object({
@@ -462,6 +483,28 @@ export const videoEditPayloadSchema=z.object({
   normalizeVoice:z.boolean(),
   duckMusicUnderVoice:z.boolean()
  }).strict(),
+ musicTrack:z.object({
+  assetId:z.string().uuid(),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  sourceStartSeconds:z.number().min(0).max(86400),
+  loop:z.boolean(),
+  volume:z.number().min(0).max(2),
+  fadeInSeconds:z.number().min(0).max(60),
+  fadeOutSeconds:z.number().min(0).max(60),
+  duckUnderVoice:z.boolean(),
+  duckingStrength:z.number().min(0).max(1)
+ }).strict().nullable(),
+ sfxEvents:z.array(z.object({
+  id:z.string().uuid(),
+  assetId:z.string().uuid(),
+  eventType:z.enum(['scene-transition','emphasis','custom']),
+  sceneId:z.string().uuid().optional(),
+  startSeconds:z.number().min(0).max(86400),
+  sourceStartSeconds:z.number().min(0).max(86400),
+  durationSeconds:z.number().min(.01).max(300),
+  volume:z.number().min(0).max(2)
+ }).strict()).max(2000),
  review:z.object({notes:z.string().trim().max(5000)}).strict(),
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
