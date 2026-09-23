@@ -1686,6 +1686,12 @@ export type NextEpisodePlanPayload = {
   arcRefs: string[];
   recentEpisodeRefs: string[];
   marketSignal: 'linked-opportunity' | 'unavailable';
+  evidenceSnapshot: Array<{
+   ref: string;
+   type: 'learning' | 'thread' | 'concept' | 'arc' | 'episode';
+   summary: string;
+   confidence?: 'low' | 'medium' | 'high';
+  }>;
  };
  candidates: NextEpisodeCandidate[];
  recommendedCandidateId: string | null;
