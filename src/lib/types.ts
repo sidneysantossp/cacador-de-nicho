@@ -437,6 +437,7 @@ export type ProductionDnaPayload = {
   cameraRules: string[];
   motionRules: string[];
   basePrompt: string;
+  scenePromptTemplate: string;
   negativePrompt: string;
   forbidden: string[];
  };
