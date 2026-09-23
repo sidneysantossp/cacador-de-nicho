@@ -120,16 +120,16 @@ export default function ChannelBrainPage({
   }
 
   function constitution<K extends keyof ChannelBrainPayload['constitution']>(key:K,value:ChannelBrainPayload['constitution'][K]){
-    setDraft({...draft,constitution:{...draft.constitution,[key]:value}});
+    setDraft(prev=>prev?{...prev,constitution:{...prev.constitution,[key]:value}}:prev);
   }
   function narrative<K extends keyof ChannelBrainPayload['narrative']>(key:K,value:ChannelBrainPayload['narrative'][K]){
-    setDraft({...draft,narrative:{...draft.narrative,[key]:value}});
+    setDraft(prev=>prev?{...prev,narrative:{...prev.narrative,[key]:value}}:prev);
   }
   function character(index:number,next:ChannelBrainCharacter){
-    setDraft({...draft,characters:draft.characters.map((item,i)=>i===index?next:item)});
+    setDraft(prev=>prev?{...prev,characters:prev.characters.map((item,i)=>i===index?next:item)}:prev);
   }
   function addCharacter(){
-    setDraft({...draft,characters:[...draft.characters,{id:crypto.randomUUID(),name:'',role:'',traits:[],knows:[],doesNotKnow:[],rules:[]}]});
+    setDraft(prev=>prev?{...prev,characters:[...prev.characters,{id:crypto.randomUUID(),name:'',role:'',traits:[],knows:[],doesNotKnow:[],rules:[]}]}:prev);
   }
   function addLearning(){
     const statement=learningStatement.trim();
@@ -142,7 +142,7 @@ export default function ChannelBrainPage({
       confidence:learningConfidence,
       createdAt:new Date().toISOString()
     };
-    setDraft({...draft,learnings:[learning,...draft.learnings]});
+    setDraft(prev=>prev?{...prev,learnings:[learning,...prev.learnings]}:prev);
     setLearningStatement('');setLearningEvidence('');
   }
   function loadVersion(item:ChannelBrainVersion){
@@ -222,7 +222,7 @@ export default function ChannelBrainPage({
       <div className="brain-section-head"><div><span>CHARACTER KNOWLEDGE</span><h2>O personagem também tem memória.</h2><p>Defina o que cada personagem sabe, ainda não sabe e nunca deve contradizer.</p></div><button className="button subtle" onClick={addCharacter}><Plus size={15}/>Novo personagem</button></div>
       {!draft.characters.length&&<div className="brain-empty-inline">Nenhum personagem registrado.</div>}
       <div className="brain-character-list">{draft.characters.map((item,index)=><section className="brain-character" key={item.id}>
-        <div className="brain-character-head"><UserRound size={22}/><input value={item.name} onChange={e=>character(index,{...item,name:e.target.value})} placeholder="Nome do personagem"/><button className="icon-button" onClick={()=>setDraft({...draft,characters:draft.characters.filter((_,i)=>i!==index)})}><Trash2 size={16}/></button></div>
+        <div className="brain-character-head"><UserRound size={22}/><input value={item.name} onChange={e=>character(index,{...item,name:e.target.value})} placeholder="Nome do personagem"/><button className="icon-button" onClick={()=>setDraft(prev=>prev?{...prev,characters:prev.characters.filter((_,i)=>i!==index)}:prev)}><Trash2 size={16}/></button></div>
         <TextField label="PAPEL" value={item.role} onChange={v=>character(index,{...item,role:v})} rows={3}/>
         <div className="brain-grid two">
           <ListField label="TRAÇOS" value={item.traits} onChange={v=>character(index,{...item,traits:v})}/>
@@ -244,7 +244,7 @@ export default function ChannelBrainPage({
         <label>Evidências <small>Uma por linha.</small><textarea rows={4} value={learningEvidence} onChange={e=>setLearningEvidence(e.target.value)} placeholder="Comentário recorrente…&#10;Queda de retenção…"/></label>
         <button className="button primary" onClick={addLearning}><Plus size={15}/>Adicionar ao Brain</button>
       </section>
-      <div className="brain-learning-list">{draft.learnings.map(item=><article key={item.id}><div><span>{item.type} · {item.confidence}</span><strong>{item.statement}</strong><small>{when(item.createdAt)}</small></div><ul>{item.evidence.map(e=><li key={e}>{e}</li>)}</ul><button className="icon-button" onClick={()=>setDraft({...draft,learnings:draft.learnings.filter(x=>x.id!==item.id)})}><Trash2 size={15}/></button></article>)}</div>
+      <div className="brain-learning-list">{draft.learnings.map(item=><article key={item.id}><div><span>{item.type} · {item.confidence}</span><strong>{item.statement}</strong><small>{when(item.createdAt)}</small></div><ul>{item.evidence.map(e=><li key={e}>{e}</li>)}</ul><button className="icon-button" onClick={()=>setDraft(prev=>prev?{...prev,learnings:prev.learnings.filter(x=>x.id!==item.id)}:prev)}><Trash2 size={15}/></button></article>)}</div>
       {!draft.learnings.length&&<div className="brain-empty-inline">Nenhum learning registrado ainda.</div>}
     </div>}
 
