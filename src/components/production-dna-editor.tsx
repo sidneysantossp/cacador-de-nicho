@@ -23,7 +23,7 @@ function blank(channel:ManagedChannel):ProductionDnaPayload{
     kind:'production-dna',
     channelId:channel.id,
     format:{aspectRatio:'16:9',width:1920,height:1080,fps:30,targetDurationMinutes:{min:null,max:null},sceneDurationSeconds:{min:null,preferred:null,max:null}},
-    visual:{styleName:'',styleDescription:'',palette:[],compositionRules:[],cameraRules:[],motionRules:[],basePrompt:'',negativePrompt:'',forbidden:[]},
+    visual:{styleName:'',styleDescription:'',palette:[],compositionRules:[],cameraRules:[],motionRules:[],basePrompt:'',scenePromptTemplate:'{{scene_direction}} + {{character_bible}} + {{visual_bible}} + {{negative_rules}} + {{aspect_ratio}}',negativePrompt:'',forbidden:[]},
     characters:[],
     voice:{language:'English',providerPreference:[],voiceId:'',voiceName:'',narrationStyle:[],paceWpm:null,pronunciationRules:[]},
     captions:{enabled:true,styleDescription:'',position:'bottom-center',maxWordsPerCaption:null,highlightKeywords:false},
@@ -134,6 +134,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
         <ListField label="REGRAS DE MOVIMENTO" value={draft.visual.motionRules} onChange={v=>visual('motionRules',v)}/>
       </div>
       <TextField label="BASE PROMPT / VISUAL BIBLE" value={draft.visual.basePrompt} onChange={v=>visual('basePrompt',v)} rows={8}/>
+      <TextField label="TEMPLATE DE COMPOSIÇÃO DA CENA" value={draft.visual.scenePromptTemplate} onChange={v=>visual('scenePromptTemplate',v)} rows={5}/>
       <TextField label="NEGATIVE PROMPT" value={draft.visual.negativePrompt} onChange={v=>visual('negativePrompt',v)} rows={7}/>
       <ListField label="PROIBIDO VISUALMENTE" value={draft.visual.forbidden} onChange={v=>visual('forbidden',v)}/>
     </div>}
