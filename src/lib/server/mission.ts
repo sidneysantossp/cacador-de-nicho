@@ -7,6 +7,7 @@ import { runChannelStudy } from './channel-study';
 import { checked, db, list, put, settings } from './db';
 import { runRadar } from './jobs';
 import { runOpportunityReport } from './opportunity-report';
+import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
@@ -140,7 +141,7 @@ export async function runMission():Promise<MissionBrief>{
   const key=`mission:${Date.now()}:${crypto.randomUUID().slice(0,8)}`;
   const token=crypto.randomUUID();
   const acquired=checked(await db().rpc('claim_radar_job',{job_key:key,lease_token:token}));
-  if(!acquired)throw new Error('Outra tarefa pesada já está em execução. Consulte Atividade e tente a missão novamente depois.');
+  if(!acquired)throw new HttpError('Outra tarefa pesada já está em execução. Consulte Atividade e tente a missão novamente depois.',409);
 
   const run:Run={id:key,type:'Mission Control',status:'running',startedAt,message:'Objetivo ativo: encontrar e preparar oportunidades rentáveis.'};
   await put('radar_runs',key,run);
