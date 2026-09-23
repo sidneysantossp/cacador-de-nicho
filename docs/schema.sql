@@ -29,12 +29,16 @@ create table if not exists public.radar_episode_scripts(id uuid primary key,chan
 create index if not exists radar_episode_scripts_channel_updated on public.radar_episode_scripts(channel_id,updated_at desc);
 create table if not exists public.radar_episode_script_versions(id bigint generated always as identity primary key,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,version int not null check(version>=1),status text not null,payload jsonb not null,created_at timestamptz not null default now(),unique(script_id,version));
 create index if not exists radar_episode_script_versions_script_version on public.radar_episode_script_versions(script_id,version desc);
+create table if not exists public.radar_voice_assets(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,take int not null check(take>=1),source_type text not null check(source_type in ('uploaded','generated')),provider text,status text not null default 'ready' check(status in ('processing','ready','failed')),selected boolean not null default false,storage_path text not null,mime_type text not null,original_name text,bytes bigint not null default 0 check(bytes>=0),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(script_id,take));
+create index if not exists radar_voice_assets_channel_created on public.radar_voice_assets(channel_id,created_at desc);
+create index if not exists radar_voice_assets_script_take on public.radar_voice_assets(script_id,take desc);
+create unique index if not exists radar_voice_assets_one_selected_per_script on public.radar_voice_assets(script_id) where selected=true;
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -45,6 +49,47 @@ revoke all on sequence public.radar_content_project_versions_id_seq from anon,au
 grant usage,select on sequence public.radar_content_project_versions_id_seq to service_role;
 revoke all on sequence public.radar_episode_script_versions_id_seq from anon,authenticated;
 grant usage,select on sequence public.radar_episode_script_versions_id_seq to service_role;
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values('cacadores-media','cacadores-media',false,104857600,array['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/ogg','audio/webm'])
+on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+create or replace function public.reserve_voice_asset(p_id uuid,p_channel_id text,p_episode_id uuid,p_script_id uuid,p_source_type text,p_provider text,p_mime_type text,p_original_name text,p_payload jsonb) returns int
+language plpgsql security invoker set search_path='' as $
+declare next_take int;
+begin
+perform pg_advisory_xact_lock(hashtext('voice-take:'||p_script_id::text));
+if p_source_type not in ('uploaded','generated') then raise exception 'invalid voice source type';end if;
+if not exists(select 1 from public.radar_episode_scripts where id=p_script_id and channel_id=p_channel_id and episode_id=p_episode_id and status='approved') then raise exception 'script not approved';end if;
+select coalesce(max(take),0)+1 into next_take from public.radar_voice_assets where script_id=p_script_id;
+insert into public.radar_voice_assets(id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload)
+values(p_id,p_channel_id,p_episode_id,p_script_id,next_take,p_source_type,p_provider,'processing',false,'',p_mime_type,p_original_name,0,p_payload);
+return next_take;
+end $;
+revoke all on function public.reserve_voice_asset(uuid,text,uuid,uuid,text,text,text,text,jsonb) from public,anon,authenticated;
+grant execute on function public.reserve_voice_asset(uuid,text,uuid,uuid,text,text,text,text,jsonb) to service_role;
+
+create or replace function public.select_voice_asset(p_script_id uuid,p_asset_id uuid) returns void
+language plpgsql security invoker set search_path='' as $
+begin
+perform pg_advisory_xact_lock(hashtext('voice-select:'||p_script_id::text));
+if not exists(select 1 from public.radar_voice_assets where id=p_asset_id and script_id=p_script_id and status='ready') then raise exception 'voice asset not ready';end if;
+update public.radar_voice_assets set selected=false,updated_at=now() where script_id=p_script_id and selected=true;
+update public.radar_voice_assets set selected=true,updated_at=now() where id=p_asset_id and script_id=p_script_id;
+end $;
+revoke all on function public.select_voice_asset(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.select_voice_asset(uuid,uuid) to service_role;
+
+create or replace function public.select_voice_asset_if_none(p_script_id uuid,p_asset_id uuid) returns boolean
+language plpgsql security invoker set search_path='' as $
+begin
+perform pg_advisory_xact_lock(hashtext('voice-select:'||p_script_id::text));
+if exists(select 1 from public.radar_voice_assets where script_id=p_script_id and selected=true and status='ready') then return false;end if;
+update public.radar_voice_assets set selected=true,updated_at=now() where id=p_asset_id and script_id=p_script_id and status='ready';
+return found;
+end $;
+revoke all on function public.select_voice_asset_if_none(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.select_voice_asset_if_none(uuid,uuid) to service_role;
 
 create or replace function public.save_episode_script(p_script_id uuid,p_channel_id text,p_episode_id uuid,p_content_project_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
 language plpgsql security invoker set search_path='' as $
@@ -186,7 +231,7 @@ grant execute on function public.radar_allow_login(text) to service_role;
 create or replace function public.radar_get_secret(p_secret_name text) returns text
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key') then raise exception 'secret not allowed';end if;
 return (select d.decrypted_secret from vault.decrypted_secrets d where d.name=p_secret_name limit 1);
 end $$;
 
@@ -194,7 +239,7 @@ create or replace function public.radar_set_secret(p_secret_name text,p_secret_v
 language plpgsql security definer set search_path='' as $$
 declare secret_id uuid;
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
 select d.id into secret_id from vault.decrypted_secrets d where d.name=p_secret_name limit 1;
 if secret_id is null then
  perform vault.create_secret(p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
@@ -206,13 +251,13 @@ end $$;
 create or replace function public.radar_delete_secret(p_secret_name text) returns void
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key') then raise exception 'secret not allowed';end if;
 delete from vault.secrets where name=p_secret_name;
 end $$;
 
 create or replace function public.radar_secret_status() returns table(secret_name text,last4 text,updated_at timestamptz)
 language sql security definer set search_path='' as $$
-select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key');
+select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key');
 $$;
 
 revoke all on function public.radar_get_secret(text) from public,anon,authenticated;
