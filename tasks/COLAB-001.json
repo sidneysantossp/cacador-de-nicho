@@ -1,0 +1,72 @@
+{
+  "id": "COLAB-001",
+  "title": "Implantar o processo obrigatório de colaboração entre humanos e IAs",
+  "status": "in_progress",
+  "owner": "sidneysantossp / Codex / sessão de 2026-09-23",
+  "branch": "task/COLAB-001-governanca-colaborativa",
+  "created_at": "2026-09-23T02:25:41Z",
+  "updated_at": "2026-09-23T02:25:41Z",
+  "base_commit": "ff17c95baba26ef058e94d947aabcf1ab96fd8d8",
+  "depends_on": [],
+  "scope": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "COLABORACAO.md",
+    "TODO.md",
+    "README.md",
+    "package.json",
+    ".github/",
+    ".githooks/",
+    "scripts/",
+    "tests/collaboration.test.mjs",
+    "docs/PROJECT_STATE.md",
+    "docs/estudio/",
+    "tasks/"
+  ],
+  "checklist": [
+    {
+      "text": "Definir leitura obrigatória, reserva de escopo e encerramento de tarefas",
+      "done": false
+    },
+    {
+      "text": "Conectar AGENTS.md, CLAUDE.md e README ao protocolo",
+      "done": false
+    },
+    {
+      "text": "Implementar validação de tarefas, conflitos de escopo e integração no CI",
+      "done": false
+    },
+    {
+      "text": "Versionar o mapa do estúdio e indicar a próxima tarefa",
+      "done": false
+    },
+    {
+      "text": "Executar verificações e registrar resultados e limites",
+      "done": false
+    }
+  ],
+  "acceptance": [
+    {
+      "text": "Toda alteração de implementação exige tarefa previamente reservada",
+      "done": false
+    },
+    {
+      "text": "Reservas simultâneas com arquivos ou diretórios sobrepostos são rejeitadas",
+      "done": false
+    },
+    {
+      "text": "Tarefa concluída exige checklist, critérios de aceite e evidências preenchidos",
+      "done": false
+    },
+    {
+      "text": "Limites do bloqueio local e da proteção no GitHub estão explícitos",
+      "done": false
+    }
+  ],
+  "validation": [],
+  "result": "",
+  "notes": [
+    "Bootstrap único do protocolo: a reserva é registrada em commit local antes da implementação. Não há protocolo publicado na base ff17c95.",
+    "O usuário autorizou este processo antes do desenvolvimento do estúdio. Publicação e configuração remota serão verificadas após a validação local."
+  ]
+}
