@@ -53,12 +53,16 @@ create index if not exists radar_scene_assets_scene_variant on public.radar_scen
 create unique index if not exists radar_scene_assets_one_selected on public.radar_scene_assets(visual_prompt_set_id,scene_id) where selected=true;
 create table if not exists public.radar_stock_searches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,provider text not null check(provider in ('pexels','pixabay')),media_kind text not null check(media_kind in ('image','video')),query text not null,result_count int not null default 0 check(result_count>=0),payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
 create index if not exists radar_stock_searches_scene_created on public.radar_stock_searches(visual_prompt_set_id,scene_id,created_at desc);
+create table if not exists public.radar_external_import_batches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,visual_prompt_set_id uuid references public.radar_visual_prompt_sets(id) on delete set null,status text not null default 'planned' check(status in ('planned','processing','partial','completed','failed')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index if not exists radar_external_import_batches_channel_created on public.radar_external_import_batches(channel_id,created_at desc);
+create table if not exists public.radar_external_import_items(id uuid primary key,batch_id uuid not null references public.radar_external_import_batches(id) on delete cascade,item_index int not null check(item_index>=0),kind text not null check(kind in ('image','video','audio','transcript','other')),original_name text not null,mime_type text not null default '',bytes bigint not null default 0 check(bytes>=0),matched_scene_id uuid,matched_time_seconds numeric,status text not null default 'pending' check(status in ('pending','processing','ready','unmatched','failed','skipped')),resource_type text check(resource_type in ('scene_asset','voice_asset','transcript')),resource_id text,error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(batch_id,item_index));
+create index if not exists radar_external_import_items_batch_status on public.radar_external_import_items(batch_id,status,item_index);
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -79,6 +83,27 @@ grant usage,select on sequence public.radar_visual_prompt_set_versions_id_seq to
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('cacadores-media','cacadores-media',false,524288000,array['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/ogg','audio/webm','image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime'])
 on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+create or replace function public.refresh_external_import_batch_status(p_batch_id uuid) returns text
+language plpgsql security invoker set search_path='' as $$
+declare total_count int; active_count int; ready_count int; problem_count int; failed_count int; next_status text;
+begin
+perform pg_advisory_xact_lock(hashtext('external-import:'||p_batch_id::text));
+select count(*)::int,count(*) filter(where status in ('pending','processing'))::int,count(*) filter(where status in ('ready','skipped'))::int,count(*) filter(where status in ('failed','unmatched'))::int,count(*) filter(where status='failed')::int
+into total_count,active_count,ready_count,problem_count,failed_count
+from public.radar_external_import_items where batch_id=p_batch_id;
+if total_count=0 then next_status:='planned';
+elsif active_count>0 then next_status:='processing';
+elsif ready_count=total_count then next_status:='completed';
+elsif failed_count=total_count then next_status:='failed';
+elsif problem_count>0 then next_status:='partial';
+else next_status:='partial';
+end if;
+update public.radar_external_import_batches set status=next_status,updated_at=now() where id=p_batch_id;
+return next_status;
+end $$;
+revoke all on function public.refresh_external_import_batch_status(uuid) from public,anon,authenticated;
+grant execute on function public.refresh_external_import_batch_status(uuid) to service_role;
 
 create or replace function public.reserve_scene_asset(p_id uuid,p_channel_id text,p_episode_id uuid,p_scene_plan_id uuid,p_visual_prompt_set_id uuid,p_scene_id uuid,p_asset_kind text,p_source_type text,p_provider text,p_mime_type text,p_original_name text,p_payload jsonb) returns int
 language plpgsql security invoker set search_path='' as $$
