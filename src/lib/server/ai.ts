@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { editorialMethod } from './method';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-import type { Analysis, Channel, ChannelNicheProfile, ChannelStudy, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, ChannelStudyVideo, Decision, OpportunityReport, ResearchContext, Script } from '@/lib/types';
+import type { Analysis, Channel, ChannelNicheProfile, ChannelStudy, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, ChannelStudyVideo, Decision, OpportunityReport, ResearchContext, Script, UniverseChannelDNA, UniverseCompetitor } from '@/lib/types';
 import { list, put, settings } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
@@ -89,6 +89,73 @@ const channelStudyAnatomy=z.object({
  weakVideoContrasts:z.array(z.string()).max(10),
  limitations:z.array(z.string()).min(1).max(12)
 });
+const universeChannelDNA=z.object({
+ channelId:z.string(),
+ summary:z.string(),
+ primaryNiche:z.string(),
+ subniche:z.string(),
+ audienceIntent:z.string(),
+ editorialPromise:z.string(),
+ formatSignature:z.string(),
+ contentPillars:z.array(z.string()).min(2).max(8),
+ recurringEntities:z.array(z.string()).max(10),
+ titlePatterns:z.array(z.string()).min(2).max(8),
+ curiosityMechanisms:z.array(z.string()).min(2).max(8),
+ emotionalDrivers:z.array(z.string()).max(8),
+ differentiationSignals:z.array(z.string()).max(8),
+ limitations:z.array(z.string()).min(1).max(8)
+});
+
+export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetitor[]):Promise<Array<{channelId:string;dna:UniverseChannelDNA}>>{
+ const sample=competitors.slice(0,5).map(competitor=>({
+  channelId:competitor.channelId,
+  name:competitor.name,
+  handle:competitor.handle,
+  description:competitor.description,
+  country:competitor.country??null,
+  language:competitor.language,
+  subscribers:competitor.subscribers,
+  videoCount:competitor.videoCount,
+  recentAverageViews:competitor.recentAverageViews,
+  recentMedianViews:competitor.recentMedianViews,
+  uploadsLast30d:competitor.uploadsLast30d,
+  observedSignals:competitor.signalDetails??[],
+  recentUploads:competitor.recentUploads.slice(0,20).map(video=>({
+   title:video.title,
+   views:video.views,
+   publishedAt:video.publishedAt,
+   duration:video.duration
+  }))
+ }));
+ if(!sample.length)return [];
+ const result=await structured(
+  z.object({channels:z.array(universeChannelDNA).min(1).max(5)}),
+  'universe_channel_dna',
+  'Para cada concorrente, extraia um Channel DNA SOMENTE dos metadados fornecidos. primaryNiche e subniche devem ser rótulos curtos e estáveis em INGLÊS para permitir clustering entre canais. summary, audienceIntent, editorialPromise, differentiationSignals e limitations devem ser em português para o operador. formatSignature pode ser um rótulo curto em inglês. Content pillars, recurring entities, title patterns, curiosity mechanisms e emotional drivers descrevem padrões observáveis nos títulos/descrição; não afirme que assistiu vídeos, não infira CTR, retenção, receita ou causalidade. Diferencie repetição editorial de um único outlier. Se a amostra não sustentar uma conclusão, registre a limitação explicitamente.',
+  {competitors:sample}
+ );
+ const now=new Date().toISOString();
+ return result.channels.map(item=>({
+  channelId:item.channelId,
+  dna:{
+   generatedAt:now,
+   summary:item.summary,
+   primaryNiche:item.primaryNiche,
+   subniche:item.subniche,
+   audienceIntent:item.audienceIntent,
+   editorialPromise:item.editorialPromise,
+   formatSignature:item.formatSignature,
+   contentPillars:item.contentPillars,
+   recurringEntities:item.recurringEntities,
+   titlePatterns:item.titlePatterns,
+   curiosityMechanisms:item.curiosityMechanisms,
+   emotionalDrivers:item.emotionalDrivers,
+   differentiationSignals:item.differentiationSignals,
+   limitations:item.limitations
+  }
+ }));
+}
+
 const channelThumbnailAnalysis=z.object({
  inspected:z.boolean(),
  hitPatterns:z.array(z.string()).max(10),
