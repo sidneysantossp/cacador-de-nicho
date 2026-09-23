@@ -95,6 +95,7 @@ export default function Dashboard(){
       onImport={importUniverse}
       onRefresh={(ids)=>action({action:'universeRefresh',universeIds:ids},'universeRefresh')}
       onAnalyze={analyzeUniverseCompetitor}
+      onIntelligence={(ids)=>action({action:'universeIntelligence',universeIds:ids},'universeIntelligence')}
     />}
     {view==='radar'&&<>
      <div className="metrics"><div className="metric"><span className="metric-icon"><Telescope size={20}/></span><div><span>Canais no radar</span><strong>{String(data.channels.length).padStart(2,'0')}</strong></div><small>{data.mode==='demo'?'exemplos de canais':'canais encontrados'}</small></div><div className="metric"><span className="metric-icon"><ScanLine size={20}/></span><div><span>Prontos para investigar</span><strong>{String(data.channels.filter(c=>c.status==='new').length).padStart(2,'0')}</strong></div><small>aguardando análise</small></div><div className="metric"><span className="metric-icon orange"><Sparkles size={20}/></span><div><span>Lacunas mapeadas</span><strong>{String(gapCount).padStart(2,'0')}</strong></div><small>{data.mode==='demo'?'hipóteses ilustrativas':'combinações para investigar'}</small></div></div>
