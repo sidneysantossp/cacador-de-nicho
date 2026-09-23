@@ -141,7 +141,7 @@ test('Publication Package requires explicit compliance selections',()=>{
 
 test('Publication Package enforces thumbnail constraints',()=>{
   const value=pkg();
-  value.thumbnail={...value.thumbnail,width:500,height:500,bytes:3*1024*1024,mimeType:'image/webp'};
+  value.thumbnail={...value.thumbnail,width:500,height:500,bytes:51*1024*1024,mimeType:'image/webp'};
   const issues=publicationPackageIssues(value,{qualityReport:quality,renderJob:render});
   assert.ok(issues.some(issue=>issue.code==='thumbnail-too-small'));
   assert.ok(issues.some(issue=>issue.code==='thumbnail-aspect-ratio'));
