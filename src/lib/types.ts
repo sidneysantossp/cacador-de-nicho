@@ -1170,13 +1170,21 @@ export type RenderManifest = {
  overlays: VideoEditOverlay[];
  audioMix: VideoEditPayload['audioMix'];
 };
+export type RenderPreset = 'source' | 'hd-1080p30' | 'draft-720p30';
+export type RenderOutputFormat = {
+ width: number;
+ height: number;
+ fps: number;
+};
 export type RenderJobPayload = {
- preset: 'source';
+ preset: RenderPreset;
  videoCodec: 'libx264';
+ fallbackVideoCodecs?: Array<'mpeg4'>;
  crf: number;
  audioCodec: 'aac';
  audioBitrateKbps: number;
- compilerVersion: 'render-v1' | 'render-v2';
+ outputFormat?: RenderOutputFormat;
+ compilerVersion: 'render-v1' | 'render-v2' | 'render-v3';
  requestedBy: 'operator';
  manifest: RenderManifest;
 };
