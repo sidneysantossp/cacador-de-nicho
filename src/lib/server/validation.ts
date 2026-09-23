@@ -50,5 +50,52 @@ export const channelBrainPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+export const contentArcSchema=z.object({
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ sequence:z.number().int().min(1).max(10000),
+ status:z.enum(['planned','active','completed','paused']),
+ name:z.string().trim().min(1).max(180),
+ objective:z.string().trim().max(4000),
+ premise:z.string().trim().max(4000),
+ prerequisiteConcepts:shortList(100,120),
+ targetConcepts:shortList(100,120),
+ notes:shortList(100,600),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
+export const channelEpisodeSchema=z.object({
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ arcId:z.string().uuid().optional(),
+ sequence:z.number().int().min(1).max(100000),
+ status:z.enum(['idea','planned','scripted','producing','published','archived']),
+ title:z.string().trim().min(1).max(300),
+ thesis:z.string().trim().max(5000),
+ narrativeSummary:z.string().trim().max(5000),
+ prerequisiteConcepts:shortList(100,120),
+ introducesConcepts:shortList(100,120),
+ reinforcesConcepts:shortList(100,120),
+ opensThreads:shortList(100,600),
+ resolvesThreads:shortList(100,600),
+ repetitionKeys:shortList(100,300),
+ youtubeVideoId:z.string().trim().max(120).optional(),
+ publishedAt:z.string().datetime().optional(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
+export const channelConceptSchema=z.object({
+ id:z.string().uuid(),
+ channelId:z.string().uuid(),
+ key:z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,119}$/),
+ label:z.string().trim().min(1).max(180),
+ description:z.string().trim().max(3000),
+ status:z.enum(['unknown','introduced','partial','established','retired']),
+ prerequisiteKeys:shortList(100,120),
+ introducedEpisodeId:z.string().uuid().optional(),
+ establishedEpisodeId:z.string().uuid().optional(),
+ createdAt:z.string().datetime(),
+ updatedAt:z.string().datetime()
+}).strict();
 export const settingsSchema=z.object({queries:z.array(z.string().trim().min(2).max(100)).min(1).max(5),languages:z.tuple([z.literal('en')]),minViews:z.number().int().min(1000).max(1000000000),maxVideoAgeHours:z.number().int().min(1).max(168),maxChannelVideos:z.number().int().min(1).max(1000),maxChannelAgeDays:z.number().int().min(1).max(3650),enabled:z.boolean(),autoAnalyze:z.boolean(),maxAnalysesPerRun:z.number().int().min(0).max(12),analysisModel:modelSchema,scriptModel:modelSchema}).strict();
 export function observedWithinWindow(publishedAt:string,observedAt:string,views:number,minViews:number,maxHours:number){ const age=Date.parse(observedAt)-Date.parse(publishedAt); return Number.isFinite(age)&&age>=0&&age<maxHours*3600000&&views>=minViews; }
