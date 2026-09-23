@@ -1,0 +1,82 @@
+import { z } from 'zod';
+import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
+import { dbConfigured } from '@/lib/server/db';
+import {
+  deleteVoiceAsset, generateElevenLabsVoice, listElevenLabsVoices,
+  listVoiceAssets, selectVoiceAsset, uploadVoiceAsset
+} from '@/lib/server/voice-engine';
+
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=300;
+
+const jsonSchema=z.discriminatedUnion('action',[
+  z.object({
+    action:z.literal('generate'),
+    scriptId:z.string().uuid(),
+    voiceId:z.string().trim().min(1).max(200).optional(),
+    voiceName:z.string().trim().max(250).optional(),
+    modelId:z.enum(['eleven_flash_v2_5','eleven_multilingual_v2']).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('select'),
+    scriptId:z.string().uuid(),
+    assetId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('delete'),
+    scriptId:z.string().uuid(),
+    assetId:z.string().uuid()
+  }).strict()
+]);
+
+export async function GET(request:Request){
+  try{
+    if(!authenticated(request))throw new HttpError('Entre com a senha da operação para continuar.',401);
+    if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Voice Engine.',503);
+    const url=new URL(request.url);
+    if(url.searchParams.get('voices')==='elevenlabs'){
+      return Response.json({voices:await listElevenLabsVoices()},{headers:{'Cache-Control':'no-store'}});
+    }
+    const scriptId=url.searchParams.get('scriptId')?.trim();
+    if(!scriptId||!z.string().uuid().safeParse(scriptId).success)throw new HttpError('Roteiro inválido.',400);
+    return Response.json({assets:await listVoiceAssets(scriptId)},{headers:{'Cache-Control':'no-store'}});
+  }catch(e){return errorResponse(e);}
+}
+
+export async function POST(request:Request){
+  try{
+    requireOperator(request);
+    if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Voice Engine.',503);
+    const contentType=request.headers.get('content-type')??'';
+
+    if(contentType.includes('multipart/form-data')){
+      const size=Number(request.headers.get('content-length')??0);
+      if(size>105*1024*1024)throw new HttpError('Upload maior que 100 MB.',413);
+      const form=await request.formData();
+      const scriptId=String(form.get('scriptId')??'').trim();
+      const file=form.get('file');
+      if(!z.string().uuid().safeParse(scriptId).success)throw new HttpError('Roteiro inválido.',400);
+      if(!(file instanceof File))throw new HttpError('Selecione um arquivo de áudio.',400);
+      const asset=await uploadVoiceAsset(scriptId,file);
+      return Response.json({message:'Áudio externo salvo como novo take.',asset,assets:await listVoiceAssets(scriptId)});
+    }
+
+    if(Number(request.headers.get('content-length')??0)>12000)throw new HttpError('Solicitação muito extensa.',413);
+    const parsed=jsonSchema.safeParse(await request.json());
+    if(!parsed.success)throw new HttpError('Revise os campos do Voice Engine.',400);
+    const body=parsed.data;
+
+    if(body.action==='generate'){
+      const asset=await generateElevenLabsVoice(body);
+      return Response.json({message:'Narração gerada e salva como novo take.',asset,assets:await listVoiceAssets(body.scriptId)});
+    }
+    if(body.action==='select'){
+      await selectVoiceAsset(body.scriptId,body.assetId);
+      return Response.json({message:'Take selecionado para as próximas etapas.',assets:await listVoiceAssets(body.scriptId)});
+    }
+
+    await deleteVoiceAsset(body.scriptId,body.assetId);
+    return Response.json({message:'Take removido.',assets:await listVoiceAssets(body.scriptId)});
+  }catch(e){return errorResponse(e);}
+}
