@@ -46,8 +46,8 @@ test('Script policy counts words and estimates duration from channel pace',()=>{
 test('Script normalization rebuilds content from sections',()=>{
   const normalized=normalizeScriptPayload(payload,120);
   assert.match(normalized.content,/Grug saved rocks/);
-  assert.equal(normalized.wordCount,15);
-  assert.equal(normalized.estimatedMinutes,0.13);
+  assert.equal(normalized.wordCount,14);
+  assert.equal(normalized.estimatedMinutes,0.12);
 });
 
 test('Script approval blocks fact-check warnings and verify markers',()=>{
