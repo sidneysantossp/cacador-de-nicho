@@ -117,3 +117,25 @@ A UI do Universe possui três visões:
 - Gaps.
 
 Mission Control reexecuta Curves + Gaps somente quando existe Channel DNA novo desde o último relatório e quando há tempo operacional disponível.
+
+
+## Universe Bootstrap Queue
+
+Importações grandes do Competitor Universe usam `radar_universe_queue` em vez de uma request monolítica. Cada item guarda input, status, tentativas e último erro.
+
+Estados:
+- pending
+- processing
+- completed
+- failed
+
+Regras:
+- até 25 canais por lote;
+- concorrência interna limitada a 4;
+- no máximo 3 tentativas por item;
+- itens presos em processing por mais de 30 minutos voltam para pending;
+- um erro individual não interrompe o lote;
+- o processamento não usa search.list quando o input já é @handle, URL /channel/UC... ou channelId;
+- o Mission Control processa a fila antes de atualizar concorrentes existentes e antes do Radar externo.
+
+A fila é persistente, protegida por RLS e visível no Universe e no Mission Brief.
