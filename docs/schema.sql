@@ -68,12 +68,16 @@ create table if not exists public.radar_video_edits(id uuid primary key,channel_
 create index if not exists radar_video_edits_channel_updated on public.radar_video_edits(channel_id,updated_at desc);
 create table if not exists public.radar_video_edit_versions(id bigint generated always as identity primary key,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,version int not null check(version>=1),status text not null,payload jsonb not null,created_at timestamptz not null default now(),unique(video_edit_id,version));
 create index if not exists radar_video_edit_versions_edit_version on public.radar_video_edit_versions(video_edit_id,version desc);
+create table if not exists public.radar_render_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,video_edit_version int not null check(video_edit_version>=1),status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,output_path text,output_bytes bigint check(output_bytes is null or output_bytes>=0),error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
+create index if not exists radar_render_jobs_channel_created on public.radar_render_jobs(channel_id,created_at desc);
+create index if not exists radar_render_jobs_queue on public.radar_render_jobs(status,created_at) where status in ('queued','processing');
+create unique index if not exists radar_render_jobs_one_active_version on public.radar_render_jobs(video_edit_id,video_edit_version) where status in ('queued','processing');
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_video_edits','radar_video_edit_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -98,6 +102,36 @@ grant usage,select on sequence public.radar_video_edit_versions_id_seq to servic
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('cacadores-media','cacadores-media',false,524288000,array['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/ogg','audio/webm','image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime'])
 on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+create or replace function public.claim_render_job(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid render lease';end if;
+update public.radar_render_jobs set status='queued',stage='requeued-after-lease',worker_token=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+select id into picked from public.radar_render_jobs where status='queued' order by created_at asc for update skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_render_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_render_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_render_job(uuid,int) to service_role;
+
+create or replace function public.heartbeat_render_job(p_job_id uuid,p_worker_token uuid,p_progress int,p_stage text,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_render_jobs
+set progress=greatest(progress,least(99,greatest(1,p_progress))),stage=left(coalesce(p_stage,'processing'),120),
+lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_render_job(uuid,uuid,int,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_render_job(uuid,uuid,int,text,int) to service_role;
 
 create or replace function public.save_video_edit(p_video_edit_id uuid,p_channel_id text,p_episode_id uuid,p_timeline_id uuid,p_transcript_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
 language plpgsql security invoker set search_path='' as $$
