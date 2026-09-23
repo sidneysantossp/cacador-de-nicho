@@ -113,7 +113,7 @@ export default function AudienceIntelligenceWorkspace({channel}:{channel:Managed
       </div>
       <div className="audience-eligible-list">
         {state.eligiblePerformanceReports.map(report=><article key={report.id}>
-          <div><strong>Performance Report v{report.version}</strong><span>{report.externalVideoId??report.episodeId} · observado {when(report.observedAt)}</span></div>
+          <div><strong>Performance Report v{report.version}</strong><span>{report.episodeId} · observado {when(report.observedAt)}</span></div>
           <button className="button primary small" disabled={busy==='generate:'+report.id} onClick={()=>void action({action:'generate',performanceReportId:report.id},'generate:'+report.id)}>
             {busy==='generate:'+report.id?<LoaderCircle className="spin" size={13}/>:<Sparkles size={13}/>}
             Analisar comentários
