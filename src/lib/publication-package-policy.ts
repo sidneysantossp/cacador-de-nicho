@@ -27,7 +27,8 @@ function includesAny(value:string,terms:string[]){
     const needle=term.toLowerCase();
     if(/^[a-z0-9]+$/.test(needle)){
       const escaped=needle.replace(/[.*+?^$()|[\]\\{}-]/g,'\\$&');
-      return new RegExp('\\b'+escaped+'\\b','i').test(normalized);
+      const plural=needle.endsWith('s')?'':'(?:s)?';
+      return new RegExp('\\b'+escaped+plural+'\\b','i').test(normalized);
     }
     return normalized.includes(needle);
   });
