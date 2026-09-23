@@ -135,3 +135,20 @@
 .universe-bootstrap-bar{height:8px;border-radius:999px;background:#eef0ea;overflow:hidden;margin:14px 0 8px}
 .universe-bootstrap-bar span{display:block;height:100%;background:linear-gradient(90deg,#738d67,#b37a40);border-radius:999px;transition:width .25s ease}
 @media(max-width:760px){.universe-bootstrap-head{align-items:stretch;flex-direction:column}.universe-bootstrap-head .button{width:100%}}
+
+
+/* Channel DNA detail */
+.universe-dna-overlay{position:fixed;inset:0;background:rgba(27,30,26,.58);z-index:85;display:flex;justify-content:flex-end}
+.universe-dna-panel{width:min(760px,100%);height:100%;background:#f7f5ef;padding:30px;box-shadow:-24px 0 60px rgba(0,0,0,.18);position:relative;overflow:auto}
+.universe-dna-panel-head{padding-right:42px}.universe-dna-title-row{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-top:10px}
+.universe-dna-panel .universe-identity h2{font:700 28px Manrope,var(--font);letter-spacing:-.7px;color:#394234;margin:0 0 4px}.universe-dna-panel .universe-identity p{font-size:10px;color:#8b9387}
+.universe-dna-ready{flex:0 0 auto;background:#edf4e9;color:#5d7c54;border-radius:999px;padding:6px 9px;font-size:8px;font-weight:800;letter-spacing:.55px}
+.universe-dna-generated{font-size:9px;color:#969d93;margin:10px 0 0}
+.universe-dna-highlight{background:#242922;color:#f2eee5;border-radius:12px;padding:18px;margin:20px 0 12px}.universe-dna-highlight>span,.universe-dna-section>span,.universe-dna-list>span,.universe-dna-evidence>span{display:block;font-size:7px;font-weight:800;letter-spacing:.65px;text-transform:uppercase;margin-bottom:7px}
+.universe-dna-highlight>span{color:#c7ab7f}.universe-dna-highlight p{font-size:11px;line-height:1.65;margin:0;color:#e4e6df}
+.universe-dna-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}.universe-dna-facts>div{background:#fff;border:1px solid #dedfd8;border-radius:9px;padding:11px}.universe-dna-facts span{display:block;font-size:7px;color:#9aa197;letter-spacing:.5px;margin-bottom:5px}.universe-dna-facts strong{font-size:11px;color:#4e5949}
+.universe-dna-section{background:#fff;border:1px solid #dedfd8;border-radius:10px;padding:14px;margin-bottom:10px}.universe-dna-section>span{color:#8b9387}.universe-dna-section p{font-size:10px;line-height:1.6;color:#5d6659;margin:0}.universe-dna-section.emphasis{background:#f1ecf8;border-color:#e3dbf0}.universe-dna-section.emphasis>span{color:#76668f}.universe-dna-section.limitations{background:#fff8ef;border-color:#ecdcc7}.universe-dna-section.limitations>span{color:#9a6e43}
+.universe-dna-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.universe-dna-list{background:#fff;border:1px solid #dedfd8;border-radius:10px;padding:13px}.universe-dna-list.wide{grid-column:1/-1}.universe-dna-list>span{color:#8b9387}.universe-dna-list ul,.universe-dna-section ul{margin:0;padding-left:17px}.universe-dna-list li,.universe-dna-section li{font-size:9.5px;line-height:1.55;color:#5d6659;margin:4px 0}
+.universe-dna-evidence{background:#eef3ea;border-radius:10px;padding:14px;margin-top:10px}.universe-dna-evidence>span{color:#6f8468}.universe-dna-evidence>div{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.universe-dna-evidence strong{font:700 16px Manrope,var(--font);color:#4e6248}.universe-dna-evidence small{display:block;font-size:7px;color:#7d8979;margin-top:2px}
+.universe-dna-panel-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #dcddd5;padding-top:16px;margin-top:18px}
+@media(max-width:680px){.universe-dna-panel{padding:24px 18px}.universe-dna-title-row{align-items:flex-start;flex-direction:column}.universe-dna-facts,.universe-dna-grid,.universe-dna-evidence>div{grid-template-columns:1fr}.universe-dna-list.wide{grid-column:auto}.universe-dna-panel-actions .button{width:100%}}
