@@ -200,6 +200,23 @@ async function persistAudio(
   return normalizeAsset(finalRow as never);
 }
 
+export async function loadVoiceAsset(assetId:string){
+  const row=checked(await db().from('radar_voice_assets')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .eq('id',assetId)
+    .maybeSingle());
+  return row?normalizeAsset(row as never):null;
+}
+
+export async function downloadVoiceAsset(assetId:string){
+  const asset=await loadVoiceAsset(assetId);
+  if(!asset)throw new HttpError('Take de voz não encontrado.',404);
+  if(asset.status!=='ready'||!asset.storagePath)throw new HttpError('O take de voz ainda não está pronto.',409);
+  const result=await db().storage.from(BUCKET).download(asset.storagePath);
+  if(result.error||!result.data)throw new HttpError('Falha ao ler o áudio do storage privado.',502);
+  return {asset,bytes:Buffer.from(await result.data.arrayBuffer())};
+}
+
 export async function listVoiceAssets(scriptId:string){
   const script=await loadEpisodeScript(scriptId);
   if(!script)throw new HttpError('Roteiro não encontrado.',404);
