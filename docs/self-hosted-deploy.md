@@ -26,3 +26,8 @@ Temporary sslip.io hostnames are used only during infrastructure validation. The
 ## Secrets
 
 Runtime secrets live only on the VPS environment files and Supabase Vault. They must never be committed to Git.
+
+
+## Automatic production watch
+
+The VPS watches the GitHub `master` branch on a short interval. A new commit is built and tested as a candidate. Production traffic changes only after the candidate passes the application health gate and live Supabase connectivity check. Failed candidates leave the current production release untouched.
