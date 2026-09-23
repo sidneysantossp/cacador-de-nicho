@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings } from '@/lib/types';
+import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings, YouTubeSearchPurpose } from '@/lib/types';
 import {
   REFERENCE_CHANNELS,
   REFERENCE_DISCOVERY_QUERIES,
@@ -11,6 +11,7 @@ import { checked, db, list, put } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { evaluateOpportunityCandidate, isoDurationSeconds, MIN_LONG_FORM_SECONDS } from '@/lib/opportunity-criteria';
+import { claimYouTubeSearch, markYouTubeSearchBlocked, YouTubeSearchBudgetError } from './youtube-search-budget';
 
 export class YouTubeSearchQuotaError extends HttpError {
   constructor(public reason:string='searchQuotaExceeded'){
@@ -19,7 +20,7 @@ export class YouTubeSearchQuotaError extends HttpError {
   }
 }
 export function isYouTubeSearchQuotaError(error:unknown){
-  return error instanceof YouTubeSearchQuotaError;
+  return error instanceof YouTubeSearchQuotaError||error instanceof YouTubeSearchBudgetError;
 }
 
 type Item={
@@ -74,6 +75,23 @@ async function youtubePage(resource:string,params:Record<string,string>){
 }
 async function youtube(resource:string,params:Record<string,string>){
   return (await youtubePage(resource,params)).items;
+}
+async function youtubeSearch(
+  params:Record<string,string>,
+  purpose:YouTubeSearchPurpose,
+  requestKey:string,
+  dedupeWindow=false
+){
+  const claim=await claimYouTubeSearch(purpose,requestKey,{dedupeWindow});
+  if(!claim.allowed)return [] as Item[];
+  try{
+    return await youtube('search',params);
+  }catch(error){
+    if(error instanceof YouTubeSearchQuotaError){
+      await markYouTubeSearchBlocked(error.reason);
+    }
+    throw error;
+  }
 }
 
 const thumb=(item:Item)=>
@@ -187,13 +205,14 @@ async function resolveReferenceIds(prior:Channel[]){
   const unresolved=REFERENCE_CHANNELS.filter(ref=>!resolved.has(norm(ref.name))).slice(0,7);
   for(let i=0;i<unresolved.length;i+=7){
     const group=unresolved.slice(i,i+7);
-    const found=await youtube('search',{
+    const queryText=group.map(ref=>ref.name).join('|');
+    const found=await youtubeSearch({
       part:'snippet',
       type:'channel',
-      q:group.map(ref=>ref.name).join('|'),
+      q:queryText,
       maxResults:'50',
       relevanceLanguage:'en'
-    });
+    },'reference-resolution',queryText,true);
     for(const item of found){
       const id=idOf(item);
       if(!id)continue;
@@ -335,7 +354,7 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
   const publishedAfter=new Date(Date.now()-config.maxVideoAgeHours*3600000).toISOString();
   for(const query of queries){
     for(const videoDuration of ['medium','long'] as const){
-      const found=await youtube('search',{
+      const found=await youtubeSearch({
         part:'snippet',
         type:'video',
         q:query,
@@ -345,7 +364,7 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
         relevanceLanguage:'en',
         regionCode:'US',
         videoDuration
-      });
+      },'radar-discovery',`${query}:${videoDuration}`,true);
       for(const item of found){
         const id=idOf(item);
         if(!id)continue;
@@ -548,14 +567,14 @@ async function resolveChannelInput(input:string){
   }else if(username){
     channels=await youtube('channels',{part:'snippet,statistics,contentDetails',forUsername:username});
   }else{
-    const found=await youtube('search',{
+    const found=await youtubeSearch({
       part:'snippet',
       type:'channel',
       q:raw,
       maxResults:'10',
       relevanceLanguage:'en',
       regionCode:'US'
-    });
+    },'channel-resolution',raw);
     const best=[...found].sort((a,b)=>nameScore(b.snippet.title,raw)-nameScore(a.snippet.title,raw))[0];
     if(best){
       channels=await youtube('channels',{part:'snippet,statistics,contentDetails',id:idOf(best)});
@@ -586,14 +605,14 @@ export async function collectChannelStudyEvidence(input:string){
   // videos; it is not presented as an exhaustive scan of the channel.
   const ids=new Set<string>();
   for(const videoDuration of ['medium','long'] as const){
-    const found=await youtube('search',{
+    const found=await youtubeSearch({
       part:'snippet',
       type:'video',
       channelId,
       order:'viewCount',
       maxResults:'25',
       videoDuration
-    });
+    },'channel-study',`${channelId}:${videoDuration}`);
     for(const item of found){
       const id=idOf(item);
       if(id)ids.add(id);
@@ -781,7 +800,7 @@ export async function findNicheLockedSimilarCandidates(
 
   for(const query of profile.searchQueries.slice(0,5)){
     for(const videoDuration of ['medium','long'] as const){
-      const found=await youtube('search',{
+      const found=await youtubeSearch({
         part:'snippet',
         type:'video',
         q:query,
@@ -791,7 +810,7 @@ export async function findNicheLockedSimilarCandidates(
         relevanceLanguage:'en',
         regionCode:'US',
         videoDuration
-      });
+      },'similar-channels',`${excludeChannelId}:${query}:${videoDuration}`);
       for(const item of found){
         const id=idOf(item);
         if(!id)continue;
