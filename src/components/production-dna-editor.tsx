@@ -9,6 +9,7 @@ import type {
   ManagedChannel, ProductionDNA, ProductionDnaCharacter, ProductionDnaPayload,
   ProductionDnaVersion
 } from '@/lib/types';
+import { productionDnaFormatIssues } from '@/lib/production-dna-policy';
 
 type Tab='visual'|'characters'|'voice'|'editing'|'providers'|'history';
 
@@ -60,12 +61,14 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
     return()=>{cancelled=true;};
   },[channel.id]);
 
+  const formatIssues=useMemo(()=>productionDnaFormatIssues(draft),[draft]);
   const dirty=useMemo(()=>{
     const base=current?JSON.stringify({...current,version:undefined}):JSON.stringify(blank(channel));
     return JSON.stringify(draft)!==base;
   },[current,draft,channel]);
 
   async function save(){
+    if(formatIssues.length){setMessage('Corrija os intervalos de duração antes de salvar o Production DNA.');return;}
     setBusy(true);setMessage('');
     try{
       const next={...draft,updatedAt:new Date().toISOString()};
@@ -103,7 +106,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
   return <div className="production-dna">
     <section className="production-dna-hero">
       <div><span>PRODUCTION DNA</span><h2>Como um vídeo de {channel.name} deve ser fabricado.</h2><p>Esta receita é independente do provider. Ela pode orientar produção interna, Nano Banana, ElevenLabs, bancos de mídia ou qualquer ferramenta externa.</p></div>
-      <div><em>v{current?.version??0}</em><span className={dirty?'pending':'saved'}>{dirty?'alterações não salvas':'salvo'}</span><button className="button primary" disabled={busy||!dirty} onClick={()=>void save()}><Save size={15}/>{busy?'Salvando…':'Salvar nova versão'}</button></div>
+      <div><em>v{current?.version??0}</em><span className={formatIssues.length?'pending':dirty?'pending':'saved'}>{formatIssues.length?`${formatIssues.length} conflito(s)`:dirty?'alterações não salvas':'salvo'}</span><button className="button primary" disabled={busy||!dirty||formatIssues.length>0} onClick={()=>void save()}><Save size={15}/>{busy?'Salvando…':'Salvar nova versão'}</button></div>
     </section>
 
     {message&&<div className="production-dna-message"><CheckCircle2 size={15}/>{message}</div>}
