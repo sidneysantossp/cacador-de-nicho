@@ -476,7 +476,16 @@ async function discoverAdjacent(config:Settings,prior:Channel[],referenceIds:Set
 
 export async function scan(config:Settings){
   const prior=await list<Channel>('radar_channels',1000);
-  const references=await monitorReferences(config,prior);
+  let references:Channel[]=[];
+  try{
+    references=await monitorReferences(config,prior);
+  }catch(error){
+    if(error instanceof YouTubeSearchBudgetError&&error.reason==='purpose-limit'){
+      references=prior.filter(channel=>channel.discoverySource==='reference');
+    }else{
+      throw error;
+    }
+  }
   const referenceIds=new Set(references.map(c=>c.id));
   const adjacent=await discoverAdjacent(config,prior,referenceIds);
   const observedAt=new Date().toISOString();
