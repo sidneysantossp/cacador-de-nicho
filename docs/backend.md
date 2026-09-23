@@ -72,3 +72,25 @@ Snapshot inicial por concorrente:
 - monitoring tier hot / active / stable / dormant.
 
 A UI Universe agrupa os concorrentes por cluster e apresenta cards com métricas, melhor vídeo recente, DNA inicial, sinais observados e espaço reservado para Gap Engine. Anatomia de Canal e atualização manual podem ser acionadas diretamente de cada card.
+
+
+## Universe DNA + Signals Engine
+
+O Universe mantém até 30 snapshots resumidos por concorrente e gera sinais determinísticos sem IA:
+- breakout sobre a base pública atual de inscritos;
+- outlier interno contra a mediana da amostra recente;
+- repeat-hit quando múltiplos uploads superam 2x a mediana;
+- aceleração entre snapshots separados por pelo menos 6h;
+- mudança de cadência na janela de 30 dias.
+
+Channel DNA é uma análise estruturada da OpenAI baseada somente em metadados fornecidos: descrição, títulos, views, duração, frequência e sinais observados. Não usa CTR, retenção, RPM ou conteúdo audiovisual não fornecido.
+
+A execução `universeIntelligence` processa no máximo 5 concorrentes por lote. Prioridade: DNA ausente, depois status operacional, depois DNA mais antigo. Um lote usa uma única chamada estruturada.
+
+Cadência de monitoramento:
+- hot: 6h;
+- active: 24h;
+- stable: 72h;
+- dormant: 168h.
+
+Mission Control atualiza até 10 concorrentes vencidos e executa um lote de Channel DNA antes de gastar quota de busca no Radar externo. O mercado conhecido é, portanto, a fonte primária de inteligência; search.list atua como complemento.
