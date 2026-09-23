@@ -3,9 +3,9 @@ import OpenAI from 'openai';
 import { db, dbConfigured, checked } from './db';
 import { HttpError } from './auth';
 
-export type Provider='openai'|'youtube';
-const names:Record<Provider,string>={openai:'openai_api_key',youtube:'youtube_api_key'};
-const envKeys:Record<Provider,()=>string|undefined>={openai:()=>process.env.OPENAI_API_KEY,youtube:()=>process.env.YOUTUBE_API_KEY};
+export type Provider='openai'|'youtube'|'elevenlabs';
+const names:Record<Provider,string>={openai:'openai_api_key',youtube:'youtube_api_key',elevenlabs:'elevenlabs_api_key'};
+const envKeys:Record<Provider,()=>string|undefined>={openai:()=>process.env.OPENAI_API_KEY,youtube:()=>process.env.YOUTUBE_API_KEY,elevenlabs:()=>process.env.ELEVENLABS_API_KEY};
 
 export async function providerSecret(provider:Provider){
  if(dbConfigured()){
@@ -14,7 +14,8 @@ export async function providerSecret(provider:Provider){
  }
  const fallback=envKeys[provider]();
  if(fallback)return fallback;
- throw new HttpError(`Configure a chave da ${provider==='openai'?'OpenAI':'YouTube Data API'}.`,503);
+ const label=provider==='openai'?'OpenAI':provider==='youtube'?'YouTube Data API':'ElevenLabs';
+ throw new HttpError(`Configure a chave da ${label}.`,503);
 }
 
 export async function providerAvailable(provider:Provider){try{await providerSecret(provider);return true;}catch{return false;}}
@@ -36,7 +37,7 @@ export async function providerStatuses(){
   if(result.error)throw new HttpError('O cofre de credenciais ainda não foi instalado. Aplique o schema atualizado.',503);
   if(Array.isArray(result.data))rows.push(...result.data);
  }
- return (['openai','youtube'] as Provider[]).map(provider=>{
+ return (['openai','youtube','elevenlabs'] as Provider[]).map(provider=>{
   const name=names[provider],row=rows.find(item=>item.secret_name===name),fallback=envKeys[provider]();
   if(row)return {provider,configured:true,source:'vault' as const,last4:String(row.last4??'')};
   if(fallback)return {provider,configured:true,source:'environment' as const,last4:fallback.slice(-4)};
@@ -48,6 +49,13 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
  if(provider==='openai'){
   try{await new OpenAI({apiKey:key,timeout:15000,maxRetries:0}).models.retrieve(model);}
   catch{throw new HttpError('A OpenAI recusou a chave ou o modelo escolhido não está disponível nesta conta.',422);}
+  return;
+ }
+ if(provider==='elevenlabs'){
+  let response:Response;
+  try{response=await fetch('https://api.elevenlabs.io/v1/user',{headers:{'xi-api-key':key},signal:AbortSignal.timeout(15000),cache:'no-store'});}
+  catch{throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);}
+  if(!response.ok)throw new HttpError('A ElevenLabs recusou a chave. Confira a credencial e as permissões da conta.',422);
   return;
  }
  const query=new URLSearchParams({part:'id',id:'jNQXAC9IVRw',key});
