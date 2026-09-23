@@ -60,6 +60,7 @@ export default function Dashboard(){
       brief={data.missionBrief}
       mode={data.mode}
       busy={busy}
+      searchBudget={data.youtubeSearchBudget}
       onRun={()=>action({action:'mission'},'mission')}
       onOpenStudy={(channelStudyId)=>{setAnalysisFocusId(channelStudyId);setView('analysis');}}
     />}
