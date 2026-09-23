@@ -59,6 +59,7 @@ function normalizeRow(row:Row):SceneAsset{
     providerOperationId:payload.providerOperationId?String(payload.providerOperationId):undefined,
     generation:(payload.generation??{}) as SceneAsset['generation'],
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
+    stock:payload.stock as SceneAsset['stock']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
     error:payload.error?String(payload.error):undefined,
     createdAt:String(row.created_at),
@@ -102,6 +103,7 @@ function metadataFor(
     promptHash:sha(visual.prompt),
     generation:extra.generation??{},
     license:extra.license??{type:'unknown',label:'Unknown'},
+    stock:extra.stock,
     costUsd:extra.costUsd??null,
     modelId:extra.modelId,
     providerOperationId:extra.providerOperationId,
@@ -274,6 +276,53 @@ export async function uploadSceneAsset(input:{
     mimeType:mime,originalName:input.file.name,metadata
   });
   return persistReady(reservation.id,Buffer.from(await input.file.arrayBuffer()),mime,metadata);
+}
+
+export async function persistStockSceneAsset(input:{
+  promptSetId:string;
+  sceneId:string;
+  provider:'pexels'|'pixabay';
+  providerAssetId:string;
+  kind:'image'|'video';
+  bytes:Buffer;
+  mimeType:string;
+  width:number|null;
+  height:number|null;
+  durationSeconds:number|null;
+  pageUrl:string;
+  creatorName:string;
+  creatorUrl?:string;
+  attributionLabel:string;
+  licenseLabel:string;
+  licenseUrl:string;
+}){
+  const {promptSet,visual}=await eligibleContext(input.promptSetId,input.sceneId);
+  const metadata=metadataFor(promptSet,visual,{
+    generation:{},
+    license:{type:'licensed',label:input.licenseLabel,sourceUrl:input.licenseUrl},
+    stock:{
+      providerAssetId:input.providerAssetId,
+      pageUrl:input.pageUrl,
+      creatorName:input.creatorName,
+      creatorUrl:input.creatorUrl,
+      attributionLabel:input.attributionLabel
+    },
+    costUsd:0
+  } as Partial<SceneAsset>);
+  const reservation=await reserve({
+    promptSet,
+    sceneId:input.sceneId,
+    kind:input.kind,
+    sourceType:'stock',
+    provider:input.provider,
+    mimeType:input.mimeType,
+    originalName:null,
+    metadata
+  });
+  return persistReady(
+    reservation.id,input.bytes,input.mimeType,metadata,
+    {width:input.width,height:input.height,durationSeconds:input.durationSeconds}
+  );
 }
 
 export async function generateGoogleImage(input:{
