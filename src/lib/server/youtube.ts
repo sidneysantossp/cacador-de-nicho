@@ -707,7 +707,7 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
     createdAt:channel.snippet.publishedAt,
     importedAt:existing?.importedAt??observedAt,
     lastMonitoredAt:observedAt,
-    monitoringTier:existing?.monitoringTier??(status==='breakout'?'hot':uploadsLast30d>=4?'active':'stable'),
+    monitoringTier:status==='breakout'?'hot':uploadsLast30d>=4?'active':uploadsLast30d===0?'dormant':'stable',
     status:existing?.status&&['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(existing.status)?existing.status:status,
     recentAverageViews:average,
     recentMedianViews:median,
