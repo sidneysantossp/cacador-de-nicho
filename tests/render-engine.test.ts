@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
-  boundaryTransition, renderManifestIssues, renderOutputPath,
+  boundaryTransition, renderManifestIssues, renderOutputPath, renderPresetOutput,
   validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
@@ -98,6 +98,25 @@ test('Render Engine validates bounded output settings',()=>{
   assert.equal(validRenderAudioBitrate(96),true);
   assert.equal(validRenderAudioBitrate(320),true);
   assert.equal(validRenderAudioBitrate(321),false);
+});
+
+test('Render-v3 presets preserve orientation and explicit fps',()=>{
+  assert.deepEqual(
+    renderPresetOutput('source',{width:1440,height:1080,fps:24}),
+    {width:1440,height:1080,fps:24}
+  );
+  assert.deepEqual(
+    renderPresetOutput('hd-1080p30',{width:1920,height:1080,fps:60}),
+    {width:1920,height:1080,fps:30}
+  );
+  assert.deepEqual(
+    renderPresetOutput('hd-1080p30',{width:1080,height:1920,fps:60}),
+    {width:1080,height:1920,fps:30}
+  );
+  assert.deepEqual(
+    renderPresetOutput('draft-720p30',{width:1080,height:1920,fps:30}),
+    {width:720,height:1280,fps:30}
+  );
 });
 
 test('Render output path is immutable per edit version and job',()=>{
