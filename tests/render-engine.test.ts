@@ -10,28 +10,19 @@ import {
 const now='2026-09-23T23:00:00.000Z';
 
 const timeline={
-  kind:'timeline',
-  id:'11111111-1111-4111-8111-111111111111',
+  kind:'timeline',id:'11111111-1111-4111-8111-111111111111',
   channelId:'29383ee5-36cf-4f02-b64e-67371c9e076d',
   episodeId:'22222222-2222-4222-8222-222222222222',
-  scenePlanId:'33333333-3333-4333-8333-333333333333',
-  scenePlanVersion:1,
+  scenePlanId:'33333333-3333-4333-8333-333333333333',scenePlanVersion:1,
   scriptId:'44444444-4444-4444-8444-444444444444',
   voiceAssetId:'55555555-5555-4555-8555-555555555555',
-  visualPromptSetId:'66666666-6666-4666-8666-666666666666',
-  visualPromptSetVersion:1,
-  version:2,
-  status:'approved',
-  format:{width:1920,height:1080,fps:30,aspectRatio:'16:9'},
-  durationSeconds:6,
-  tracks:[],
-  review:{notes:''},
-  createdAt:now,updatedAt:now
+  visualPromptSetId:'66666666-6666-4666-8666-666666666666',visualPromptSetVersion:1,
+  version:2,status:'approved',format:{width:1920,height:1080,fps:30,aspectRatio:'16:9'},
+  durationSeconds:6,tracks:[],review:{notes:''},createdAt:now,updatedAt:now
 } as Timeline;
 
 const transcript={
-  kind:'transcript',
-  id:'77777777-7777-4777-8777-777777777777',
+  kind:'transcript',id:'77777777-7777-4777-8777-777777777777',
   channelId:timeline.channelId,episodeId:timeline.episodeId,
   scriptId:timeline.scriptId,voiceAssetId:timeline.voiceAssetId,
   sourceType:'imported',text:'Test',words:[],segments:[],
@@ -41,14 +32,21 @@ const transcript={
 } as Transcript;
 
 const edit={
-  kind:'video-edit',
-  id:'88888888-8888-4888-8888-888888888888',
+  kind:'video-edit',id:'88888888-8888-4888-8888-888888888888',
   channelId:timeline.channelId,episodeId:timeline.episodeId,
   timelineId:timeline.id,timelineVersion:timeline.version,
   transcriptId:transcript.id,transcriptVersion:transcript.version,
-  format:{...timeline.format},durationSeconds:6,
-  clipStyles:[],captions:{enabled:false,position:'bottom',fontSize:52,maxLines:2,backgroundOpacity:.35,cues:[]},
+  format:{...timeline.format},durationSeconds:6,clipStyles:[],
+  captions:{
+    enabled:false,position:'bottom',fontSize:52,maxLines:2,backgroundOpacity:.35,
+    styleDescription:'',style:{
+      fontFamily:'DejaVu Sans',fontWeight:800,primaryColor:'#FFFFFF',highlightColor:'#F4C95D',
+      outlineColor:'#000000',outlineWidth:2,uppercase:false,maxWordsPerLine:6,
+      smartBreaks:true,highlightMode:'none',safeMarginPercent:6
+    },cues:[]
+  },
   overlays:[],audioMix:{voiceVolume:1,musicVolume:.2,sfxVolume:.7,normalizeVoice:true,duckMusicUnderVoice:true},
+  musicTrack:null,sfxEvents:[],
   review:{notes:''},version:4,status:'approved',createdAt:now,updatedAt:now
 } as VideoEdit;
 
@@ -87,9 +85,8 @@ function manifest():RenderManifest{
       }
     ],
     voice:{assetId:timeline.voiceAssetId,storagePath:'channels/x/voice.mp3',mimeType:'audio/mpeg'},
-    captions:structuredClone(edit.captions),
-    overlays:[],
-    audioMix:structuredClone(edit.audioMix)
+    music:null,sfxEvents:[],
+    captions:structuredClone(edit.captions),overlays:[],audioMix:structuredClone(edit.audioMix)
   };
 }
 
@@ -105,13 +102,8 @@ test('Render Engine validates bounded output settings',()=>{
 
 test('Render output path is immutable per edit version and job',()=>{
   assert.equal(
-    renderOutputPath({
-      channelId:timeline.channelId,episodeId:timeline.episodeId,
-      videoEditId:edit.id,videoEditVersion:4,
-      jobId:'ffffffff-ffff-4fff-8fff-ffffffffffff'
-    }),
-    'channels/'+timeline.channelId+'/episodes/'+timeline.episodeId+
-      '/renders/'+edit.id+'/v0004/ffffffff-ffff-4fff-8fff-ffffffffffff.mp4'
+    renderOutputPath({channelId:timeline.channelId,episodeId:timeline.episodeId,videoEditId:edit.id,videoEditVersion:4,jobId:'ffffffff-ffff-4fff-8fff-ffffffffffff'}),
+    'channels/'+timeline.channelId+'/episodes/'+timeline.episodeId+'/renders/'+edit.id+'/v0004/ffffffff-ffff-4fff-8fff-ffffffffffff.mp4'
   );
 });
 
@@ -128,11 +120,57 @@ test('Render manifest blocks source gaps and unsafe motion scale',()=>{
   assert.ok(issues.includes('render-scale-below-frame'));
 });
 
+test('Render-v2 accepts a consistent music and SFX snapshot',()=>{
+  const edited=structuredClone(edit);
+  edited.musicTrack={
+    assetId:'12111111-1111-4111-8111-111111111111',startSeconds:0,endSeconds:6,sourceStartSeconds:0,
+    loop:true,volume:.8,fadeInSeconds:.5,fadeOutSeconds:.5,duckUnderVoice:true,duckingStrength:.7
+  };
+  edited.sfxEvents=[{
+    id:'13111111-1111-4111-8111-111111111111',
+    assetId:'14111111-1111-4111-8111-111111111111',eventType:'custom',
+    startSeconds:1,sourceStartSeconds:0,durationSeconds:.3,volume:.7
+  }];
+  const value=manifest();
+  value.music={
+    assetId:edited.musicTrack.assetId,storagePath:'channels/x/music.mp3',mimeType:'audio/mpeg',
+    durationSeconds:2,placement:structuredClone(edited.musicTrack)
+  };
+  value.sfxEvents=[{
+    event:structuredClone(edited.sfxEvents[0]),assetId:edited.sfxEvents[0].assetId,
+    storagePath:'channels/x/pop.wav',mimeType:'audio/wav',durationSeconds:.5
+  }];
+  assert.deepEqual(renderManifestIssues(value,edited,timeline,transcript),[]);
+});
+
+test('Render-v2 blocks short non-loop music and short SFX source',()=>{
+  const edited=structuredClone(edit);
+  edited.musicTrack={
+    assetId:'12111111-1111-4111-8111-111111111111',startSeconds:0,endSeconds:6,sourceStartSeconds:0,
+    loop:false,volume:1,fadeInSeconds:.5,fadeOutSeconds:.5,duckUnderVoice:true,duckingStrength:.5
+  };
+  edited.sfxEvents=[{
+    id:'13111111-1111-4111-8111-111111111111',
+    assetId:'14111111-1111-4111-8111-111111111111',eventType:'custom',
+    startSeconds:1,sourceStartSeconds:.3,durationSeconds:.5,volume:.7
+  }];
+  const value=manifest();
+  value.music={
+    assetId:edited.musicTrack.assetId,storagePath:'channels/x/music.mp3',mimeType:'audio/mpeg',
+    durationSeconds:2,placement:structuredClone(edited.musicTrack)
+  };
+  value.sfxEvents=[{
+    event:structuredClone(edited.sfxEvents[0]),assetId:edited.sfxEvents[0].assetId,
+    storagePath:'channels/x/pop.wav',mimeType:'audio/wav',durationSeconds:.6
+  }];
+  const issues=renderManifestIssues(value,edited,timeline,transcript);
+  assert.ok(issues.includes('render-music-source-too-short'));
+  assert.ok(issues.includes('render-sfx-source-too-short'));
+});
+
 test('Render cross-dissolve uses bounded scene duration',()=>{
   const value=manifest();
-  assert.deepEqual(boundaryTransition(value.visualClips[0],value.visualClips[1]),{
-    kind:'cross-dissolve',duration:.4
-  });
+  assert.deepEqual(boundaryTransition(value.visualClips[0],value.visualClips[1]),{kind:'cross-dissolve',duration:.4});
   value.visualClips[0].style.transitionSeconds=9;
   value.visualClips[1].style.transitionSeconds=9;
   assert.equal(boundaryTransition(value.visualClips[0],value.visualClips[1]).duration,1.5);
