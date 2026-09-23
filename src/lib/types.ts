@@ -116,6 +116,8 @@ export type MissionBrief = {
   competitors?: number;
   competitorSignals?: number;
   competitorDna?: number;
+  universeCurves?: number;
+  universeGaps?: number;
  };
  workCompleted: string[];
  productionQueue: Array<{
