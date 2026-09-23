@@ -14,6 +14,7 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { assetIsStale } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
+import { loadAudioAssetsByIds } from './audio-library';
 import {
   DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF, renderManifestIssues,
   renderOutputPath, validRenderAudioBitrate, validRenderCrf
@@ -99,8 +100,8 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   if(edit.status!=='approved')throw new HttpError('Aprove o Video Edit antes de renderizar.',409);
 
   const workspace=await loadVideoEditWorkspace(edit);
-  const {timeline,transcript}=workspace;
-  const approvalIssues=videoEditApprovalIssues(edit,timeline,transcript);
+  const {timeline,transcript,audioAssets}=workspace;
+  const approvalIssues=videoEditApprovalIssues(edit,timeline,transcript,audioAssets);
   if(approvalIssues.length)throw new HttpError('Video Edit não está mais elegível para render: '+approvalIssues.join(' · ')+'.',409);
 
   const visual=timeline.tracks.find(track=>track.type==='visual');
@@ -171,6 +172,41 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
     });
   }
 
+  const audioIds=[
+    ...(edit.musicTrack?[edit.musicTrack.assetId]:[]),
+    ...edit.sfxEvents.map(event=>event.assetId)
+  ];
+  const referencedAudio=audioIds.length?await loadAudioAssetsByIds(audioIds):[];
+  const audioMap=new Map(referencedAudio.map(asset=>[asset.id,asset]));
+
+  const music=edit.musicTrack?(()=>{
+    const asset=audioMap.get(edit.musicTrack!.assetId);
+    if(!asset||asset.channelId!==edit.channelId||asset.kind!=='music'||asset.status!=='ready'){
+      throw new HttpError('A música selecionada não está pronta ou não pertence a este canal.',409);
+    }
+    return {
+      assetId:asset.id,
+      storagePath:asset.storagePath,
+      mimeType:asset.mimeType,
+      durationSeconds:asset.durationSeconds,
+      placement:structuredClone(edit.musicTrack!)
+    };
+  })():null;
+
+  const sfxEvents=edit.sfxEvents.map(event=>{
+    const asset=audioMap.get(event.assetId);
+    if(!asset||asset.channelId!==edit.channelId||asset.kind!=='sfx'||asset.status!=='ready'){
+      throw new HttpError('Um SFX selecionado não está pronto ou não pertence a este canal.',409);
+    }
+    return {
+      event:structuredClone(event),
+      assetId:asset.id,
+      storagePath:asset.storagePath,
+      mimeType:asset.mimeType,
+      durationSeconds:asset.durationSeconds
+    };
+  });
+
   const manifest:RenderManifest={
     videoEditId:edit.id,
     videoEditVersion:edit.version,
@@ -186,6 +222,8 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
       storagePath:voice.storagePath,
       mimeType:voice.mimeType
     },
+    music,
+    sfxEvents,
     captions:structuredClone(edit.captions),
     overlays:structuredClone(edit.overlays),
     audioMix:structuredClone(edit.audioMix)
@@ -226,7 +264,7 @@ export async function createRenderJob(input:{
     crf,
     audioCodec:'aac',
     audioBitrateKbps,
-    compilerVersion:'render-v1',
+    compilerVersion:'render-v2',
     requestedBy:'operator',
     manifest
   };
