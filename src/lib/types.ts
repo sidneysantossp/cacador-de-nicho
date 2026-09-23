@@ -901,6 +901,67 @@ export type MediaLibraryItem = {
  createdAt: string;
  updatedAt: string;
 };
+export type TimelineClipKind = 'image' | 'video' | 'audio' | 'placeholder';
+export type TimelineTrackType = 'visual' | 'voice' | 'overlay' | 'music' | 'sfx' | 'captions';
+export type TimelineClip = {
+ id: string;
+ sceneId?: string;
+ assetId?: string;
+ clipKind: TimelineClipKind;
+ label: string;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ sourceStartSeconds: number | null;
+ sourceEndSeconds: number | null;
+ fit: 'cover' | 'contain' | 'stretch';
+ playback: 'hold' | 'trim' | 'loop';
+ volume: number;
+ muted: boolean;
+};
+export type TimelineTrack = {
+ id: string;
+ type: TimelineTrackType;
+ name: string;
+ locked: boolean;
+ muted: boolean;
+ clips: TimelineClip[];
+};
+export type TimelinePayload = {
+ kind: 'timeline';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scenePlanId: string;
+ scenePlanVersion: number;
+ scriptId: string;
+ voiceAssetId: string;
+ visualPromptSetId: string;
+ visualPromptSetVersion: number;
+ format: {
+  width: number;
+  height: number;
+  fps: number;
+  aspectRatio: string;
+ };
+ durationSeconds: number;
+ tracks: TimelineTrack[];
+ review: {
+  notes: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type Timeline = TimelinePayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+export type TimelineVersion = {
+ version: number;
+ status: Timeline['status'];
+ payload: TimelinePayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
