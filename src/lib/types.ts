@@ -962,6 +962,91 @@ export type TimelineVersion = {
  payload: TimelinePayload;
  createdAt: string;
 };
+export type VideoEditTransition = 'none' | 'fade' | 'cross-dissolve';
+export type VideoEditMotionPreset = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'custom';
+export type VideoEditClipStyle = {
+ timelineClipId: string;
+ sceneId: string;
+ motionPreset: VideoEditMotionPreset;
+ scaleStart: number;
+ scaleEnd: number;
+ xStart: number;
+ xEnd: number;
+ yStart: number;
+ yEnd: number;
+ transitionIn: VideoEditTransition;
+ transitionOut: VideoEditTransition;
+ transitionSeconds: number;
+};
+export type VideoEditCaptionCue = {
+ id: string;
+ transcriptSegmentId: string;
+ startSeconds: number;
+ endSeconds: number;
+ text: string;
+};
+export type VideoEditOverlay = {
+ id: string;
+ type: 'text';
+ text: string;
+ startSeconds: number;
+ endSeconds: number;
+ x: number;
+ y: number;
+ width: number;
+ height: number;
+ opacity: number;
+ fontSize: number;
+};
+export type VideoEditPayload = {
+ kind: 'video-edit';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ timelineId: string;
+ timelineVersion: number;
+ transcriptId: string;
+ transcriptVersion: number;
+ format: {
+  width: number;
+  height: number;
+  fps: number;
+  aspectRatio: string;
+ };
+ durationSeconds: number;
+ clipStyles: VideoEditClipStyle[];
+ captions: {
+  enabled: boolean;
+  position: 'top' | 'center' | 'bottom';
+  fontSize: number;
+  maxLines: number;
+  backgroundOpacity: number;
+  cues: VideoEditCaptionCue[];
+ };
+ overlays: VideoEditOverlay[];
+ audioMix: {
+  voiceVolume: number;
+  musicVolume: number;
+  sfxVolume: number;
+  normalizeVoice: boolean;
+  duckMusicUnderVoice: boolean;
+ };
+ review: {
+  notes: string;
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type VideoEdit = VideoEditPayload & {
+ version: number;
+ status: 'draft' | 'review' | 'approved';
+};
+export type VideoEditVersion = {
+ version: number;
+ status: VideoEdit['status'];
+ payload: VideoEditPayload;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
