@@ -410,6 +410,76 @@ export type NarrativeBundle = {
  episodes: ChannelEpisode[];
  concepts: ChannelConcept[];
 };
+export type ProductionDnaCharacter = {
+ id: string;
+ name: string;
+ description: string;
+ visualRules: string[];
+ forbidden: string[];
+ referenceAssets: string[];
+};
+export type ProductionDnaPayload = {
+ kind: 'production-dna';
+ channelId: string;
+ format: {
+  aspectRatio: string;
+  width: number;
+  height: number;
+  fps: number;
+  targetDurationMinutes: { min: number | null; max: number | null };
+  sceneDurationSeconds: { min: number | null; preferred: number | null; max: number | null };
+ };
+ visual: {
+  styleName: string;
+  styleDescription: string;
+  palette: string[];
+  compositionRules: string[];
+  cameraRules: string[];
+  motionRules: string[];
+  basePrompt: string;
+  negativePrompt: string;
+  forbidden: string[];
+ };
+ characters: ProductionDnaCharacter[];
+ voice: {
+  language: string;
+  providerPreference: string[];
+  voiceId: string;
+  voiceName: string;
+  narrationStyle: string[];
+  paceWpm: number | null;
+  pronunciationRules: string[];
+ };
+ captions: {
+  enabled: boolean;
+  styleDescription: string;
+  position: string;
+  maxWordsPerCaption: number | null;
+  highlightKeywords: boolean;
+ };
+ editing: {
+  transitions: string[];
+  defaultTransition: string;
+  kenBurns: boolean;
+  musicStyle: string[];
+  sfxRules: string[];
+  pacingRules: string[];
+ };
+ thumbnail: {
+  styleRules: string[];
+  forbidden: string[];
+ };
+ providers: {
+  image: string[];
+  video: string[];
+  voice: string[];
+  stock: string[];
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type ProductionDNA = ProductionDnaPayload & { version: number };
+export type ProductionDnaVersion = { version: number; payload: ProductionDnaPayload; createdAt: string };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
