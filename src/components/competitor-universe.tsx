@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
-import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseMarketIntelligence } from '@/lib/types';
+import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
 
 function compact(value:number|null){
   if(value===null)return '—';
@@ -119,7 +119,9 @@ export default function CompetitorUniverse({
   onAnalyze,
   onIntelligence,
   intelligence,
-  onCurves
+  onCurves,
+  queue,
+  onQueue
 }:{
   competitors:UniverseCompetitor[];
   mode:'demo'|'live';
@@ -130,6 +132,8 @@ export default function CompetitorUniverse({
   onIntelligence:(ids:string[])=>Promise<boolean|undefined>;
   intelligence?:UniverseMarketIntelligence|null;
   onCurves:()=>Promise<boolean|undefined>;
+  queue?:UniverseImportQueueSummary|null;
+  onQueue:()=>Promise<boolean|undefined>;
 }){
   const [query,setQuery]=useState('');
   const [cluster,setCluster]=useState('Todos');
@@ -184,6 +188,21 @@ export default function CompetitorUniverse({
       <div><BrainCircuit size={18}/><span>DNA PRONTO</span><strong>{dnaReady}</strong></div>
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
     </section>
+
+    {queue&&queue.total>0&&<section className="universe-bootstrap">
+      <div className="universe-bootstrap-head">
+        <div>
+          <span className="eyebrow">BOOTSTRAP DO UNIVERSE</span>
+          <h3>{queue.completed} de {queue.total} concorrentes processados</h3>
+          <p>{queue.pending} pendentes · {queue.processing} em processamento · {queue.failed} com falha · {queue.retryable} elegíveis para retry</p>
+        </div>
+        <button className="button primary small" disabled={mode==='demo'||!!busy||queue.completed>=queue.total} onClick={()=>void onQueue()}>
+          <RefreshCw size={15}/>{busy==='universeQueue'?'Processando lote…':'Processar próximo lote'}
+        </button>
+      </div>
+      <div className="universe-bootstrap-bar"><span style={{width:`${queue.progressPct}%`}}/></div>
+      <small>{queue.progressPct}% concluído. Cada lote resolve até 25 canais sem usar search.list.</small>
+    </section>}
 
     <div className="universe-tabs">
       <button className={section==='competitors'?'active':''} onClick={()=>setSection('competitors')}>Competitors <span>{competitors.length}</span></button>
