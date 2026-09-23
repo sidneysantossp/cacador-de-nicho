@@ -92,21 +92,11 @@ export function normalizeVideoEdit(payload:VideoEditPayload):VideoEditPayload{
     captions:{
       ...payload.captions,
       cues:[...payload.captions.cues]
-        .map(cue=>({
-          ...cue,
-          startSeconds:Math.max(0,Math.min(payload.durationSeconds,cue.startSeconds)),
-          endSeconds:Math.max(0,Math.min(payload.durationSeconds,cue.endSeconds)),
-          text:cue.text.trim()
-        }))
+        .map(cue=>({...cue,text:cue.text.trim()}))
         .sort((a,b)=>a.startSeconds-b.startSeconds)
     },
     overlays:[...payload.overlays]
-      .map(overlay=>({
-        ...overlay,
-        startSeconds:Math.max(0,Math.min(payload.durationSeconds,overlay.startSeconds)),
-        endSeconds:Math.max(0,Math.min(payload.durationSeconds,overlay.endSeconds)),
-        text:overlay.text.trim()
-      }))
+      .map(overlay=>({...overlay,text:overlay.text.trim()}))
       .sort((a,b)=>a.startSeconds-b.startSeconds),
     updatedAt:new Date().toISOString()
   };
