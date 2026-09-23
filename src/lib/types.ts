@@ -1208,6 +1208,97 @@ export type RenderJob = {
  completedAt?: string;
  updatedAt: string;
 };
+export type ProductionQualityCheckStatus = 'pass' | 'warning' | 'blocker' | 'manual-review';
+export type ProductionQualityCategory =
+  | 'render'
+  | 'timeline'
+  | 'audio'
+  | 'captions'
+  | 'visual'
+  | 'text';
+export type ProductionQualityCheckCode =
+  | 'render-completed'
+  | 'decode-integrity'
+  | 'duration-match'
+  | 'resolution-match'
+  | 'aspect-ratio-match'
+  | 'fps-match'
+  | 'audio-stream'
+  | 'audio-silence'
+  | 'audio-clipping'
+  | 'caption-timing'
+  | 'visual-coverage'
+  | 'asset-duplication'
+  | 'asset-provenance'
+  | 'character-continuity'
+  | 'prompt-asset-alignment'
+  | 'text-placeholders'
+  | 'spelling-review'
+  | 'black-frames';
+export type ProductionQualityCheck = {
+ id: string;
+ code: ProductionQualityCheckCode;
+ category: ProductionQualityCategory;
+ title: string;
+ status: ProductionQualityCheckStatus;
+ summary: string;
+ evidence: string[];
+ metrics: Record<string,number|string|boolean|null>;
+};
+export type ProductionQualityTechnical = {
+ durationSeconds: number | null;
+ width: number | null;
+ height: number | null;
+ fps: number | null;
+ videoCodec: string | null;
+ audioCodec: string | null;
+ sampleRate: number | null;
+ audioChannels: number | null;
+ maxVolumeDb: number | null;
+ silenceSeconds: number | null;
+ silenceRatio: number | null;
+ blackSeconds: number | null;
+ blackRatio: number | null;
+ decodeOk: boolean;
+};
+export type ProductionQualityReportPayload = {
+ kind: 'production-quality-report';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ renderJobId: string;
+ videoEditId: string;
+ videoEditVersion: number;
+ renderCompilerVersion: RenderJobPayload['compilerVersion'];
+ checkedAt: string;
+ checks: ProductionQualityCheck[];
+ summary: {
+  pass: number;
+  warnings: number;
+  blockers: number;
+  manualReview: number;
+ };
+ technical: ProductionQualityTechnical;
+ review: {
+  notes: string;
+  overrides: ProductionQualityCheckCode[];
+  approvedAt?: string;
+  approvedBy?: 'operator';
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type ProductionQualityReport = ProductionQualityReportPayload & {
+ version: number;
+ status: 'blocked' | 'review' | 'approved';
+};
+export type ProductionQualityReportVersion = {
+ version: number;
+ status: ProductionQualityReport['status'];
+ payload: ProductionQualityReportPayload;
+ createdAt: string;
+};
+
 export type PerformanceMetricKey =
   | 'views'
   | 'impressions'
