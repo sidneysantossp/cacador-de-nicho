@@ -1,7 +1,23 @@
-import type { RenderManifest, VideoEdit, Timeline, Transcript } from '@/lib/types';
+import type { RenderManifest, RenderOutputFormat, RenderPreset, VideoEdit, Timeline, Transcript } from '@/lib/types';
 
 export const DEFAULT_RENDER_CRF=20;
 export const DEFAULT_RENDER_AUDIO_KBPS=192;
+
+export function renderPresetOutput(
+  preset:RenderPreset,
+  source:{width:number;height:number;fps:number}
+):RenderOutputFormat{
+  if(preset==='source')return {
+    width:source.width,height:source.height,fps:source.fps
+  };
+  const portrait=source.height>source.width;
+  if(preset==='hd-1080p30')return portrait
+    ?{width:1080,height:1920,fps:30}
+    :{width:1920,height:1080,fps:30};
+  return portrait
+    ?{width:720,height:1280,fps:30}
+    :{width:1280,height:720,fps:30};
+}
 
 export function validRenderCrf(value:number){
   return Number.isInteger(value)&&value>=18&&value<=30;
