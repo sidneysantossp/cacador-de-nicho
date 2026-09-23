@@ -789,3 +789,9 @@
 .performance-empty,.performance-empty-inline{display:grid;justify-items:center;text-align:center;gap:6px;padding:22px;color:#879083}.performance-empty h3{font-size:12px;color:#657060;margin:0}.performance-empty p,.performance-empty-inline{font-size:9px;margin:0}
 @media(max-width:1050px){.performance-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){.performance-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.performance-signals{grid-template-columns:1fr}.performance-video-list article,.performance-report header,.performance-report footer,.performance-section-head,.performance-hero{align-items:stretch;flex-direction:column}.performance-approve{align-items:stretch;flex-direction:column}.performance-approve input{min-width:0;width:100%}}
+
+
+/* Learning Loop state */
+.performance-brain-state{display:grid;justify-items:end;gap:2px;min-width:150px;color:#657060}
+.performance-brain-state svg{color:#75866d}.performance-brain-state strong{font-size:10px;color:#4e5b49}.performance-brain-state span{font-size:8px;color:#899284}
+@media(max-width:640px){.performance-brain-state{justify-items:start;min-width:0}}
