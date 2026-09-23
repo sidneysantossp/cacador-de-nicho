@@ -9,6 +9,9 @@ import {
   createManualPerformanceObservation, loadPerformanceReport,
   loadPerformanceReportHistory, performanceAnalystChannelState
 } from '@/lib/server/performance-analyst';
+import {
+  applyPerformanceReportToBrain, learningLoopChannelState
+} from '@/lib/server/learning-loop';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -28,6 +31,10 @@ const actionSchema=z.discriminatedUnion('action',[
     reportId:z.string().uuid(),
     expectedVersion:z.number().int().min(1),
     notes:z.string().max(5000).default('')
+  }).strict(),
+  z.object({
+    action:z.literal('apply-learning-loop'),
+    reportId:z.string().uuid()
   }).strict()
 ]);
 
@@ -49,7 +56,11 @@ export async function GET(request:Request){
 
     const channelId=url.searchParams.get('channelId')?.trim();
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
-    return Response.json(await performanceAnalystChannelState(channelId),{
+    const [state,learningLoop]=await Promise.all([
+      performanceAnalystChannelState(channelId),
+      learningLoopChannelState(channelId)
+    ]);
+    return Response.json({...state,learningLoop},{
       headers:{'Cache-Control':'no-store'}
     });
   }catch(error){return errorResponse(error);}
@@ -78,14 +89,28 @@ export async function POST(request:Request){
         ...result
       });
     }
+    if(body.action==='apply-learning-loop'){
+      const learningLoop=await applyPerformanceReportToBrain(body.reportId);
+      return Response.json({
+        message:learningLoop.alreadyApplied
+          ?'Este Performance Report já estava incorporado ao Channel Brain.'
+          :learningLoop.applied+' learning(s) de performance incorporado(s) ao Channel Brain.',
+        learningLoop
+      });
+    }
+
     const report=await approvePerformanceReport({
       reportId:body.reportId,
       expectedVersion:body.expectedVersion,
       notes:body.notes
     });
+    const learningLoop=await applyPerformanceReportToBrain(report.id);
     return Response.json({
-      message:'Performance Report aprovado para o Learning Loop.',
-      report
+      message:learningLoop.alreadyApplied
+        ?'Performance Report aprovado; o Learning Loop já estava aplicado.'
+        :'Performance Report aprovado e '+learningLoop.applied+' learning(s) incorporado(s) ao Channel Brain.',
+      report,
+      learningLoop
     });
   }catch(error){return errorResponse(error);}
 }
