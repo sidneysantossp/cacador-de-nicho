@@ -268,7 +268,7 @@ export const publicationPackagePayloadSchema=z.object({
   storagePath:z.string().max(3000).nullable(),
   mimeType:z.string().max(120).nullable(),
   originalName:z.string().max(500).nullable(),
-  bytes:z.number().int().min(0).max(20*1024*1024).nullable(),
+  bytes:z.number().int().min(0).max(50*1024*1024).nullable(),
   width:z.number().int().min(1).max(10000).nullable(),
   height:z.number().int().min(1).max(10000).nullable(),
   concept:z.string().max(4000),
