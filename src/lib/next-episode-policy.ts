@@ -258,7 +258,8 @@ export function compileNextEpisodePlan(input:{
       conceptRefs:context.sources.filter(item=>item.type==='concept').map(item=>item.ref),
       arcRefs:context.sources.filter(item=>item.type==='arc').map(item=>item.ref),
       recentEpisodeRefs:context.sources.filter(item=>item.type==='episode').map(item=>item.ref),
-      marketSignal:context.marketSignal
+      marketSignal:context.marketSignal,
+      evidenceSnapshot:context.sources.map(item=>({...item}))
     },
     candidates,
     recommendedCandidateId:recommended?.id??null,
