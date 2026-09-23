@@ -1299,6 +1299,87 @@ export type ProductionQualityReportVersion = {
  createdAt: string;
 };
 
+export type PublicationPackageStatus = 'draft' | 'review' | 'approved';
+export type PublicationPackageAudience = 'unset' | 'made-for-kids' | 'not-made-for-kids';
+export type PublicationPackageSyntheticDisclosure = 'review' | 'yes' | 'no';
+export type PublicationPackageVisibility = 'private' | 'unlisted' | 'public';
+export type PublicationThumbnail = {
+ source: 'none' | 'uploaded' | 'generated' | 'frame';
+ storagePath: string | null;
+ mimeType: string | null;
+ originalName: string | null;
+ bytes: number | null;
+ width: number | null;
+ height: number | null;
+ concept: string;
+ overlayText: string;
+ altText: string;
+};
+export type PublicationPackagePayload = {
+ kind: 'publication-package';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ qualityReportId: string;
+ qualityReportVersion: number;
+ renderJobId: string;
+ renderOutputPath: string;
+ metadata: {
+  title: string;
+  description: string;
+  tags: string[];
+  language: string;
+  categoryId: string;
+  visibility: PublicationPackageVisibility;
+  audience: PublicationPackageAudience;
+  syntheticMediaDisclosure: PublicationPackageSyntheticDisclosure;
+  license: 'youtube' | 'creativeCommon';
+ };
+ thumbnail: PublicationThumbnail;
+ review: {
+  notes: string;
+  approvedAt?: string;
+  approvedBy?: 'operator';
+ };
+ createdAt: string;
+ updatedAt: string;
+};
+export type PublicationPackage = PublicationPackagePayload & {
+ version: number;
+ status: PublicationPackageStatus;
+ thumbnailSignedUrl?: string | null;
+ renderOutputSignedUrl?: string | null;
+};
+export type PublicationPackageVersion = {
+ version: number;
+ status: PublicationPackageStatus;
+ payload: PublicationPackagePayload;
+ createdAt: string;
+};
+export type PublicationPackageIssue = {
+ code:
+  | 'quality-not-approved'
+  | 'quality-version-stale'
+  | 'render-not-completed'
+  | 'render-output-mismatch'
+  | 'title-missing'
+  | 'title-too-long'
+  | 'description-too-long'
+  | 'tags-too-long'
+  | 'language-missing'
+  | 'category-missing'
+  | 'audience-unconfirmed'
+  | 'synthetic-disclosure-unconfirmed'
+  | 'thumbnail-missing'
+  | 'thumbnail-format'
+  | 'thumbnail-too-large'
+  | 'thumbnail-too-small'
+  | 'thumbnail-aspect-ratio'
+  | 'thumbnail-nonstandard-size';
+ level: 'blocker' | 'warning';
+ message: string;
+};
+
 export type PerformanceMetricKey =
   | 'views'
   | 'impressions'
