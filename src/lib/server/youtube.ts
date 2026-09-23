@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings, UniverseCompetitor, YouTubeSearchPurpose } from '@/lib/types';
+import type { Channel, ChannelNicheProfile, ChannelStudyVideo, Settings, UniverseCompetitor, UniverseCompetitorSnapshot, UniverseSignal, YouTubeSearchPurpose } from '@/lib/types';
 import {
   REFERENCE_CHANNELS,
   REFERENCE_DISCOVERY_QUERIES,
@@ -680,11 +680,90 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
   const subscribers=channel.statistics?.hiddenSubscriberCount?null:Number(channel.statistics?.subscriberCount??0);
   const breakoutRatio=strongestRecentVideo&&subscribers&&subscribers>0?strongestRecentVideo.views/subscribers:null;
   const uploadsLast30d=recentUploads.filter(video=>now.getTime()-Date.parse(video.publishedAt)<=30*86400000).length;
-  const signals:string[]=[];
-  if(breakoutRatio!==null&&breakoutRatio>1)signals.push(`Breakout público: melhor vídeo recente tem ${breakoutRatio.toFixed(1)}× a base atual de inscritos.`);
-  if(strongestRecentVideo&&median&&median>0&&strongestRecentVideo.views>=median*2)signals.push(`Outlier interno: melhor vídeo recente alcançou ${(strongestRecentVideo.views/median).toFixed(1)}× a mediana da amostra.`);
-  if(uploadsLast30d>=4)signals.push(`Cadência ativa: ${uploadsLast30d} uploads observados nos últimos 30 dias.`);
-  const status:UniverseCompetitor['status']=breakoutRatio!==null&&breakoutRatio>1?'breakout':strongestRecentVideo&&median&&median>0&&strongestRecentVideo.views>=median*2?'heating-up':'watch';
+  const currentSnapshot:UniverseCompetitorSnapshot={
+    observedAt,
+    subscribers,
+    videoCount:Number(channel.statistics?.videoCount??0),
+    recentAverageViews:average,
+    recentMedianViews:median,
+    uploadsLast30d,
+    strongestVideoId:strongestRecentVideo?.id??null,
+    strongestVideoViews:strongestRecentVideo?.views??null
+  };
+  const syntheticPrevious:UniverseCompetitorSnapshot|undefined=existing?{
+    observedAt:existing.lastMonitoredAt,
+    subscribers:existing.subscribers,
+    videoCount:existing.videoCount,
+    recentAverageViews:existing.recentAverageViews,
+    recentMedianViews:existing.recentMedianViews,
+    uploadsLast30d:existing.uploadsLast30d,
+    strongestVideoId:existing.strongestRecentVideo?.id??null,
+    strongestVideoViews:existing.strongestRecentVideo?.views??null
+  }:undefined;
+  const previous=(existing?.snapshots??[]).slice().sort((a,b)=>Date.parse(b.observedAt)-Date.parse(a.observedAt))[0]??syntheticPrevious;
+  const signalDetails:UniverseSignal[]=[];
+  if(breakoutRatio!==null&&breakoutRatio>1){
+    signalDetails.push({
+      kind:'breakout',
+      strength:breakoutRatio>=3?'high':'medium',
+      title:'Breakout sobre a base atual de inscritos',
+      evidence:`O melhor vídeo recente observado tem ${breakoutRatio.toFixed(1)}× a contagem pública atual de inscritos.`,
+      observedAt
+    });
+  }
+  const internalRatio=strongestRecentVideo&&median&&median>0?strongestRecentVideo.views/median:null;
+  if(internalRatio!==null&&internalRatio>=2){
+    signalDetails.push({
+      kind:'internal-outlier',
+      strength:internalRatio>=4?'high':'medium',
+      title:'Outlier dentro da amostra recente',
+      evidence:`O melhor vídeo recente tem ${internalRatio.toFixed(1)}× a mediana de views dos uploads inspecionados.`,
+      observedAt
+    });
+  }
+  const repeatHits=median&&median>0?recentUploads.filter(video=>video.views>=median*2).length:0;
+  if(repeatHits>=2){
+    signalDetails.push({
+      kind:'repeat-hit',
+      strength:repeatHits>=3?'high':'medium',
+      title:'Mais de um hit na amostra recente',
+      evidence:`${repeatHits} uploads recentes estão em pelo menos 2× a mediana da amostra, reduzindo a dependência de um único outlier.`,
+      observedAt
+    });
+  }
+  if(previous?.recentAverageViews&&average&&previous.recentAverageViews>0){
+    const elapsedHours=(Date.parse(observedAt)-Date.parse(previous.observedAt))/3600000;
+    const acceleration=average/previous.recentAverageViews;
+    if(elapsedHours>=6&&acceleration>=1.35){
+      signalDetails.push({
+        kind:'acceleration',
+        strength:acceleration>=1.75?'high':'medium',
+        title:'Aceleração da amostra recente',
+        evidence:`A média observada dos uploads recentes subiu ${((acceleration-1)*100).toFixed(0)}% desde o snapshot anterior (${elapsedHours.toFixed(0)}h). A composição da amostra pode ter mudado.`,
+        observedAt
+      });
+    }
+  }
+  if(previous){
+    const cadenceDelta=uploadsLast30d-previous.uploadsLast30d;
+    if(Math.abs(cadenceDelta)>=2){
+      signalDetails.push({
+        kind:'cadence-shift',
+        strength:Math.abs(cadenceDelta)>=4?'medium':'low',
+        title:cadenceDelta>0?'Cadência aumentou':'Cadência reduziu',
+        evidence:`A janela observada de 30 dias mudou de ${previous.uploadsLast30d} para ${uploadsLast30d} uploads.`,
+        observedAt
+      });
+    }
+  }
+  const signals=signalDetails.map(signal=>signal.evidence);
+  if(!signals.length&&uploadsLast30d>=4)signals.push(`Cadência ativa: ${uploadsLast30d} uploads observados nos últimos 30 dias, sem anomalia adicional confirmada.`);
+  const status:UniverseCompetitor['status']=signalDetails.some(signal=>signal.kind==='breakout')
+    ?'breakout'
+    :signalDetails.some(signal=>['internal-outlier','repeat-hit','acceleration'].includes(signal.kind))
+      ?'heating-up'
+      :'watch';
+  const snapshots=[currentSnapshot,...(existing?.snapshots??[]).filter(snapshot=>snapshot.observedAt!==observedAt)].slice(0,30);
   const cluster=strongest?inferNiche(strongest):existing?.cluster??'A classificar';
   const format=strongest?inferFormat(strongest,''):existing?.format??'Unknown';
   const language=(strongest?.snippet.defaultAudioLanguage??strongest?.snippet.defaultLanguage??channel.snippet.defaultLanguage??existing?.language??'').toLowerCase();
@@ -717,6 +796,9 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
     strongestRecentVideo,
     recentUploads,
     signals,
+    signalDetails,
+    snapshots,
+    dna:existing?.dna,
     dnaTags:existing?.dnaTags??[cluster,format].filter(Boolean),
     gapSummary:existing?.gapSummary,
     updatedAt:observedAt
