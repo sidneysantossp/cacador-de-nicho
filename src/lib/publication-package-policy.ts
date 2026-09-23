@@ -23,7 +23,14 @@ export const YOUTUBE_CATEGORIES=[
 
 function includesAny(value:string,terms:string[]){
   const normalized=value.toLowerCase();
-  return terms.some(term=>normalized.includes(term));
+  return terms.some(term=>{
+    const needle=term.toLowerCase();
+    if(/^[a-z0-9]+$/.test(needle)){
+      const escaped=needle.replace(/[.*+?^$()|[\]\\{}-]/g,'\\$&');
+      return new RegExp('\\b'+escaped+'\\b','i').test(normalized);
+    }
+    return normalized.includes(needle);
+  });
 }
 
 export function inferYoutubeCategory(channel:Pick<ManagedChannel,'niche'|'format'>){
