@@ -80,3 +80,47 @@ test('among channels missing DNA, stronger operational status has priority',()=>
   const breakout=competitor({id:'breakout',channelId:'breakout',status:'breakout'});
   assert.equal([watch,breakout].sort(compareUniverseDnaPriority)[0].id,'breakout');
 });
+
+test('among equal-status channels, stronger corroborated signals outrank import order',()=>{
+  const olderWeak=competitor({
+    id:'older-weak',
+    channelId:'older-weak',
+    status:'breakout',
+    importedAt:'2026-09-01T00:00:00Z',
+    breakoutRatio:500,
+    signals:['one'],
+    signalDetails:[{kind:'breakout',strength:'high',title:'Breakout',evidence:'x',observedAt:'2026-09-23T00:00:00Z'}]
+  });
+  const newerStrong=competitor({
+    id:'newer-strong',
+    channelId:'newer-strong',
+    status:'breakout',
+    importedAt:'2026-09-22T00:00:00Z',
+    breakoutRatio:20,
+    signals:['one','two','three'],
+    signalDetails:[
+      {kind:'breakout',strength:'high',title:'Breakout',evidence:'x',observedAt:'2026-09-23T00:00:00Z'},
+      {kind:'internal-outlier',strength:'high',title:'Outlier',evidence:'y',observedAt:'2026-09-23T00:00:00Z'},
+      {kind:'repeat-hit',strength:'high',title:'Repeat',evidence:'z',observedAt:'2026-09-23T00:00:00Z'}
+    ]
+  });
+  assert.equal([olderWeak,newerStrong].sort(compareUniverseDnaPriority)[0].id,'newer-strong');
+});
+
+test('breakout ratio breaks ties after status and signal strength',()=>{
+  const smaller=competitor({
+    id:'smaller',
+    channelId:'smaller',
+    status:'breakout',
+    breakoutRatio:12,
+    signalDetails:[{kind:'breakout',strength:'high',title:'Breakout',evidence:'x',observedAt:'2026-09-23T00:00:00Z'}]
+  });
+  const larger=competitor({
+    id:'larger',
+    channelId:'larger',
+    status:'breakout',
+    breakoutRatio:42,
+    signalDetails:[{kind:'breakout',strength:'high',title:'Breakout',evidence:'x',observedAt:'2026-09-23T00:00:00Z'}]
+  });
+  assert.equal([smaller,larger].sort(compareUniverseDnaPriority)[0].id,'larger');
+});
