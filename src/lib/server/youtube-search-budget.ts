@@ -47,12 +47,13 @@ export async function claimYouTubeSearch(
 
   const decision=canSpendYouTubeSearch(state,purpose);
   if(!decision.allowed){
-    const message=decision.reason==='purpose-limit'
+    const reason=decision.reason??'daily-limit';
+    const message=reason==='purpose-limit'
       ?`O orçamento de busca reservado para ${purpose} foi esgotado hoje. O sistema preservou quota para outras etapas de maior valor.`
-      :decision.reason==='daily-limit'
+      :reason==='daily-limit'
         ?'O orçamento diário de search.list do YouTube foi esgotado. O sistema continuará trabalhando com dados já coletados.'
         :'O bucket de search.list do YouTube está marcado como indisponível nesta data.';
-    throw new YouTubeSearchBudgetError(decision.reason,message);
+    throw new YouTubeSearchBudgetError(reason,message);
   }
 
   const next=spendYouTubeSearch(state,purpose,dedupeKey,now);
