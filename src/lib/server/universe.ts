@@ -1,10 +1,10 @@
 import 'server-only';
 
 import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
-import { checked, db, list, put } from './db';
+import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { compareUniverseDnaPriority, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { selectUniverseDnaBatch, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { selectUniverseCurveEvidence, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
@@ -169,11 +169,24 @@ export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
 export async function runUniverseIntelligence(ids?:string[]){
   const all=await universeState();
   const selected=(ids?.length
-    ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
-    :[...all].sort(compareUniverseDnaPriority)
-  ).slice(0,5);
-  if(!selected.length)return {analyzed:0,updated:[],message:'Nenhum concorrente disponível para Channel DNA.'};
+    ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
+    :selectUniverseDnaBatch(all,5)
+  );
+  if(!selected.length){
+    const ready=all.filter(item=>!!item.dna).length;
+    return {
+      analyzed:0,
+      updated:[],
+      total:all.length,
+      ready,
+      remaining:Math.max(0,all.length-ready),
+      message:all.length&&ready===all.length
+        ?'Channel DNA já concluído para todos os concorrentes.'
+        :'Nenhum concorrente disponível para Channel DNA.'
+    };
+  }
 
+  const config=await settings();
   const results=await analyzeUniverseCompetitorDNA(selected);
   const byChannel=new Map(results.map(result=>[result.channelId,result.dna]));
   const updated:string[]=[];
@@ -191,18 +204,34 @@ export async function runUniverseIntelligence(ids?:string[]){
       cluster:dna.primaryNiche||competitor.cluster,
       subniche:dna.subniche||competitor.subniche,
       format:dna.formatSignature||competitor.format,
-      dna,
+      dna:{
+        ...dna,
+        provenance:{
+          schemaVersion:1,
+          generatedBy:'platform',
+          model:config.analysisModel,
+          sourceVideoCount:Math.min(20,competitor.recentUploads.length),
+          sourceSignalCount:competitor.signalDetails?.length??competitor.signals.length,
+          observedAt:competitor.lastMonitoredAt
+        }
+      },
       dnaTags,
       updatedAt:new Date().toISOString()
     };
     await put('radar_managed_channels',next.id,next);
     updated.push(next.name);
   }
+  const after=await universeState();
+  const ready=after.filter(item=>!!item.dna).length;
+  const remaining=Math.max(0,after.length-ready);
   return {
     analyzed:updated.length,
     updated,
+    total:after.length,
+    ready,
+    remaining,
     message:updated.length
-      ?`Channel DNA atualizado para ${updated.length} concorrente(s): ${updated.join(', ')}.`
+      ?`Channel DNA atualizado para ${updated.length} concorrente(s): ${updated.join(', ')}. Progresso: ${ready}/${after.length}; ${remaining} pendente(s).`
       :'A análise não devolveu DNA utilizável para os concorrentes selecionados.'
   };
 }
