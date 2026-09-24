@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectUniverseCurveEvidence, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
-import type { UniverseCompetitor } from '../src/lib/types';
+import { selectUniverseCurveEvidence, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
   return {
@@ -82,4 +82,42 @@ test('curve evidence selection preserves multiple clusters instead of taking one
   assert.equal(clusters.has('History'),true);
   assert.equal(clusters.has('Science'),true);
   assert.equal(clusters.has('Animals'),true);
+});
+
+
+function marketIntelligence():UniverseMarketIntelligence{
+  return {
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T00:00:00Z',
+    sourceCompetitorIds:['a','b','c','d'],
+    dnaCount:4,
+    curves:[
+      {id:'curve:structural',key:'structural',name:'Structural Curve',thesis:'T',mechanismSteps:['A','B','C'],supportingChannelIds:['a','b','c'],independentCreators:3,classification:'structural',clusters:['History'],evidence:['E'],counterEvidence:[],recurringTitlePatterns:[],transferableVariables:['target'],limitations:['Sample']},
+      {id:'curve:emerging',key:'emerging',name:'Emerging Curve',thesis:'T',mechanismSteps:['A','B','C'],supportingChannelIds:['a','b'],independentCreators:2,classification:'emerging',clusters:['Science'],evidence:['E'],counterEvidence:[],recurringTitlePatterns:[],transferableVariables:['target'],limitations:['Sample']}
+    ],
+    gaps:[
+      {id:'gap:pilot',curveId:'curve:structural',title:'Observed low saturation',targetSpace:'Animals',preservedMechanism:'M',changedVariable:'Target',demandStatus:'observed',targetEvidenceChannelIds:['x','y'],demandEvidence:['D'],sampleSaturation:'low',rationale:'Observed demand with room in the sample.',risks:['Sample risk'],firstTests:['Pilot A','Pilot B','Pilot C']},
+      {id:'gap:investigate',curveId:'curve:structural',title:'Partial demand',targetSpace:'Engineering',preservedMechanism:'M',changedVariable:'Target',demandStatus:'partial',targetEvidenceChannelIds:['z'],demandEvidence:['D'],sampleSaturation:'medium',rationale:'One target-space example only.',risks:[],firstTests:['Test A','Test B','Test C']},
+      {id:'gap:crowded',curveId:'curve:structural',title:'Crowded',targetSpace:'Gaming',preservedMechanism:'M',changedVariable:'Target',demandStatus:'observed',targetEvidenceChannelIds:['g1','g2'],demandEvidence:['D'],sampleSaturation:'high',rationale:'Crowded sample.',risks:[],firstTests:['A','B','C']},
+      {id:'gap:emerging',curveId:'curve:emerging',title:'Emerging source',targetSpace:'Health',preservedMechanism:'M',changedVariable:'Target',demandStatus:'partial',targetEvidenceChannelIds:['h1'],demandEvidence:['D'],sampleSaturation:'low',rationale:'Source curve is not structural.',risks:[],firstTests:['A','B','C']}
+    ],
+    limitations:['Sample only']
+  };
+}
+
+test('Mission Control Universe opportunities require a structural curve and exclude high saturation',()=>{
+  const selected=selectUniverseMissionOpportunities(marketIntelligence(),10);
+  assert.deepEqual(selected.map(item=>item.gapId),['gap:pilot','gap:investigate']);
+});
+
+test('observed demand with non-high saturation is pilot-ready and ranks before investigation',()=>{
+  const selected=selectUniverseMissionOpportunities(marketIntelligence(),10);
+  assert.equal(selected[0].readiness,'pilot-ready');
+  assert.equal(selected[0].targetEvidenceCount,2);
+  assert.equal(selected[1].readiness,'investigate');
+});
+
+test('Universe opportunity selector respects the requested output cap',()=>{
+  assert.equal(selectUniverseMissionOpportunities(marketIntelligence(),1).length,1);
 });
