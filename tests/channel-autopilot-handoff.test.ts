@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   channelAutopilotLearningEnabled, channelAutopilotStartsAcceptedEpisode,
   channelLearningWindows, channelNextEpisodeTriggerWindow,
-  autopilotDecisionPreview, autopilotOperationalIssues, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
+  autopilotActivationRequirement, autopilotDecisionPreview, autopilotOperationalIssues, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
   effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
@@ -111,6 +111,30 @@ test('Auto Next Episode chooses the first learning window at or after target',()
   assert.equal(channelShouldAutoPlanNextEpisode(channel,24),false);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,72),true);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,168),false);
+});
+
+test('Autopilot activation gate requires readiness only when capability increases',()=>{
+  const off={autopilot:{...defaultChannelAutopilot,enabled:false}};
+  const assisted={autopilot:{...defaultChannelAutopilot,enabled:true,mode:'assisted' as const}};
+  const autonomous={
+    autopilot:{
+      ...defaultChannelAutopilot,
+      enabled:true,
+      mode:'autonomous' as const,
+      autoAcceptNextEpisode:false
+    }
+  };
+  const autoAccept={
+    autopilot:{...autonomous.autopilot,autoAcceptNextEpisode:true}
+  };
+
+  assert.equal(autopilotActivationRequirement(null,off),'none');
+  assert.equal(autopilotActivationRequirement(off,assisted),'assisted');
+  assert.equal(autopilotActivationRequirement(assisted,assisted),'none');
+  assert.equal(autopilotActivationRequirement(assisted,autonomous),'autonomous');
+  assert.equal(autopilotActivationRequirement(autonomous,autoAccept),'autonomous');
+  assert.equal(autopilotActivationRequirement(autonomous,assisted),'none');
+  assert.equal(autopilotActivationRequirement(autoAccept,off),'none');
 });
 
 test('Autopilot Canary Gate blocks overlapping automatic episode decisions',()=>{
