@@ -264,10 +264,22 @@ language plpgsql security invoker set search_path='' as $$
 declare picked uuid;
 begin
 if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid automation lease';end if;
-update public.radar_episode_automation_runs set status='active',worker_token=null,lease_until=null,updated_at=now() where status='running' and lease_until is not null and lease_until<now();
-select id into picked from public.radar_episode_automation_runs where status='active' order by updated_at asc for update skip locked limit 1;
+update public.radar_episode_automation_runs
+set status='active',worker_token=null,lease_until=null,updated_at=now()
+where status='running' and mode='autonomous' and worker_token is not null and lease_until is not null and lease_until<now();
+select id into picked
+from public.radar_episode_automation_runs
+where mode='autonomous'
+  and hold_step is null
+  and (status='active' or (status='running' and worker_token is null))
+order by updated_at asc
+for update skip locked
+limit 1;
 if picked is null then return null;end if;
-update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
+update public.radar_episode_automation_runs
+set status='running',attempts=attempts+1,worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now()
+where id=picked;
 return picked;
 end $$;
 revoke all on function public.claim_episode_automation_run(uuid,int) from public,anon,authenticated;
