@@ -559,3 +559,19 @@ Correção:
 - regressão cobre um segundo criador válido de bridge engineering fora da amostra de extração.
 
 Objetivo: aumentar uso real dos DNAs já pagos/coletados sem aumentar o tamanho do prompt de Curves/Gaps e sem relaxar os gates conservadores de evidência.
+
+## Deterministic Market evidence fallback — 24/09/2026
+
+A recomputação do Market com 109 DNAs falhou externamente por HTTP 429 da OpenAI. O relatório anterior permaneceu íntegro, mas isso revelou que a atualização de confiança dos gaps ainda dependia desnecessariamente da IA.
+
+Hardening:
+- `UniverseMarketIntelligence` passa a separar `generatedAt` (quando curvas/gaps foram gerados por IA) de `evidenceRevalidatedAt` / `evidenceDnaCount` (quando a evidência foi rechecada deterministicamente);
+- após cada bootstrap de Channel DNA, os gaps atuais são revalidados contra todos os canais que possuem DNA, sem chamada à OpenAI;
+- essa revalidação pode promover `partial -> observed` ou rebaixar evidência que deixou de passar pelo matcher atual;
+- curvas não são criadas, removidas ou reinterpretadas nessa etapa;
+- `scope=market-evidence` permite executar somente a revalidação determinística;
+- o cron `scope=market` continua tentando descobrir novas curvas/gaps por IA, mas se a chamada falhar executa o fallback determinístico e retorna `marketError` junto do Market revalidado;
+- o timestamp original da geração por IA é preservado, portanto uma falha externa não é mascarada como recomputação completa;
+- `shouldRefreshUniverseMarketIntelligence()` continua considerando a geração por IA, de modo que a descoberta completa será tentada novamente em execução futura.
+
+Objetivo: manter Mission Control e os gates `INVESTIGAR/PILOT READY` atualizados com a evidência já coletada mesmo durante indisponibilidade, rate limit ou quota da OpenAI.
