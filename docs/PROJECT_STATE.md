@@ -575,3 +575,17 @@ Hardening:
 - `shouldRefreshUniverseMarketIntelligence()` continua considerando a geração por IA, de modo que a descoberta completa será tentada novamente em execução futura.
 
 Objetivo: manter Mission Control e os gates `INVESTIGAR/PILOT READY` atualizados com a evidência já coletada mesmo durante indisponibilidade, rate limit ou quota da OpenAI.
+
+## Evidence anchor + audit hygiene — 24/09/2026
+
+A primeira execução do fallback determinístico com 109 DNAs revelou um falso `INVESTIGAR`: `historic building details` foi sustentado por Webhead Lore, canal de Marvel, apenas porque seus títulos continham `detail`/`level detail`.
+
+Correções:
+- `building` e `detail` passam a ser âncoras fracas de `targetSpace`; isoladamente não validam demanda;
+- frases completas de `targetKeywords`, como `historic buildings`, continuam elegíveis quando realmente aparecem no mesmo título;
+- a revalidação determinística remove linhas antigas geradas pelo resolver (`Sugestão da IA validada...` e `Corroboração do backend...`) antes de inserir a evidência atual;
+- contexto editorial original da análise permanece preservado;
+- regressão real rejeita Webhead Lore para arquitetura histórica;
+- regressão garante que um ID removido do evidence set também desapareça do texto auditável.
+
+Objetivo: impedir que o ledger textual contradiga `targetEvidenceChannelIds` e evitar promoção baseada em palavras genéricas de embalagem.
