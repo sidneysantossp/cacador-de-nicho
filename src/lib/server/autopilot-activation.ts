@@ -4,18 +4,9 @@ import type { ManagedChannel } from '@/lib/types';
 import { HttpError } from './auth';
 import { checked, db } from './db';
 import { loadAutopilotReadiness } from './autopilot-readiness';
-import { autopilotActivationRequirement } from '@/lib/channel-autopilot-policy';
-
-function issueSummary(
-  mode:'assisted'|'autonomous',
-  checks:Awaited<ReturnType<typeof loadAutopilotReadiness>>['checks']
-){
-  const relevant=checks.filter(check=>{
-    if(mode==='assisted')return check.requiredFor==='assisted'&&check.status==='blocker';
-    return check.status!=='pass';
-  });
-  return relevant.map(check=>check.label+': '+check.detail).join(' · ');
-}
+import {
+  autopilotActivationReadinessIssues, autopilotActivationRequirement
+} from '@/lib/channel-autopilot-policy';
 
 export async function assertAutopilotActivationAllowed(
   channelId:string,
@@ -35,12 +26,10 @@ export async function assertAutopilotActivationAllowed(
   }
 
   const readiness=await loadAutopilotReadiness(channelId);
-  const ready=requirement==='assisted'
-    ?readiness.assistedReady
-    :readiness.autonomousReady;
-  if(ready)return;
+  const issues=autopilotActivationReadinessIssues(requirement,readiness);
+  if(!issues.length)return;
 
-  const detail=issueSummary(requirement,readiness.checks);
+  const detail=issues.map(check=>check.label+': '+check.detail).join(' · ');
   throw new HttpError(
     'Autopilot '+(requirement==='assisted'?'Assisted':'Autonomous')+
     ' bloqueado pelo readiness.'+(detail?' '+detail:''),
