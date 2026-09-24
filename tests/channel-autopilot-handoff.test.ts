@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  channelAutopilotStartsAcceptedEpisode,
-  defaultChannelAutopilot,
+  channelAutopilotLearningEnabled, channelAutopilotStartsAcceptedEpisode,
+  channelLearningWindows, defaultChannelAutopilot,
   effectiveChannelAutopilot,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
@@ -11,7 +11,12 @@ test('Channel Autopilot defaults are disabled and conservative',()=>{
   assert.deepEqual(defaultChannelAutopilot,{
     enabled:false,
     mode:'assisted',
-    startOnAcceptedNextEpisode:true
+    startOnAcceptedNextEpisode:true,
+    learningLoopEnabled:true,
+    learningWindowsHours:[24,72,168],
+    autoApprovePerformance:true,
+    autoAnalyzeAudience:true,
+    autoApproveAudience:true
   });
   assert.equal(channelAutopilotStartsAcceptedEpisode({}),false);
   assert.deepEqual(effectiveChannelAutopilot({}),defaultChannelAutopilot);
@@ -20,7 +25,7 @@ test('Channel Autopilot defaults are disabled and conservative',()=>{
 test('Disabled Autopilot never invokes Episode Automation',async()=>{
   let calls=0;
   const result=await startAcceptedEpisodeAutopilot(
-    {autopilot:{enabled:false,mode:'autonomous',startOnAcceptedNextEpisode:true}},
+    {autopilot:{...defaultChannelAutopilot,enabled:false,mode:'autonomous'}},
     '11111111-1111-4111-8111-111111111111',
     async()=>{calls++;return{id:'run',mode:'autonomous' as const};}
   );
@@ -32,7 +37,7 @@ test('Disabled Autopilot never invokes Episode Automation',async()=>{
 test('Autopilot respects the accepted-episode handoff toggle',async()=>{
   let calls=0;
   const result=await startAcceptedEpisodeAutopilot(
-    {autopilot:{enabled:true,mode:'autonomous',startOnAcceptedNextEpisode:false}},
+    {autopilot:{...defaultChannelAutopilot,enabled:true,mode:'autonomous',startOnAcceptedNextEpisode:false}},
     '11111111-1111-4111-8111-111111111111',
     async()=>{calls++;return{id:'run',mode:'autonomous' as const};}
   );
@@ -43,7 +48,7 @@ test('Autopilot respects the accepted-episode handoff toggle',async()=>{
 test('Autonomous opt-in starts exactly one Automation Run with the Content Project',async()=>{
   const calls:Array<{contentProjectId:string;mode:'assisted'|'autonomous'}>=[];
   const result=await startAcceptedEpisodeAutopilot(
-    {autopilot:{enabled:true,mode:'autonomous',startOnAcceptedNextEpisode:true}},
+    {autopilot:{...defaultChannelAutopilot,enabled:true,mode:'autonomous'}},
     '11111111-1111-4111-8111-111111111111',
     async input=>{
       calls.push(input);
@@ -61,11 +66,25 @@ test('Autonomous opt-in starts exactly one Automation Run with the Content Proje
 
 test('Autopilot startup failure is reported without throwing away the editorial decision',async()=>{
   const result=await startAcceptedEpisodeAutopilot(
-    {autopilot:{enabled:true,mode:'assisted',startOnAcceptedNextEpisode:true}},
+    {autopilot:{...defaultChannelAutopilot,enabled:true,mode:'assisted'}},
     '11111111-1111-4111-8111-111111111111',
     async()=>{throw new Error('synthetic automation failure');}
   );
   assert.equal(result.automationStarted,false);
   assert.equal(result.automationMode,'assisted');
   assert.equal(result.automationError,'synthetic automation failure');
+});
+
+test('Closed Loop starts only for enabled channel Autopilot and normalizes windows',()=>{
+  assert.equal(channelAutopilotLearningEnabled({}),false);
+  assert.equal(channelAutopilotLearningEnabled({
+    autopilot:{...defaultChannelAutopilot,enabled:true,learningLoopEnabled:true}
+  }),true);
+  assert.deepEqual(channelLearningWindows({
+    autopilot:{
+      ...defaultChannelAutopilot,
+      enabled:true,
+      learningWindowsHours:[168,24,72,24,9999,-1]
+    }
+  }),[24,72,168]);
 });
