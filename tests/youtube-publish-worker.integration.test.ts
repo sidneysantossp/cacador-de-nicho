@@ -55,10 +55,13 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     status:'connected',
     refresh_token_ciphertext:encrypt('stage21-refresh-token',channelId,secret)
   };
+  const packageId='21210000-0000-4000-8000-000000000103';
+  const episodeId='21210000-0000-4000-8000-000000000002';
   const job:any={
     id:jobId,
     channel_id:channelId,
     connection_id:connectionId,
+    package_id:packageId,
     status:'queued',
     progress:0,
     stage:'queued',
@@ -71,7 +74,7 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     payload:{
       kind:'youtube-publish-job',
       channelId,
-      packageId:'21210000-0000-4000-8000-000000000103',
+      packageId,
       packageVersion:4,
       connectionId,
       youtubeChannelId:'UC_STAGE21_MOCK',
@@ -93,6 +96,18 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     }
   };
 
+  const episode:any={
+    id:episodeId,
+    status:'production',
+    payload:{
+      id:episodeId,channelId,sequence:1,status:'production',title:'Stage 21 episode',
+      thesis:'Synthetic',narrativeSummary:'Synthetic',
+      prerequisiteConcepts:[],introducesConcepts:[],reinforcesConcepts:[],
+      opensThreads:[],resolvesThreads:[],repetitionKeys:[],
+      createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+    }
+  };
+  const packageRow={id:packageId,episode_id:episodeId};
   const youtubeState={total:0,received:0,failed:false,thumbnail:false,verified:false,metadata:null as any};
   const youtubeServer=createServer(async(req,res)=>{
     const url=new URL(req.url??'/',`http://127.0.0.1:${uploadPort||1}`);
@@ -159,6 +174,14 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     }
     if(req.method==='GET'&&url.pathname==='/rest/v1/radar_youtube_publish_jobs')return json(res,200,[job]);
     if(req.method==='GET'&&url.pathname==='/rest/v1/radar_youtube_connections')return json(res,200,[connection]);
+    if(req.method==='GET'&&url.pathname==='/rest/v1/radar_publication_packages')return json(res,200,[packageRow]);
+    if(req.method==='GET'&&url.pathname==='/rest/v1/radar_episodes')return json(res,200,[episode]);
+    if(req.method==='PATCH'&&url.pathname==='/rest/v1/radar_episodes'){
+      Object.assign(episode,JSON.parse((await body(req)).toString()||'{}'));
+      events.push({event:'episode-published',status:episode.status,youtubeVideoId:episode.payload?.youtubeVideoId});
+      if(String(req.headers.prefer??'').includes('return=representation'))return json(res,200,[{id:episode.id}]);
+      res.writeHead(204);return res.end();
+    }
     if(req.method==='PATCH'&&url.pathname==='/rest/v1/radar_youtube_publish_jobs'){
       Object.assign(job,JSON.parse((await body(req)).toString()||'{}'));
       if(String(req.headers.prefer??'').includes('return=representation'))return json(res,200,[{id:job.id}]);
@@ -204,6 +227,9 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     assert.equal(job.youtube_video_id,'stage21Video123');
     assert.equal(job.actual_privacy_status,'private');
     assert.equal(job.progress,100);
+    assert.equal(episode.status,'published');
+    assert.equal(episode.payload.youtubeVideoId,'stage21Video123');
+    assert.ok(episode.payload.publishedAt);
     assert.equal(youtubeState.thumbnail,true);
     assert.equal(youtubeState.verified,true);
     assert.equal(youtubeState.metadata.status.selfDeclaredMadeForKids,false);
@@ -219,6 +245,7 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
     assert.ok(events.some(event=>event.event==='status'));
     assert.ok(events.some(event=>event.event==='thumbnail'));
     assert.ok(events.some(event=>event.event==='verify'));
+    assert.ok(events.some(event=>event.event==='episode-published'));
   }finally{
     child.kill('SIGTERM');
     await Promise.all([close(supabaseServer),close(youtubeServer)]);
