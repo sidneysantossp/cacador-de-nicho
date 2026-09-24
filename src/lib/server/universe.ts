@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
-import { checked, db, list, put, settings } from './db';
+import { checked, db, list, put } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, UNIVERSE_DNA_MODEL } from './ai';
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
@@ -206,7 +206,6 @@ export async function runUniverseIntelligence(ids?:string[]){
     };
   }
 
-  const config=await settings();
   const attemptedAt=new Date().toISOString();
   let results:Awaited<ReturnType<typeof analyzeUniverseCompetitorDNA>>;
   try{
