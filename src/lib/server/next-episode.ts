@@ -13,6 +13,7 @@ import { compileNextEpisodePlan } from '@/lib/next-episode-policy';
 import { episodeNarrativeReadiness } from '@/lib/narrative-policy';
 import { loadContentProject, saveContentProject } from './content-os';
 import { createEpisodeAutomationRun } from './episode-automation';
+import { startAcceptedEpisodeAutopilot } from '@/lib/channel-autopilot-policy';
 
 type Row={
   id:string;channel_id:string;brain_version:number;version:number;
@@ -184,40 +185,6 @@ function contentProjectFromCandidate(input:{
   };
 }
 
-async function maybeStartAcceptedEpisodeAutomation(
-  managed:ManagedChannel,
-  contentProjectId:string
-){
-  const autopilot=managed.autopilot;
-  if(!autopilot?.enabled||!autopilot.startOnAcceptedNextEpisode){
-    return {
-      automationRunId:undefined,
-      automationMode:undefined,
-      automationStarted:false,
-      automationError:undefined
-    };
-  }
-  try{
-    const run=await createEpisodeAutomationRun({
-      contentProjectId,
-      mode:autopilot.mode
-    });
-    return {
-      automationRunId:run.id,
-      automationMode:run.mode,
-      automationStarted:true,
-      automationError:undefined
-    };
-  }catch(error){
-    return {
-      automationRunId:undefined,
-      automationMode:autopilot.mode,
-      automationStarted:false,
-      automationError:error instanceof Error?error.message:'Falha ao iniciar Episode Automation.'
-    };
-  }
-}
-
 export async function acceptNextEpisodeCandidate(input:{
   planId:string;
   candidateId:string;
@@ -232,7 +199,7 @@ export async function acceptNextEpisodeCandidate(input:{
     }
     const managed=await channel(plan.channelId);
     const automation=plan.review.acceptedContentProjectId
-      ?await maybeStartAcceptedEpisodeAutomation(managed,plan.review.acceptedContentProjectId)
+      ?await startAcceptedEpisodeAutopilot(managed,plan.review.acceptedContentProjectId,createEpisodeAutomationRun)
       :{
         automationRunId:undefined,
         automationMode:undefined,
@@ -337,7 +304,7 @@ export async function acceptNextEpisodeCandidate(input:{
   };
   try{
     const saved=await savePlan(next,'accepted',plan.version);
-    const automation=await maybeStartAcceptedEpisodeAutomation(managed,project.id);
+    const automation=await startAcceptedEpisodeAutopilot(managed,project.id,createEpisodeAutomationRun);
     return {
       plan:saved,
       episodeId:episode.id,
@@ -354,7 +321,7 @@ export async function acceptNextEpisodeCandidate(input:{
       concurrent.review.acceptedEpisodeId===episode.id
     ){
       const automation=concurrent.review.acceptedContentProjectId
-        ?await maybeStartAcceptedEpisodeAutomation(managed,concurrent.review.acceptedContentProjectId)
+        ?await startAcceptedEpisodeAutopilot(managed,concurrent.review.acceptedContentProjectId,createEpisodeAutomationRun)
         :{
           automationRunId:undefined,
           automationMode:undefined,
