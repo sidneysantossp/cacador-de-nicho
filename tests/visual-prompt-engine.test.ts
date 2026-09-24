@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ProductionDNA, ScenePlan } from '../src/lib/types';
 import {
-  buildInitialVisualPromptSet, compileScenePrompt, recurringCharacterIds,
+  buildInitialVisualPromptSet, compileScenePrompt, productionFileName, recurringCharacterIds,
   visualPromptIssues, visualTimecodeLabel
 } from '../src/lib/visual-prompt-policy';
 
@@ -95,16 +95,27 @@ test('Scene prompts use @Name only for recurring characters and append style loc
   assert.equal(first.timecodeLabel,'#0-00');
 });
 
+test('Production filenames are deterministic from channel episode scene and take',()=>{
+  const set=buildInitialVisualPromptSet(plan,dna,{channelCode:'GRUG',episodeNumber:3});
+  assert.equal(set.productionNaming.pattern,'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4');
+  assert.equal(set.scenePrompts[0].outputFileStem,'GRUG_V03_S001_T01');
+  assert.equal(set.scenePrompts[0].outputFileName,'GRUG_V03_S001_T01.mp4');
+  assert.equal(set.scenePrompts[1].outputFileName,'GRUG_V03_S002_T01.mp4');
+  assert.equal(productionFileName({channelCode:'Grug',episodeNumber:3},12,4),'GRUG_V03_S012_T04.mp4');
+});
+
 test('Compiler preserves one-off character ids without converting them into references',()=>{
   const compiled=compileScenePrompt(
     plan.scenes[0],
     dna,
     ['grug','merchant'],
     'Grug comparing rocks with a generic merchant.',
-    ['grug']
+    ['grug'],
+    {channelCode:'GRUG',episodeNumber:3}
   );
   assert.deepEqual(compiled.characterIds,['grug','merchant']);
   assert.deepEqual(compiled.referenceNames,['@Grug']);
+  assert.equal(compiled.outputFileName,'GRUG_V03_S001_T01.mp4');
 });
 
 test('Visual approval blocks until recurring references are ready',()=>{
