@@ -4,7 +4,7 @@ import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, Un
 import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { selectUniverseDnaBatch, summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
@@ -148,10 +148,9 @@ export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
 }
 export async function runUniverseIntelligence(ids?:string[]){
   const all=await universeState();
-  const selected=(ids?.length
+  const selected=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
-    :selectUniverseDnaBatch(all,5)
-  );
+    :selectUniverseDnaBootstrapBatch(all,await universeMarketIntelligenceState(),5,2);
   if(!selected.length){
     const ready=all.filter(item=>!!item.dna).length;
     return {

@@ -262,6 +262,46 @@ export function selectUniverseGapValidationDnaBatch(
 }
 
 
+export function selectUniverseCoverageDnaBatch(
+  competitors:UniverseCompetitor[],
+  maxItems=5
+){
+  const limit=Math.max(0,Math.min(maxItems,5));
+  if(limit===0)return [];
+
+  const buckets=new Map<string,UniverseCompetitor[]>();
+  for(const competitor of competitors.filter(item=>!item.dna)){
+    const cluster=competitor.cluster||'A classificar';
+    buckets.set(cluster,[...(buckets.get(cluster)??[]),competitor]);
+  }
+  for(const items of buckets.values())items.sort(compareUniverseDnaPriority);
+
+  const selected:UniverseCompetitor[]=[];
+  while(selected.length<limit){
+    const ranked=[...buckets.entries()]
+      .filter(([,items])=>items.length>0)
+      .sort((a,b)=>{
+        const backlog=b[1].length-a[1].length;
+        if(backlog!==0)return backlog;
+        const priority=compareUniverseDnaPriority(a[1][0],b[1][0]);
+        if(priority!==0)return priority;
+        return a[0].localeCompare(b[0]);
+      });
+    if(!ranked.length)break;
+
+    let advanced=false;
+    for(const [,items] of ranked){
+      const competitor=items.shift();
+      if(!competitor)continue;
+      selected.push(competitor);
+      advanced=true;
+      if(selected.length>=limit)break;
+    }
+    if(!advanced)break;
+  }
+  return selected;
+}
+
 export function selectUniverseDnaBootstrapBatch(
   competitors:UniverseCompetitor[],
   intelligence:UniverseMarketIntelligence|null,
@@ -277,9 +317,14 @@ export function selectUniverseDnaBootstrapBatch(
     Math.min(Math.max(0,targetedSlots),limit)
   );
   const targetedIds=new Set(targeted.map(item=>item.id));
-  const normal=selectUniverseDnaBatch(
-    competitors.filter(item=>!targetedIds.has(item.id)),
-    limit-targeted.length
+  const remaining=competitors.filter(item=>!targetedIds.has(item.id));
+  const normalLimit=limit-targeted.length;
+  const coverageSlots=normalLimit<=1?normalLimit:Math.ceil(normalLimit*2/3);
+  const coverage=selectUniverseCoverageDnaBatch(remaining,coverageSlots);
+  const coverageIds=new Set(coverage.map(item=>item.id));
+  const global=selectUniverseDnaBatch(
+    remaining.filter(item=>!coverageIds.has(item.id)),
+    normalLimit-coverage.length
   );
-  return [...targeted,...normal];
+  return [...targeted,...coverage,...global];
 }

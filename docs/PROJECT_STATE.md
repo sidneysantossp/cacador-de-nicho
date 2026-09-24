@@ -288,3 +288,22 @@ Correção:
 - `then` e `now` passam a ser stop words do evidence resolver;
 - títulos precisam conter termos de conteúdo do target, não apenas o formato/packaging;
 - regressão garante que um canal de celebridades seja rejeitado e um título com `household + technology` continue elegível.
+
+
+## Cluster-balanced Channel DNA — 24/09/2026
+
+Auditoria após 44 DNAs revelou forte viés de cobertura nos clusters ainda não analisados:
+- History 1/45;
+- Education 0/32;
+- Explained 0/31;
+- Storytelling 0/16;
+- Entertainment 0/15;
+- Engineering 0/13;
+- Animals 0/10.
+
+A seleção de DNA passa a combinar três objetivos:
+1. até 2 slots dirigidos a gaps em investigação;
+2. cerca de 2/3 dos slots restantes para cobertura dos maiores clusters pendentes, distribuindo o lote entre clusters diferentes;
+3. o restante preserva prioridade global por status, sinais, breakout e atividade.
+
+A mesma seleção balanceada é usada no bootstrap diário e no botão/manual/mission de próximo lote DNA. O objetivo é aumentar representatividade sem perder sinais fortes.

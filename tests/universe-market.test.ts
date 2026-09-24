@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -375,4 +375,48 @@ test('then-and-now packaging alone cannot validate an everyday-technology target
   const resolved=resolveUniverseGapEvidence([celebrity,technology],gap,[]);
   assert.deepEqual(resolved.channelIds,['technology-then-now']);
   assert.equal(resolved.evidence.some(item=>item.includes('celebrity-then-now')),false);
+});
+
+
+test('coverage DNA selector spreads a batch across the largest pending clusters',()=>{
+  const items=[
+    ...Array.from({length:8},(_,index)=>missingDnaCompetitor(`history-${index}`,'History',[`History title ${index}`],{breakoutRatio:100-index})),
+    ...Array.from({length:5},(_,index)=>missingDnaCompetitor(`education-${index}`,'Education',[`Education title ${index}`],{breakoutRatio:50-index})),
+    ...Array.from({length:4},(_,index)=>missingDnaCompetitor(`explained-${index}`,'Explained',[`Explained title ${index}`],{breakoutRatio:40-index})),
+    ...Array.from({length:2},(_,index)=>missingDnaCompetitor(`story-${index}`,'Storytelling',[`Story title ${index}`],{breakoutRatio:30-index}))
+  ];
+  const selected=selectUniverseCoverageDnaBatch(items,3);
+  assert.deepEqual(selected.map(item=>item.cluster),['History','Education','Explained']);
+});
+
+test('mixed DNA bootstrap keeps gap-directed, cluster-coverage and global-priority paths',()=>{
+  const targetedA=missingDnaCompetitor('target-animal','Animals',['POV: Your Life as Every Rank in a Wolf Pack'],{breakoutRatio:2});
+  const targetedB=missingDnaCompetitor('target-job','History',['Roman Miner: The Ancient Job That Could Kill You'],{breakoutRatio:3});
+  const history=Array.from({length:8},(_,index)=>missingDnaCompetitor(
+    `history-normal-${index}`,
+    'History',
+    [`History documentary ${index}`],
+    {breakoutRatio:20-index}
+  ));
+  const education=Array.from({length:6},(_,index)=>missingDnaCompetitor(
+    `education-normal-${index}`,
+    'Education',
+    [`Education explainer ${index}`],
+    {breakoutRatio:10-index}
+  ));
+  const breakout=missingDnaCompetitor('global-breakout','Tiny Cluster',['Unrelated huge breakout'],{breakoutRatio:999});
+
+  const selected=selectUniverseDnaBootstrapBatch(
+    [...history,...education,breakout,targetedA,targetedB],
+    gapDirectedMarket(),
+    5,
+    2
+  );
+
+  assert.equal(selected.slice(0,2).some(item=>item.id==='competitor:target-animal'),true);
+  assert.equal(selected.slice(0,2).some(item=>item.id==='competitor:target-job'),true);
+  const normal=selected.slice(2);
+  assert.equal(normal.some(item=>item.cluster==='History'),true);
+  assert.equal(normal.some(item=>item.cluster==='Education'),true);
+  assert.equal(normal.some(item=>item.id==='competitor:global-breakout'),true);
 });
