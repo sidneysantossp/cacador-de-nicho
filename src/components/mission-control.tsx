@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertCircle, ArrowUpRight, CheckCircle2, PlayCircle, Rocket, Sparkles } from 'lucide-react';
-import type { MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
+import type { Decision, MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
 
 function statusLabel(status:MissionBrief['status']){
   return status==='completed'?'Missão concluída':status==='partial'?'Missão parcial':'Missão bloqueada';
@@ -16,6 +16,8 @@ export default function MissionControl({
   busy,
   onRun,
   onOpenStudy,
+  onPilotDecision,
+  pilotDecisions,
   searchBudget
 }:{
   brief?:MissionBrief|null;
@@ -23,9 +25,12 @@ export default function MissionControl({
   busy:string;
   onRun:()=>Promise<boolean|undefined>;
   onOpenStudy:(channelStudyId:string)=>void;
+  onPilotDecision:(gapId:string,decision:'approved'|'rejected')=>Promise<boolean|undefined>;
+  pilotDecisions:Decision[];
   searchBudget?:YouTubeSearchBudgetState|null;
 }){
   const universeOpportunities=brief?.universeOpportunities??[];
+  const pilotDecisionFor=(gapId:string)=>pilotDecisions.find(item=>item.kind==='universe-pilot'&&item.opportunityId===gapId);
   return <div className="mission-control">
     <section className="mission-hero">
       <div>
@@ -103,6 +108,14 @@ export default function MissionControl({
             {item.alternateAngles?.length?<div className="mission-next"><span>ÂNGULOS RELACIONADOS ({item.alternateAngles.length})</span><p>{item.alternateAngles.map(angle=>`${angle.title} — ${angle.curveName}`).join(' · ')}</p></div>:null}
             <ul>{item.reasons.slice(0,4).map(reason=><li key={reason}>{reason}</li>)}</ul>
             {item.risks.length>0&&<div className="mission-next"><span>RISCOS</span><p>{item.risks.slice(0,3).join(' · ')}</p></div>}
+            {item.readiness==='pilot-ready'&&<div className="mission-next">
+              <span>DECISÃO DO PILOTO</span>
+              {pilotDecisionFor(item.gapId)?<p><strong>{pilotDecisionFor(item.gapId)?.decision==='approved'?'PILOTO APROVADO':'PILOTO REJEITADO'}</strong> · {pilotDecisionFor(item.gapId)?.reason}</p>:<p>A evidência passou pelo gate. A decisão final continua humana.</p>}
+              <div className="mission-actions">
+                <button className="button primary small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='approved'} onClick={()=>void onPilotDecision(item.gapId,'approved')}>Aprovar piloto</button>
+                <button className="button subtle small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='rejected'} onClick={()=>void onPilotDecision(item.gapId,'rejected')}>Não seguir</button>
+              </div>
+            </div>}
           </article>)}
         </div>
       </section>}
