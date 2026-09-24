@@ -2,21 +2,48 @@
 
 import { useMemo, useState } from 'react';
 import { BrainCircuit, Check, CircleDot, Film, FolderKanban, Layers3, Plus, Sparkles } from 'lucide-react';
-import type { Channel, ChannelBrain, ManagedChannel, Opportunity } from '@/lib/types';
-import { defaultChannelAutopilot, effectiveChannelAutopilot } from '@/lib/channel-autopilot-policy';
+import type { Channel, ChannelBrain, ManagedChannel, NextEpisodePlan, Opportunity } from '@/lib/types';
+import { autopilotDecisionPreview, defaultChannelAutopilot, effectiveChannelAutopilot } from '@/lib/channel-autopilot-policy';
 
 const stages:Record<ManagedChannel['stage'],string>={idea:'Ideia',research:'Em pesquisa',production:'Em produção',published:'Publicado',paused:'Pausado'};
 const priorities:Record<ManagedChannel['priority'],string>={high:'Alta prioridade',normal:'Prioridade normal',low:'Baixa prioridade'};
+const autopilotIssueLabels:Record<string,string>={
+ 'autopilot-disabled':'Autopilot está desligado.',
+ 'learning-loop-disabled':'Learning Loop automático está desligado.',
+ 'auto-plan-disabled':'Geração automática do próximo plano está desligada.',
+ 'autonomous-mode-required':'Autoaceite exige modo Autonomous.',
+ 'auto-accept-disabled':'Autoaceite do próximo episódio está desligado.',
+ 'recommended-candidate-missing':'O plano não possui candidato recomendado válido.',
+ 'narrative-not-ready':'O candidato recomendado não está narrativamente pronto.',
+ 'narrative-blockers':'A Narrative Intelligence encontrou blockers.',
+ 'evidence-below-threshold':'A evidência está abaixo do threshold configurado.',
+ 'no-strong-learning-evidence':'Falta learning de confiança média/alta sustentando a recomendação.'
+};
 type Draft=Omit<ManagedChannel,'id'|'createdAt'|'updatedAt'>;
 const empty=():Draft=>({name:'',niche:'Finanças',format:'2D animation',stage:'idea',priority:'normal',description:'',autopilot:{...defaultChannelAutopilot}});
 
 export default function ChannelManagement({items,brains,radarChannels,demo,onSave,onMessage,onOpenBrain}:{items:ManagedChannel[];brains:ChannelBrain[];radarChannels:Channel[];demo:boolean;onSave:(channel:ManagedChannel)=>void;onMessage:(message:string)=>void;onOpenBrain:(channel:ManagedChannel)=>void}){
  const [draft,setDraft]=useState<Draft>(empty),[showForm,setShowForm]=useState(false),[filter,setFilter]=useState<'all'|ManagedChannel['stage']>('all');
+ const [previewPlans,setPreviewPlans]=useState<Record<string,NextEpisodePlan|null>>({});
+ const [previewLoaded,setPreviewLoaded]=useState<Record<string,boolean>>({});
+ const [previewBusy,setPreviewBusy]=useState('');
  const visible=useMemo(()=>filter==='all'?items:items.filter(item=>item.stage===filter),[filter,items]);
  const brainByChannel=useMemo(()=>new Map(brains.map(brain=>[brain.channelId,brain])),[brains]);
  const opportunities=radarChannels.flatMap(channel=>(channel.analysis?.opportunities??[]).map(opportunity=>({channel,opportunity})));
  function save(event:React.FormEvent){event.preventDefault();if(!draft.name.trim()){onMessage('Dê um nome ao canal antes de salvar.');return;}const now=new Date().toISOString();onSave({id:crypto.randomUUID(),...draft,name:draft.name.trim(),description:draft.description.trim(),createdAt:now,updatedAt:now});setDraft(empty());setShowForm(false);}
  function addFromOpportunity(channel:Channel,opportunity:Opportunity){const now=new Date().toISOString();onSave({id:crypto.randomUUID(),name:opportunity.name,niche:channel.niche,format:channel.format.split(' · ')[1]??channel.format,stage:'idea',priority:'normal',description:opportunity.lens,sourceChannelId:channel.id,opportunityId:opportunity.id,createdAt:now,updatedAt:now});}
+ async function loadAutopilotPreview(channelId:string){
+  setPreviewBusy(channelId);
+  try{
+   const response=await fetch('/api/next-episode?channelId='+encodeURIComponent(channelId),{cache:'no-store'});
+   const body=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(body.message??'Falha ao simular a decisão do Autopilot.');
+   setPreviewPlans(prev=>({...prev,[channelId]:(body.activePlan??null) as NextEpisodePlan|null}));
+   setPreviewLoaded(prev=>({...prev,[channelId]:true}));
+  }catch(error){
+   onMessage(error instanceof Error?error.message:'Falha ao simular a decisão do Autopilot.');
+  }finally{setPreviewBusy('');}
+ }
  return <>
   <section className="channel-management-hero"><div><div className="eyebrow">PORTFÓLIO EDITORIAL</div><h2>Seus canais.<br/><span>Uma operação com foco.</span></h2><p>Transforme descobertas em canais ativos, com contexto, estágio e próxima prioridade visíveis.</p></div><div className="portfolio-metrics"><div><span>EM PRODUÇÃO</span><strong>{items.filter(item=>item.stage==='production').length}</strong></div><div><span>EM PESQUISA</span><strong>{items.filter(item=>item.stage==='research').length}</strong></div><div><span>PUBLICADOS</span><strong>{items.filter(item=>item.stage==='published').length}</strong></div></div></section>
   <section className="channel-management-toolbar"><div className="segmented" aria-label="Filtrar canais da operação">{([['all','Todos'],['idea','Ideias'],['research','Pesquisa'],['production','Produção'],['published','Publicados']] as const).map(([id,label])=><button key={id} className={filter===id?'selected':''} onClick={()=>setFilter(id)}>{label}</button>)}</div><button className="button primary" onClick={()=>setShowForm(!showForm)}><Plus size={17}/>{showForm?'Fechar cadastro':'Novo canal'}</button></section>
