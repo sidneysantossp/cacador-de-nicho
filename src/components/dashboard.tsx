@@ -118,6 +118,7 @@ export default function Dashboard(){
       onIntelligence={(ids)=>action({action:'universeIntelligence',universeIds:ids},'universeIntelligence')}
       onCurves={()=>action({action:'universeCurves'},'universeCurves')}
       onQueue={()=>action({action:'universeQueue'},'universeQueue')}
+      onCycle={()=>action({action:'universeCycle'},'universeCycle')}
       onOpenDna={(competitor)=>{setUniverseDnaId(competitor.id);setView('universeDna');window.scrollTo({top:0,behavior:'smooth'});}}
     />}
     {view==='universeDna'&&<ChannelDnaPage
