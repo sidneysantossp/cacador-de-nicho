@@ -389,3 +389,23 @@ Caso real usado como regressão:
 - WhirlTales já sustentava `suspension bridges`;
 - após DNA dirigido, nknows passou a sustentar `bridge piers`;
 - a continuidade deve revalidar os dois criadores independentes e elevar o target de `partial` para `observed`, tornando-o elegível a piloto pela regra existente.
+
+
+## Universe Opportunity Families — 24/09/2026
+
+Com 64 Channel DNAs e continuidade habilitada, o Mission Control encontrou dois `PILOT READY` no mesmo domínio:
+- `Every Type of Bridge Failure Explained`;
+- `How History's Most Dangerous Bridges Failed`.
+
+Os dois compartilhavam evidência central de Sabin Civil Engineering e nknows e pertenciam ao mesmo domínio de pontes, mas vinham de curvas editoriais diferentes.
+
+Correção de produto:
+- oportunidades acionáveis são agrupadas em famílias quando compartilham pelo menos 2 canais de evidência e ao menos 1 token substantivo de domínio;
+- o card mais forte continua como oportunidade principal;
+- os demais são preservados como `alternateAngles`, com título, curva, target e primeiro teste;
+- a contagem do Mission Control passa a refletir famílias de oportunidade, não variações próximas do mesmo nicho;
+- apenas compartilhar um canal não é suficiente para agrupar targets distintos.
+
+Caso real esperado:
+- bridge engineering = 1 família PILOT READY;
+- o ângulo de falhas históricas aparece como variação editorial, não como segundo nicho independente.
