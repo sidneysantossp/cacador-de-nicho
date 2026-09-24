@@ -6,6 +6,7 @@ import {
   LoaderCircle, RefreshCw, Route, ShieldCheck, Sparkles
 } from 'lucide-react';
 import type { ManagedChannel, NextEpisodeCandidate, NextEpisodePlan } from '@/lib/types';
+import { effectiveChannelAutopilot } from '@/lib/channel-autopilot-policy';
 
 type State={
   plans:NextEpisodePlan[];
@@ -70,7 +71,7 @@ export default function NextEpisodeStrategistWorkspace({channel}:{channel:Manage
 
   const plan=state.activePlan;
   const stale=Boolean(plan&&plan.brainVersion!==state.brainVersion);
-  const autopilot=channel.autopilot??{enabled:false,mode:'assisted' as const,startOnAcceptedNextEpisode:true};
+  const autopilot=effectiveChannelAutopilot(channel);
   const autoStart=autopilot.enabled&&autopilot.startOnAcceptedNextEpisode;
 
   return <div className="next-episode-strategist">
