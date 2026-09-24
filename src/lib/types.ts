@@ -118,6 +118,7 @@ export type MissionBrief = {
   competitorDna?: number;
   universeCurves?: number;
   universeGaps?: number;
+  universeActionableGaps?: number;
   universeQueuePending?: number;
   universeQueueCompleted?: number;
  };
@@ -133,6 +134,21 @@ export type MissionBrief = {
   readiness: 'production-ready';
   reasons: string[];
   nextAction: string;
+ }>;
+ universeOpportunities: Array<{
+  gapId: string;
+  curveId: string;
+  title: string;
+  curveName: string;
+  targetSpace: string;
+  readiness: 'pilot-ready' | 'investigate';
+  demandStatus: 'observed' | 'partial';
+  sampleSaturation: 'low' | 'medium' | 'uncertain';
+  independentCreators: number;
+  targetEvidenceCount: number;
+  firstTest: string;
+  reasons: string[];
+  risks: string[];
  }>;
  decisionsNeeded: Array<{
   type: 'pilot-decision' | 'evidence-review';
