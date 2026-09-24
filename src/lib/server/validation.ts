@@ -1,7 +1,16 @@
 import { z } from 'zod';
 export const modelIds=['gpt-5.6-luna','gpt-5.6-terra','gpt-5.6-sol'] as const;
 export const modelSchema=z.enum(modelIds);
-export const managedChannelSchema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),niche:z.string().trim().min(2).max(80),format:z.string().trim().min(2).max(80),stage:z.enum(['idea','research','production','published','paused']),priority:z.enum(['high','normal','low']),description:z.string().trim().max(1000),sourceChannelId:z.string().max(100).optional(),opportunityId:z.string().max(150).optional(),autopilot:z.object({enabled:z.boolean(),mode:z.enum(['assisted','autonomous']),startOnAcceptedNextEpisode:z.boolean()}).strict().optional(),createdAt:z.string().datetime().optional(),updatedAt:z.string().datetime().optional()}).strict();
+export const managedChannelSchema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),niche:z.string().trim().min(2).max(80),format:z.string().trim().min(2).max(80),stage:z.enum(['idea','research','production','published','paused']),priority:z.enum(['high','normal','low']),description:z.string().trim().max(1000),sourceChannelId:z.string().max(100).optional(),opportunityId:z.string().max(150).optional(),autopilot:z.object({
+ enabled:z.boolean(),
+ mode:z.enum(['assisted','autonomous']),
+ startOnAcceptedNextEpisode:z.boolean(),
+ learningLoopEnabled:z.boolean(),
+ learningWindowsHours:z.array(z.number().int().min(1).max(720)).min(1).max(8),
+ autoApprovePerformance:z.boolean(),
+ autoAnalyzeAudience:z.boolean(),
+ autoApproveAudience:z.boolean()
+}).strict().optional(),createdAt:z.string().datetime().optional(),updatedAt:z.string().datetime().optional()}).strict();
 const shortList=(maxItems:number,maxLength=300)=>z.array(z.string().trim().min(1).max(maxLength)).max(maxItems);
 export const channelBrainPayloadSchema=z.object({
  kind:z.literal('channel-brain'),
