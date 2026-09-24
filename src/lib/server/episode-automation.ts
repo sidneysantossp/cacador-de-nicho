@@ -278,7 +278,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     steps.push(step('scenes','waiting',{
       entityId:String(scenePlan.id),entityVersion:Number(scenePlan.version),
       reason:'Scene Plan criado; revise duração, cortes e exceções antes da aprovação.',
-      requiresOperator:true
+      requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
   }else{
     steps.push(step('scenes','ready',{
@@ -302,7 +302,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     steps.push(step('visual-prompts','waiting',{
       entityId:String(promptSet.id),entityVersion:Number(promptSet.version),
       reason:'Prompts visuais existem; aguarda referências recorrentes e aprovação.',
-      requiresOperator:true
+      requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
   }else{
     steps.push(step('visual-prompts','ready',{
@@ -362,7 +362,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     steps.push(step('video-edit','waiting',{
       entityId:String(edit.id),entityVersion:Number(edit.version),
       reason:'Video Edit criado; aguarda revisão de finishing.',
-      requiresOperator:true
+      requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
   }else{
     steps.push(step('video-edit','ready',{
@@ -406,10 +406,17 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else if(quality){
+    const summary=rowPayload<{summary?:{blockers?:number;manualReview?:number}}>(quality).summary;
+    const blockers=Number(summary?.blockers??0);
+    const manual=Number(summary?.manualReview??0);
     steps.push(step('quality','waiting',{
       entityId:String(quality.id),entityVersion:Number(quality.version),
-      reason:'Production QA exige revisão/override manual antes da liberação.',
-      requiresOperator:true
+      reason:blockers
+        ?'Production QA possui '+blockers+' blocker(s).'
+        :manual
+          ?'Production QA possui '+manual+' item(ns) de revisão manual.'
+          :'Production QA passou nos checks objetivos e pode ser liberado.',
+      requiresOperator:blockers>0||manual>0||!run.policy.autoApproveObjectiveGates
     }));
   }else{
     steps.push(step('quality','ready',{
