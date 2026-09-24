@@ -151,8 +151,10 @@ Infraestrutura aplicada:
 
 ## Universe Daily Cron — 24/09/2026
 
-Configurado cron diário às 10:00 UTC para `/api/cron/universe`.
+Configurado cron diário às 12:00 UTC para `/api/cron/universe`.
 Objetivo: manter o bootstrap e Channel DNA avançando sem exigir clique do operador, com teto conservador de 25 imports + 1 lote de até 5 DNAs por execução.
 
 
 - Cron Universe agora encadeia bootstrap → DNA → Curves/Gaps condicionalmente, apenas quando o DNA mudou.
+
+- Cron diário do Universe passa a registrar execução no Activity Ledger e respeitar a exclusão mútua dos jobs pesados.
