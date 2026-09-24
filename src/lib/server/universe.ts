@@ -230,15 +230,17 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
   const attempted=new Set<string>();
   const updated:string[]=[];
   let batches=0;
+  let attemptedChannels=0;
 
-  while(updated.length<cap&&Date.now()-startedAt<budget){
+  while(attemptedChannels<cap&&Date.now()-startedAt<budget){
     const all=await universeState();
     const selected=selectUniverseDnaBatch(
       all.filter(item=>!attempted.has(item.id)&&!attempted.has(item.channelId)),
-      Math.min(5,cap-updated.length)
+      Math.min(5,cap-attemptedChannels)
     );
     if(!selected.length)break;
 
+    attemptedChannels+=selected.length;
     for(const competitor of selected){
       attempted.add(competitor.id);
       attempted.add(competitor.channelId);
@@ -256,6 +258,7 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
     analyzed:updated.length,
     updated,
     batches,
+    attempted:attemptedChannels,
     total:after.length,
     ready,
     remaining,
