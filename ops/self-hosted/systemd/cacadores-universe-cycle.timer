@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Caçadores Universe cycle daily on the VPS
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 UTC
+Persistent=false
+AccuracySec=1min
+Unit=cacadores-universe-batch.service
+
+[Install]
+WantedBy=timers.target
