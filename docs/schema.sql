@@ -94,7 +94,7 @@ create table if not exists public.radar_audience_intelligence_reports(id uuid pr
 create index if not exists radar_audience_intelligence_channel_updated on public.radar_audience_intelligence_reports(channel_id,updated_at desc);
 create table if not exists public.radar_audience_intelligence_versions(id bigint generated always as identity primary key,audience_report_id uuid not null references public.radar_audience_intelligence_reports(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(audience_report_id,version));
 create index if not exists radar_audience_intelligence_versions_report_version on public.radar_audience_intelligence_versions(audience_report_id,version desc);
-create table if not exists public.radar_next_episode_plans(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,brain_version int not null check(brain_version>=0),version int not null default 1 check(version>=1),status text not null default 'review' check(status in ('review','accepted','superseded')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table if not exists public.radar_next_episode_plans(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,brain_version int not null check(brain_version>=0),version int not null default 1 check(version>=1),status text not null default 'review' check(status in ('review','accepted','superseded')),payload jsonb not null,acceptance_candidate_id uuid,acceptance_claimed_at timestamptz,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_next_episode_plans_channel_updated on public.radar_next_episode_plans(channel_id,updated_at desc);
 create table if not exists public.radar_next_episode_plan_versions(id bigint generated always as identity primary key,plan_id uuid not null references public.radar_next_episode_plans(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('review','accepted','superseded')),payload jsonb not null,created_at timestamptz not null default now(),unique(plan_id,version));
 create table if not exists public.radar_youtube_connections(id uuid primary key,channel_id text not null unique references public.radar_managed_channels(id) on delete cascade,youtube_channel_id text not null,youtube_title text not null default '',youtube_handle text,youtube_thumbnail text,scopes text[] not null default '{}',refresh_token_ciphertext text not null,status text not null default 'connected' check(status in ('connected','needs-reauth','disconnected')),last_validated_at timestamptz,error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
@@ -251,6 +251,31 @@ return found;
 end $$;
 revoke all on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) from public,anon,authenticated;
 grant execute on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.claim_next_episode_candidate(p_plan_id uuid,p_expected_version int,p_candidate_id uuid) returns boolean
+language plpgsql security invoker set search_path='' as $$
+declare current_version int; current_status text; current_candidate uuid; current_payload jsonb;
+begin
+perform pg_advisory_xact_lock(hashtext('next-episode-accept:'||p_plan_id::text));
+select version,status,acceptance_candidate_id,payload into current_version,current_status,current_candidate,current_payload
+from public.radar_next_episode_plans where id=p_plan_id for update;
+if current_version is null then raise exception 'next episode plan not found';end if;
+if current_status='accepted' then
+  if current_payload#>>'{review,acceptedCandidateId}'=p_candidate_id::text then return true;end if;
+  raise exception 'next episode plan already accepted';
+end if;
+if current_status<>'review' then raise exception 'next episode plan unavailable';end if;
+if current_version<>p_expected_version then raise exception 'next episode plan version conflict';end if;
+if not exists(select 1 from jsonb_array_elements(coalesce(current_payload->'candidates','[]'::jsonb)) item where item->>'id'=p_candidate_id::text) then raise exception 'candidate does not belong to plan';end if;
+if current_candidate is null then
+  update public.radar_next_episode_plans set acceptance_candidate_id=p_candidate_id,acceptance_claimed_at=now(),updated_at=now() where id=p_plan_id;
+  return true;
+end if;
+if current_candidate=p_candidate_id then return true;end if;
+raise exception 'next episode acceptance already claimed';
+end $$;
+revoke all on function public.claim_next_episode_candidate(uuid,int,uuid) from public,anon,authenticated;
+grant execute on function public.claim_next_episode_candidate(uuid,int,uuid) to service_role;
 
 create or replace function public.save_next_episode_plan(p_plan_id uuid,p_channel_id text,p_brain_version int,p_status text,p_payload jsonb,p_expected_version int default null) returns int
 language plpgsql security invoker set search_path='' as $$
