@@ -4,7 +4,7 @@ import type {
   ProductionDNA, ScenePlan, TimelinePayload, VisualPromptSet, VoiceAsset
 } from '../src/lib/types';
 import {
-  buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
+  autoFitSourceWindow, buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
   timelineAssetIssues, timelineStructuralIssues
 } from '../src/lib/timeline-policy';
 
@@ -72,6 +72,28 @@ test('Short video clips default to loop instead of silently leaving visual gaps'
   assert.equal(clip.clipKind,'video');
   assert.equal(clip.playback,'loop');
   assert.equal(clip.sourceEndSeconds,2);
+});
+
+test('Raw takes longer than narration windows are center-trimmed automatically',()=>{
+  const fit=autoFitSourceWindow(10,6.86);
+  assert.equal(fit.playback,'trim');
+  assert.equal(fit.mode,'center-trim');
+  assert.ok(Math.abs(fit.sourceStartSeconds-1.57)<.001);
+  assert.ok(Math.abs(fit.sourceEndSeconds-8.43)<.001);
+});
+
+test('Timeline uses detected raw take duration when building source in and out',()=>{
+  const longAssets=[
+    assets[0],
+    {...assets[1],durationSeconds:10}
+  ];
+  const t=buildInitialTimeline({
+    scenePlan,productionDna:dna,visualPromptSet:promptSet,visualAssets:longAssets,voiceAsset:voice
+  });
+  const clip=t.tracks.find(track=>track.type==='visual')!.clips[1];
+  assert.equal(clip.playback,'trim');
+  assert.equal(clip.sourceStartSeconds,3.5);
+  assert.equal(clip.sourceEndSeconds,6.5);
 });
 
 test('Timeline Engine makes missing media an explicit placeholder and blocks approval',()=>{

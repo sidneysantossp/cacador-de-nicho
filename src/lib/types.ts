@@ -622,9 +622,70 @@ export type ProductionDnaCharacter = {
  id: string;
  name: string;
  description: string;
+ role?: string;
+ referenceStatus?: 'locked' | 'needs-reference' | 'ready';
  visualRules: string[];
  forbidden: string[];
  referenceAssets: string[];
+};
+
+export type ProductionDnaQualityBenchmark = {
+ id: string;
+ label: string;
+ status: 'locked' | 'reference';
+ sourceKind: 'video' | 'image';
+ sourceProvider: string;
+ sourceFileId: string;
+ sourceFileName: string;
+ technical: {
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+ };
+ criteria: {
+  characterConsistency: string;
+  materialTexture: string;
+  lightingEnvironment: string;
+  motionQuality: string;
+ };
+ qaRules: string[];
+ approvedAt: string;
+};
+
+export type ProductionDnaAnatomyScaleBible = {
+ version: number;
+ status: 'draft' | 'locked';
+ unit: {
+  symbol: 'G';
+  definition: string;
+ };
+ characters: Array<{
+  characterId: string;
+  heightG: number;
+  build: string;
+  headBodyRule: string;
+  postureRule: string;
+  proportionRules: string[];
+  masterAssetName: string;
+  masterAssetFileId?: string;
+ }>;
+ props: Array<{
+  id: string;
+  name: string;
+  scaleRule: string;
+  dimensionsG: {
+   height?: number;
+   width?: number;
+   diameter?: number;
+  };
+  visualRules: string[];
+  masterAssetName: string;
+  masterAssetFileId?: string;
+ }>;
+ globalRules: string[];
+ rejectionRules: string[];
+ approvedAt?: string;
 };
 export type ProductionDnaPayload = {
  kind: 'production-dna';
@@ -648,6 +709,9 @@ export type ProductionDnaPayload = {
   scenePromptTemplate: string;
   negativePrompt: string;
   forbidden: string[];
+  visualMoat?: string;
+  qualityBenchmark?: ProductionDnaQualityBenchmark;
+  anatomyScaleBible?: ProductionDnaAnatomyScaleBible;
  };
  characters: ProductionDnaCharacter[];
  voice: {
@@ -931,6 +995,9 @@ export type VisualScenePrompt = {
  referenceNames: string[];
  direction: string;
  prompt: string;
+ outputFileStem: string;
+ outputFileName: string;
+ takeNumber: number;
 };
 export type VisualPromptSetPayload = {
  kind: 'visual-prompt-set';
@@ -941,6 +1008,12 @@ export type VisualPromptSetPayload = {
  scenePlanVersion: number;
  productionDnaVersion: number;
  styleLock: string;
+ productionNaming: {
+  channelCode: string;
+  episodeNumber: number;
+  takeDigits: number;
+  pattern: string;
+ };
  workflowStage: 'references' | 'scenes' | 'complete';
  characterReferences: VisualCharacterReference[];
  scenePrompts: VisualScenePrompt[];
@@ -1047,8 +1120,12 @@ export type ExternalImportItem = {
  resourceId?: string;
  error?: string;
  payload: {
-  detectedBy?: 'timecode' | 'scene-number' | 'manual' | 'none';
+  detectedBy?: 'production-name' | 'timecode' | 'scene-number' | 'manual' | 'none';
   normalizedMarker?: string;
+  productionChannelCode?: string;
+  productionEpisodeNumber?: number;
+  productionSceneNumber?: number;
+  productionTakeNumber?: number;
  };
  createdAt: string;
  updatedAt: string;

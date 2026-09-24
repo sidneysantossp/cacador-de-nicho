@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  createExternalImportBatch, listExternalImportBatches, loadExternalImportBatch,
+  autoEditExternalImportBatch, createExternalImportBatch, listExternalImportBatches, loadExternalImportBatch,
   processExternalImportItem, remapExternalImportItem, skipExternalImportItem
 } from '@/lib/server/external-import';
 
@@ -36,6 +36,10 @@ const jsonSchema=z.discriminatedUnion('action',[
     action:z.literal('skip'),
     batchId:z.string().uuid(),
     itemId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('autoEdit'),
+    batchId:z.string().uuid()
   }).strict()
 ]);
 
@@ -92,6 +96,13 @@ export async function POST(request:Request){
     if(body.action==='remap'){
       const batch=await remapExternalImportItem(body.batchId,body.itemId,body.sceneId);
       return Response.json({message:'Arquivo remapeado para a cena.',batch});
+    }
+    if(body.action==='autoEdit'){
+      const result=await autoEditExternalImportBatch(body.batchId);
+      return Response.json({
+        message:'Auto Edit criado e preview 720p enfileirado.',
+        ...result
+      });
     }
 
     const batch=await skipExternalImportItem(body.batchId,body.itemId);

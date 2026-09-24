@@ -137,7 +137,10 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
     const source=plan.scenes.find(scene=>scene.id===item.sceneId);
     if(!source)return;
     const recurring=draft.characterReferences.map(ref=>ref.characterId);
-    const compiled=compileScenePrompt(source,dna,item.characterIds,value,recurring);
+    const compiled=compileScenePrompt(
+      source,dna,item.characterIds,value,recurring,
+      draft.productionNaming
+    );
     updateScene(index,{...compiled,direction:value});
   }
 
@@ -183,11 +186,12 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
 
       {tab==='scenes'&&refsReady&&<div className="visual-prompt-content">
         <section className="visual-style-lock"><span>STYLE LOCK</span><p>{draft.styleLock||'Production DNA não possui base prompt.'}</p></section>
+        <section className="visual-style-lock"><span>FILE NAMING LOCK</span><p>{draft.productionNaming?.pattern??'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'} · {draft.productionNaming?.channelCode??channel.name.toUpperCase()} · vídeo {draft.productionNaming?.episodeNumber??'—'}</p></section>
         <div className="visual-scene-list">{draft.scenePrompts.map((scene,index)=><section className="visual-scene-card" key={scene.sceneId}>
-          <header><div><span>{scene.timecodeLabel}</span><strong>SCENE {String(scene.sequence).padStart(3,'0')}</strong></div><div>{scene.referenceNames.map(name=><em key={name}>{name}</em>)}</div></header>
+          <header><div><span>{scene.timecodeLabel}</span><strong>SCENE {String(scene.sequence).padStart(3,'0')}</strong><code>{scene.outputFileName??('S'+String(scene.sequence).padStart(3,'0')+'_T01.mp4')}</code></div><div>{scene.referenceNames.map(name=><em key={name}>{name}</em>)}</div></header>
           <label><span>DIREÇÃO VISUAL</span><textarea rows={4} value={scene.direction} onChange={e=>updateDirection(index,e.target.value)}/></label>
           <label><span>PROMPT FINAL</span><textarea rows={8} value={scene.prompt} onChange={e=>updateScene(index,{...scene,prompt:e.target.value})}/></label>
-          <footer><small>{scene.startSeconds.toFixed(2)}s → {scene.endSeconds.toFixed(2)}s</small><button className="button subtle small" onClick={()=>void copy(scene.timecodeLabel+'\n'+scene.prompt)}><Copy size={14}/>Copiar bloco</button></footer>
+          <footer><small>{scene.startSeconds.toFixed(2)}s → {scene.endSeconds.toFixed(2)}s · salvar como {scene.outputFileName??'nome automático indisponível'}</small><button className="button subtle small" onClick={()=>void copy('FILE: '+(scene.outputFileName??'')+'\n'+scene.timecodeLabel+'\n'+scene.prompt)}><Copy size={14}/>Copiar bloco</button></footer>
         </section>)}</div>
       </div>}
 

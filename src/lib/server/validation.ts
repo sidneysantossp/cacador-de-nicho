@@ -138,12 +138,72 @@ export const productionDnaPayloadSchema=z.object({
   basePrompt:z.string().trim().max(12000),
   scenePromptTemplate:z.string().trim().max(12000),
   negativePrompt:z.string().trim().max(12000),
-  forbidden:shortList(100,500)
+  forbidden:shortList(100,500),
+  visualMoat:z.string().trim().max(8000).optional(),
+  qualityBenchmark:z.object({
+   id:z.string().trim().min(1).max(120),
+   label:z.string().trim().min(1).max(300),
+   status:z.enum(['locked','reference']),
+   sourceKind:z.enum(['video','image']),
+   sourceProvider:z.string().trim().max(120),
+   sourceFileId:z.string().trim().max(300),
+   sourceFileName:z.string().trim().max(500),
+   technical:z.object({
+    durationSeconds:z.number().min(0).max(86400).nullable(),
+    width:z.number().int().min(1).max(16384).nullable(),
+    height:z.number().int().min(1).max(16384).nullable(),
+    fps:z.number().min(1).max(240).nullable()
+   }).strict(),
+   criteria:z.object({
+    characterConsistency:z.string().trim().max(2000),
+    materialTexture:z.string().trim().max(2000),
+    lightingEnvironment:z.string().trim().max(2000),
+    motionQuality:z.string().trim().max(2000)
+   }).strict(),
+   qaRules:shortList(50,1000),
+   approvedAt:z.string().datetime()
+  }).strict().optional(),
+  anatomyScaleBible:z.object({
+   version:z.number().int().min(1).max(1000),
+   status:z.enum(['draft','locked']),
+   unit:z.object({
+    symbol:z.literal('G'),
+    definition:z.string().trim().min(1).max(1000)
+   }).strict(),
+   characters:z.array(z.object({
+    characterId:z.string().trim().min(1).max(120),
+    heightG:z.number().min(.1).max(5),
+    build:z.string().trim().max(1000),
+    headBodyRule:z.string().trim().max(1000),
+    postureRule:z.string().trim().max(1000),
+    proportionRules:shortList(50,1000),
+    masterAssetName:z.string().trim().min(1).max(200),
+    masterAssetFileId:z.string().trim().max(300).optional()
+   }).strict()).max(30),
+   props:z.array(z.object({
+    id:z.string().trim().min(1).max(120),
+    name:z.string().trim().min(1).max(180),
+    scaleRule:z.string().trim().max(1000),
+    dimensionsG:z.object({
+     height:z.number().min(0).max(5).optional(),
+     width:z.number().min(0).max(5).optional(),
+     diameter:z.number().min(0).max(5).optional()
+    }).strict(),
+    visualRules:shortList(50,1000),
+    masterAssetName:z.string().trim().min(1).max(200),
+    masterAssetFileId:z.string().trim().max(300).optional()
+   }).strict()).max(100),
+   globalRules:shortList(100,1000),
+   rejectionRules:shortList(100,1000),
+   approvedAt:z.string().datetime().optional()
+  }).strict().optional()
  }).strict(),
  characters:z.array(z.object({
   id:z.string().trim().min(1).max(120),
   name:z.string().trim().min(1).max(180),
   description:z.string().trim().max(3000),
+  role:z.string().trim().max(180).optional(),
+  referenceStatus:z.enum(['locked','needs-reference','ready']).optional(),
   visualRules:shortList(100,500),
   forbidden:shortList(100,500),
   referenceAssets:shortList(100,1000)
@@ -382,6 +442,12 @@ export const visualPromptSetPayloadSchema=z.object({
  scenePlanVersion:z.number().int().min(1).max(100000),
  productionDnaVersion:z.number().int().min(1).max(100000),
  styleLock:z.string().trim().max(16000),
+ productionNaming:z.object({
+  channelCode:z.string().trim().regex(/^[A-Z0-9]{2,24}$/).max(24),
+  episodeNumber:z.number().int().min(1).max(100000),
+  takeDigits:z.literal(2),
+  pattern:z.literal('{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4')
+ }).strict(),
  workflowStage:z.enum(['references','scenes','complete']),
  characterReferences:z.array(z.object({
   characterId:z.string().trim().min(1).max(120),
@@ -399,7 +465,10 @@ export const visualPromptSetPayloadSchema=z.object({
   characterIds:shortList(50,120),
   referenceNames:z.array(z.string().trim().regex(/^@[A-Za-z][A-Za-z0-9]*$/).max(120)).max(50),
   direction:z.string().trim().min(1).max(10000),
-  prompt:z.string().trim().min(1).max(30000)
+  prompt:z.string().trim().min(1).max(30000),
+  outputFileStem:z.string().trim().regex(/^[A-Z0-9]+_V\d+_S\d+_T\d+$/).max(100),
+  outputFileName:z.string().trim().regex(/^[A-Z0-9]+_V\d+_S\d+_T\d+\.mp4$/).max(110),
+  takeNumber:z.number().int().min(1).max(9999)
  }).strict()).max(5000),
  review:z.object({notes:z.string().trim().max(5000)}).strict(),
  createdAt:z.string().datetime(),

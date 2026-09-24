@@ -11,6 +11,9 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadVoiceAsset, uploadVoiceAsset } from './voice-engine';
 import { importTranscriptFile } from './transcription-engine';
 import { uploadSceneAsset } from './asset-factory';
+import { createTimelineFromPlan, saveTimeline } from './timeline-engine';
+import { createVideoEditFromTimeline, saveVideoEdit } from './video-editor';
+import { createRenderJob } from './render-engine';
 import {
   previewExternalImportFiles, type ExternalFileDescriptor
 } from '@/lib/external-import-policy';
@@ -251,6 +254,37 @@ async function resolveTranscriptVoiceAsset(batch:ExternalImportBatch){
 function safeError(error:unknown){
   const message=error instanceof Error?error.message:String(error);
   return message.slice(0,1500);
+}
+
+export async function autoEditExternalImportBatch(batchId:string){
+  const batch=await loadExternalImportBatch(batchId);
+  if(!batch)throw new HttpError('Import Batch não encontrado.',404);
+  if(!batch.visualPromptSetId)throw new HttpError('O batch precisa de um Visual Prompt Set para Auto Edit.',409);
+
+  const pending=batch.items.filter(item=>
+    (item.kind==='image'||item.kind==='video')&&item.status!=='ready'&&item.status!=='skipped'
+  );
+  if(pending.length)throw new HttpError(
+    'Auto Edit bloqueado: '+pending.length+' asset(s) visual(is) ainda não estão prontos ou mapeados.',409
+  );
+
+  const promptSet=await loadVisualPromptSet(batch.visualPromptSetId);
+  if(!promptSet||promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
+
+  let timeline=await createTimelineFromPlan(promptSet.scenePlanId);
+  if(timeline.status!=='approved'){
+    const {version:_timelineVersion,status:_timelineStatus,...payload}=timeline;
+    timeline=await saveTimeline(payload,'approved',timeline.version);
+  }
+
+  let edit=await createVideoEditFromTimeline(timeline.id);
+  if(edit.status!=='approved'){
+    const {version:_editVersion,status:_editStatus,...payload}=edit;
+    edit=await saveVideoEdit(payload,'approved',edit.version);
+  }
+
+  const render=await createRenderJob({videoEditId:edit.id,preset:'draft-720p30'});
+  return {batch,timeline,videoEdit:edit,render};
 }
 
 export async function processExternalImportItem(batchId:string,itemId:string,file:File){

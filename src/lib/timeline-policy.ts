@@ -12,6 +12,39 @@ export type TimelineVisualAssetRef={
   durationSeconds:number|null;
 };
 
+export function autoFitSourceWindow(
+  sourceDurationSeconds:number|null,
+  targetDurationSeconds:number
+){
+  const target=Math.max(0,targetDurationSeconds);
+  if(sourceDurationSeconds===null||!Number.isFinite(sourceDurationSeconds)||sourceDurationSeconds<=0){
+    return {
+      sourceStartSeconds:0,
+      sourceEndSeconds:target,
+      playback:'trim' as const,
+      mode:'unknown-source-duration' as const
+    };
+  }
+
+  const source=Math.max(0,sourceDurationSeconds);
+  if(source+EPSILON<target){
+    return {
+      sourceStartSeconds:0,
+      sourceEndSeconds:source,
+      playback:'loop' as const,
+      mode:'loop-short-source' as const
+    };
+  }
+
+  const sourceStartSeconds=Math.max(0,(source-target)/2);
+  return {
+    sourceStartSeconds,
+    sourceEndSeconds:Math.min(source,sourceStartSeconds+target),
+    playback:'trim' as const,
+    mode:source-target>EPSILON?'center-trim' as const:'exact' as const
+  };
+}
+
 export function buildInitialTimeline(input:{
   scenePlan:ScenePlan;
   productionDna:ProductionDNA;
@@ -49,12 +82,9 @@ export function buildInitialTimeline(input:{
       }
 
       const isVideo=asset.assetKind==='video';
-      const sourceEnd=isVideo
-        ?Math.min(asset.durationSeconds??scene.durationSeconds,scene.durationSeconds)
+      const sourceWindow=isVideo
+        ?autoFitSourceWindow(asset.durationSeconds,scene.durationSeconds)
         :null;
-      const playback=isVideo
-        ?asset.durationSeconds!==null&&asset.durationSeconds+EPSILON<scene.durationSeconds?'loop':'trim'
-        :'hold';
 
       return {
         id:crypto.randomUUID(),
@@ -65,10 +95,10 @@ export function buildInitialTimeline(input:{
         startSeconds:scene.startSeconds,
         endSeconds:scene.endSeconds,
         durationSeconds:scene.durationSeconds,
-        sourceStartSeconds:isVideo?0:null,
-        sourceEndSeconds:sourceEnd,
+        sourceStartSeconds:isVideo?sourceWindow!.sourceStartSeconds:null,
+        sourceEndSeconds:isVideo?sourceWindow!.sourceEndSeconds:null,
         fit:'cover',
-        playback,
+        playback:isVideo?sourceWindow!.playback:'hold',
         volume:1,
         muted:false
       } satisfies TimelineClip;

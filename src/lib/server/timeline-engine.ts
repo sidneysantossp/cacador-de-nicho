@@ -256,14 +256,14 @@ export async function loadTimelineSources(timeline:Timeline){
   const sceneIds=(visual?.clips??[]).map(clip=>clip.assetId).filter((id):id is string=>!!id);
   const sceneRows=sceneIds.length
     ?checked(await db().from('radar_scene_assets')
-      .select('id,storage_path,mime_type,original_name')
+      .select('id,storage_path,mime_type,original_name,duration_seconds')
       .in('id',sceneIds))
     :[];
 
   const voice=await loadVoiceAsset(timeline.voiceAssetId);
   const sources:Array<{
     assetId:string;kind:'image'|'video'|'audio';signedUrl:string|null;
-    mimeType:string;title:string;
+    mimeType:string;title:string;durationSeconds:number|null;
   }> = [];
 
   for(const row of sceneRows??[]){
@@ -275,7 +275,8 @@ export async function loadTimelineSources(timeline:Timeline){
       kind:String(row.mime_type??'').startsWith('video/')?'video':'image',
       signedUrl:signed&&!signed.error?signed.data.signedUrl:null,
       mimeType:String(row.mime_type??''),
-      title:String(row.original_name??'Scene asset')
+      title:String(row.original_name??'Scene asset'),
+      durationSeconds:row.duration_seconds===null||row.duration_seconds===undefined?null:Number(row.duration_seconds)
     });
   }
 
@@ -286,7 +287,8 @@ export async function loadTimelineSources(timeline:Timeline){
       kind:'audio',
       signedUrl:signed.error?null:signed.data.signedUrl,
       mimeType:voice.mimeType,
-      title:voice.originalName??('Voice Take '+voice.take)
+      title:voice.originalName??('Voice Take '+voice.take),
+      durationSeconds:voice.durationSeconds??null
     });
   }
 

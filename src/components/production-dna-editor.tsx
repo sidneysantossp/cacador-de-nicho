@@ -140,6 +140,31 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
       <TextField label="TEMPLATE DE COMPOSIÇÃO DA CENA" value={draft.visual.scenePromptTemplate} onChange={v=>visual('scenePromptTemplate',v)} rows={5}/>
       <TextField label="NEGATIVE PROMPT" value={draft.visual.negativePrompt} onChange={v=>visual('negativePrompt',v)} rows={7}/>
       <ListField label="PROIBIDO VISUALMENTE" value={draft.visual.forbidden} onChange={v=>visual('forbidden',v)}/>
+      {draft.visual.visualMoat&&<TextField label="VISUAL MOAT" value={draft.visual.visualMoat} onChange={v=>visual('visualMoat',v)} rows={5}/>}
+      {draft.visual.qualityBenchmark&&<section className="production-dna-format">
+        <div><span>QUALITY BENCHMARK</span><strong>{draft.visual.qualityBenchmark.label}</strong></div>
+        <div><span>Status</span><strong>{draft.visual.qualityBenchmark.status.toUpperCase()}</strong></div>
+        <div><span>Source</span><strong>{draft.visual.qualityBenchmark.sourceFileName}</strong></div>
+        <div><span>Provider</span><strong>{draft.visual.qualityBenchmark.sourceProvider}</strong></div>
+        <div><span>Duração</span><strong>{draft.visual.qualityBenchmark.technical.durationSeconds?.toFixed(3)??'—'}s</strong></div>
+        <div><span>Formato</span><strong>{draft.visual.qualityBenchmark.technical.width??'—'}×{draft.visual.qualityBenchmark.technical.height??'—'} · {draft.visual.qualityBenchmark.technical.fps??'—'}fps</strong></div>
+      </section>}
+      {draft.visual.qualityBenchmark&&<div className="production-dna-grid two">
+        <TextField label="BENCHMARK · PERSONAGEM" value={draft.visual.qualityBenchmark.criteria.characterConsistency} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,criteria:{...draft.visual.qualityBenchmark!.criteria,characterConsistency:v}})} rows={4}/>
+        <TextField label="BENCHMARK · MATERIAL / TEXTURA" value={draft.visual.qualityBenchmark.criteria.materialTexture} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,criteria:{...draft.visual.qualityBenchmark!.criteria,materialTexture:v}})} rows={4}/>
+        <TextField label="BENCHMARK · LUZ / AMBIENTE" value={draft.visual.qualityBenchmark.criteria.lightingEnvironment} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,criteria:{...draft.visual.qualityBenchmark!.criteria,lightingEnvironment:v}})} rows={4}/>
+        <TextField label="BENCHMARK · MOVIMENTO" value={draft.visual.qualityBenchmark.criteria.motionQuality} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,criteria:{...draft.visual.qualityBenchmark!.criteria,motionQuality:v}})} rows={4}/>
+        <ListField label="REGRAS DE QA DO BENCHMARK" value={draft.visual.qualityBenchmark.qaRules} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,qaRules:v})}/>
+      </div>}
+      {draft.visual.anatomyScaleBible&&<section className="production-dna-content">
+        <div className="production-dna-section-head"><div><span>ANATOMY & SCALE BIBLE</span><h3>V{draft.visual.anatomyScaleBible.version} · {draft.visual.anatomyScaleBible.status.toUpperCase()} · 1G = altura canônica do Grug</h3></div></div>
+        <div className="production-dna-grid three">
+          {draft.visual.anatomyScaleBible.characters.map(item=><div className="production-dna-format" key={item.characterId}><div><span>{item.characterId}</span><strong>{item.heightG.toFixed(2)}G</strong></div><div><span>Master</span><strong>{item.masterAssetName}</strong></div><p>{item.build}</p></div>)}
+          {draft.visual.anatomyScaleBible.props.map(item=><div className="production-dna-format" key={item.id}><div><span>{item.name}</span><strong>{item.scaleRule}</strong></div><div><span>Master</span><strong>{item.masterAssetName}</strong></div></div>)}
+        </div>
+        <ListField label="GLOBAL SCALE LOCKS" value={draft.visual.anatomyScaleBible.globalRules} onChange={v=>visual('anatomyScaleBible',{...draft.visual.anatomyScaleBible!,globalRules:v})}/>
+        <ListField label="REJECTION RULES" value={draft.visual.anatomyScaleBible.rejectionRules} onChange={v=>visual('anatomyScaleBible',{...draft.visual.anatomyScaleBible!,rejectionRules:v})}/>
+      </section>}
     </div>}
 
     {tab==='characters'&&<div className="production-dna-content">

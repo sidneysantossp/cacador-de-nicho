@@ -1,6 +1,10 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   SceneAsset, SceneAssetKind, SceneAssetLicense, VisualPromptSet, VisualScenePrompt
 } from '@/lib/types';
@@ -28,6 +32,31 @@ type Row={
 };
 
 function sha(value:string){return createHash('sha256').update(value,'utf8').digest('hex');}
+
+async function probeVideoBuffer(bytes:Buffer){
+  const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-probe-'));
+  const input=path.join(root,'input.mp4');
+  try{
+    await writeFile(input,bytes);
+    const output=await new Promise<string>((resolve,reject)=>{
+      const child=spawn('ffprobe',[
+        '-v','error','-show_entries','format=duration',
+        '-of','default=noprint_wrappers=1:nokey=1',input
+      ],{stdio:['ignore','pipe','pipe']});
+      let stdout='',stderr='';
+      child.stdout.on('data',chunk=>{stdout+=String(chunk);});
+      child.stderr.on('data',chunk=>{stderr+=String(chunk);});
+      child.on('error',reject);
+      child.on('close',code=>code===0?resolve(stdout.trim()):reject(new Error(stderr||'ffprobe failed')));
+    });
+    const duration=Number(output);
+    return Number.isFinite(duration)&&duration>0?duration:null;
+  }catch{
+    return null;
+  }finally{
+    await rm(root,{recursive:true,force:true}).catch(()=>{});
+  }
+}
 
 function normalizeRow(row:Row):SceneAsset{
   const payload=(row.payload??{}) as Partial<SceneAsset>;
@@ -275,7 +304,15 @@ export async function uploadSceneAsset(input:{
     promptSet,sceneId:input.sceneId,kind,sourceType:'uploaded',provider:'external',
     mimeType:mime,originalName:input.file.name,metadata
   });
-  return persistReady(reservation.id,Buffer.from(await input.file.arrayBuffer()),mime,metadata);
+  const bytes=Buffer.from(await input.file.arrayBuffer());
+  const durationSeconds=kind==='video'?await probeVideoBuffer(bytes):null;
+  return persistReady(reservation.id,bytes,mime,{
+    ...metadata,
+    generation:{
+      ...((metadata.generation as Record<string,unknown>|undefined)??{}),
+      probedDurationSeconds:durationSeconds
+    }
+  },{durationSeconds});
 }
 
 export async function persistStockSceneAsset(input:{
@@ -478,11 +515,19 @@ export async function refreshGoogleVideo(assetId:string){
   catch{throw new HttpError('O vídeo Veo ficou pronto, mas o download falhou.',502);}
   if(!video.ok)throw new HttpError('O download do vídeo Veo falhou.',502);
   const bytes=Buffer.from(await video.arrayBuffer());
+  const probedDurationSeconds=await probeVideoBuffer(bytes);
   const metadata={
     timecodeLabel:asset.timecodeLabel,promptSetVersion:asset.promptSetVersion,prompt:asset.prompt,promptHash:asset.promptHash,
-    generation:asset.generation,license:asset.license,costUsd:asset.costUsd,modelId:asset.modelId,providerOperationId:asset.providerOperationId
+    generation:{...asset.generation,probedDurationSeconds},
+    license:asset.license,costUsd:asset.costUsd,modelId:asset.modelId,providerOperationId:asset.providerOperationId
   };
-  return persistReady(asset.id,bytes,video.headers.get('content-type')?.split(';')[0]||'video/mp4',metadata,{durationSeconds:asset.generation.durationSeconds??null});
+  return persistReady(
+    asset.id,
+    bytes,
+    video.headers.get('content-type')?.split(';')[0]||'video/mp4',
+    metadata,
+    {durationSeconds:probedDurationSeconds??asset.generation.durationSeconds??null}
+  );
 }
 
 export async function selectSceneAsset(assetId:string){
