@@ -181,3 +181,21 @@ Após atingir `build-rate-limit`, o repositório passa a impedir deployments aut
 - preview Vercel passa a ser exceção deliberada, não efeito colateral de cada push.
 
 Motivo: preservar quota de deployments para produção e evitar que commits intermediários consumam o limite da conta.
+
+
+## Gap-Directed DNA — 24/09/2026
+
+Implementado direcionamento de parte do bootstrap de Channel DNA para validar gaps acionáveis do Universe:
+- cada lote de 5 DNAs reserva até 2 vagas para canais capazes de validar gaps em estado `INVESTIGAR`;
+- as demais vagas continuam usando a prioridade global existente, evitando starvation da descoberta;
+- seleção dirigida usa descrição e títulos reais dos uploads recentes, não apenas o cluster bruto;
+- match exige múltiplos termos relevantes ou combinação semântica explícita do target;
+- famílias de evidência cobrem POV/vida animal e profissões em contexto histórico, mantendo o critério verificável;
+- clusters ruidosos não são evidência suficiente;
+- nenhum `search.list` adicional é consumido;
+- resposta do bootstrap registra `targetedAttempts` para observabilidade.
+
+Motivação observada no Universe real:
+- canais como Dinzo, Zoozle, giblixy e Wildlife Professor contêm evidência direta para Animal POV Survival, mas estavam longe do topo da fila global de DNA;
+- Historic Dave já possui DNA e evidência de medieval jobs; outros canais de história/profissões podem ampliar a independência do target;
+- o Market Intelligence atual está defasado em relação ao número de DNAs persistidos, portanto acelerar a evidência dirigida reduz o tempo até uma nova classificação confiável.
