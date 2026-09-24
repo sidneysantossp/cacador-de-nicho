@@ -1,5 +1,5 @@
 import type { UniverseCompetitor, UniverseCurveClassification, UniverseMarketIntelligence } from './types';
-import { compareUniverseDnaPriority, UNIVERSE_STATUS_RANK } from './universe-policy';
+import { compareUniverseDnaPriority, selectUniverseDnaBatch, UNIVERSE_STATUS_RANK } from './universe-policy';
 
 export function universeCurveClassification(channelIds:string[]):UniverseCurveClassification{
   const count=new Set(channelIds.filter(Boolean)).size;
@@ -200,4 +200,27 @@ export function selectUniverseGapValidationDnaBatch(
     })
     .slice(0,limit)
     .map(item=>item.competitor);
+}
+
+
+export function selectUniverseDnaBootstrapBatch(
+  competitors:UniverseCompetitor[],
+  intelligence:UniverseMarketIntelligence|null,
+  maxItems=5,
+  targetedSlots=2
+){
+  const limit=Math.max(0,Math.min(maxItems,5));
+  if(limit===0)return [];
+
+  const targeted=selectUniverseGapValidationDnaBatch(
+    competitors,
+    intelligence,
+    Math.min(Math.max(0,targetedSlots),limit)
+  );
+  const targetedIds=new Set(targeted.map(item=>item.id));
+  const normal=selectUniverseDnaBatch(
+    competitors.filter(item=>!targetedIds.has(item.id)),
+    limit-targeted.length
+  );
+  return [...targeted,...normal];
 }
