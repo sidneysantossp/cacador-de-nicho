@@ -2,7 +2,7 @@ import 'server-only';
 
 import type {
   EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
-  EpisodeAutomationRun, EpisodeAutomationRunPayload,
+  EpisodeAutomationRun, EpisodeAutomationRunPayload, EpisodeAutomationStatus,
   EpisodeAutomationStep, EpisodeAutomationStepState
 } from '@/lib/types';
 import { checked, db } from './db';
