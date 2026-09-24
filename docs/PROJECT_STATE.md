@@ -278,3 +278,13 @@ Hardening implementado:
 - singular/plural simples são normalizados (`houses/house`, `rooms/room`, `problems/problem`);
 - semantic family matching também exige os sinais dentro do mesmo título;
 - regressão real preserva Historic Dave e rejeita Silas Mercer, STUKALIN BUILD e Yakutia Survival Stories para o gap de história doméstica.
+
+
+## Packaging terms are not target evidence — 24/09/2026
+
+A recomputação pós-hardening revelou um falso `partial` em "Then and Now: Everyday Technology": dois canais de celebridades entraram apenas porque seus títulos continham `then` e `now`.
+
+Correção:
+- `then` e `now` passam a ser stop words do evidence resolver;
+- títulos precisam conter termos de conteúdo do target, não apenas o formato/packaging;
+- regressão garante que um canal de celebridades seja rejeitado e um título com `household + technology` continue elegível.
