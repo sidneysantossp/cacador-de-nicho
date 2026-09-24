@@ -6,8 +6,8 @@ import {
   LoaderCircle, RefreshCw, ShieldCheck, Sparkles, TrendingDown, TrendingUp
 } from 'lucide-react';
 import type {
-  ManagedChannel, PerformanceObservation, PerformanceReport, YouTubeConnection,
-  YouTubePublishJob
+  LearningLoopJob, ManagedChannel, PerformanceObservation, PerformanceReport,
+  YouTubeConnection, YouTubePublishJob
 } from '@/lib/types';
 
 type State={
@@ -21,10 +21,23 @@ type State={
     performanceLearningCount:number;
     appliedReportIds:string[];
   };
+  closedLoop:{
+    enabled:boolean;
+    jobs:LearningLoopJob[];
+    scheduled:number;
+    processing:number;
+    waiting:number;
+    failed:number;
+    completed:number;
+    nextDueAt:string|null;
+  };
 };
 const EMPTY:State={
   observations:[],reports:[],publishedVideos:[],analyticsScopeGranted:false,connection:null,
-  learningLoop:{brainVersion:0,performanceLearningCount:0,appliedReportIds:[]}
+  learningLoop:{brainVersion:0,performanceLearningCount:0,appliedReportIds:[]},
+  closedLoop:{
+    enabled:false,jobs:[],scheduled:0,processing:0,waiting:0,failed:0,completed:0,nextDueAt:null
+  }
 };
 
 const metricLabels:Record<string,string>={
@@ -83,6 +96,16 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
           brainVersion:Number(body.learningLoop?.brainVersion??0),
           performanceLearningCount:Number(body.learningLoop?.performanceLearningCount??0),
           appliedReportIds:Array.isArray(body.learningLoop?.appliedReportIds)?body.learningLoop.appliedReportIds:[]
+        },
+        closedLoop:{
+          enabled:Boolean(body.closedLoop?.enabled),
+          jobs:Array.isArray(body.closedLoop?.jobs)?body.closedLoop.jobs:[],
+          scheduled:Number(body.closedLoop?.scheduled??0),
+          processing:Number(body.closedLoop?.processing??0),
+          waiting:Number(body.closedLoop?.waiting??0),
+          failed:Number(body.closedLoop?.failed??0),
+          completed:Number(body.closedLoop?.completed??0),
+          nextDueAt:body.closedLoop?.nextDueAt??null
         }
       });
       setNotes(prev=>{
@@ -140,6 +163,33 @@ export default function PerformanceAnalystWorkspace({channel}:{channel:ManagedCh
         <strong>Brain v{state.learningLoop.brainVersion}</strong>
         <span>{state.learningLoop.performanceLearningCount} learning(s) de performance</span>
       </div>
+    </section>
+
+    <section className="performance-closed-loop">
+      <div className="performance-section-head">
+        <div>
+          <span>CLOSED LOOP INTELLIGENCE</span>
+          <h3>{state.closedLoop.enabled?'Aprendizado pós-publicação ativo.':'Aprendizado automático desligado neste canal.'}</h3>
+          <p>{state.closedLoop.enabled
+            ?'Snapshots 24h / 72h / 7d alimentam Performance, comentários e Channel Brain sem perder os gates de evidência.'
+            :'Ative o Learning Loop no Autopilot do canal para agendar snapshots automaticamente.'}</p>
+        </div>
+        <button className="button subtle small" disabled={!state.closedLoop.enabled||busy==='closed-loop-schedule'} onClick={()=>void action({action:'schedule-closed-loop',channelId:channel.id},'closed-loop-schedule')}>
+          <RefreshCw size={13}/>{busy==='closed-loop-schedule'?'Agendando…':'Sincronizar janelas'}
+        </button>
+      </div>
+      <div className="performance-loop-stats">
+        <div><span>AGENDADOS</span><strong>{state.closedLoop.scheduled}</strong></div>
+        <div><span>PROCESSANDO</span><strong>{state.closedLoop.processing}</strong></div>
+        <div><span>AGUARDANDO</span><strong>{state.closedLoop.waiting}</strong></div>
+        <div><span>CONCLUÍDOS</span><strong>{state.closedLoop.completed}</strong></div>
+        <div><span>FALHAS</span><strong>{state.closedLoop.failed}</strong></div>
+      </div>
+      {state.closedLoop.nextDueAt&&<p className="performance-loop-next">Próxima janela: {when(state.closedLoop.nextDueAt)}</p>}
+      {!!state.closedLoop.jobs.length&&<div className="performance-loop-jobs">{state.closedLoop.jobs.slice(0,12).map(job=><article key={job.id} className={job.status}>
+        <div><strong>{job.windowHours}h · {job.stage}</strong><span>{job.status} · tentativa {job.attempts} · {when(job.dueAt)}</span>{job.lastError&&<small>{job.lastError}</small>}</div>
+        {(job.status==='waiting'||job.status==='failed')&&<button className="button subtle small" disabled={busy==='closed-loop-resume:'+job.id} onClick={()=>void action({action:'resume-closed-loop',jobId:job.id},'closed-loop-resume:'+job.id)}>Retomar</button>}
+      </article>)}</div>}
     </section>
 
     {!state.connection&&<div className="performance-blocker"><AlertTriangle size={16}/><div><strong>YouTube ainda não conectado.</strong><p>Conecte o canal na etapa anterior para importar Analytics automaticamente.</p></div></div>}
