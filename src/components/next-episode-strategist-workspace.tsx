@@ -70,6 +70,8 @@ export default function NextEpisodeStrategistWorkspace({channel}:{channel:Manage
 
   const plan=state.activePlan;
   const stale=Boolean(plan&&plan.brainVersion!==state.brainVersion);
+  const autopilot=channel.autopilot??{enabled:false,mode:'assisted' as const,startOnAcceptedNextEpisode:true};
+  const autoStart=autopilot.enabled&&autopilot.startOnAcceptedNextEpisode;
 
   return <div className="next-episode-strategist">
     {message&&<div className="next-episode-message"><CheckCircle2 size={15}/>{message}</div>}
@@ -92,6 +94,10 @@ export default function NextEpisodeStrategistWorkspace({channel}:{channel:Manage
         <span>DECISÃO EDITORIAL</span>
         <h3>{plan?'Plano ativo v'+plan.version:'Nenhum plano ativo.'}</h3>
         <p>{plan?'Gerado a partir do Brain v'+plan.brainVersion+'.':'Gere três direções concorrentes antes de abrir um novo Content Project.'}</p>
+        <div className={'next-episode-autopilot '+(autoStart?'enabled':'disabled')}>
+          <span>AUTOPILOT</span>
+          <strong>{autoStart?(autopilot.mode==='autonomous'?'Autonomous':'Assisted')+' · inicia após o aceite':'Desligado · aceite cria apenas o Content Project'}</strong>
+        </div>
       </div>
       <div>
         <button className="button subtle small" disabled={busy==='refresh'} onClick={()=>{setBusy('refresh');void load().finally(()=>setBusy(''));}}><RefreshCw size={13}/>Atualizar</button>
@@ -110,6 +116,8 @@ export default function NextEpisodeStrategistWorkspace({channel}:{channel:Manage
       busy={busy}
       notes={notes}
       onNotes={setNotes}
+      autoStart={autoStart}
+      automationMode={autopilot.mode}
       onAccept={(candidate)=>void action({
         action:'accept',
         planId:plan.id,
@@ -132,12 +140,14 @@ export default function NextEpisodeStrategistWorkspace({channel}:{channel:Manage
 }
 
 function PlanView({
-  plan,stale,busy,notes,onNotes,onAccept
+  plan,stale,busy,notes,onNotes,onAccept,autoStart,automationMode
 }:{
   plan:NextEpisodePlan;
   stale:boolean;
   busy:string;
   notes:string;
+  autoStart:boolean;
+  automationMode:'assisted'|'autonomous';
   onNotes:(value:string)=>void;
   onAccept:(candidate:NextEpisodeCandidate)=>void;
 }){
@@ -188,7 +198,7 @@ function PlanView({
         {candidate.blockers.length>0&&<div className="next-episode-blockers">{candidate.blockers.map(item=><span key={item}>{item}</span>)}</div>}
 
         <button className="button primary" disabled={stale||!candidate.narrativeReady||busy==='accept:'+candidate.id} onClick={()=>onAccept(candidate)}>
-          <ShieldCheck size={14}/>{busy==='accept:'+candidate.id?'Criando…':'Aceitar → Content OS'}
+          <ShieldCheck size={14}/>{busy==='accept:'+candidate.id?'Criando…':autoStart?'Aceitar → '+(automationMode==='autonomous'?'Autopilot':'Automation'):'Aceitar → Content OS'}
         </button>
       </article>;
     })}</div>
