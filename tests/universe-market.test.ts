@@ -278,3 +278,20 @@ test('AI-suggested target ids are rejected unless backend evidence matches the t
   assert.equal(resolved.evidence.some(item=>item.includes('curve-only')),false);
   assert.equal(resolved.evidence.some(item=>item.includes('Sugestão da IA validada em target-city')),true);
 });
+
+
+test('source-domain words in changedVariable cannot validate the target space',()=>{
+  const gap={
+    title:'Human survival in impossible ecosystems',
+    targetSpace:'Historical human adaptation to extreme environments',
+    changedVariable:'Replace animals with humans while preserving the hostile-world mechanism',
+    firstTests:['How Humans Survived the Harshest Desert']
+  };
+  const animal=competitor('animal-source','Animal Science');
+  animal.recentUploads=[{id:'a1',title:'POV: Born as a Wolf — Animal Survival in a Hostile World',publishedAt:'2026-09-20T00:00:00Z',views:500000,duration:'PT8M',thumbnail:'',url:''}];
+  const human=competitor('human-target','History');
+  human.recentUploads=[{id:'h1',title:'Human Survival and Adaptation in Extreme Desert Environments',publishedAt:'2026-09-20T00:00:00Z',views:320000,duration:'PT8M',thumbnail:'',url:''}];
+
+  const resolved=resolveUniverseGapEvidence([animal,human],gap,['animal-source','human-target']);
+  assert.deepEqual(resolved.channelIds,['human-target']);
+});
