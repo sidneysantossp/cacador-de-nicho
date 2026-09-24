@@ -204,7 +204,7 @@ export default function CompetitorUniverse({
         <div>
           <span className="eyebrow">CHANNEL DNA / PIPELINE</span>
           <h3>{dnaReady} de {competitors.length} concorrentes com DNA persistido</h3>
-          <p>{dnaPending} pendente(s) · lotes de até 5 · prioridade por status, sinais fortes, breakout e atividade recente</p>
+          <p>{dnaPending} pendente(s) · lotes de até 5 · gaps em investigação + cobertura de clusters + sinais fortes</p>
         </div>
         <button className="button primary small" disabled={mode==='demo'||!!busy||dnaPending===0} onClick={()=>void onIntelligence([])}>
           <Sparkles size={15}/>{busy==='universeIntelligence'?'Gerando lote…':dnaPending===0?'DNA concluído':'Gerar próximo lote'}
