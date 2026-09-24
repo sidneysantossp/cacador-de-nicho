@@ -306,6 +306,44 @@ export type UniverseMarketIntelligence = {
  gaps: UniverseGap[];
  limitations: string[];
 };
+export type LearningLoopJobStatus =
+ | 'scheduled'
+ | 'processing'
+ | 'waiting'
+ | 'completed'
+ | 'failed'
+ | 'cancelled';
+
+export type LearningLoopJobPayload = {
+ kind: 'learning-loop-job';
+ channelId: string;
+ publishJobId: string;
+ packageId: string;
+ episodeId: string;
+ windowHours: number;
+ dueAt: string;
+ policy: {
+  autoApprovePerformance: boolean;
+  autoAnalyzeAudience: boolean;
+  autoApproveAudience: boolean;
+ };
+ createdAt: string;
+};
+
+export type LearningLoopJob = LearningLoopJobPayload & {
+ id: string;
+ status: LearningLoopJobStatus;
+ attempts: number;
+ stage: string;
+ observationId?: string;
+ performanceReportId?: string;
+ audienceReportId?: string;
+ brainVersion?: number;
+ lastError?: string;
+ completedAt?: string;
+ updatedAt: string;
+};
+
 export type ChannelAutopilotSettings = {
  enabled: boolean;
  mode: 'assisted' | 'autonomous';
