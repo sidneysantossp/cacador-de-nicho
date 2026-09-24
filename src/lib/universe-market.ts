@@ -111,7 +111,8 @@ const GAP_MATCH_STOP_WORDS=new Set([
   'como','com','da','das','de','do','dos','e','em','entre','era','essa','esse','esta','este','foi','mais','na','nas','no','nos','o','os','ou','para',
   'pela','pelas','pelo','pelos','por','que','se','sem','ser','seu','sua','suas','seus','um','uma','uns','umas',
   'explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests','channel','channels','video','videos',
-  'history','historical','people','person','ordinary','animal','animals','old','then','now'
+  'history','historical','people','person','ordinary','animal','animals','old','then','now',
+  'day','earth','used','use','using','ancient','iconic','greatest','strange','thing','things','world'
 ]);
 
 const ANIMAL_SPECIFIC_TERMS=[
