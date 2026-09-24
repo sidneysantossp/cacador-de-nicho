@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   channelAutopilotLearningEnabled, channelAutopilotStartsAcceptedEpisode,
   channelLearningWindows, channelNextEpisodeTriggerWindow,
-  autopilotDecisionPreview, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
+  autopilotDecisionPreview, autopilotOperationalIssues, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
   effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
@@ -110,6 +110,25 @@ test('Auto Next Episode chooses the first learning window at or after target',()
   assert.equal(channelShouldAutoPlanNextEpisode(channel,24),false);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,72),true);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,168),false);
+});
+
+test('Autopilot Canary Gate blocks overlapping automatic episode decisions',()=>{
+  assert.deepEqual(autopilotOperationalIssues({
+    automaticAcceptanceInLast24Hours:false,
+    activeEpisodeAutomation:false
+  }),[]);
+  assert.deepEqual(autopilotOperationalIssues({
+    automaticAcceptanceInLast24Hours:true,
+    activeEpisodeAutomation:false
+  }),['auto-accept-cooldown']);
+  assert.deepEqual(autopilotOperationalIssues({
+    automaticAcceptanceInLast24Hours:false,
+    activeEpisodeAutomation:true
+  }),['episode-automation-active']);
+  assert.deepEqual(autopilotOperationalIssues({
+    automaticAcceptanceInLast24Hours:true,
+    activeEpisodeAutomation:true
+  }),['auto-accept-cooldown','episode-automation-active']);
 });
 
 test('Autopilot Dry Run exposes disabled generate review and auto-accept states',()=>{
