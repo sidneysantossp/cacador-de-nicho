@@ -265,3 +265,16 @@ Hardening operacional aplicado e testado no VPS:
 - scripts e units em produção passam a ser espelhados em `ops/self-hosted/` no repositório.
 
 Motivo: impedir que produção continue saudável em um SHA antigo enquanto o watcher de GitHub fica silenciosamente inativo.
+
+
+## Gap evidence title-level cooccurrence — 24/09/2026
+
+Após o ciclo manual elevar Channel DNA de 29 para 44, um gap doméstico chegou artificialmente a `observed` porque o resolver somava palavras genéricas espalhadas por descrições e títulos diferentes.
+
+Hardening implementado:
+- target evidence passa a considerar coocorrência dentro de um mesmo título recente;
+- descrição do canal deixa de funcionar como prova de demanda do target;
+- `old` é tratado como packaging genérico;
+- singular/plural simples são normalizados (`houses/house`, `rooms/room`, `problems/problem`);
+- semantic family matching também exige os sinais dentro do mesmo título;
+- regressão real preserva Historic Dave e rejeita Silas Mercer, STUKALIN BUILD e Yakutia Survival Stories para o gap de história doméstica.
