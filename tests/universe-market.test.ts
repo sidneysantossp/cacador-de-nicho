@@ -706,3 +706,131 @@ test('Market continuity drops a prior actionable gap when current target evidenc
   assert.equal(merged.gaps.length,0);
   assert.equal(merged.curves.length,1);
 });
+
+
+test('Mission Control consolidates overlapping pilot-ready gaps into one opportunity family',()=>{
+  const intelligence:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T16:26:49Z',
+    sourceCompetitorIds:['s1','s2','s3','w','n','b'],
+    dnaCount:6,
+    curves:[
+      {
+        id:'curve:completion',
+        key:'completion',
+        name:'Completion Maps',
+        thesis:'Taxonomy',
+        mechanismSteps:['A','B','C'],
+        supportingChannelIds:['s1','s2','s3','s4','s5'],
+        independentCreators:5,
+        classification:'structural',
+        clusters:['Explained'],
+        evidence:['E'],
+        counterEvidence:[],
+        recurringTitlePatterns:['Every X'],
+        transferableVariables:['Domain'],
+        limitations:[]
+      },
+      {
+        id:'curve:consequence',
+        key:'consequence',
+        name:'Failure Consequences',
+        thesis:'Failure catalog',
+        mechanismSteps:['A','B','C'],
+        supportingChannelIds:['s1','s2','s3'],
+        independentCreators:3,
+        classification:'structural',
+        clusters:['History'],
+        evidence:['E'],
+        counterEvidence:[],
+        recurringTitlePatterns:['How X failed'],
+        transferableVariables:['Domain'],
+        limitations:[]
+      }
+    ],
+    gaps:[
+      {
+        id:'gap:bridge-taxonomy',
+        curveId:'curve:completion',
+        title:'Every Type of Bridge Failure Explained',
+        targetSpace:'bridge engineering',
+        targetKeywords:['bridge failures','suspension bridges','bridge piers'],
+        preservedMechanism:'Taxonomy',
+        changedVariable:'Bridge engineering',
+        demandStatus:'observed',
+        targetEvidenceChannelIds:['sab','nknows','whirl'],
+        demandEvidence:['D'],
+        sampleSaturation:'low',
+        rationale:'Three independent target creators.',
+        risks:['Accuracy'],
+        firstTests:['Every Type of Bridge Failure Explained']
+      },
+      {
+        id:'gap:bridge-history',
+        curveId:'curve:consequence',
+        title:"How History's Most Dangerous Bridges Failed",
+        targetSpace:'historic bridge failures',
+        targetKeywords:['bridges','bridge collapses','civil engineering'],
+        preservedMechanism:'Failure catalog',
+        changedVariable:'Historic bridges',
+        demandStatus:'observed',
+        targetEvidenceChannelIds:['sab','nknows'],
+        demandEvidence:['D'],
+        sampleSaturation:'low',
+        rationale:'Two independent target creators.',
+        risks:['Accuracy'],
+        firstTests:['How Three Famous Bridges Collapsed']
+      }
+    ],
+    limitations:[]
+  };
+
+  const selected=selectUniverseMissionOpportunities(intelligence,5);
+  assert.equal(selected.length,1);
+  assert.equal(selected[0].gapId,'gap:bridge-taxonomy');
+  assert.equal(selected[0].readiness,'pilot-ready');
+  assert.equal(selected[0].alternateAngles?.length,1);
+  assert.equal(selected[0].alternateAngles?.[0].title,"How History's Most Dangerous Bridges Failed");
+});
+
+test('Mission Control does not group unrelated targets that merely share one evidence channel',()=>{
+  const intelligence=marketIntelligence();
+  intelligence.gaps=[
+    {
+      id:'gap:bridges',
+      curveId:'curve:structural',
+      title:'Bridge failures',
+      targetSpace:'bridge engineering',
+      targetKeywords:['bridges','bridge failures'],
+      preservedMechanism:'M',
+      changedVariable:'Bridges',
+      demandStatus:'observed',
+      targetEvidenceChannelIds:['same','bridge-only'],
+      demandEvidence:['D'],
+      sampleSaturation:'low',
+      rationale:'Bridge target.',
+      risks:[],
+      firstTests:['Bridge pilot']
+    },
+    {
+      id:'gap:hospitals',
+      curveId:'curve:structural',
+      title:'Hospital systems',
+      targetSpace:'hospital infrastructure',
+      targetKeywords:['hospital elevators','operating rooms'],
+      preservedMechanism:'M',
+      changedVariable:'Hospitals',
+      demandStatus:'observed',
+      targetEvidenceChannelIds:['same','hospital-only'],
+      demandEvidence:['D'],
+      sampleSaturation:'low',
+      rationale:'Hospital target.',
+      risks:[],
+      firstTests:['Hospital pilot']
+    }
+  ];
+  const selected=selectUniverseMissionOpportunities(intelligence,5);
+  assert.equal(selected.length,2);
+  assert.equal(selected.every(item=>(item.alternateAngles?.length??0)===0),true);
+});
