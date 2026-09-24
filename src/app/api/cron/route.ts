@@ -1,7 +1,7 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
 import { runAiJob } from '@/lib/server/ai-job';
-import { runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
+import { backfillUniverseSourceClusters, runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
 
 export const runtime='nodejs';
 export const maxDuration=300;
@@ -27,6 +27,10 @@ export async function GET(request:Request){
     }
     if(scope==='market'){
       const result=await runUniverseMarketIntelligence();
+      return Response.json({scope,result});
+    }
+    if(scope==='source-clusters'){
+      const result=await backfillUniverseSourceClusters(25);
       return Response.json({scope,result});
     }
     if(scope!=='radar')throw new HttpError('Escopo de rotina inválido.',400);
