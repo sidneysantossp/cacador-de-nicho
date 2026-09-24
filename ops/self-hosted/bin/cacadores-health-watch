@@ -5,10 +5,10 @@ STATE="$BASE/state/cacador-de-nicho.json"
 WATCH="$BASE/state/cacador-de-nicho-health-watch.json"
 PUBLIC=https://cacadores.159.198.40.98.sslip.io/api/health
 
-# Keep critical self-hosted schedulers alive. Starting the Universe timer is
+# Keep critical self-hosted schedulers alive. Starting the scheduled timers is
 # safe here because it is non-persistent and therefore waits for its next
 # OnCalendar slot instead of executing the heavy cycle immediately.
-for UNIT in cacadores-auto-deploy.timer cacadores-universe-cycle.timer; do
+for UNIT in cacadores-auto-deploy.timer cacadores-universe-cycle.timer cacadores-market-intelligence.timer; do
   if ! systemctl is-enabled --quiet "$UNIT"; then
     systemctl enable "$UNIT" >/dev/null 2>&1 || true
   fi
