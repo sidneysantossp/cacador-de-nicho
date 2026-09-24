@@ -309,16 +309,17 @@ export function universeGapDnaCandidateMatch(
   const targetSignalCount=direct.targetMatchedTerms.length;
   const domainAnchorCount=direct.domainAnchorMatchedTerms.length;
   const lexicalCount=direct.matchedTerms.length;
+  const hasExplicitKeywords=!!gap.targetKeywords?.length;
   const matched=
     strict.matched||
-    targetSignalCount>0||
-    domainAnchorCount>0||
-    lexicalCount>=2;
+    (hasExplicitKeywords&&(
+      targetSignalCount>0||
+      domainAnchorCount>0||
+      lexicalCount>=2
+    ));
   const score=
     (strict.matched?100:0)+
-    targetSignalCount*20+
-    domainAnchorCount*10+
-    Math.min(lexicalCount,5);
+    (hasExplicitKeywords?targetSignalCount*20+domainAnchorCount*10+Math.min(lexicalCount,5):0);
   return {
     matched,
     score,
