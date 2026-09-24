@@ -46,6 +46,10 @@ export function compareMissionCandidates(a:Channel,b:Channel){
 }
 
 
+export function universeCompetitorHasSignals(competitor:UniverseCompetitor){
+  return Math.max(competitor.signalDetails?.length??0,competitor.signals.length)>0;
+}
+
 export function hydrateMissionBriefUniverse(
   brief:MissionBrief|null|undefined,
   competitors:UniverseCompetitor[],
@@ -59,7 +63,7 @@ export function hydrateMissionBriefUniverse(
     market:{
       ...brief.market,
       competitors:competitors.length,
-      competitorSignals:competitors.filter(item=>(item.signalDetails?.length??item.signals.length)>0).length,
+      competitorSignals:competitors.filter(universeCompetitorHasSignals).length,
       competitorDna:competitors.filter(item=>!!item.dna).length,
       universeCurves:intelligence?.curves.length??0,
       universeGaps:intelligence?.gaps.length??0,
