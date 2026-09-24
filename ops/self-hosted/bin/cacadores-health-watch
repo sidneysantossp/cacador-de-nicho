@@ -5,10 +5,25 @@ STATE="$BASE/state/cacador-de-nicho.json"
 WATCH="$BASE/state/cacador-de-nicho-health-watch.json"
 PUBLIC=https://cacadores.159.198.40.98.sslip.io/api/health
 
-# Keep critical self-hosted schedulers alive. Starting the scheduled timers is
-# safe here because it is non-persistent and therefore waits for its next
-# OnCalendar slot instead of executing the heavy cycle immediately.
-for UNIT in cacadores-auto-deploy.timer cacadores-universe-cycle.timer cacadores-market-intelligence.timer; do
+# Keep infrastructure schedulers alive. Editorial/market schedulers are only
+# self-healed when the operation is not in assisted-manual mode.
+MODE_FILE="$BASE/state/cacador-de-nicho-operation-mode.json"
+OPERATION_MODE="$(python3 - "$MODE_FILE" <<'PYMODE'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+mode=""
+if p.exists():
+    try: mode=str(json.loads(p.read_text()).get("mode",""))
+    except Exception: pass
+print(mode)
+PYMODE
+)"
+UNITS=(cacadores-auto-deploy.timer)
+if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
+  UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer)
+fi
+for UNIT in "${UNITS[@]}"; do
   if ! systemctl is-enabled --quiet "$UNIT"; then
     systemctl enable "$UNIT" >/dev/null 2>&1 || true
   fi
