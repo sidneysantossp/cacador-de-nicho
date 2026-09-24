@@ -962,3 +962,48 @@ test('gap-directed DNA selector may investigate a weak target signal without pro
   const evidence=resolveUniverseGapEvidence([candidate],intelligence.gaps[0],[]);
   assert.equal(universeGapDemandStatus('structural',evidence.channelIds),'hypothesis');
 });
+
+
+test('DNA candidate retrieval rejects single generic coastal/flood anchors from real noisy titles',()=>{
+  const coastalGap={
+    title:'How Coastal Cities Build Against Rising Water',
+    targetSpace:'coastal flood defenses',
+    targetKeywords:['sea walls','storm surge barriers','coastal cities','floodgates','tidal basins','shoreline protection'],
+    changedVariable:'Coastal defenses',
+    firstTests:[]
+  };
+
+  const seventhKey=missingDnaCompetitor(
+    'seventh-key-noise',
+    'History',
+    ['The Sumerian Tablet That Describes What the Nephilim Told Humans Before the Flood']
+  );
+  const timber=missingDnaCompetitor(
+    'timber-time-noise',
+    'Entertainment',
+    ['Abandoned Mega Mansion Renovation Into a Luxury Coastal Retreat with Stunning Epoxy Floors']
+  );
+
+  assert.equal(universeGapDnaCandidateMatch(seventhKey,coastalGap).matched,false);
+  assert.equal(universeGapDnaCandidateMatch(timber,coastalGap).matched,false);
+});
+
+test('DNA candidate retrieval still accepts a complete target keyword with only one lexical hit',()=>{
+  const oceanGap={
+    title:"How History's Great Ocean Liners Met Their End",
+    targetSpace:'historic ocean liners',
+    targetKeywords:['ocean liners','passenger ships','shipwrecks','maritime disasters','salvage operations','Atlantic crossings'],
+    changedVariable:'Ocean liners',
+    firstTests:[]
+  };
+  const insight=missingDnaCompetitor(
+    'insight-shipwreck-target',
+    'History',
+    ["How Sweden's Greatest Warship Sank in Minutes #history #sweden #shipwreck"]
+  );
+
+  const match=universeGapDnaCandidateMatch(insight,oceanGap);
+  assert.equal(match.matched,true);
+  assert.equal(match.strictEvidence,false);
+  assert.equal(match.targetMatchedTerms.includes('shipwrecks'),true);
+});
