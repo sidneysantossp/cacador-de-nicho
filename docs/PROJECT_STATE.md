@@ -337,3 +337,19 @@ Correção:
 - termos genéricos de embalagem/contexto (`day`, `earth`, `used/use/using`, `ancient`, `iconic`, `greatest`, `strange`, `thing(s)`, `world`) deixam de contar como evidência lexical direta;
 - regressões reais exigem termos substantivos do target, como `surviving + cave` ou `dentist + tool`;
 - semantic-family rules existentes continuam cobrindo famílias explicitamente modeladas.
+
+
+## Target-domain evidence contract — 24/09/2026
+
+Depois de 59 Channel DNAs, o último falso `INVESTIGAR` veio de BrainCurious: o título "The Weird Side of Vladimir Putin!" validava indevidamente um gap sobre instituições cotidianas apenas por compartilhar `weird + side`.
+
+Correção estrutural:
+- todo novo gap recebe `targetSpace` em INGLÊS, limitado ao domínio de conteúdo do alvo;
+- todo novo gap recebe `targetKeywords` com 3–8 substantivos/frases nominais específicos do domínio;
+- `targetKeywords` exclui packaging, mecanismo e fórmulas de título;
+- evidência lexical direta exige, no MESMO título, pelo menos 1 termo do domínio target e pelo menos 2 sinais relevantes no total;
+- semantic-family rules explícitas continuam disponíveis para famílias já modeladas;
+- IDs sugeridos pela IA continuam passando pelo mesmo backend validator;
+- dados antigos sem `targetKeywords` continuam compatíveis via fallback para `targetSpace`.
+
+Objetivo: separar definitivamente "o formato que chama atenção" do "assunto que comprova demanda no target".
