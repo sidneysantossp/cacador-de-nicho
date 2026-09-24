@@ -368,3 +368,24 @@ Hardening:
 - regressão real rejeita War Zone para resposta urbana a incêndio e preserva WhirlTales para `suspension bridges`.
 
 Isso mantém packaging, palavras soltas e domínio-alvo como camadas separadas.
+
+
+## Universe Market continuity — 24/09/2026
+
+A expansão de 59 para 64 Channel DNAs revelou um problema de memória operacional: uma recomputação substituía integralmente o relatório `universe-market-intelligence:latest`. Um gap acionável podia desaparecer simplesmente porque a próxima amostra/saída da IA escolheu outras curvas, mesmo quando a evidência anterior continuava válida ou havia acabado de ganhar novos corroboradores.
+
+Hardening:
+- o Market passa a manter duas gerações persistentes: `latest` e `previous`;
+- antes de sobrescrever `latest`, a versão atual é arquivada como `previous`;
+- a nova execução reavalia oportunidades acionáveis de `latest` e `previous` contra todos os concorrentes que possuem DNA atual;
+- a curva anterior só pode ser carregada se continuar estrutural por criadores independentes ainda válidos;
+- o gap anterior só pode ser carregado se o Evidence Resolver atual confirmar demanda `partial` ou `observed`;
+- saturação `high` nunca é carregada;
+- gaps já presentes na nova execução não são duplicados;
+- continuidade é explicitamente registrada em `demandEvidence` e `limitations`.
+
+Caso real usado como regressão:
+- `Every Type of Bridge Failure Explained` havia desaparecido da execução seguinte;
+- WhirlTales já sustentava `suspension bridges`;
+- após DNA dirigido, nknows passou a sustentar `bridge piers`;
+- a continuidade deve revalidar os dois criadores independentes e elevar o target de `partial` para `observed`, tornando-o elegível a piloto pela regra existente.

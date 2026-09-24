@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCoverageCluster, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { preserveUniverseMarketContinuity } from '../src/lib/universe-market-continuity';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -564,4 +565,144 @@ test('multiword bridge keyword validates a real bridge-domain title',()=>{
   const resolved=resolveUniverseGapEvidence([whirl],gap,['whirl-bridge']);
   assert.deepEqual(resolved.channelIds,['whirl-bridge']);
   assert.equal(resolved.evidence.some(item=>item.includes('suspension bridges')),true);
+});
+
+
+test('Market continuity carries a prior actionable bridge gap only after current revalidation',()=>{
+  const supportA=competitor('support-a','Explained');
+  const supportB=competitor('support-b','Animals');
+  const supportC=competitor('support-c','History');
+  const whirl=competitor('whirl-bridge','History');
+  whirl.recentUploads=[
+    {id:'w1',title:'How You Invented The Suspension Bridge (Accidentally)',publishedAt:'2026-09-20T00:00:00Z',views:120000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const nknows=competitor('nknows-bridge','Engineering');
+  nknows.recentUploads=[
+    {id:'n1',title:'How Did the Ancient Romans Build Bridge Piers Underwater?',publishedAt:'2026-09-20T00:00:00Z',views:2482,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const previous:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:previous-test',
+    generatedAt:'2026-09-24T16:03:04Z',
+    sourceCompetitorIds:['support-a','support-b','support-c','whirl-bridge'],
+    dnaCount:4,
+    curves:[{
+      id:'universe-curve:completion-map',
+      key:'completion-map',
+      name:'Completion Maps for Complex Domains',
+      thesis:'Organize complex domains into a complete map.',
+      mechanismSteps:['Choose a domain','Define a taxonomy','Signal coverage'],
+      supportingChannelIds:['support-a','support-b','support-c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['Explained','Animals','History'],
+      evidence:['Repeated taxonomy packaging'],
+      counterEvidence:[],
+      recurringTitlePatterns:['Every [category] Explained'],
+      transferableVariables:['Domain'],
+      limitations:['Metadata only']
+    }],
+    gaps:[{
+      id:'universe-gap:completion-map:bridge-engineering',
+      curveId:'universe-curve:completion-map',
+      title:'Every Type of Bridge Failure Explained',
+      targetSpace:'bridge engineering',
+      targetKeywords:['bridge failures','suspension bridges','bridge piers'],
+      preservedMechanism:'Complete taxonomy',
+      changedVariable:'Civil engineering',
+      demandStatus:'partial',
+      targetEvidenceChannelIds:['whirl-bridge'],
+      demandEvidence:['WhirlTales has a suspension bridge title.'],
+      sampleSaturation:'low',
+      rationale:'Test bridge engineering as a taxonomy.',
+      risks:['Technical accuracy'],
+      firstTests:['Every Type of Bridge Failure Explained']
+    }],
+    limitations:[]
+  };
+
+  const current:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T16:09:01Z',
+    sourceCompetitorIds:[],
+    dnaCount:5,
+    curves:[],
+    gaps:[],
+    limitations:[]
+  };
+
+  const merged=preserveUniverseMarketContinuity(
+    current,
+    [previous],
+    [supportA,supportB,supportC,whirl,nknows]
+  );
+
+  assert.equal(merged.gaps.length,1);
+  assert.equal(merged.gaps[0].demandStatus,'observed');
+  assert.deepEqual(new Set(merged.gaps[0].targetEvidenceChannelIds),new Set(['whirl-bridge','nknows-bridge']));
+  assert.equal(selectUniverseMissionOpportunities(merged,5)[0]?.readiness,'pilot-ready');
+});
+
+test('Market continuity drops a prior actionable gap when current target evidence disappears',()=>{
+  const supportA=competitor('drop-support-a','Explained');
+  const supportB=competitor('drop-support-b','Animals');
+  const supportC=competitor('drop-support-c','History');
+
+  const previous:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:previous-drop',
+    generatedAt:'2026-09-24T15:00:00Z',
+    sourceCompetitorIds:['drop-support-a','drop-support-b','drop-support-c'],
+    dnaCount:3,
+    curves:[{
+      id:'universe-curve:drop',
+      key:'drop',
+      name:'Prior structural curve',
+      thesis:'Prior curve',
+      mechanismSteps:['A','B','C'],
+      supportingChannelIds:['drop-support-a','drop-support-b','drop-support-c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['Explained','Animals','History'],
+      evidence:['Prior evidence'],
+      counterEvidence:[],
+      recurringTitlePatterns:['Pattern'],
+      transferableVariables:['Domain'],
+      limitations:['Metadata only']
+    }],
+    gaps:[{
+      id:'universe-gap:drop:obsolete-target',
+      curveId:'universe-curve:drop',
+      title:'Every Obsolete Target Explained',
+      targetSpace:'obsolete target domain',
+      targetKeywords:['obsolete systems','obsolete tools'],
+      preservedMechanism:'Taxonomy',
+      changedVariable:'Obsolete domain',
+      demandStatus:'partial',
+      targetEvidenceChannelIds:['missing-channel'],
+      demandEvidence:['Old evidence'],
+      sampleSaturation:'low',
+      rationale:'Old rationale',
+      risks:[],
+      firstTests:['Every Obsolete Target Explained']
+    }],
+    limitations:[]
+  };
+
+  const current:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T16:00:00Z',
+    sourceCompetitorIds:[],
+    dnaCount:3,
+    curves:[],
+    gaps:[],
+    limitations:[]
+  };
+
+  const merged=preserveUniverseMarketContinuity(current,[previous],[supportA,supportB,supportC]);
+  assert.equal(merged.gaps.length,0);
+  assert.equal(merged.curves.length,1);
 });
