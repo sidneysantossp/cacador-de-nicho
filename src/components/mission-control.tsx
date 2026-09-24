@@ -111,6 +111,12 @@ export default function MissionControl({
             {item.readiness==='pilot-ready'&&<div className="mission-next">
               <span>DECISÃO DO PILOTO</span>
               {pilotDecisionFor(item.gapId)?<p><strong>{pilotDecisionFor(item.gapId)?.decision==='approved'?'PILOTO APROVADO':'PILOTO REJEITADO'}</strong> · {pilotDecisionFor(item.gapId)?.reason}</p>:<p>A evidência passou pelo gate. A decisão final continua humana.</p>}
+              {pilotDecisionFor(item.gapId)?.pilotBrief&&<div className="mission-first-episode">
+                <span>PILOT BRIEF · PRÓXIMO GATE</span>
+                <strong>{pilotDecisionFor(item.gapId)?.pilotBrief?.firstTest}</strong>
+                <p>{pilotDecisionFor(item.gapId)?.pilotBrief?.hypothesis}</p>
+                <small>{pilotDecisionFor(item.gapId)?.pilotBrief?.testPlan.successGate.slice(0,2).join(' · ')}</small>
+              </div>}
               <div className="mission-actions">
                 <button className="button primary small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='approved'} onClick={()=>void onPilotDecision(item.gapId,'approved')}>Aprovar piloto</button>
                 <button className="button subtle small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='rejected'} onClick={()=>void onPilotDecision(item.gapId,'rejected')}>Não seguir</button>
