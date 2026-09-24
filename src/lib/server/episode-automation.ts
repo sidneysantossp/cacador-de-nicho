@@ -11,10 +11,12 @@ import { HttpError } from './auth';
 type RunRow={
   id:string;channel_id:string;episode_id:string;content_project_id:string;
   mode:EpisodeAutomationMode;status:EpisodeAutomationStatus;current_step:EpisodeAutomationStep;
-  attempts:number;payload:unknown;last_error:string|null;created_at:string;updated_at:string;
+  attempts:number;payload:unknown;last_error:string|null;
+  hold_step:EpisodeAutomationStep|null;hold_reason:string|null;hold_created_at:string|null;
+  created_at:string;updated_at:string;
 };
 
-const runSelection='id,channel_id,episode_id,content_project_id,mode,status,current_step,attempts,payload,last_error,created_at,updated_at';
+const runSelection='id,channel_id,episode_id,content_project_id,mode,status,current_step,attempts,payload,last_error,hold_step,hold_reason,hold_created_at,created_at,updated_at';
 
 export const assistedAutomationPolicy:EpisodeAutomationPolicy={
   autoGenerateScript:false,
@@ -78,6 +80,9 @@ function normalizeRun(row:RunRow):EpisodeAutomationRun{
     currentStep:row.current_step,
     attempts:Number(row.attempts),
     lastError:row.last_error??undefined,
+    holdStep:row.hold_step??undefined,
+    holdReason:row.hold_reason??undefined,
+    holdCreatedAt:row.hold_created_at??undefined,
     createdAt:payload.createdAt??row.created_at,
     updatedAt:payload.updatedAt??row.updated_at
   };
@@ -530,6 +535,21 @@ export async function reconcileEpisodeAutomationRun(runId:string){
   const previousStep=run.currentStep;
   const previousStatus=run.status;
   const inspection=await inspectEpisodeAutomation(run);
+  const holdStillApplies=!!run.holdStep&&run.holdStep===inspection.currentStep;
+  if(holdStillApplies){
+    const current=inspection.steps.find(item=>item.step===inspection.currentStep);
+    if(current){
+      current.status='blocked';
+      current.requiresOperator=true;
+      current.reason=run.holdReason??current.reason??'Etapa pausada por um gate anterior.';
+    }
+    inspection.status='waiting';
+    inspection.blockers=[
+      ...inspection.blockers,
+      (current?.label??inspection.currentStep)+': '+(run.holdReason??'Etapa pausada.')
+    ];
+    inspection.lastDecision=run.holdReason??'Etapa pausada por um gate anterior.';
+  }
   const now=new Date().toISOString();
   const payload:EpisodeAutomationRunPayload={
     kind:'episode-automation-run',
@@ -552,6 +572,9 @@ export async function reconcileEpisodeAutomationRun(runId:string){
     current_step:inspection.currentStep,
     payload,
     last_error:inspection.status==='failed'?inspection.lastDecision:null,
+    hold_step:holdStillApplies?run.holdStep:null,
+    hold_reason:holdStillApplies?run.holdReason:null,
+    hold_created_at:holdStillApplies?run.holdCreatedAt:null,
     updated_at:now
   }).eq('id',run.id));
 
@@ -664,6 +687,31 @@ export async function updateEpisodeAutomationRun(input:{
     payload:{mode,policy}
   });
   return reconcileEpisodeAutomationRun(run.id);
+}
+
+export async function resumeEpisodeAutomationRun(runId:string){
+  const run=await loadEpisodeAutomationRun(runId);
+  if(!run)throw new HttpError('Automation Run não encontrado.',404);
+  if(run.status==='cancelled'||run.status==='completed'){
+    throw new HttpError('Este Automation Run não pode ser retomado.',409);
+  }
+  checked(await db().from('radar_episode_automation_runs').update({
+    status:'active',
+    hold_step:null,
+    hold_reason:null,
+    hold_created_at:null,
+    last_error:null,
+    worker_token:null,
+    lease_until:null,
+    updated_at:new Date().toISOString()
+  }).eq('id',runId));
+  await appendEvent(runId,{
+    step:run.currentStep,
+    status:'info',
+    message:'Hold removido pelo operador; run liberado para nova tentativa.',
+    payload:{previousHold:run.holdReason??null}
+  });
+  return reconcileEpisodeAutomationRun(runId);
 }
 
 export async function cancelEpisodeAutomationRun(runId:string){
