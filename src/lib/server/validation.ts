@@ -138,12 +138,38 @@ export const productionDnaPayloadSchema=z.object({
   basePrompt:z.string().trim().max(12000),
   scenePromptTemplate:z.string().trim().max(12000),
   negativePrompt:z.string().trim().max(12000),
-  forbidden:shortList(100,500)
+  forbidden:shortList(100,500),
+  visualMoat:z.string().trim().max(8000).optional(),
+  qualityBenchmark:z.object({
+   id:z.string().trim().min(1).max(120),
+   label:z.string().trim().min(1).max(300),
+   status:z.enum(['locked','reference']),
+   sourceKind:z.enum(['video','image']),
+   sourceProvider:z.string().trim().max(120),
+   sourceFileId:z.string().trim().max(300),
+   sourceFileName:z.string().trim().max(500),
+   technical:z.object({
+    durationSeconds:z.number().min(0).max(86400).nullable(),
+    width:z.number().int().min(1).max(16384).nullable(),
+    height:z.number().int().min(1).max(16384).nullable(),
+    fps:z.number().min(1).max(240).nullable()
+   }).strict(),
+   criteria:z.object({
+    characterConsistency:z.string().trim().max(2000),
+    materialTexture:z.string().trim().max(2000),
+    lightingEnvironment:z.string().trim().max(2000),
+    motionQuality:z.string().trim().max(2000)
+   }).strict(),
+   qaRules:shortList(50,1000),
+   approvedAt:z.string().datetime()
+  }).strict().optional()
  }).strict(),
  characters:z.array(z.object({
   id:z.string().trim().min(1).max(120),
   name:z.string().trim().min(1).max(180),
   description:z.string().trim().max(3000),
+  role:z.string().trim().max(180).optional(),
+  referenceStatus:z.enum(['locked','needs-reference','ready']).optional(),
   visualRules:shortList(100,500),
   forbidden:shortList(100,500),
   referenceAssets:shortList(100,1000)
