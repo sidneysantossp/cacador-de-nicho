@@ -147,3 +147,9 @@ Infraestrutura aplicada:
 - processamento em lotes de até 25;
 - progresso exposto no dashboard;
 - Mission Control prioriza bootstrap do Universe antes do Radar externo.
+
+
+## Universe Daily Cron — 24/09/2026
+
+Configurado cron diário às 10:00 UTC para `/api/cron/universe`.
+Objetivo: manter o bootstrap e Channel DNA avançando sem exigir clique do operador, com teto conservador de 25 imports + 1 lote de até 5 DNAs por execução.
