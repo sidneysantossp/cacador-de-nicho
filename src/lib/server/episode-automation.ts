@@ -36,6 +36,7 @@ import { queueYouTubePublication } from './youtube-publisher';
 import {
   assertAutopilotControlRunning, loadAutopilotControl
 } from './autopilot-control';
+import { recordAutopilotIncident } from './autopilot-incidents';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, episodeAutomationLabels, inspectAutomationSteps
@@ -722,6 +723,15 @@ async function holdAutomationRun(
     message:message.slice(0,4000),
     payload:{kind:'automation-hold'}
   });
+  await recordAutopilotIncident({
+    area:'episode-automation',
+    channelId:run.channelId,
+    entityId:run.id,
+    severity:'warning',
+    code:'episode-automation-hold',
+    message,
+    payload:{step:stepName}
+  }).catch(()=>{});
   return reconcileEpisodeAutomationRun(run.id);
 }
 
@@ -745,6 +755,15 @@ async function failAutomationRun(
     message:message.slice(0,4000),
     payload:{kind:'automation-failure'}
   });
+  await recordAutopilotIncident({
+    area:'episode-automation',
+    channelId:run.channelId,
+    entityId:run.id,
+    severity:'critical',
+    code:'episode-automation-failed',
+    message,
+    payload:{step:stepName}
+  }).catch(()=>{});
   return (await loadEpisodeAutomationRun(run.id))!;
 }
 
