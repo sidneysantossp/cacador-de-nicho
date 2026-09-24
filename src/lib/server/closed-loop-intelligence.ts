@@ -22,6 +22,7 @@ import {
 } from './next-episode';
 import { loadAutopilotOperationalIssues } from './autopilot-operational';
 import { assertAutopilotControlRunning } from './autopilot-control';
+import { recordAutopilotIncident } from './autopilot-incidents';
 
 type JobRow={
   id:string;
@@ -287,6 +288,15 @@ async function reschedule(job:LearningLoopJob,workerToken:string,reason:string,h
     worker_token:null,
     lease_until:null
   });
+  await recordAutopilotIncident({
+    area:'closed-loop',
+    channelId:job.channelId,
+    entityId:job.id,
+    severity:'warning',
+    code:'closed-loop-retry',
+    message:reason,
+    payload:{windowHours:job.windowHours,attempts:job.attempts,retryHours:hours}
+  }).catch(()=>{});
   return (await loadLearningLoopJob(job.id))!;
 }
 
@@ -540,6 +550,15 @@ export async function processClaimedLearningLoopJob(jobId:string,workerToken:str
       lease_until:null,
       completed_at:new Date().toISOString()
     });
+    await recordAutopilotIncident({
+      area:'closed-loop',
+      channelId:job.channelId,
+      entityId:job.id,
+      severity:'critical',
+      code:'closed-loop-failed',
+      message,
+      payload:{windowHours:job.windowHours,attempts:job.attempts}
+    }).catch(()=>{});
     return (await loadLearningLoopJob(job.id))!;
   }
 }
