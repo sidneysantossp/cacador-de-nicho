@@ -57,7 +57,7 @@ export default function EpisodeAutomationWorkspace({channel}:{channel:ManagedCha
   const [state,setState]=useState<State>({runs:[],availableProjects:[]});
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
-  const [message,setMessage]='' as never;
+  const [message,setMessage]=useState('');
   const [selectedProject,setSelectedProject]=useState('');
 
   async function load(silent=false){
