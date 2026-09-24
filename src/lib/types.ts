@@ -1719,6 +1719,77 @@ export type NextEpisodePlanVersion = {
  payload: NextEpisodePlanPayload;
  createdAt: string;
 };
+
+export type EpisodeAutomationMode = 'assisted' | 'autonomous';
+export type EpisodeAutomationStatus = 'active' | 'waiting' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type EpisodeAutomationStep =
+ | 'content'
+ | 'script'
+ | 'voice'
+ | 'transcript'
+ | 'scenes'
+ | 'visual-prompts'
+ | 'visual-assets'
+ | 'timeline'
+ | 'video-edit'
+ | 'render'
+ | 'quality'
+ | 'packaging'
+ | 'publish'
+ | 'done';
+export type EpisodeAutomationStepState = {
+ step: EpisodeAutomationStep;
+ status: 'pending' | 'ready' | 'running' | 'waiting' | 'completed' | 'blocked' | 'failed' | 'skipped';
+ label: string;
+ entityId?: string;
+ entityVersion?: number;
+ reason?: string;
+ requiresOperator: boolean;
+};
+export type EpisodeAutomationPolicy = {
+ autoGenerateScript: boolean;
+ autoApproveObjectiveGates: boolean;
+ autoGenerateVoice: boolean;
+ autoCreateTranscript: boolean;
+ autoCreateScenes: boolean;
+ autoGenerateVisualPrompts: boolean;
+ autoGenerateVisualAssets: boolean;
+ autoBuildTimeline: boolean;
+ autoCreateVideoEdit: boolean;
+ autoRender: boolean;
+ autoRunQuality: boolean;
+ autoCreatePackage: boolean;
+ autoPublish: boolean;
+};
+export type EpisodeAutomationRunPayload = {
+ kind: 'episode-automation-run';
+ id: string;
+ channelId: string;
+ episodeId: string;
+ contentProjectId: string;
+ mode: EpisodeAutomationMode;
+ policy: EpisodeAutomationPolicy;
+ steps: EpisodeAutomationStepState[];
+ currentStep: EpisodeAutomationStep;
+ blockers: string[];
+ lastDecision: string;
+ createdAt: string;
+ updatedAt: string;
+};
+export type EpisodeAutomationRun = EpisodeAutomationRunPayload & {
+ status: EpisodeAutomationStatus;
+ attempts: number;
+ lastError?: string;
+};
+export type EpisodeAutomationEvent = {
+ id: number;
+ runId: string;
+ step: EpisodeAutomationStep;
+ status: 'info' | 'started' | 'completed' | 'waiting' | 'blocked' | 'failed';
+ message: string;
+ payload: Record<string,unknown>;
+ createdAt: string;
+};
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
