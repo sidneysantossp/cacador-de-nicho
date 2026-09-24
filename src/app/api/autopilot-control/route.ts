@@ -6,6 +6,7 @@ import { dbConfigured } from '@/lib/server/db';
 import {
   autopilotControlState, loadAutopilotControl, saveAutopilotControl
 } from '@/lib/server/autopilot-control';
+import { resolveAutopilotIncident } from '@/lib/server/autopilot-incidents';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -25,6 +26,11 @@ const actionSchema=z.discriminatedUnion('action',[
     expectedVersion:z.number().int().min(1),
     maxConcurrentAutomationRuns:z.number().int().min(1).max(10),
     maxConcurrentLearningJobs:z.number().int().min(1).max(10)
+  }).strict(),
+  z.object({
+    action:z.literal('incident'),
+    incidentId:z.string().uuid(),
+    disposition:z.enum(['resolved','ignored'])
   }).strict()
 ]);
 
@@ -56,6 +62,21 @@ export async function POST(request:Request){
       throw new HttpError('Revise os campos do Autopilot Control Plane.',400);
     }
     const body=parsed.data;
+
+    if(body.action==='incident'){
+      const incident=await resolveAutopilotIncident({
+        incidentId:body.incidentId,
+        status:body.disposition
+      });
+      return Response.json({
+        message:body.disposition==='resolved'
+          ?'Incidente marcado como resolvido.'
+          :'Incidente ignorado pelo operador.',
+        incident,
+        state:await autopilotControlState()
+      });
+    }
+
     const current=await loadAutopilotControl();
 
     const control=await saveAutopilotControl({
