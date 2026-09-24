@@ -920,3 +920,20 @@
 .performance-loop-jobs span{font-size:8px;color:#8a9387}
 .performance-loop-jobs small{font-size:8px;color:#9a554c;line-height:1.45}
 @media(max-width:760px){.performance-loop-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.performance-loop-jobs article{align-items:stretch;flex-direction:column}}
+
+
+/* Autopilot Decision Preview */
+.managed-autopilot-preview-button{justify-self:start;margin-top:2px}
+.managed-autopilot-preview{display:grid!important;gap:6px!important;border:1px solid #dde3da;border-radius:8px;padding:8px;background:#fff}
+.managed-autopilot-preview>div{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.managed-autopilot-preview strong{font-size:8px;color:#566151}
+.managed-autopilot-preview span{font-size:7px;color:#879183;white-space:nowrap}
+.managed-autopilot-preview p{font-size:8px;line-height:1.45;color:#727d6e;margin:0}
+.managed-autopilot-preview ul{display:grid;gap:3px;margin:0;padding-left:16px}
+.managed-autopilot-preview li{font-size:7px;line-height:1.4;color:#8b6f38}
+.managed-autopilot-preview.auto-accept{border-color:#c9ddc2;background:#f7fbf5}
+.managed-autopilot-preview.auto-accept strong{color:#4f6547}
+.managed-autopilot-preview.review{border-color:#eadcb9;background:#fffaf0}
+.managed-autopilot-preview.generate-plan{border-color:#d8e0e6;background:#f8fafc}
+.managed-autopilot-preview.disabled{border-color:#e4e5e2;background:#f7f8f6}
+@media(max-width:640px){.managed-autopilot-preview>div{flex-direction:column}.managed-autopilot-preview span{white-space:normal}}
