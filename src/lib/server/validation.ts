@@ -5,11 +5,11 @@ export const managedChannelSchema=z.object({id:z.string().uuid().optional(),name
  enabled:z.boolean(),
  mode:z.enum(['assisted','autonomous']),
  startOnAcceptedNextEpisode:z.boolean(),
- learningLoopEnabled:z.boolean(),
- learningWindowsHours:z.array(z.number().int().min(1).max(720)).min(1).max(8),
- autoApprovePerformance:z.boolean(),
- autoAnalyzeAudience:z.boolean(),
- autoApproveAudience:z.boolean()
+ learningLoopEnabled:z.boolean().default(true),
+ learningWindowsHours:z.array(z.number().int().min(1).max(720)).min(1).max(8).default([24,72,168]),
+ autoApprovePerformance:z.boolean().default(true),
+ autoAnalyzeAudience:z.boolean().default(true),
+ autoApproveAudience:z.boolean().default(true)
 }).strict().optional(),createdAt:z.string().datetime().optional(),updatedAt:z.string().datetime().optional()}).strict();
 const shortList=(maxItems:number,maxLength=300)=>z.array(z.string().trim().min(1).max(maxLength)).max(maxItems);
 export const channelBrainPayloadSchema=z.object({
