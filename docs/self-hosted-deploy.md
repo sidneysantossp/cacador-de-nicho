@@ -31,3 +31,17 @@ Runtime secrets live only on the VPS environment files and Supabase Vault. They 
 ## Automatic production watch
 
 The VPS watches the GitHub `master` branch on a short interval. A new commit is built and tested as a candidate. Production traffic changes only after the candidate passes the application health gate and live Supabase connectivity check. Failed candidates leave the current production release untouched.
+
+
+## Universe scheduler
+
+The operational Universe scheduler lives on the AuditSEO VPS, not on Vercel.
+
+- systemd service: `cacadores-universe-batch.service`
+- systemd timer: `cacadores-universe-cycle.timer`
+- cadence: daily at 12:00 UTC (09:00 America/Sao_Paulo)
+- execution path: loopback to the currently promoted production port
+- authentication: `CRON_SECRET` is loaded from the VPS production environment and is never passed in the process command line
+- the Vercel project does not define a Universe cron
+
+The cycle executes queue processing, bounded Channel DNA bootstrap and conditional Curves/Gaps recomputation. The previous production container remains available for rollback independently of the scheduler.
