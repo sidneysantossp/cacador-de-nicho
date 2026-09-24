@@ -143,7 +143,7 @@ A fila é persistente, protegida por RLS e visível no Universe e no Mission Bri
 
 ## Universe Daily Cron
 
-O projeto registra um cron Vercel em `vercel.json` para `/api/cron/universe` às 10:00 UTC (07:00 BRT).
+O projeto registra um cron Vercel em `vercel.json` para `/api/cron/universe` às 12:00 UTC (09:00 BRT).
 
 Por execução:
 - claim atômico de até 25 itens de `radar_universe_queue`;
@@ -157,3 +157,5 @@ O endpoint usa a mesma proteção `CRON_SECRET` do cron principal. Se a variáve
 ### Refresh condicional de mercado
 
 Depois do lote de Channel DNA, o cron do Universe verifica `shouldRefreshUniverseMarketIntelligence()`. Curves/Gaps só são recalculados quando existe DNA novo desde o último relatório. Sem mudança de evidência, nenhuma chamada de Market Intelligence é feita.
+
+O ciclo diário é executado sob `runAiJob('universe-queue','cron-daily', ...)`, portanto respeita a exclusão mútua dos jobs pesados e deixa um registro auditável em `radar_runs`.
