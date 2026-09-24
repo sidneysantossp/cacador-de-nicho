@@ -170,3 +170,14 @@ Implementado bridge operacional entre a inteligência cross-channel do Universe 
 - cada card mostra curva de origem, target, primeiro teste, razões verificáveis e riscos;
 - oportunidades do Universe permanecem separadas de `Production Ready`, que continua exigindo Opportunity Report profundo;
 - ordenação baseada em estados de evidência explícitos, sem score opaco.
+
+
+## Vercel deployment governance — 24/09/2026
+
+Após atingir `build-rate-limit`, o repositório passa a impedir deployments automáticos da Vercel em branches de desenvolvimento.
+- `master` continua habilitada para deployment automático;
+- demais branches não disparam deployment Vercel;
+- validação de branches continua via GitHub CI (`typecheck`, testes e build);
+- preview Vercel passa a ser exceção deliberada, não efeito colateral de cada push.
+
+Motivo: preservar quota de deployments para produção e evitar que commits intermediários consumam o limite da conta.
