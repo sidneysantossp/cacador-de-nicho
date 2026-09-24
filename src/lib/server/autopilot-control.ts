@@ -2,7 +2,7 @@ import 'server-only';
 
 import type {
   AutopilotControl, AutopilotControlPayload, AutopilotControlStatus,
-  AutopilotControlVersion
+  AutopilotControlVersion, AutopilotIncident
 } from '@/lib/types';
 import {
   normalizeAutopilotControlPayload
@@ -131,6 +131,45 @@ export async function saveAutopilotControl(input:{
   return loadAutopilotControl();
 }
 
+export async function pauseAutopilotControlFromSystem(reason:string){
+  const message=reason.trim().slice(0,1000)||
+    'Circuit breaker automático acionado.';
+  for(let attempt=0;attempt<2;attempt++){
+    const current=await loadAutopilotControl();
+    if(current.status==='paused')return current;
+    const now=new Date().toISOString();
+    const payload=normalizeAutopilotControlPayload({
+      kind:'autopilot-control',
+      id:'global',
+      status:'paused',
+      pauseReason:message,
+      maxConcurrentAutomationRuns:current.maxConcurrentAutomationRuns,
+      maxConcurrentLearningJobs:current.maxConcurrentLearningJobs,
+      updatedBy:'system',
+      createdAt:current.createdAt,
+      updatedAt:now
+    });
+    const result=await db().rpc('save_autopilot_control',{
+      p_status:'paused',
+      p_pause_reason:payload.pauseReason,
+      p_max_concurrent_automation_runs:payload.maxConcurrentAutomationRuns,
+      p_max_concurrent_learning_jobs:payload.maxConcurrentLearningJobs,
+      p_payload:payload,
+      p_expected_version:current.version
+    });
+    if(!result.error)return loadAutopilotControl();
+    if(!String(result.error.message??'').includes('autopilot control version conflict')){
+      throw new HttpError('Falha ao acionar circuit breaker do Autopilot.',502);
+    }
+  }
+  const current=await loadAutopilotControl();
+  if(current.status==='paused')return current;
+  throw new HttpError(
+    'Control Plane mudou durante o circuit breaker. Estado preservado para revisão.',
+    409
+  );
+}
+
 export async function assertAutopilotControlRunning(area:string){
   const control=await loadAutopilotControl();
   if(control.status==='running')return control;
@@ -144,17 +183,36 @@ export async function assertAutopilotControlRunning(area:string){
 
 export async function autopilotControlState(){
   const client=db();
-  const [control,history,automationResult,learningResult]=await Promise.all([
+  const [control,history,automationResult,learningResult,incidentResult]=await Promise.all([
     loadAutopilotControl(),
     loadAutopilotControlHistory(),
     client.from('radar_episode_automation_runs')
       .select('status,worker_token,lease_until'),
     client.from('radar_learning_loop_jobs')
-      .select('status,worker_token,lease_until')
+      .select('status,worker_token,lease_until'),
+    client.from('radar_autopilot_incidents')
+      .select('id,area,channel_id,entity_id,severity,code,message,status,occurrences,created_at,last_seen_at,resolved_at,payload')
+      .order('last_seen_at',{ascending:false})
+      .limit(50)
   ]);
 
   const automation=checked(automationResult)??[];
   const learning=checked(learningResult)??[];
+  const incidents=(checked(incidentResult)??[]).map(row=>({
+    id:String(row.id),
+    area:String(row.area),
+    channelId:row.channel_id?String(row.channel_id):undefined,
+    entityId:String(row.entity_id),
+    severity:String(row.severity),
+    code:String(row.code),
+    message:String(row.message),
+    status:String(row.status),
+    occurrences:Number(row.occurrences),
+    firstSeenAt:String(row.created_at),
+    lastSeenAt:String(row.last_seen_at),
+    resolvedAt:row.resolved_at?String(row.resolved_at):undefined,
+    payload:(row.payload??{}) as Record<string,unknown>
+  })) as AutopilotIncident[];
   const now=Date.now();
   const liveLease=(item:{worker_token?:unknown;lease_until?:unknown})=>{
     const lease=item.lease_until?Date.parse(String(item.lease_until)):0;
@@ -175,6 +233,10 @@ export async function autopilotControlState(){
       learningLeased:learning.filter(item=>
         item.status==='processing'&&liveLease(item)
       ).length
-    }
+    },
+    incidents,
+    openCriticalIncidents:incidents.filter(
+      incident=>incident.status==='open'&&incident.severity==='critical'
+    ).length
   };
 }
