@@ -295,3 +295,60 @@ test('source-domain words in changedVariable cannot validate the target space',(
   const resolved=resolveUniverseGapEvidence([animal,human],gap,['animal-source','human-target']);
   assert.deepEqual(resolved.channelIds,['human-target']);
 });
+
+
+test('target evidence requires meaningful terms to co-occur in the same upload title',()=>{
+  const gap={
+    title:'Why Old Houses Had Rooms for Problems We Forgot',
+    targetSpace:'Material history of the house, hygiene and domestic solutions before modern infrastructure',
+    changedVariable:'Domestic architecture',
+    firstTests:['Why Old Houses Had Rooms for Problems We Forgot']
+  };
+
+  const historic=competitor('historic-dave-house','Everyday History');
+  historic.recentUploads=[
+    {id:'h1',title:'Rooms in Your House That Only Exist Because of an Old Problem',publishedAt:'2026-09-08T00:00:00Z',views:20703,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const silas=competitor('silas-noise','Off-Grid Living');
+  silas.description='Forgotten frontier skills for old houses and cabins.';
+  silas.recentUploads=[
+    {id:'s1',title:'11 Old Frontier Men Organization Rules Americans Break — That Make Your House Messy',publishedAt:'2026-09-19T00:00:00Z',views:5421,duration:'PT8M',thumbnail:'',url:''},
+    {id:'s2',title:'5 Hidden Rooms Frontier Families Built Into Their Cabins',publishedAt:'2026-09-20T00:00:00Z',views:4683,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const stukalin=competitor('stukalin-noise','Home Transformation');
+  stukalin.description='We transform old worn-out houses, rooms and buildings into new homes.';
+  stukalin.recentUploads=[
+    {id:'st1',title:'We Restored an Abandoned Mountain House for an Elderly Couple',publishedAt:'2026-07-02T00:00:00Z',views:106228,duration:'PT8M',thumbnail:'',url:''},
+    {id:'st2',title:'Helping Dad Save an Old Windmill',publishedAt:'2026-08-25T00:00:00Z',views:307155,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const yakutia=competitor('yakutia-noise','Survival Stories');
+  yakutia.description='History drifts into quiet rooms from the 1500s.';
+  yakutia.recentUploads=[
+    {id:'y1',title:'An Old Woman in -71°C Yakutia Saved a Freezing Wolf',publishedAt:'2026-03-06T00:00:00Z',views:1654,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([historic,silas,stukalin,yakutia],gap,[]);
+  assert.deepEqual(resolved.channelIds,['historic-dave-house']);
+  assert.equal(resolved.evidence.some(item=>item.includes('historic-dave-house')),true);
+  assert.equal(resolved.evidence.some(item=>item.includes('silas-noise')),false);
+  assert.equal(resolved.evidence.some(item=>item.includes('stukalin-noise')),false);
+  assert.equal(resolved.evidence.some(item=>item.includes('yakutia-noise')),false);
+});
+
+test('plural target words still match singular upload wording inside one title',()=>{
+  const gap={
+    title:'Houses with rooms built for forgotten problems',
+    targetSpace:'Domestic house rooms and practical problems',
+    changedVariable:'Domestic architecture',
+    firstTests:[]
+  };
+  const relevant=competitor('plural-normalization','Everyday History');
+  relevant.recentUploads=[
+    {id:'p1',title:'A Room in Your House Built for a Forgotten Problem',publishedAt:'2026-09-20T00:00:00Z',views:50000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([relevant],gap,[]);
+  assert.deepEqual(resolved.channelIds,['plural-normalization']);
+});
