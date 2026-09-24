@@ -339,6 +339,10 @@ export type LearningLoopJob = LearningLoopJobPayload & {
  performanceReportId?: string;
  audienceReportId?: string;
  brainVersion?: number;
+ nextEpisodePlanId?: string;
+ nextEpisodeEpisodeId?: string;
+ nextEpisodeAutomationRunId?: string;
+ nextEpisodeAction?: 'planned' | 'review' | 'accepted' | 'automation-started';
  lastError?: string;
  completedAt?: string;
  updatedAt: string;
@@ -353,6 +357,10 @@ export type ChannelAutopilotSettings = {
  autoApprovePerformance: boolean;
  autoAnalyzeAudience: boolean;
  autoApproveAudience: boolean;
+ autoPlanNextEpisode: boolean;
+ autoAcceptNextEpisode: boolean;
+ nextEpisodeTriggerHours: number;
+ nextEpisodeMinEvidence: 'medium' | 'high';
 };
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
