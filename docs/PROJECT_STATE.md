@@ -467,3 +467,22 @@ Separação implementada:
 - nenhuma seleção de candidato altera demanda ou evidência por si só.
 
 Regressão real: um título com `shipwreck` pode ser investigado para `historic ocean liners`, mas continua fora da evidência determinística enquanto não houver sinais suficientes no mesmo título.
+
+
+## Gap DNA candidate noise hardening — 24/09/2026
+
+O primeiro lote real com candidate retrieval amplo gerou 5 DNAs e elevou o Universe de 64 para 69. A auditoria mostrou que os prováveis slots dirigidos foram contaminados por duas âncoras genéricas:
+- The Seventh Key: `flood` em contexto mitológico;
+- Timber Time: `coastal` em contexto de reforma de mansão.
+
+Correção:
+- uma keyword/frase completa de `targetKeywords` continua suficiente para selecionar um candidato de DNA;
+- uma âncora isolada de `targetSpace` não é suficiente;
+- âncoras passam a exigir combinação: >=2 âncoras no mesmo título ou 1 âncora + >=2 sinais lexicais relevantes;
+- gaps legados continuam no matcher estrito;
+- Evidence Resolver e gates de demanda permanecem inalterados.
+
+Regressões reais:
+- `Before the Flood` não é candidato para coastal flood defenses;
+- `Luxury Coastal Retreat` não é candidato para coastal flood defenses;
+- `shipwreck` continua candidato válido para investigar historic ocean liners, sem virar evidência automaticamente.
