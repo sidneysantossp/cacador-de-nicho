@@ -189,8 +189,9 @@ export function resolveUniverseGapEvidence(
   suggestedChannelIds:string[]=[]
 ){
   const validIds=new Set(competitors.map(item=>item.channelId));
-  const channelIds=[...new Set(suggestedChannelIds.filter(id=>validIds.has(id)))];
-  const seen=new Set(channelIds);
+  const suggested=new Set(suggestedChannelIds.filter(id=>validIds.has(id)));
+  const channelIds:string[]=[];
+  const seen=new Set<string>();
   const evidence:string[]=[];
 
   for(const competitor of competitors){
@@ -203,7 +204,8 @@ export function resolveUniverseGapEvidence(
     const detail=match.matchedTerms.length
       ?`termos do target encontrados: ${match.matchedTerms.slice(0,4).join(', ')}`
       :'padrão semântico específico do target encontrado nos títulos/descrição';
-    evidence.push(`Corroboração do backend em ${competitor.name}: ${detail}.`);
+    const origin=suggested.has(competitor.channelId)?'Sugestão da IA validada':'Corroboração do backend';
+    evidence.push(`${origin} em ${competitor.name}: ${detail}.`);
   }
 
   return {channelIds,evidence:evidence.slice(0,8)};
