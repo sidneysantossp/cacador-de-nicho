@@ -293,6 +293,7 @@ export type UniverseGap = {
  curveId: string;
  title: string;
  targetSpace: string;
+ targetKeywords?: string[];
  preservedMechanism: string;
  changedVariable: string;
  demandStatus: 'observed' | 'partial' | 'hypothesis';
