@@ -37,18 +37,28 @@ The VPS watches the GitHub `master` branch on a short interval. A new commit is 
 
 The operational Universe scheduler lives on the AuditSEO VPS, not on Vercel.
 
-- systemd service: `cacadores-universe-batch.service`
-- systemd timer: `cacadores-universe-cycle.timer`
-- cadence: daily at 12:00 UTC (09:00 America/Sao_Paulo)
+The scheduler is split into two independent phases so a slow or malformed AI response cannot make DNA progress and Market recomputation fail as one monolithic job.
+
+- DNA service: `cacadores-universe-batch.service`
+- DNA timer: `cacadores-universe-cycle.timer`
+- DNA cadence: daily at 12:00 UTC (09:00 America/Sao_Paulo)
+- Market service: `cacadores-market-intelligence.service`
+- Market timer: `cacadores-market-intelligence.timer`
+- Market cadence: daily at 12:08 UTC (09:08 America/Sao_Paulo)
 - execution path: loopback to the currently promoted production port
 - authentication: `CRON_SECRET` is loaded from the VPS production environment and is never passed in the process command line
 - the Vercel project does not define a Universe cron
 
-The cycle executes queue processing, bounded Channel DNA bootstrap and conditional Curves/Gaps recomputation. The previous production container remains available for rollback independently of the scheduler.
+The 12:00 phase executes queue processing plus bounded Channel DNA bootstrap only. Individual DNA batch failures are isolated and reported instead of aborting all already-persisted work. The 12:08 phase recomputes Curves/Gaps independently from the newest persisted DNAs. The previous production container remains available for rollback independently of both schedulers.
 
 
 ## Versioned runtime guards
 
 The exact watchdog, Universe wrappers and critical systemd units used by the VPS are versioned under `ops/self-hosted/`.
 
-The production health watchdog also verifies that `cacadores-auto-deploy.timer` and `cacadores-universe-cycle.timer` remain enabled and active. If either timer is stopped or disabled, the watchdog restores it before evaluating application health. This closes the failure mode observed on 24/09/2026, when production stayed healthy but automatic GitHub promotion stopped because the deploy timer was inactive.
+The production health watchdog also verifies that `cacadores-auto-deploy.timer`, `cacadores-universe-cycle.timer` and `cacadores-market-intelligence.timer` remain enabled and active. If either timer is stopped or disabled, the watchdog restores it before evaluating application health. This closes the failure mode observed on 24/09/2026, when production stayed healthy but automatic GitHub promotion stopped because the deploy timer was inactive.
+
+
+## Runtime sync
+
+The source-of-truth wrappers and systemd units live under `ops/self-hosted/`. Production promotion must synchronize those files to `/srv/auditseo-deploy/bin` and `/etc/systemd/system`, run `systemctl daemon-reload`, and keep the critical timers enabled. This prevents the repository and the active VPS scheduler from drifting apart.
