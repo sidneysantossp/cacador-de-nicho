@@ -486,3 +486,23 @@ Regressões reais:
 - `Before the Flood` não é candidato para coastal flood defenses;
 - `Luxury Coastal Retreat` não é candidato para coastal flood defenses;
 - `shipwreck` continua candidato válido para investigar historic ocean liners, sem virar evidência automaticamente.
+
+
+## Generic single-keyword candidate guard — 24/09/2026
+
+O segundo lote de campo após o hardening elevou Channel DNA de 69 para 74 e revelou outro ruído nos dois primeiros slots dirigidos:
+- The Mindful Path with Wisdom entrou por `kitchen`, mas seu DNA é Self Improvement / Japanese Lifestyle Habits;
+- mesigugu entrou por `bathroom`, mas seu DNA é Short-Form Entertainment / Absurdist Micro-Sketches.
+
+Correção:
+- keywords unitárias genéricas de ambiente doméstico (`kitchen`, `bathroom`, `household`, `home`, `house`, `room`) deixam de ser suficientes isoladamente para gastar um slot de DNA;
+- elas precisam coexistir com pelo menos outro sinal relevante no mesmo título;
+- keywords multiword continuam fortes;
+- keywords unitárias semanticamente específicas, como `shipwreck`, continuam suficientes para investigação;
+- Evidence Resolver permanece inalterado.
+
+Regressões reais:
+- `Japanese Kitchen Rules` não vira candidato de domestic infrastructure;
+- `boys bathroom` não vira candidato de domestic infrastructure;
+- `Old Kitchen Plumbing ... Drain Systems` vira candidato;
+- `shipwreck` continua candidato para historic ocean liners.
