@@ -103,8 +103,15 @@ export default function Dashboard(){
       mode={data.mode}
       busy={busy}
       searchBudget={data.youtubeSearchBudget}
+      pilotDecisions={data.decisions.filter(item=>item.kind==='universe-pilot')}
       onRun={()=>action({action:'mission'},'mission')}
       onOpenStudy={(channelStudyId)=>{setAnalysisFocusId(channelStudyId);setView('analysis');}}
+      onPilotDecision={(gapId,decision)=>action({
+        action:'universePilotDecision',
+        universeGapId:gapId,
+        decision,
+        reason:decision==='approved'?'Piloto aprovado no Mission Control.':'Piloto rejeitado no Mission Control.'
+      },'universePilotDecision')}
     />}
     {view==='universe'&&<CompetitorUniverse
       competitors={data.universeCompetitors??[]}
