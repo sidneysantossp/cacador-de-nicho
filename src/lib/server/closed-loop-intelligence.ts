@@ -77,7 +77,7 @@ async function managedChannel(channelId:string):Promise<ManagedChannel|null>{
 export async function loadLearningLoopJob(jobId:string):Promise<LearningLoopJob|null>{
   const row=checked(await db().from('radar_learning_loop_jobs')
     .select(selection).eq('id',jobId).maybeSingle());
-  return row?normalizeJob(row as JobRow):null;
+  return row?normalizeJob(row as unknown as JobRow):null;
 }
 
 export async function listLearningLoopJobs(channelId:string):Promise<LearningLoopJob[]>{
@@ -86,7 +86,7 @@ export async function listLearningLoopJobs(channelId:string):Promise<LearningLoo
     .eq('channel_id',channelId)
     .order('due_at',{ascending:false})
     .limit(300));
-  return (rows??[]).map(row=>normalizeJob(row as JobRow));
+  return (rows??[]).map(row=>normalizeJob(row as unknown as JobRow));
 }
 
 function addHours(value:string,hours:number){
@@ -187,7 +187,7 @@ async function assertClaim(jobId:string,workerToken:string){
     .eq('worker_token',workerToken)
     .maybeSingle());
   if(!row)throw new HttpError('Lease do Closed Loop Worker não pertence mais a esta execução.',409);
-  return normalizeJob(row as JobRow);
+  return normalizeJob(row as unknown as JobRow);
 }
 
 async function heartbeat(jobId:string,workerToken:string,stage:string){
