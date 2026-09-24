@@ -405,3 +405,21 @@ Correção:
 Regressão real:
 - `occupational surnames` + Historic Dave: `surname` + `job` no mesmo título continua válido;
 - profissão histórica genérica sem `surname/family name/name origin` é rejeitada.
+
+
+## Universe Opportunity Families — 24/09/2026
+
+Com 64 Channel DNAs e continuidade habilitada, o Mission Control encontrou dois `PILOT READY` no mesmo domínio de pontes:
+- `Every Type of Bridge Failure Explained`;
+- `How History's Most Dangerous Bridges Failed`.
+
+Os dois compartilham Sabin Civil Engineering e nknows como evidência central, mas usam curvas editoriais diferentes.
+
+Correção:
+- oportunidades acionáveis são agrupadas em famílias quando compartilham pelo menos 2 canais de evidência e ao menos 1 token substantivo de domínio;
+- o card mais forte permanece como oportunidade principal;
+- os demais são preservados como `alternateAngles`;
+- a contagem do Mission Control passa a representar famílias de oportunidade, não variações do mesmo nicho;
+- apenas compartilhar um canal não agrupa targets distintos.
+
+Resultado esperado no caso real: bridge engineering aparece como 1 família PILOT READY, com o ângulo histórico de falhas mostrado como alternativa editorial.
