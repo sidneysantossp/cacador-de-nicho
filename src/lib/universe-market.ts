@@ -50,7 +50,8 @@ export function selectUniverseCurveEvidence(competitors:UniverseCompetitor[],max
 
 const OPPORTUNITY_FAMILY_GENERIC_TOKENS=new Set([
   'historical','history','engineering','engineer','engineers','system','systems','failure','failures',
-  'explained','every','type','types','most','dangerous','project','projects','modern','old'
+  'explained','every','type','types','most','dangerous','project','projects','modern','old',
+  'target','domain','space'
 ]);
 
 function opportunityFamilyTokens(gap:Pick<UniverseGap,'targetSpace'|'targetKeywords'>){
