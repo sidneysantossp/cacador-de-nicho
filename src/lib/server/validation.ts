@@ -382,6 +382,12 @@ export const visualPromptSetPayloadSchema=z.object({
  scenePlanVersion:z.number().int().min(1).max(100000),
  productionDnaVersion:z.number().int().min(1).max(100000),
  styleLock:z.string().trim().max(16000),
+ productionNaming:z.object({
+  channelCode:z.string().trim().regex(/^[A-Z0-9]{2,24}$/).max(24),
+  episodeNumber:z.number().int().min(1).max(100000),
+  takeDigits:z.literal(2),
+  pattern:z.literal('{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4')
+ }).strict(),
  workflowStage:z.enum(['references','scenes','complete']),
  characterReferences:z.array(z.object({
   characterId:z.string().trim().min(1).max(120),
@@ -399,7 +405,10 @@ export const visualPromptSetPayloadSchema=z.object({
   characterIds:shortList(50,120),
   referenceNames:z.array(z.string().trim().regex(/^@[A-Za-z][A-Za-z0-9]*$/).max(120)).max(50),
   direction:z.string().trim().min(1).max(10000),
-  prompt:z.string().trim().min(1).max(30000)
+  prompt:z.string().trim().min(1).max(30000),
+  outputFileStem:z.string().trim().regex(/^[A-Z0-9]+_V\d+_S\d+_T\d+$/).max(100),
+  outputFileName:z.string().trim().regex(/^[A-Z0-9]+_V\d+_S\d+_T\d+\.mp4$/).max(110),
+  takeNumber:z.number().int().min(1).max(9999)
  }).strict()).max(5000),
  review:z.object({notes:z.string().trim().max(5000)}).strict(),
  createdAt:z.string().datetime(),
