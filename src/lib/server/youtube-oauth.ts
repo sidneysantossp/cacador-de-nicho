@@ -8,6 +8,8 @@ import {
   decryptYouTubeRefreshToken, encryptYouTubeRefreshToken, youtubeOAuthConfig
 } from './youtube-secrets';
 
+const TOKEN_ENDPOINT=(process.env.YOUTUBE_TOKEN_ENDPOINT??'https://oauth2.googleapis.com/token').trim();
+
 export const YOUTUBE_OAUTH_SCOPES=[
   'https://www.googleapis.com/auth/youtube.upload',
   'https://www.googleapis.com/auth/youtube.readonly',
@@ -95,7 +97,7 @@ export function youtubeAuthorizationUrl(channelId:string){
 }
 
 async function tokenRequest(params:URLSearchParams){
-  const response=await fetch('https://oauth2.googleapis.com/token',{
+  const response=await fetch(TOKEN_ENDPOINT,{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body:params,
