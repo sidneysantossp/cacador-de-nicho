@@ -452,3 +452,18 @@ Implementação:
 - o histórico continua no ledger de decisões da operação.
 
 A decisão continua humana: o backend apenas verifica se a evidência ainda satisfaz os gates antes de registrar a escolha.
+
+
+## Gap-directed DNA candidate retrieval — 24/09/2026
+
+Após o Evidence Resolver ficar mais conservador, o mesmo gate rígido ainda era usado para decidir quais canais pendentes mereciam Channel DNA. Isso reduzia eficiência de descoberta: um canal podia ser semanticamente promissor para investigação sem ainda satisfazer o padrão exigido para contar como evidência de demanda.
+
+Separação implementada:
+- `universeGapEvidenceMatch` continua sendo o único gate que pode alimentar `targetEvidenceChannelIds`, `partial`, `observed` e `PILOT READY`;
+- novo `universeGapDnaCandidateMatch` é usado somente para escolher onde gastar slots de DNA;
+- candidato pode entrar por uma keyword do target, âncora de targetSpace ou sobreposição lexical relevante, mesmo sem passar o gate final;
+- candidatos que já passam o evidence gate continuam com prioridade máxima;
+- depois vêm número de gaps relacionados, força do sinal candidato e prioridade global do canal;
+- nenhuma seleção de candidato altera demanda ou evidência por si só.
+
+Regressão real: um título com `shipwreck` pode ser investigado para `historic ocean liners`, mas continua fora da evidência determinística enquanto não houver sinais suficientes no mesmo título.
