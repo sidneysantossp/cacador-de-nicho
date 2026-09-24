@@ -252,3 +252,16 @@ A fila de bootstrap diferencia conclusão operacional de concorrentes válidos:
 - `resolved = completed + terminalFailed`;
 - o progresso chega a 100% quando não existe mais trabalho elegível, sem contabilizar entradas inválidas como concorrentes;
 - o botão de próximo lote fica desabilitado quando não há pending nem retryable.
+
+
+## Self-hosted timer guard — 24/09/2026
+
+Hardening operacional aplicado e testado no VPS:
+- `cacadores-health-watch` mantém `cacadores-auto-deploy.timer` e `cacadores-universe-cycle.timer` habilitados e ativos;
+- teste controlado confirmou recuperação automática após ambos os timers serem parados;
+- o Universe timer permanece `Persistent=false`, evitando catch-up pesado ao ser restaurado depois do horário diário;
+- wrappers Universe/Market usam loopback para a porta promovida e carregam `CRON_SECRET` somente do ambiente;
+- o guard de presença do `CRON_SECRET` foi corrigido;
+- scripts e units em produção passam a ser espelhados em `ops/self-hosted/` no repositório.
+
+Motivo: impedir que produção continue saudável em um SHA antigo enquanto o watcher de GitHub fica silenciosamente inativo.

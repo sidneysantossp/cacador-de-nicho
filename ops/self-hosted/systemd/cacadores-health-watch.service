@@ -1,0 +1,8 @@
+[Unit]
+Description=Caçadores production health watchdog
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-health-watch
+TimeoutStartSec=45s

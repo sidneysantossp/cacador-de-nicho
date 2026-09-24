@@ -45,3 +45,10 @@ The operational Universe scheduler lives on the AuditSEO VPS, not on Vercel.
 - the Vercel project does not define a Universe cron
 
 The cycle executes queue processing, bounded Channel DNA bootstrap and conditional Curves/Gaps recomputation. The previous production container remains available for rollback independently of the scheduler.
+
+
+## Versioned runtime guards
+
+The exact watchdog, Universe wrappers and critical systemd units used by the VPS are versioned under `ops/self-hosted/`.
+
+The production health watchdog also verifies that `cacadores-auto-deploy.timer` and `cacadores-universe-cycle.timer` remain enabled and active. If either timer is stopped or disabled, the watchdog restores it before evaluating application health. This closes the failure mode observed on 24/09/2026, when production stayed healthy but automatic GitHub promotion stopped because the deploy timer was inactive.

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+ENV_FILE="$BASE/env/cacador-de-nicho.production.env"
+STATE_FILE="$BASE/state/cacador-de-nicho.json"
+
+set -a
+source "$ENV_FILE"
+set +a
+test -n "${CRON_SECRET:-}"
+
+PORT="$(python3 - "$STATE_FILE" <<'PYPORT'
+from pathlib import Path
+import json,sys
+state=json.loads(Path(sys.argv[1]).read_text())
+port=(state.get("production") or {}).get("port")
+if not port:
+    raise SystemExit("production port unavailable")
+print(port)
+PYPORT
+)"
+export CACADORES_LOCAL_PORT="$PORT"
+
+python3 - <<'PY'
+import os,sys,urllib.request,urllib.error
+port=os.environ["CACADORES_LOCAL_PORT"]
+secret=os.environ["CRON_SECRET"]
+url=f"http://127.0.0.1:{port}/api/cron/universe"
+request=urllib.request.Request(url,headers={"Authorization":f"Bearer {secret}"})
+try:
+    with urllib.request.urlopen(request,timeout=295) as response:
+        body=response.read().decode("utf-8","replace")
+        print(body)
+        if not 200 <= response.status < 300:
+            raise SystemExit(22)
+except urllib.error.HTTPError as exc:
+    body=exc.read().decode("utf-8","replace")
+    print(body,file=sys.stderr)
+    raise SystemExit(22)
+except Exception as exc:
+    print(f"Universe cycle request failed: {exc}",file=sys.stderr)
+    raise SystemExit(1)
+PY

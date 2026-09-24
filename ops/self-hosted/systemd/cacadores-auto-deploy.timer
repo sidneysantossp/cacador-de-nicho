@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch GitHub master for Caçadores de Nichos deploys
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=10s
+Persistent=true
+Unit=cacadores-auto-deploy.service
+
+[Install]
+WantedBy=timers.target
