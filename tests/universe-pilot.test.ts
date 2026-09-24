@@ -139,7 +139,7 @@ test('Pilot Brief is derived only from the approved Market snapshot and does not
   assert.equal(brief?.curveName,'Structural Curve');
   assert.deepEqual(brief?.evidence.supportingChannelIds,['a','b','c']);
   assert.deepEqual(brief?.evidence.demandEvidence,['Evidence']);
-  assert.equal(brief?.hypothesis.includes('não assumir'),true);
+  assert.equal(brief?.hypothesis.includes('sem assumir'),true);
   const gates=[...(brief?.testPlan.successGate??[]),...(brief?.testPlan.stopGate??[])].join(' ');
   assert.equal(/\b\d+(?:\.\d+)?%\b/.test(gates),false);
 });
