@@ -191,8 +191,10 @@ export async function acceptNextEpisodeCandidate(input:{
 }){
   const plan=await loadNextEpisodePlan(input.planId);
   if(!plan)throw new HttpError('Next Episode Plan não encontrado.',404);
-  if(plan.version!==input.expectedVersion)throw new HttpError('Next Episode Plan desatualizado.',409);
   if(plan.status==='accepted'){
+    if(plan.review.acceptedCandidateId!==input.candidateId){
+      throw new HttpError('Este plano já foi aceito com outro candidato.',409);
+    }
     return {
       plan,
       episodeId:plan.review.acceptedEpisodeId,
@@ -200,6 +202,7 @@ export async function acceptNextEpisodeCandidate(input:{
       alreadyAccepted:true
     };
   }
+  if(plan.version!==input.expectedVersion)throw new HttpError('Next Episode Plan desatualizado.',409);
   if(plan.status!=='review')throw new HttpError('Este plano não está mais disponível para aceitação.',409);
 
   const candidate=plan.candidates.find(item=>item.id===input.candidateId);
