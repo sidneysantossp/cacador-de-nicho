@@ -154,13 +154,21 @@ function hasAnyTerm(corpus:string,terms:string[]){
   const tokens=new Set(lexicalNormalize(corpus).split(' ').filter(Boolean));
   return terms.some(term=>tokens.has(term));
 }
-function directGapMatches(competitor:UniverseCompetitor,gapText:string){
-  const terms=[...new Set(lexicalTokens(gapText))];
-  let best:string[]=[];
+function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescriptor){
+  const targetText=universeGapTargetText(gap);
+  const targetTerms=[...new Set(lexicalTokens(targetText))];
+  const titleTerms=[...new Set(lexicalTokens(gap.title))];
+  const allTerms=[...new Set([...targetTerms,...titleTerms])];
+  let best={matchedTerms:[] as string[],targetMatchedTerms:[] as string[]};
+
   for(const unit of competitorEvidenceUnits(competitor)){
     const unitTokens=new Set(lexicalTokens(unit));
-    const matched=terms.filter(term=>unitTokens.has(term));
-    if(matched.length>best.length)best=matched;
+    const targetMatchedTerms=targetTerms.filter(term=>unitTokens.has(term));
+    const matchedTerms=allTerms.filter(term=>unitTokens.has(term));
+    if(
+      targetMatchedTerms.length>best.targetMatchedTerms.length||
+      (targetMatchedTerms.length===best.targetMatchedTerms.length&&matchedTerms.length>best.matchedTerms.length)
+    )best={matchedTerms,targetMatchedTerms};
   }
   return best;
 }
@@ -177,10 +185,14 @@ function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
   return false;
 }
 
-type UniverseGapDescriptor=Pick<UniverseGap,'title'|'targetSpace'|'changedVariable'|'firstTests'>;
+type UniverseGapDescriptor=Pick<UniverseGap,'title'|'targetSpace'|'targetKeywords'|'changedVariable'|'firstTests'>;
+
+function universeGapTargetText(gap:UniverseGapDescriptor){
+  return gap.targetKeywords?.length?gap.targetKeywords.join(' '):gap.targetSpace;
+}
 
 function universeGapText(gap:UniverseGapDescriptor){
-  return [gap.title,gap.targetSpace].join(' ');
+  return [gap.title,universeGapTargetText(gap)].join(' ');
 }
 
 export function universeGapEvidenceMatch(
@@ -188,11 +200,12 @@ export function universeGapEvidenceMatch(
   gap:UniverseGapDescriptor
 ){
   const gapText=universeGapText(gap);
-  const matchedTerms=directGapMatches(competitor,gapText);
+  const direct=directGapMatches(competitor,gap);
   const familyMatch=semanticGapFamilyMatch(competitor,gapText);
   return {
-    matched:matchedTerms.length>=2||familyMatch,
-    matchedTerms,
+    matched:(direct.targetMatchedTerms.length>=1&&direct.matchedTerms.length>=2)||familyMatch,
+    matchedTerms:direct.matchedTerms,
+    targetMatchedTerms:direct.targetMatchedTerms,
     familyMatch
   };
 }
@@ -215,9 +228,9 @@ export function resolveUniverseGapEvidence(
       seen.add(competitor.channelId);
       channelIds.push(competitor.channelId);
     }
-    const detail=match.matchedTerms.length
-      ?`termos do target encontrados: ${match.matchedTerms.slice(0,4).join(', ')}`
-      :'padrão semântico específico do target encontrado nos títulos/descrição';
+    const detail=match.targetMatchedTerms.length
+      ?`domínio target: ${match.targetMatchedTerms.slice(0,4).join(', ')}; apoio no mesmo título: ${match.matchedTerms.slice(0,5).join(', ')}`
+      :'padrão semântico específico do target encontrado no mesmo título';
     const origin=suggested.has(competitor.channelId)?'Sugestão da IA validada':'Corroboração do backend';
     evidence.push(`${origin} em ${competitor.name}: ${detail}.`);
   }
