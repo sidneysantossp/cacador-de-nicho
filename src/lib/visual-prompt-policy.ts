@@ -2,6 +2,7 @@ import type {
   ProductionDNA, ProductionDnaCharacter, ScenePlan, SceneTimecode,
   VisualCharacterReference, VisualPromptSetPayload, VisualScenePrompt
 } from '@/lib/types';
+import { anatomyScaleLockText } from '@/lib/production-dna-policy';
 
 function camel(value:string){
   const parts=value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').match(/[A-Za-z0-9]+/g)??[];
@@ -74,10 +75,12 @@ export function compileCharacterReference(
   sceneIds:string[]
 ):VisualCharacterReference{
   const styleLock=dna.visual.basePrompt.trim();
+  const anatomyScaleLock=anatomyScaleLockText(dna,[character.id]);
   const pieces=[
     'full-body reference character',
     character.description.trim(),
     ...character.visualRules,
+    anatomyScaleLock,
     'full body visible from head to feet',
     'plain light background',
     ...character.forbidden.map(rule=>'avoid '+rule)
@@ -113,12 +116,14 @@ export function compileScenePrompt(
 
   const styleLock=dna.visual.basePrompt.trim();
   const negative=dna.visual.negativePrompt.trim();
+  const anatomyScaleLock=anatomyScaleLockText(dna,characterIds);
   const directionText=direction.trim()||scene.promptDirection.trim()||scene.visualIntent.trim()||scene.narration.trim();
 
   const pieces=[
     scene.shotType.trim(),
     references.join(', '),
     directionText,
+    anatomyScaleLock,
     negative
   ].filter(Boolean);
 
