@@ -281,7 +281,7 @@ function universeGapText(gap:UniverseGapDescriptor){
 }
 
 const GAP_EVIDENCE_WEAK_DOMAIN_ANCHORS=new Set([
-  'abandoned','coastal','domestic','flood','historic','household','infrastructure',
+  'abandoned','building','coastal','detail','domestic','flood','historic','household','infrastructure',
   'medical','ocean','object','station','urban'
 ]);
 
