@@ -506,3 +506,22 @@ Regressões reais:
 - `boys bathroom` não vira candidato de domestic infrastructure;
 - `Old Kitchen Plumbing ... Drain Systems` vira candidato;
 - `shipwreck` continua candidato para historic ocean liners.
+
+
+## Weak target-space anchor hardening — 24/09/2026
+
+A recomputação com 79 DNAs revelou dois falsos `observed` causados por âncoras amplas do `targetSpace`:
+- `abandoned railway stations`: gas/fire station e abandoned train/rails foram tratados como dois criadores do target;
+- `medical history / plague doctors`: um título genérico com `doctor + medical + history` foi tratado como segunda evidência de plague doctors.
+
+Correção:
+- âncoras amplas/ambíguas (`station`, `medical`, `abandoned`, `historic`, `ocean`, `coastal`, `flood`, `household`, `domestic`, `infrastructure`, `object`, `urban`) não validam demanda sozinhas;
+- uma frase completa de `targetKeywords` continua válida;
+- âncoras substantivas específicas como `surname` e `bridge` continuam válidas quando têm apoio lexical no mesmo título;
+- semantic-family fallback continua apenas para gaps legados sem targetKeywords.
+
+Regressões reais:
+- gas station e abandoned train não validam abandoned railway stations;
+- doctor + medical/history não valida plague doctors;
+- railway station explícita valida;
+- surname + job e bridge + engineering continuam válidos.
