@@ -232,3 +232,29 @@ test('backend gap resolver can corroborate historical professions beyond AI-sugg
   assert.deepEqual(new Set(resolved.channelIds),new Set(['known-job','historic-dave']));
   assert.equal(universeGapDemandStatus('structural',resolved.channelIds),'observed');
 });
+
+
+test('backend gap resolver ignores generic packaging words and first-test leakage',()=>{
+  const gap={
+    title:'Why Your Hallway Is Shaped by a Medieval Fire Problem',
+    targetSpace:'Domestic architecture shaped by old constraints',
+    changedVariable:'Home layouts',
+    firstTests:[
+      'Why Old Houses Had Windows in the Strangest Places',
+      'The Bathroom Feature That Started as a Disease Solution'
+    ]
+  };
+  const noisy=competitor('generic-language','Explained');
+  noisy.recentUploads=[
+    {id:'n1',title:'Your Life Started in the Strangest Place',publishedAt:'2026-09-20T00:00:00Z',views:100000,duration:'PT8M',thumbnail:'',url:''},
+    {id:'n2',title:'Why You Had This Problem',publishedAt:'2026-09-20T00:00:00Z',views:90000,duration:'PT8M',thumbnail:'',url:''},
+    {id:'n3',title:'Bathroom Disease Solution Explained',publishedAt:'2026-09-20T00:00:00Z',views:80000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const relevant=competitor('medieval-fire','History');
+  relevant.recentUploads=[
+    {id:'r1',title:'Medieval Hallway Fire Design Explained',publishedAt:'2026-09-20T00:00:00Z',views:120000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([noisy,relevant],gap,[]);
+  assert.deepEqual(resolved.channelIds,['medieval-fire']);
+  assert.equal(resolved.evidence.some(item=>item.includes('generic-language')),false);
+});
