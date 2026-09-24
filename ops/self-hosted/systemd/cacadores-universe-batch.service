@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores Channel DNA single batch
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-universe-batch
+TimeoutStartSec=5min
