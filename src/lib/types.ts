@@ -1780,6 +1780,9 @@ export type EpisodeAutomationRun = EpisodeAutomationRunPayload & {
  status: EpisodeAutomationStatus;
  attempts: number;
  lastError?: string;
+ holdStep?: EpisodeAutomationStep;
+ holdReason?: string;
+ holdCreatedAt?: string;
 };
 export type EpisodeAutomationEvent = {
  id: number;
