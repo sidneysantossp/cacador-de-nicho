@@ -6,7 +6,7 @@ import {
   PauseCircle, PlayCircle, RefreshCw, ShieldAlert
 } from 'lucide-react';
 import type {
-  AutopilotControl, AutopilotControlVersion
+  AutopilotControl, AutopilotControlVersion, AutopilotIncident
 } from '@/lib/types';
 
 type State={
@@ -18,6 +18,8 @@ type State={
     learningScheduled:number;
     learningLeased:number;
   };
+  incidents:AutopilotIncident[];
+  openCriticalIncidents:number;
 };
 
 function when(value:string){
@@ -171,6 +173,32 @@ export default function AutopilotControlPlane(){
         </button>
       </section>
     </div>
+
+    <section className="autopilot-incidents">
+      <div className="autopilot-control-subhead">
+        <AlertTriangle size={15}/>
+        <strong>Incident Ledger</strong>
+        <span>{state.openCriticalIncidents} critical aberto(s)</span>
+      </div>
+      <div className="autopilot-incident-list">
+        {state.incidents.slice(0,12).map(incident=><article key={incident.id} className={incident.severity+' '+incident.status}>
+          <div>
+            <span>{incident.area} · {incident.code}</span>
+            <strong>{incident.message}</strong>
+            <small>{when(incident.lastSeenAt)} · {incident.occurrences} ocorrência(s) · {incident.status}</small>
+          </div>
+          {incident.status==='open'&&<div>
+            <button className="button subtle small" disabled={Boolean(busy)} onClick={()=>void action({
+              action:'incident',incidentId:incident.id,disposition:'resolved'
+            },'incident:'+incident.id)}>Resolver</button>
+            <button className="button subtle small" disabled={Boolean(busy)} onClick={()=>void action({
+              action:'incident',incidentId:incident.id,disposition:'ignored'
+            },'ignore:'+incident.id)}>Ignorar</button>
+          </div>}
+        </article>)}
+        {!state.incidents.length&&<div className="autopilot-no-incidents">Nenhum incidente registrado.</div>}
+      </div>
+    </section>
 
     <details className="autopilot-control-history">
       <summary><History size={14}/>Histórico do Control Plane</summary>
