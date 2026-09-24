@@ -543,3 +543,19 @@ Implementação:
 - Mission Control mostra o Pilot Brief dentro do card depois da aprovação.
 
 A persistência fica atômica porque decisão + brief são um único payload em `radar_decisions`, evitando decisão aprovada sem plano correspondente.
+
+
+## Full-DNA gap evidence resolution — 24/09/2026
+
+Com 109 Channel DNAs persistidos, a auditoria mostrou que curvas e gaps novos ainda compartilhavam a mesma amostra máxima de 40 canais. Isso era correto para extração de curvas, mas subutilizava a cobertura já existente ao validar demanda do target: um corroborador válido fora dos 40 canais podia não contar na primeira classificação do gap.
+
+Correção:
+- curvas continuam extraídas de uma amostra balanceada de até 40 canais para manter custo e prompt controlados;
+- o Evidence Resolver de cada gap novo passa a revalidar target evidence contra TODOS os concorrentes que já possuem Channel DNA;
+- IDs sugeridos pela IA continuam limitados à amostra recebida pelo modelo;
+- corroboradores adicionais só entram se passarem pelo matcher determinístico atual;
+- `sourceCompetitorIds` passa a incluir também target evidence válida encontrada fora da amostra;
+- o relatório registra explicitamente o tamanho da amostra de curvas e o tamanho do pool completo de DNA usado para validar gaps;
+- regressão cobre um segundo criador válido de bridge engineering fora da amostra de extração.
+
+Objetivo: aumentar uso real dos DNAs já pagos/coletados sem aumentar o tamanho do prompt de Curves/Gaps e sem relaxar os gates conservadores de evidência.
