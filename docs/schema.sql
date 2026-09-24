@@ -107,12 +107,15 @@ create index if not exists radar_youtube_connections_status_updated on public.ra
 create table if not exists public.radar_youtube_publish_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,package_id uuid not null unique references public.radar_publication_packages(id) on delete cascade,package_version int not null check(package_version>=1),connection_id uuid not null references public.radar_youtube_connections(id) on delete cascade,status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,youtube_video_id text,youtube_url text,actual_privacy_status text,error text,payload jsonb not null,resumable_uri_ciphertext text,upload_bytes bigint not null default 0 check(upload_bytes>=0),upload_total_bytes bigint check(upload_total_bytes is null or upload_total_bytes>=0),created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
 create index if not exists radar_youtube_publish_jobs_channel_created on public.radar_youtube_publish_jobs(channel_id,created_at desc);
 create index if not exists radar_youtube_publish_jobs_queue on public.radar_youtube_publish_jobs(status,created_at) where status in ('queued','processing');
+create table if not exists public.radar_learning_loop_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,publish_job_id uuid not null references public.radar_youtube_publish_jobs(id) on delete cascade,package_id uuid not null references public.radar_publication_packages(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,window_hours int not null check(window_hours between 1 and 720),due_at timestamptz not null,status text not null default 'scheduled' check(status in ('scheduled','processing','waiting','completed','failed','cancelled')),attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,stage text not null default 'scheduled',observation_id uuid references public.radar_performance_observations(id) on delete set null,performance_report_id uuid references public.radar_performance_reports(id) on delete set null,audience_report_id uuid references public.radar_audience_intelligence_reports(id) on delete set null,brain_version int,last_error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),completed_at timestamptz,updated_at timestamptz not null default now(),unique(publish_job_id,window_hours));
+create index if not exists radar_learning_loop_jobs_due on public.radar_learning_loop_jobs(status,due_at,created_at) where status='scheduled';
+create index if not exists radar_learning_loop_jobs_channel_updated on public.radar_learning_loop_jobs(channel_id,updated_at desc);
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -258,6 +261,38 @@ return found;
 end $$;
 revoke all on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) from public,anon,authenticated;
 grant execute on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.claim_learning_loop_job(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid learning loop lease';end if;
+update public.radar_learning_loop_jobs
+set status='scheduled',stage='requeued-after-lease',worker_token=null,lease_until=null,due_at=least(due_at,now()),updated_at=now()
+where status='processing' and worker_token is not null and lease_until is not null and lease_until<now();
+select id into picked from public.radar_learning_loop_jobs
+where status='scheduled' and due_at<=now()
+order by due_at asc,created_at asc for update skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_learning_loop_jobs
+set status='processing',stage='claimed',attempts=attempts+1,worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now()
+where id=picked;
+return picked;
+end $;
+revoke all on function public.claim_learning_loop_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_learning_loop_job(uuid,int) to service_role;
+
+create or replace function public.heartbeat_learning_loop_job(p_job_id uuid,p_worker_token uuid,p_stage text,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $
+begin
+update public.radar_learning_loop_jobs
+set stage=left(coalesce(p_stage,'processing'),120),lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $;
+revoke all on function public.heartbeat_learning_loop_job(uuid,uuid,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_learning_loop_job(uuid,uuid,text,int) to service_role;
 
 create or replace function public.claim_episode_automation_run(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
 language plpgsql security invoker set search_path='' as $$
