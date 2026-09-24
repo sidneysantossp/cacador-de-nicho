@@ -22,7 +22,7 @@ function exportText(name:string,text:string){const a=document.createElement('a')
 const STORAGE='cacadores-demo-v1';
 
 export default function Dashboard(){
- const [data,setData]=useState<RadarData>(demoData),[view,setView]=useState<View>('mission'),[query,setQuery]=useState(''),[niche,setNiche]=useState('Todos os nichos'),[language,setLanguage]=useState('Todos os idiomas'),[filter,setFilter]=useState('all'),[selected,setSelected]=useState<Channel|null>(null),[detailTab,setDetailTab]=useState('anatomy'),[toast,setToast]=useState(''),[radarError,setRadarError]=useState(''),[busy,setBusy]=useState(''),[showLogin,setShowLogin]=useState(false),[mobile,setMobile]=useState(false),[password,setPassword]=useState(''),[loginError,setLoginError]=useState(''),[draftSettings,setDraftSettings]=useState<Settings>(defaultCopy()),[contextTitle,setContextTitle]=useState(''),[contextText,setContextText]=useState(''),[note,setNote]=useState(''),[analysisFocusId,setAnalysisFocusId]=useState(''),[universeDnaId,setUniverseDnaId]=useState(''),[channelBrainId,setChannelBrainId]=useState(''),[channelBrainInitialTab,setChannelBrainInitialTab]=useState<'constitution'|'publish'>('constitution');
+ const [data,setData]=useState<RadarData>(demoData),[view,setView]=useState<View>('mission'),[query,setQuery]=useState(''),[niche,setNiche]=useState('Todos os nichos'),[language,setLanguage]=useState('Todos os idiomas'),[filter,setFilter]=useState('all'),[selected,setSelected]=useState<Channel|null>(null),[detailTab,setDetailTab]=useState('anatomy'),[toast,setToast]=useState(''),[radarError,setRadarError]=useState(''),[busy,setBusy]=useState(''),[showLogin,setShowLogin]=useState(false),[mobile,setMobile]=useState(false),[password,setPassword]=useState(''),[loginError,setLoginError]=useState(''),[draftSettings,setDraftSettings]=useState<Settings>(defaultCopy()),[contextTitle,setContextTitle]=useState(''),[contextText,setContextText]=useState(''),[note,setNote]=useState(''),[analysisFocusId,setAnalysisFocusId]=useState(''),[universeDnaId,setUniverseDnaId]=useState(''),[channelBrainId,setChannelBrainId]=useState(''),[channelBrainInitialTab,setChannelBrainInitialTab]=useState<'constitution'|'content'|'publish'>('constitution');
  const dialogRef=useRef<HTMLDialogElement>(null),loginRef=useRef<HTMLDialogElement>(null);
  const refresh=useCallback(async(clearDemoOnFailure=false)=>{try{const res=await fetch('/api/radar',{cache:'no-store'});const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body?.message??body?.error??'Não foi possível atualizar o radar.');let next=body as RadarData;if(next.mode==='demo'){const stored=localStorage.getItem(STORAGE);if(stored){try{const own=JSON.parse(stored);next={...next,managedChannels:own.managedChannels??next.managedChannels,decisions:own.decisions??[],contexts:own.contexts??[],settings:{...next.settings,...(own.settings??{}),languages:['en']}};}catch{localStorage.removeItem(STORAGE);}}}setRadarError('');setData(next);setDraftSettings(next.settings);}catch(e){const message=e instanceof Error?e.message:'Falha ao carregar o radar real.';setRadarError(message);if(clearDemoOnFailure){setData(prev=>({...prev,mode:'live',authenticated:true,channels:[],gaps:[],managedChannels:[],lastUpdated:null}));}setToast(clearDemoOnFailure?`Sessão autorizada, mas o radar live falhou: ${message}`:'O servidor não respondeu. Você está vendo apenas a demonstração.');}},[]);
  useEffect(()=>{void refresh();},[refresh]);
@@ -104,6 +104,7 @@ export default function Dashboard(){
       busy={busy}
       searchBudget={data.youtubeSearchBudget}
       pilotDecisions={data.decisions.filter(item=>item.kind==='universe-pilot')}
+      managedChannels={data.managedChannels}
       onRun={()=>action({action:'mission'},'mission')}
       onOpenStudy={(channelStudyId)=>{setAnalysisFocusId(channelStudyId);setView('analysis');}}
       onPilotDecision={(gapId,decision)=>action({
@@ -112,6 +113,17 @@ export default function Dashboard(){
         decision,
         reason:decision==='approved'?'Piloto aprovado no Mission Control.':'Piloto rejeitado no Mission Control.'
       },'universePilotDecision')}
+      onPilotHandoff={(decisionId,channelId)=>action({
+        action:'universePilotHandoff',
+        decisionId,
+        channelId
+      },'universePilotHandoff')}
+      onOpenPilotHandoff={(channelId)=>{
+        setChannelBrainId(channelId);
+        setChannelBrainInitialTab('content');
+        setView('channelBrain');
+        window.scrollTo({top:0,behavior:'smooth'});
+      }}
     />}
     {view==='universe'&&<CompetitorUniverse
       competitors={data.universeCompetitors??[]}

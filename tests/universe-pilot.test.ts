@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildUniversePilotDecision, resolveUniversePilotDecision } from '../src/lib/universe-pilot';
+import { buildUniversePilotContentHandoff, buildUniversePilotDecision, resolveUniversePilotDecision } from '../src/lib/universe-pilot';
 import type { UniverseMarketIntelligence } from '../src/lib/types';
 
 function market(readiness:'pilot'|'investigate'):UniverseMarketIntelligence{
@@ -142,4 +142,93 @@ test('Pilot Brief is derived only from the approved Market snapshot and does not
   assert.equal(brief?.hypothesis.includes('sem assumir'),true);
   const gates=[...(brief?.testPlan.successGate??[]),...(brief?.testPlan.stopGate??[])].join(' ');
   assert.equal(/\b\d+(?:\.\d+)?%\b/.test(gates),false);
+});
+
+
+test('approved Universe Pilot Brief creates only a draft Content OS handoff',()=>{
+  const intelligence=market('pilot');
+  const resolved=resolveUniversePilotDecision(intelligence,'gap:bridge');
+  assert.equal(resolved.ok,true);
+  if(!resolved.ok)return;
+
+  const decision=buildUniversePilotDecision({
+    id:'11111111-1111-4111-8111-111111111111',
+    createdAt:'2026-09-24T19:00:00Z',
+    intelligence,
+    opportunity:resolved.opportunity,
+    decision:'approved',
+    reason:'Approved by operator.'
+  });
+
+  const {episode,project}=buildUniversePilotContentHandoff({
+    decision,
+    channel:{
+      id:'22222222-2222-4222-8222-222222222222',
+      name:'Owned Channel',
+      niche:'Engineering',
+      format:'Long form',
+      stage:'research',
+      priority:'normal',
+      description:'Owned engineering channel.',
+      createdAt:'2026-09-01T00:00:00Z',
+      updatedAt:'2026-09-24T19:00:00Z'
+    },
+    brain:null,
+    sequence:4,
+    episodeId:'33333333-3333-4333-8333-333333333333',
+    projectId:'44444444-4444-4444-8444-444444444444',
+    factCheckId:'55555555-5555-4555-8555-555555555555',
+    createdAt:'2026-09-24T19:05:00Z'
+  });
+
+  assert.equal(episode.status,'idea');
+  assert.equal(episode.sequence,4);
+  assert.equal(episode.title,'Every Type of Bridge Failure Explained');
+  assert.equal(project.approval.status,'draft');
+  assert.equal(project.opportunityId,decision.id);
+  assert.equal(project.brief.theme,'bridge engineering');
+  assert.equal(project.brief.workingTitle,'Every Type of Bridge Failure Explained');
+  assert.equal(project.brief.promise,'');
+  assert.equal(project.brief.targetAudience,'');
+  assert.equal(project.research.factChecks.length,1);
+  assert.equal(project.research.factChecks[0].status,'unverified');
+  assert.deepEqual(project.research.factChecks[0].sourceIds,[]);
+  assert.equal(project.research.notes.includes(decision.pilotBrief!.id),true);
+});
+
+test('rejected Universe pilot cannot create a Content OS handoff',()=>{
+  const intelligence=market('pilot');
+  const resolved=resolveUniversePilotDecision(intelligence,'gap:bridge');
+  assert.equal(resolved.ok,true);
+  if(!resolved.ok)return;
+
+  const decision=buildUniversePilotDecision({
+    id:'66666666-6666-4666-8666-666666666666',
+    createdAt:'2026-09-24T19:10:00Z',
+    intelligence,
+    opportunity:resolved.opportunity,
+    decision:'rejected',
+    reason:'Rejected by operator.'
+  });
+
+  assert.throws(()=>buildUniversePilotContentHandoff({
+    decision,
+    channel:{
+      id:'77777777-7777-4777-8777-777777777777',
+      name:'Owned Channel',
+      niche:'Engineering',
+      format:'Long form',
+      stage:'research',
+      priority:'normal',
+      description:'',
+      createdAt:'2026-09-01T00:00:00Z',
+      updatedAt:'2026-09-24T19:10:00Z'
+    },
+    brain:null,
+    sequence:1,
+    episodeId:'88888888-8888-4888-8888-888888888888',
+    projectId:'99999999-9999-4999-8999-999999999999',
+    factCheckId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    createdAt:'2026-09-24T19:10:00Z'
+  }),/precisa estar aprovado/);
 });

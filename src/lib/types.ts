@@ -133,6 +133,13 @@ export type UniversePilotBrief = {
  };
  nextGate:'produce-one-pilot';
 };
+export type UniversePilotHandoff = {
+ channelId:string;
+ channelName:string;
+ episodeId:string;
+ contentProjectId:string;
+ createdAt:string;
+};
 export type Decision = {
  id: string;
  channelId: string;
@@ -157,6 +164,7 @@ export type Decision = {
   firstTest: string;
  }>;
  pilotBrief?: UniversePilotBrief;
+ pilotHandoff?: UniversePilotHandoff;
 };
 export type ResearchContext = { id: string; title: string; content: string; createdAt: string };
 export type Script = { id: string; channelId: string; opportunityId: string; title: string; content: string; createdAt: string; status: 'draft' };

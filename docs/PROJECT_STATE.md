@@ -589,3 +589,25 @@ Correções:
 - regressão garante que um ID removido do evidence set também desapareça do texto auditável.
 
 Objetivo: impedir que o ledger textual contradiga `targetEvidenceChannelIds` e evitar promoção baseada em palavras genéricas de embalagem.
+
+
+## Universe Pilot → Content OS handoff — 24/09/2026
+
+O Pilot Brief aprovado passa a ter um gate explícito de handoff para o pipeline de produção já existente.
+
+Regras:
+- nenhum handoff ocorre automaticamente ao aprovar o piloto;
+- o operador escolhe explicitamente um canal próprio no Mission Control;
+- o backend revalida que o gap continua `PILOT READY` no Market atual antes de criar qualquer artefato;
+- canais `competitor` são rejeitados como destino;
+- um mesmo `decisionId` gera no máximo um Content Project; retries/duplo clique reutilizam o projeto existente;
+- o handoff cria um episódio `idea` e um Content Project `draft`;
+- `opportunityId` do Content Project recebe o `decisionId`, garantindo provenance e idempotência;
+- o brief recebe target, hipótese, mecanismo preservado, variável alterada, evidência e riscos do Universe Pilot Brief;
+- `promise` permanece vazia para exigir revisão editorial do canal;
+- um fact-check `unverified` é criado obrigatoriamente, bloqueando aprovação para roteiro até pesquisa/fonte rastreável;
+- Script Engine, produção e publicação não são acionados pelo handoff;
+- após o handoff, o Mission Control mostra o canal de destino e permite abrir diretamente a aba Content OS;
+- a decisão persiste `pilotHandoff` com channelId, episodeId e contentProjectId.
+
+Objetivo: conectar discovery → decisão humana → Content OS sem criar um pipeline paralelo e sem pular os gates já existentes de pesquisa, fact-check e aprovação.
