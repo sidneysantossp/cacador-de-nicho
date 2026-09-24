@@ -152,6 +152,14 @@ async function insertObservation(payload:PerformanceObservationPayload){
   return payload as PerformanceObservation;
 }
 
+async function reportForObservation(observationId:string):Promise<PerformanceReport|null>{
+  const row=checked(await db().from('radar_performance_reports')
+    .select(reportSelection)
+    .eq('observation_id',observationId)
+    .maybeSingle());
+  return row?normalizeReport(row as ReportRow):null;
+}
+
 async function reportFromObservation(observation:PerformanceObservation){
   const history=(await listPerformanceObservations(observation.channelId))
     .filter(item=>item.id!==observation.id&&item.episodeId!==observation.episodeId);
@@ -250,7 +258,10 @@ function sampleRetention(curve:Array<{second:number;audiencePercent:number}>,sec
   return [...curve].sort((a,b)=>Math.abs(a.second-second)-Math.abs(b.second-second))[0]?.audiencePercent;
 }
 
-export async function collectYouTubePerformance(publishJobId:string){
+export async function collectYouTubePerformance(
+  publishJobId:string,
+  options:{observationId?:string}={}
+){
   const jobRow=checked(await db().from('radar_youtube_publish_jobs')
     .select('id,channel_id,package_id,connection_id,status,youtube_video_id,completed_at,created_at,payload')
     .eq('id',publishJobId).maybeSingle());
@@ -259,10 +270,9 @@ export async function collectYouTubePerformance(publishJobId:string){
     throw new HttpError('Somente vídeos já publicados podem alimentar o Performance Analyst.',409);
   }
 
-  const [pkg,connection,secret]=await Promise.all([
+  const [pkg,connection]=await Promise.all([
     loadPublicationPackage(String(jobRow.package_id)),
-    loadYouTubeConnection(String(jobRow.channel_id)),
-    loadYouTubeConnectionSecret(String(jobRow.connection_id))
+    loadYouTubeConnection(String(jobRow.channel_id))
   ]);
   if(!pkg)throw new HttpError('Publication Package da publicação não foi encontrado.',404);
   if(!connection||connection.status!=='connected')throw new HttpError('Conexão YouTube precisa ser reautorizada.',409);
@@ -270,6 +280,20 @@ export async function collectYouTubePerformance(publishJobId:string){
     throw new HttpError('Reconecte o canal para conceder acesso ao YouTube Analytics.',409);
   }
 
+  if(options.observationId){
+    const existing=await loadPerformanceObservation(options.observationId);
+    if(existing){
+      if(existing.channelId!==pkg.channelId||
+         existing.episodeId!==pkg.episodeId||
+         existing.externalVideoId!==String(jobRow.youtube_video_id)){
+        throw new HttpError('Observation ID já pertence a outro snapshot de performance.',409);
+      }
+      const report=await reportForObservation(existing.id)??await reportFromObservation(existing);
+      return {observation:existing,report};
+    }
+  }
+
+  const secret=await loadYouTubeConnectionSecret(String(jobRow.connection_id));
   const token=await refreshYouTubeAccessToken(secret.refreshToken);
   const accessToken=token.access_token!;
   const videoId=String(jobRow.youtube_video_id);
@@ -357,7 +381,7 @@ export async function collectYouTubePerformance(publishJobId:string){
   const now=new Date().toISOString();
   const observation:PerformanceObservationPayload={
     kind:'performance-observation',
-    id:crypto.randomUUID(),
+    id:options.observationId??crypto.randomUUID(),
     channelId:pkg.channelId,
     episodeId:pkg.episodeId,
     externalVideoId:videoId,
