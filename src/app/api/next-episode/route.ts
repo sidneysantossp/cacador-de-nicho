@@ -67,10 +67,16 @@ export async function POST(request:Request){
     }
 
     const result=await acceptNextEpisodeCandidate(body);
+    const baseMessage=result.alreadyAccepted
+      ?'Este plano já havia sido aceito.'
+      :'Próximo episódio criado e enviado ao Content OS como brief.';
+    const automationMessage=result.automationStarted
+      ?' Episode Automation disponível em modo '+result.automationMode+'.'
+      :result.automationError
+        ?' O episódio foi criado, mas o Autopilot não iniciou: '+result.automationError
+        :'';
     return Response.json({
-      message:result.alreadyAccepted
-        ?'Este plano já havia sido aceito.'
-        :'Próximo episódio criado e enviado ao Content OS como brief.',
+      message:baseMessage+automationMessage,
       ...result
     });
   }catch(error){return errorResponse(error);}
