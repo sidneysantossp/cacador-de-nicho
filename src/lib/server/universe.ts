@@ -44,7 +44,10 @@ function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseComp
   return {
     ...snapshot,
     importedAt:prior.importedAt,
+    sourceCluster:prior.sourceCluster??snapshot.sourceCluster??prior.cluster,
+    cluster:prior.dna?prior.cluster:snapshot.cluster,
     subniche:prior.subniche,
+    format:prior.dna?prior.format:snapshot.format,
     monitoringTier:prior.monitoringTier,
     status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
     snapshots:[...(snapshot.snapshots??[]),...(prior.snapshots??[])].filter((item,index,array)=>array.findIndex(other=>other.observedAt===item.observedAt)===index).slice(0,30),
@@ -146,6 +149,40 @@ export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
   const refreshed=results.filter(result=>result.ok).length;
   return {refreshed,failed:results.length-refreshed,total:results.length};
 }
+export async function backfillUniverseSourceClusters(maxRefresh=25){
+  const all=await universeState();
+  const local=all.filter(item=>!item.sourceCluster&&!item.dna);
+  for(const competitor of local){
+    await put('radar_managed_channels',competitor.id,{
+      ...competitor,
+      sourceCluster:competitor.cluster
+    });
+  }
+
+  const refreshCandidates=all
+    .filter(item=>!item.sourceCluster&&!!item.dna)
+    .slice(0,Math.max(1,Math.min(maxRefresh,50)));
+
+  const results=await mapLimit(refreshCandidates,4,async competitor=>{
+    try{
+      const refreshed=await collectUniverseCompetitor(competitor.channelId,competitor);
+      await put('radar_managed_channels',refreshed.id,refreshed);
+      return {ok:true as const,id:competitor.id,name:competitor.name,sourceCluster:refreshed.sourceCluster};
+    }catch(error){
+      return {ok:false as const,id:competitor.id,name:competitor.name,error:error instanceof Error?error.message:'Falha não identificada.'};
+    }
+  });
+
+  const after=await universeState();
+  return {
+    localBackfilled:local.length,
+    refreshed:results.filter(result=>result.ok).length,
+    failed:results.filter(result=>!result.ok).length,
+    remaining:after.filter(item=>!item.sourceCluster).length,
+    failures:results.filter((result):result is Extract<(typeof results)[number],{ok:false}>=>!result.ok).slice(0,10)
+  };
+}
+
 export async function runUniverseIntelligence(ids?:string[]){
   const all=await universeState();
   const selected=ids?.length
@@ -180,6 +217,7 @@ export async function runUniverseIntelligence(ids?:string[]){
     ].filter(Boolean).slice(0,5);
     const next:UniverseCompetitor={
       ...competitor,
+      sourceCluster:competitor.sourceCluster??competitor.cluster,
       cluster:dna.primaryNiche||competitor.cluster,
       subniche:dna.subniche||competitor.subniche,
       format:dna.formatSignature||competitor.format,
@@ -277,11 +315,17 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
 export async function runUniverseCycle(){
   const bootstrap=await processUniverseImportQueue(25);
   const intelligence=await runUniverseDnaBootstrap(15,120_000);
-  const market=await shouldRefreshUniverseMarketIntelligence()
-    ?await runUniverseMarketIntelligence()
-    :null;
+  let market:UniverseMarketIntelligence|null=null;
+  let marketError:string|null=null;
+  if(await shouldRefreshUniverseMarketIntelligence()){
+    try{
+      market=await runUniverseMarketIntelligence();
+    }catch(error){
+      marketError=error instanceof Error?error.message:'Falha não identificada ao recalcular Market Intelligence.';
+    }
+  }
   const queue=await universeQueueSummary();
-  return {bootstrap,intelligence,market,queue};
+  return {bootstrap,intelligence,market,marketError,queue};
 }
 
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{

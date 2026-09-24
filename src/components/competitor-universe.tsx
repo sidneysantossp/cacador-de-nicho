@@ -86,6 +86,7 @@ function CompetitorCard({
       <span>CHANNEL DNA {competitor.dna?'· READY':'· PENDENTE'}</span>
       {competitor.dna&&<p className="universe-dna-summary">{competitor.dna.editorialPromise}</p>}
       <div className="universe-tags">{competitor.dnaTags.length?competitor.dnaTags.slice(0,5).map(tag=><em key={tag}>{tag}</em>):<em>DNA pendente</em>}</div>
+      {competitor.sourceCluster&&competitor.sourceCluster!==competitor.cluster&&<small>Origem: {competitor.sourceCluster} → DNA: {competitor.cluster}</small>}
       {competitor.dna&&<small>{competitor.dna.audienceIntent}</small>}
     </div>
 
