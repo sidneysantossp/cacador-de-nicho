@@ -262,6 +262,10 @@ export function selectUniverseGapValidationDnaBatch(
 }
 
 
+export function universeCoverageCluster(competitor:UniverseCompetitor){
+  return competitor.sourceCluster||competitor.cluster||'A classificar';
+}
+
 export function selectUniverseCoverageDnaBatch(
   competitors:UniverseCompetitor[],
   maxItems=5
@@ -271,7 +275,7 @@ export function selectUniverseCoverageDnaBatch(
 
   const buckets=new Map<string,UniverseCompetitor[]>();
   for(const competitor of competitors.filter(item=>!item.dna)){
-    const cluster=competitor.sourceCluster||competitor.cluster||'A classificar';
+    const cluster=universeCoverageCluster(competitor);
     buckets.set(cluster,[...(buckets.get(cluster)??[]),competitor]);
   }
   for(const items of buckets.values())items.sort(compareUniverseDnaPriority);
