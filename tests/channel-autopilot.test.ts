@@ -32,6 +32,11 @@ test('Managed Channel accepts explicit disabled Autopilot defaults',()=>{
   assert.equal(parsed.autopilot?.enabled,false);
   assert.equal(parsed.autopilot?.mode,'assisted');
   assert.equal(parsed.autopilot?.startOnAcceptedNextEpisode,true);
+  assert.equal(parsed.autopilot?.learningLoopEnabled,true);
+  assert.deepEqual(parsed.autopilot?.learningWindowsHours,[24,72,168]);
+  assert.equal(parsed.autopilot?.autoApprovePerformance,true);
+  assert.equal(parsed.autopilot?.autoAnalyzeAudience,true);
+  assert.equal(parsed.autopilot?.autoApproveAudience,true);
 });
 
 test('Managed Channel accepts Autonomous opt-in without enabling auto publish implicitly',()=>{
@@ -46,7 +51,12 @@ test('Managed Channel accepts Autonomous opt-in without enabling auto publish im
   assert.deepEqual(parsed.autopilot,{
     enabled:true,
     mode:'autonomous',
-    startOnAcceptedNextEpisode:true
+    startOnAcceptedNextEpisode:true,
+    learningLoopEnabled:true,
+    learningWindowsHours:[24,72,168],
+    autoApprovePerformance:true,
+    autoAnalyzeAudience:true,
+    autoApproveAudience:true
   });
 });
 
