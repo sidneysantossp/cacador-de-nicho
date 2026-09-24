@@ -94,6 +94,11 @@ create table if not exists public.radar_audience_intelligence_reports(id uuid pr
 create index if not exists radar_audience_intelligence_channel_updated on public.radar_audience_intelligence_reports(channel_id,updated_at desc);
 create table if not exists public.radar_audience_intelligence_versions(id bigint generated always as identity primary key,audience_report_id uuid not null references public.radar_audience_intelligence_reports(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(audience_report_id,version));
 create index if not exists radar_audience_intelligence_versions_report_version on public.radar_audience_intelligence_versions(audience_report_id,version desc);
+create table if not exists public.radar_episode_automation_runs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null unique references public.radar_episodes(id) on delete cascade,content_project_id uuid not null unique references public.radar_content_projects(id) on delete cascade,mode text not null default 'assisted' check(mode in ('assisted','autonomous')),status text not null default 'active' check(status in ('active','waiting','running','completed','failed','cancelled')),current_step text not null default 'content',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,payload jsonb not null,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create index if not exists radar_episode_automation_runs_channel_updated on public.radar_episode_automation_runs(channel_id,updated_at desc);
+create index if not exists radar_episode_automation_runs_queue on public.radar_episode_automation_runs(status,updated_at) where status in ('active','running');
+create table if not exists public.radar_episode_automation_events(id bigint generated always as identity primary key,run_id uuid not null references public.radar_episode_automation_runs(id) on delete cascade,step text not null,status text not null check(status in ('info','started','completed','waiting','blocked','failed')),message text not null,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
+create index if not exists radar_episode_automation_events_run_created on public.radar_episode_automation_events(run_id,created_at desc);
 create table if not exists public.radar_next_episode_plans(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,brain_version int not null check(brain_version>=0),version int not null default 1 check(version>=1),status text not null default 'review' check(status in ('review','accepted','superseded')),payload jsonb not null,acceptance_candidate_id uuid,acceptance_claimed_at timestamptz,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_next_episode_plans_channel_updated on public.radar_next_episode_plans(channel_id,updated_at desc);
 create table if not exists public.radar_next_episode_plan_versions(id bigint generated always as identity primary key,plan_id uuid not null references public.radar_next_episode_plans(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('review','accepted','superseded')),payload jsonb not null,created_at timestamptz not null default now(),unique(plan_id,version));
@@ -107,7 +112,7 @@ create index if not exists radar_universe_queue_status_created on public.radar_u
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -136,6 +141,8 @@ revoke all on sequence public.radar_performance_report_versions_id_seq from anon
 grant usage,select on sequence public.radar_performance_report_versions_id_seq to service_role;
 revoke all on sequence public.radar_audience_intelligence_versions_id_seq from anon,authenticated;
 grant usage,select on sequence public.radar_audience_intelligence_versions_id_seq to service_role;
+revoke all on sequence public.radar_episode_automation_events_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_episode_automation_events_id_seq to service_role;
 revoke all on sequence public.radar_next_episode_plan_versions_id_seq from anon,authenticated;
 grant usage,select on sequence public.radar_next_episode_plan_versions_id_seq to service_role;
 
@@ -251,6 +258,29 @@ return found;
 end $$;
 revoke all on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) from public,anon,authenticated;
 grant execute on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.claim_episode_automation_run(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid automation lease';end if;
+update public.radar_episode_automation_runs set status='active',worker_token=null,lease_until=null,updated_at=now() where status='running' and lease_until is not null and lease_until<now();
+select id into picked from public.radar_episode_automation_runs where status='active' order by updated_at asc for update skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_episode_automation_run(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_episode_automation_run(uuid,int) to service_role;
+
+create or replace function public.heartbeat_episode_automation_run(p_run_id uuid,p_worker_token uuid,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_episode_automation_runs set lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now() where id=p_run_id and status='running' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_episode_automation_run(uuid,uuid,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_episode_automation_run(uuid,uuid,int) to service_role;
 
 create or replace function public.claim_next_episode_candidate(p_plan_id uuid,p_expected_version int,p_candidate_id uuid) returns boolean
 language plpgsql security invoker set search_path='' as $$
