@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { BrainCircuit, Check, CircleDot, Film, FolderKanban, Layers3, Plus, Sparkles } from 'lucide-react';
-import type { Channel, ChannelBrain, ManagedChannel, NextEpisodePlan, Opportunity } from '@/lib/types';
+import type { AutopilotReadiness, Channel, ChannelBrain, ManagedChannel, NextEpisodePlan, Opportunity } from '@/lib/types';
 import { autopilotDecisionPreview, defaultChannelAutopilot, effectiveChannelAutopilot } from '@/lib/channel-autopilot-policy';
 
 const stages:Record<ManagedChannel['stage'],string>={idea:'Ideia',research:'Em pesquisa',production:'Em produção',published:'Publicado',paused:'Pausado'};
@@ -30,6 +30,8 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
  const [previewOperationalIssues,setPreviewOperationalIssues]=useState<Record<string,string[]>>({});
  const [previewLoaded,setPreviewLoaded]=useState<Record<string,boolean>>({});
  const [previewBusy,setPreviewBusy]=useState('');
+ const [readinessByChannel,setReadinessByChannel]=useState<Record<string,AutopilotReadiness>>({});
+ const [readinessBusy,setReadinessBusy]=useState('');
  const visible=useMemo(()=>filter==='all'?items:items.filter(item=>item.stage===filter),[filter,items]);
  const brainByChannel=useMemo(()=>new Map(brains.map(brain=>[brain.channelId,brain])),[brains]);
  const opportunities=radarChannels.flatMap(channel=>(channel.analysis?.opportunities??[]).map(opportunity=>({channel,opportunity})));
@@ -47,6 +49,17 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
   }catch(error){
    onMessage(error instanceof Error?error.message:'Falha ao simular a decisão do Autopilot.');
   }finally{setPreviewBusy('');}
+ }
+ async function loadAutopilotReadiness(channelId:string){
+  setReadinessBusy(channelId);
+  try{
+   const response=await fetch('/api/autopilot-readiness?channelId='+encodeURIComponent(channelId),{cache:'no-store'});
+   const body=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(body.message??'Falha ao checar readiness do Autopilot.');
+   setReadinessByChannel(prev=>({...prev,[channelId]:body as AutopilotReadiness}));
+  }catch(error){
+   onMessage(error instanceof Error?error.message:'Falha ao checar readiness do Autopilot.');
+  }finally{setReadinessBusy('');}
  }
  return <>
   <section className="channel-management-hero"><div><div className="eyebrow">PORTFÓLIO EDITORIAL</div><h2>Seus canais.<br/><span>Uma operação com foco.</span></h2><p>Transforme descobertas em canais ativos, com contexto, estágio e próxima prioridade visíveis.</p></div><div className="portfolio-metrics"><div><span>EM PRODUÇÃO</span><strong>{items.filter(item=>item.stage==='production').length}</strong></div><div><span>EM PESQUISA</span><strong>{items.filter(item=>item.stage==='research').length}</strong></div><div><span>PUBLICADOS</span><strong>{items.filter(item=>item.stage==='published').length}</strong></div></div></section>
