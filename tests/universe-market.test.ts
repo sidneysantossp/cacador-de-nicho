@@ -501,7 +501,7 @@ test('title packaging cannot validate an unrelated target domain',()=>{
   const resolved=resolveUniverseGapEvidence([brainCurious,civic],gap,['braincurious-noise','civic-target']);
   assert.deepEqual(resolved.channelIds,['civic-target']);
   assert.equal(resolved.evidence.some(item=>item.includes('braincurious-noise')),false);
-  assert.equal(resolved.evidence.some(item=>item.includes('domínio target: public, service')),true);
+  assert.equal(resolved.evidence.some(item=>item.includes('domínio target: public services')),true);
 });
 
 test('target keywords override title packaging when validating direct evidence',()=>{
