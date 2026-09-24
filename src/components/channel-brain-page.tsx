@@ -30,8 +30,9 @@ import YouTubePublisherWorkspace from './youtube-publisher-workspace';
 import PerformanceAnalystWorkspace from './performance-analyst-workspace';
 import AudienceIntelligenceWorkspace from './audience-intelligence-workspace';
 import NextEpisodeStrategistWorkspace from './next-episode-strategist-workspace';
+import EpisodeAutomationWorkspace from './episode-automation-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'quality'|'package'|'publish'|'performance'|'audience'|'strategy'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'quality'|'package'|'publish'|'performance'|'audience'|'strategy'|'automation'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -200,6 +201,7 @@ export default function ChannelBrainPage({
     {id:'performance',label:'Performance',icon:<Sparkles size={15}/>},
     {id:'audience',label:'Audience Intelligence',icon:<BrainCircuit size={15}/>},
     {id:'strategy',label:'Próximo Episódio',icon:<Workflow size={15}/>},
+    {id:'automation',label:'Automation',icon:<Workflow size={15}/>},
     {id:'production',label:'Production DNA',icon:<Sparkles size={15}/>},
     {id:'characters',label:'Personagens',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'learnings',label:'Learnings',icon:<Sparkles size={15}/>,count:draft.learnings.length},
@@ -286,6 +288,7 @@ export default function ChannelBrainPage({
     {tab==='performance'&&<PerformanceAnalystWorkspace channel={channel}/>}
     {tab==='audience'&&<AudienceIntelligenceWorkspace channel={channel}/>}
     {tab==='strategy'&&<NextEpisodeStrategistWorkspace channel={channel}/>}
+    {tab==='automation'&&<EpisodeAutomationWorkspace channel={channel}/>}
     {tab==='production'&&<ProductionDnaEditor channel={channel}/>} 
 
     {tab==='characters'&&<div className="brain-content">
