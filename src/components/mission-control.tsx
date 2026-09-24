@@ -1,7 +1,8 @@
 'use client';
 
 import { AlertCircle, ArrowUpRight, CheckCircle2, PlayCircle, Rocket, Sparkles } from 'lucide-react';
-import type { Decision, MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
+import type { Decision, MissionBrief, UniverseMarketIntelligence, YouTubeSearchBudgetState } from '@/lib/types';
+import { universeMarketFreshness } from '@/lib/universe-market';
 
 function statusLabel(status:MissionBrief['status']){
   return status==='completed'?'Missão concluída':status==='partial'?'Missão parcial':'Missão bloqueada';
@@ -18,7 +19,8 @@ export default function MissionControl({
   onOpenStudy,
   onPilotDecision,
   pilotDecisions,
-  searchBudget
+  searchBudget,
+  marketIntelligence
 }:{
   brief?:MissionBrief|null;
   mode:'demo'|'live';
@@ -28,8 +30,10 @@ export default function MissionControl({
   onPilotDecision:(gapId:string,decision:'approved'|'rejected')=>Promise<boolean|undefined>;
   pilotDecisions:Decision[];
   searchBudget?:YouTubeSearchBudgetState|null;
+  marketIntelligence?:UniverseMarketIntelligence|null;
 }){
   const universeOpportunities=brief?.universeOpportunities??[];
+  const marketFreshness=universeMarketFreshness(marketIntelligence);
   const pilotDecisionFor=(gapId:string)=>pilotDecisions.find(item=>item.kind==='universe-pilot'&&item.opportunityId===gapId);
   return <div className="mission-control">
     <section className="mission-hero">
@@ -78,6 +82,16 @@ export default function MissionControl({
         <span>{brief.market.qualifiedChannels} candidato(s) rígido(s) · {brief.market.channelStudies} análise(s) · {brief.market.opportunityReports} report(s)</span>
         {((brief.market.competitors??0)>0||(brief.market.universeQueuePending??0)>0)&&<span>Universe: {brief.market.competitors??0} concorrente(s) · {brief.market.competitorSignals??0} com sinal · {brief.market.competitorDna??0} com DNA · {brief.market.universeCurves??0} curva(s) · {brief.market.universeGaps??0} gap(s) · {brief.market.universeActionableGaps??universeOpportunities.length} acionável(is) · {brief.market.universeQueueCompleted??0} importados / {brief.market.universeQueuePending??0} pendentes</span>}
       </div>
+
+      {marketFreshness&&<div className="info-strip">
+        {marketFreshness.evidenceNewerThanCurves?<AlertCircle size={18}/>:<CheckCircle2 size={18}/>}
+        <span>
+          <strong>Universe Market:</strong>{' '}
+          {marketFreshness.evidenceNewerThanCurves
+            ?`curvas geradas por IA em ${when(marketFreshness.generatedAt)}; evidência revalidada em ${when(marketFreshness.evidenceRevalidatedAt)} com ${marketFreshness.evidenceDnaCount} DNAs. Os gates usam a evidência atual, mas as curvas permanecem do snapshot de IA anterior.`
+            :`curvas e evidência no mesmo snapshot de ${when(marketFreshness.generatedAt)}, com ${marketFreshness.evidenceDnaCount} DNAs considerados.`}
+        </span>
+      </div>}
 
       <section className="mission-priority">
         <div className="section-heading"><div><h2>Pronto para produzir <span className="count-pill">{brief.productionQueue.length}</span></h2><p>Somente oportunidades com validação estrutural e sinais mínimos de demanda, repetibilidade e lacuna aparecem aqui.</p></div></div>
