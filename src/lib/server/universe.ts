@@ -5,7 +5,7 @@ import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
 import { selectUniverseDnaBatch, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
-import { selectUniverseCurveEvidence, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
+import { selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -229,18 +229,25 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
   const startedAt=Date.now();
   const attempted=new Set<string>();
   const updated:string[]=[];
+  const market=await universeMarketIntelligenceState();
   let batches=0;
   let attemptedChannels=0;
+  let targetedAttempts=0;
 
   while(attemptedChannels<cap&&Date.now()-startedAt<budget){
     const all=await universeState();
-    const selected=selectUniverseDnaBatch(
-      all.filter(item=>!attempted.has(item.id)&&!attempted.has(item.channelId)),
-      Math.min(5,cap-attemptedChannels)
+    const eligible=all.filter(item=>!attempted.has(item.id)&&!attempted.has(item.channelId));
+    const targetedIds=new Set(selectUniverseGapValidationDnaBatch(eligible,market,2).map(item=>item.id));
+    const selected=selectUniverseDnaBootstrapBatch(
+      eligible,
+      market,
+      Math.min(5,cap-attemptedChannels),
+      2
     );
     if(!selected.length)break;
 
     attemptedChannels+=selected.length;
+    targetedAttempts+=selected.filter(item=>targetedIds.has(item.id)).length;
     for(const competitor of selected){
       attempted.add(competitor.id);
       attempted.add(competitor.channelId);
@@ -259,6 +266,7 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
     updated,
     batches,
     attempted:attemptedChannels,
+    targetedAttempts,
     total:after.length,
     ready,
     remaining,
