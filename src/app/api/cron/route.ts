@@ -1,7 +1,7 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
 import { runAiJob } from '@/lib/server/ai-job';
-import { backfillUniverseSourceClusters, runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
+import { backfillUniverseSourceClusters, runUniverseBootstrapCycle, runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
 
 export const runtime='nodejs';
 export const maxDuration=300;
@@ -23,6 +23,10 @@ export async function GET(request:Request){
     const scope=url.pathname.endsWith('/universe')?'universe':url.searchParams.get('scope')??'radar';
     if(scope==='universe'){
       const result=await runAiJob('universe-queue','cron-daily',()=>runUniverseCycle());
+      return Response.json({scope,...result});
+    }
+    if(scope==='universe-dna'){
+      const result=await runAiJob('universe-queue','cron-daily-dna',()=>runUniverseBootstrapCycle());
       return Response.json({scope,...result});
     }
     if(scope==='market'){
