@@ -149,6 +149,40 @@ export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
   const refreshed=results.filter(result=>result.ok).length;
   return {refreshed,failed:results.length-refreshed,total:results.length};
 }
+export async function backfillUniverseSourceClusters(maxRefresh=25){
+  const all=await universeState();
+  const local=all.filter(item=>!item.sourceCluster&&!item.dna);
+  for(const competitor of local){
+    await put('radar_managed_channels',competitor.id,{
+      ...competitor,
+      sourceCluster:competitor.cluster
+    });
+  }
+
+  const refreshCandidates=all
+    .filter(item=>!item.sourceCluster&&!!item.dna)
+    .slice(0,Math.max(1,Math.min(maxRefresh,50)));
+
+  const results=await mapLimit(refreshCandidates,4,async competitor=>{
+    try{
+      const refreshed=await collectUniverseCompetitor(competitor.channelId,competitor);
+      await put('radar_managed_channels',refreshed.id,refreshed);
+      return {ok:true as const,id:competitor.id,name:competitor.name,sourceCluster:refreshed.sourceCluster};
+    }catch(error){
+      return {ok:false as const,id:competitor.id,name:competitor.name,error:error instanceof Error?error.message:'Falha não identificada.'};
+    }
+  });
+
+  const after=await universeState();
+  return {
+    localBackfilled:local.length,
+    refreshed:results.filter(result=>result.ok).length,
+    failed:results.filter(result=>!result.ok).length,
+    remaining:after.filter(item=>!item.sourceCluster).length,
+    failures:results.filter((result):result is Extract<(typeof results)[number],{ok:false}>=>!result.ok).slice(0,10)
+  };
+}
+
 export async function runUniverseIntelligence(ids?:string[]){
   const all=await universeState();
   const selected=ids?.length
