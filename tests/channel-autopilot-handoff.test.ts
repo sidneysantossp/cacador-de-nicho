@@ -7,6 +7,7 @@ import {
   effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
+import { buildAutopilotReadiness } from '../src/lib/autopilot-readiness-policy';
 
 test('Channel Autopilot defaults are disabled and conservative',()=>{
   assert.deepEqual(defaultChannelAutopilot,{
@@ -219,4 +220,75 @@ test('Automatic acceptance requires autonomous mode, threshold and strong learni
     candidates:[{...plan.candidates[0],evidenceRefs:['concept:future']}]
   };
   assert.ok(nextEpisodeAutoAcceptIssues(ready,noLearning).includes('no-strong-learning-evidence'));
+});
+
+
+test('Autopilot readiness separates configuration from temporary operational holds',()=>{
+  const input={
+    channelId:'11111111-1111-4111-8111-111111111111',
+    hasBrain:true,
+    hasProductionDna:true,
+    providers:{openai:true,elevenlabs:true,googleai:true},
+    workers:{automation:true,learningLoop:true},
+    youtube:{
+      oauthConfigured:true,
+      connected:true,
+      scopes:[
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/yt-analytics.readonly'
+      ]
+    },
+    operations:{
+      automaticAcceptanceInLast24Hours:false,
+      activeEpisodeAutomation:false,
+      activeLearningLoop:false
+    }
+  };
+  const ready=buildAutopilotReadiness(input);
+  assert.equal(ready.assistedReady,true);
+  assert.equal(ready.productionAutonomousReady,true);
+  assert.equal(ready.closedLoopReady,true);
+  assert.equal(ready.autonomousReady,true);
+
+  const held=buildAutopilotReadiness({
+    ...input,
+    operations:{
+      automaticAcceptanceInLast24Hours:true,
+      activeEpisodeAutomation:true,
+      activeLearningLoop:true
+    }
+  });
+  assert.equal(held.closedLoopReady,true);
+  assert.equal(held.autonomousReady,false);
+  assert.deepEqual(
+    held.checks.filter(check=>check.status==='warning').map(check=>check.code),
+    ['auto-accept-cooldown','episode-automation-idle','learning-loop-idle']
+  );
+});
+
+test('Autopilot readiness blocks each capability at its own prerequisite layer',()=>{
+  const input={
+    channelId:'11111111-1111-4111-8111-111111111111',
+    hasBrain:false,
+    hasProductionDna:true,
+    providers:{openai:false,elevenlabs:false,googleai:false},
+    workers:{automation:true,learningLoop:true},
+    youtube:{oauthConfigured:true,connected:true,scopes:[] as string[]},
+    operations:{
+      automaticAcceptanceInLast24Hours:false,
+      activeEpisodeAutomation:false,
+      activeLearningLoop:false
+    }
+  };
+  const result=buildAutopilotReadiness(input);
+  assert.equal(result.assistedReady,false);
+  assert.equal(result.productionAutonomousReady,false);
+  assert.equal(result.closedLoopReady,false);
+  assert.equal(result.autonomousReady,false);
+  assert.ok(result.checks.some(check=>check.code==='channel-brain'&&check.status==='blocker'));
+  assert.ok(result.checks.some(check=>check.code==='openai-provider'&&check.status==='blocker'));
+  assert.ok(result.checks.some(check=>check.code==='elevenlabs-provider'&&check.status==='blocker'));
+  assert.ok(result.checks.some(check=>check.code==='googleai-provider'&&check.status==='blocker'));
+  assert.ok(result.checks.some(check=>check.code==='youtube-scopes'&&check.status==='blocker'));
 });
