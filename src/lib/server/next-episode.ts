@@ -12,6 +12,7 @@ import { generateNextEpisodeStrategy } from './next-episode-ai';
 import { compileNextEpisodePlan } from '@/lib/next-episode-policy';
 import { episodeNarrativeReadiness } from '@/lib/narrative-policy';
 import { loadContentProject, saveContentProject } from './content-os';
+import { createEpisodeAutomationRun } from './episode-automation';
 
 type Row={
   id:string;channel_id:string;brain_version:number;version:number;
@@ -183,6 +184,40 @@ function contentProjectFromCandidate(input:{
   };
 }
 
+async function maybeStartAcceptedEpisodeAutomation(
+  managed:ManagedChannel,
+  contentProjectId:string
+){
+  const autopilot=managed.autopilot;
+  if(!autopilot?.enabled||!autopilot.startOnAcceptedNextEpisode){
+    return {
+      automationRunId:undefined,
+      automationMode:undefined,
+      automationStarted:false,
+      automationError:undefined
+    };
+  }
+  try{
+    const run=await createEpisodeAutomationRun({
+      contentProjectId,
+      mode:autopilot.mode
+    });
+    return {
+      automationRunId:run.id,
+      automationMode:run.mode,
+      automationStarted:true,
+      automationError:undefined
+    };
+  }catch(error){
+    return {
+      automationRunId:undefined,
+      automationMode:autopilot.mode,
+      automationStarted:false,
+      automationError:error instanceof Error?error.message:'Falha ao iniciar Episode Automation.'
+    };
+  }
+}
+
 export async function acceptNextEpisodeCandidate(input:{
   planId:string;
   candidateId:string;
@@ -195,11 +230,21 @@ export async function acceptNextEpisodeCandidate(input:{
     if(plan.review.acceptedCandidateId!==input.candidateId){
       throw new HttpError('Este plano já foi aceito com outro candidato.',409);
     }
+    const managed=await channel(plan.channelId);
+    const automation=plan.review.acceptedContentProjectId
+      ?await maybeStartAcceptedEpisodeAutomation(managed,plan.review.acceptedContentProjectId)
+      :{
+        automationRunId:undefined,
+        automationMode:undefined,
+        automationStarted:false,
+        automationError:undefined
+      };
     return {
       plan,
       episodeId:plan.review.acceptedEpisodeId,
       contentProjectId:plan.review.acceptedContentProjectId,
-      alreadyAccepted:true
+      alreadyAccepted:true,
+      ...automation
     };
   }
   if(plan.version!==input.expectedVersion)throw new HttpError('Next Episode Plan desatualizado.',409);
@@ -292,11 +337,13 @@ export async function acceptNextEpisodeCandidate(input:{
   };
   try{
     const saved=await savePlan(next,'accepted',plan.version);
+    const automation=await maybeStartAcceptedEpisodeAutomation(managed,project.id);
     return {
       plan:saved,
       episodeId:episode.id,
       contentProjectId:project.id,
-      alreadyAccepted:false
+      alreadyAccepted:false,
+      ...automation
     };
   }catch(error){
     if(!(error instanceof HttpError)||error.status!==409)throw error;
@@ -306,11 +353,20 @@ export async function acceptNextEpisodeCandidate(input:{
       concurrent.review.acceptedCandidateId===candidate.id&&
       concurrent.review.acceptedEpisodeId===episode.id
     ){
+      const automation=concurrent.review.acceptedContentProjectId
+        ?await maybeStartAcceptedEpisodeAutomation(managed,concurrent.review.acceptedContentProjectId)
+        :{
+          automationRunId:undefined,
+          automationMode:undefined,
+          automationStarted:false,
+          automationError:undefined
+        };
       return {
         plan:concurrent,
         episodeId:concurrent.review.acceptedEpisodeId,
         contentProjectId:concurrent.review.acceptedContentProjectId,
-        alreadyAccepted:true
+        alreadyAccepted:true,
+        ...automation
       };
     }
     throw error;
