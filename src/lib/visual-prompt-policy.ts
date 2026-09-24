@@ -9,6 +9,40 @@ function camel(value:string){
   return result||'Character';
 }
 
+export type ProductionNamingContext={
+  channelCode:string;
+  episodeNumber:number;
+};
+
+export function productionChannelCode(value:string){
+  const compact=value.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g,'')
+    .slice(0,24);
+  return compact||'CHANNEL';
+}
+
+export function productionFileStem(
+  naming:ProductionNamingContext,
+  sceneSequence:number,
+  takeNumber=1
+){
+  return productionChannelCode(naming.channelCode)
+    +'_V'+String(Math.max(1,Math.trunc(naming.episodeNumber))).padStart(2,'0')
+    +'_S'+String(Math.max(1,Math.trunc(sceneSequence))).padStart(3,'0')
+    +'_T'+String(Math.max(1,Math.trunc(takeNumber))).padStart(2,'0');
+}
+
+export function productionFileName(
+  naming:ProductionNamingContext,
+  sceneSequence:number,
+  takeNumber=1,
+  extension='mp4'
+){
+  return productionFileStem(naming,sceneSequence,takeNumber)+'.'+extension.replace(/^\./,'').toLowerCase();
+}
+
 export function visualTimecodeLabel(seconds:number){
   const whole=Math.max(0,Math.floor(seconds+1e-6));
   const minutes=Math.floor(whole/60);
@@ -66,7 +100,8 @@ export function compileScenePrompt(
   dna:ProductionDNA,
   characterIds:string[],
   direction:string,
-  referenceCharacterIds:string[]=[]
+  referenceCharacterIds:string[]=[],
+  naming:ProductionNamingContext={channelCode:'CHANNEL',episodeNumber:1}
 ):VisualScenePrompt{
   const known=new Map(dna.characters.map(character=>[character.id,character]));
   const referenceSet=new Set(referenceCharacterIds);
@@ -90,6 +125,8 @@ export function compileScenePrompt(
   let prompt=pieces.join(', ').replace(/\s+/g,' ').trim();
   if(styleLock&&!prompt.endsWith(styleLock))prompt+=(prompt?', ':'')+styleLock;
 
+  const takeNumber=1;
+  const outputFileStem=productionFileStem(naming,scene.sequence,takeNumber);
   return {
     sceneId:scene.id,
     sequence:scene.sequence,
@@ -99,13 +136,17 @@ export function compileScenePrompt(
     characterIds:[...new Set(characterIds)],
     referenceNames:references,
     direction:directionText,
-    prompt
+    prompt,
+    outputFileStem,
+    outputFileName:outputFileStem+'.mp4',
+    takeNumber
   };
 }
 
 export function buildInitialVisualPromptSet(
   plan:ScenePlan,
-  dna:ProductionDNA
+  dna:ProductionDNA,
+  naming:ProductionNamingContext={channelCode:'CHANNEL',episodeNumber:1}
 ):VisualPromptSetPayload{
   const now=new Date().toISOString();
   const recurring=recurringCharacterIds(plan.scenes.map(scene=>({sceneId:scene.id,characterIds:scene.characterIds})));
@@ -114,7 +155,8 @@ export function buildInitialVisualPromptSet(
     dna,
     scene.characterIds,
     scene.promptDirection||scene.visualIntent||scene.narration,
-    recurring
+    recurring,
+    naming
   ));
   const references=recurring.flatMap(characterId=>{
     const character=dna.characters.find(item=>item.id===characterId);
@@ -135,6 +177,12 @@ export function buildInitialVisualPromptSet(
     scenePlanVersion:plan.version,
     productionDnaVersion:dna.version,
     styleLock:dna.visual.basePrompt.trim(),
+    productionNaming:{
+      channelCode:productionChannelCode(naming.channelCode),
+      episodeNumber:Math.max(1,Math.trunc(naming.episodeNumber)),
+      takeDigits:2,
+      pattern:'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'
+    },
     workflowStage:references.length?'references':'scenes',
     characterReferences:references,
     scenePrompts,
@@ -145,15 +193,39 @@ export function buildInitialVisualPromptSet(
 }
 
 export function normalizeVisualPromptSet(payload:VisualPromptSetPayload){
+  const naming=payload.productionNaming??{
+    channelCode:'CHANNEL',
+    episodeNumber:1,
+    takeDigits:2,
+    pattern:'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'
+  };
+  const normalizedNaming={
+    channelCode:productionChannelCode(naming.channelCode),
+    episodeNumber:Math.max(1,Math.trunc(naming.episodeNumber)),
+    takeDigits:2,
+    pattern:'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'
+  };
   return {
     ...payload,
+    productionNaming:normalizedNaming,
     characterReferences:payload.characterReferences.map(ref=>({
       ...ref,
       sceneIds:[...new Set(ref.sceneIds)]
     })),
     scenePrompts:[...payload.scenePrompts]
       .sort((a,b)=>a.sequence-b.sequence)
-      .map((scene,index)=>({...scene,sequence:index+1})),
+      .map((scene,index)=>{
+        const sequence=index+1;
+        const takeNumber=Math.max(1,Math.trunc(scene.takeNumber||1));
+        const outputFileStem=productionFileStem(normalizedNaming,sequence,takeNumber);
+        return {
+          ...scene,
+          sequence,
+          takeNumber,
+          outputFileStem,
+          outputFileName:outputFileStem+'.mp4'
+        };
+      }),
     updatedAt:new Date().toISOString()
   };
 }
@@ -182,6 +254,10 @@ export function visualPromptIssues(
     if(prompt.timecodeLabel!==visualTimecodeLabel(scene.startSeconds))issues.push('timecode-label-mismatch');
     if(Math.abs(prompt.startSeconds-scene.startSeconds)>.02||Math.abs(prompt.endSeconds-scene.endSeconds)>.02)issues.push('scene-timecode-changed');
     if(!prompt.direction.trim()||!prompt.prompt.trim())issues.push('empty-scene-prompt');
+    const expectedFile=productionFileName(payload.productionNaming,scene.sequence,prompt.takeNumber||1);
+    if(prompt.outputFileName!==expectedFile||prompt.outputFileStem!==expectedFile.replace(/\.mp4$/,'')){
+      issues.push('production-filename-mismatch');
+    }
     if(payload.styleLock&&!prompt.prompt.endsWith(payload.styleLock))issues.push('style-lock-not-appended');
     for(const id of prompt.characterIds)if(!knownCharacters.has(id))issues.push('unknown-character');
   }
