@@ -300,6 +300,17 @@ export function universeGapEvidenceMatch(
   };
 }
 
+const GAP_CANDIDATE_GENERIC_SINGLE_KEYWORDS=new Set([
+  'bathroom','kitchen','household','home','house','room'
+]);
+
+function specificGapCandidateTargetKeywords(labels:string[]){
+  return labels.filter(label=>{
+    const tokens=lexicalTokens(label);
+    return tokens.length>=2||(tokens.length===1&&!GAP_CANDIDATE_GENERIC_SINGLE_KEYWORDS.has(tokens[0]));
+  });
+}
+
 export function universeGapDnaCandidateMatch(
   competitor:UniverseCompetitor,
   gap:UniverseGapDescriptor
@@ -307,20 +318,27 @@ export function universeGapDnaCandidateMatch(
   const strict=universeGapEvidenceMatch(competitor,gap);
   const direct=directGapMatches(competitor,gap);
   const targetSignalCount=direct.targetMatchedTerms.length;
+  const specificTargetKeywords=specificGapCandidateTargetKeywords(direct.targetMatchedTerms);
   const domainAnchorCount=direct.domainAnchorMatchedTerms.length;
   const lexicalCount=direct.matchedTerms.length;
   const hasExplicitKeywords=!!gap.targetKeywords?.length;
-  const completeTargetKeyword=targetSignalCount>0;
+  const completeSpecificTargetKeyword=specificTargetKeywords.length>0;
+  const genericKeywordWithContext=targetSignalCount>0&&lexicalCount>=2;
   const anchoredCombination=
     domainAnchorCount>=2||
     (domainAnchorCount>=1&&lexicalCount>=2);
   const matched=
     strict.matched||
-    (hasExplicitKeywords&&(completeTargetKeyword||anchoredCombination));
+    (hasExplicitKeywords&&(
+      completeSpecificTargetKeyword||
+      genericKeywordWithContext||
+      anchoredCombination
+    ));
   const score=
     (strict.matched?100:0)+
     (hasExplicitKeywords?
-      targetSignalCount*25+
+      specificTargetKeywords.length*30+
+      targetSignalCount*8+
       domainAnchorCount*8+
       Math.min(lexicalCount,5)
       :0);
