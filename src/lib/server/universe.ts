@@ -39,6 +39,13 @@ type UniverseQueueRow={
   updated_at:string;
 };
 
+function permanentUniverseImportFailure(message:string){
+  const normalized=message.toLowerCase();
+  return normalized.includes('http 404')
+    ||normalized.includes('não encontrado')
+    ||normalized.includes('not found');
+}
+
 function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseCompetitor):UniverseCompetitor{
   if(!prior)return snapshot;
   return {
@@ -93,7 +100,12 @@ export async function processUniverseImportQueue(maxItems=25){
     }catch(error){
       const message=(error instanceof Error?error.message:'Falha não identificada.').slice(0,1000);
       checked(await db().from('radar_universe_queue')
-        .update({status:'failed',last_error:message,updated_at:new Date().toISOString()})
+        .update({
+          status:'failed',
+          attempts:permanentUniverseImportFailure(message)?Math.max(row.attempts,3):row.attempts,
+          last_error:message,
+          updated_at:new Date().toISOString()
+        })
         .eq('id',row.id));
       return {ok:false as const,id:row.id,error:message};
     }
