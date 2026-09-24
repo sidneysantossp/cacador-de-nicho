@@ -1,5 +1,6 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
+import { runAiJob } from '@/lib/server/ai-job';
 import { processUniverseImportQueue, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeQueueSummary } from '@/lib/server/universe';
 
 export const runtime='nodejs';
@@ -21,13 +22,16 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     const scope=url.pathname.endsWith('/universe')?'universe':url.searchParams.get('scope')??'radar';
     if(scope==='universe'){
-      const bootstrap=await processUniverseImportQueue(25);
-      const intelligence=await runUniverseIntelligence();
-      const market=await shouldRefreshUniverseMarketIntelligence()
-        ?await runUniverseMarketIntelligence()
-        :null;
-      const queue=await universeQueueSummary();
-      return Response.json({scope,bootstrap,intelligence,market,queue});
+      const result=await runAiJob('universe-queue','cron-daily',async()=>{
+        const bootstrap=await processUniverseImportQueue(25);
+        const intelligence=await runUniverseIntelligence();
+        const market=await shouldRefreshUniverseMarketIntelligence()
+          ?await runUniverseMarketIntelligence()
+          :null;
+        const queue=await universeQueueSummary();
+        return {bootstrap,intelligence,market,queue};
+      });
+      return Response.json({scope,...result});
     }
     if(scope==='market'){
       const result=await runUniverseMarketIntelligence();
