@@ -79,7 +79,7 @@ async function rpc(name,args){
 
 async function queryJob(jobId){
   const select=[
-    'id','status','worker_token','payload','channel_id','connection_id','attempts',
+    'id','status','worker_token','payload','channel_id','connection_id','package_id','attempts',
     'youtube_video_id','resumable_uri_ciphertext','upload_bytes','upload_total_bytes'
   ].join(',');
   const rows=await rest('/rest/v1/radar_youtube_publish_jobs?id=eq.'+encodeURIComponent(jobId)+'&select='+encodeURIComponent(select));
@@ -427,6 +427,45 @@ async function markVideoUploaded(jobId,token,videoId){
   });
 }
 
+async function markEpisodePublished(job,videoId){
+  const packages=await rest(
+    '/rest/v1/radar_publication_packages?id=eq.'+encodeURIComponent(job.package_id)+
+    '&select='+encodeURIComponent('episode_id')
+  );
+  const packageRow=Array.isArray(packages)?packages[0]??null:null;
+  if(!packageRow?.episode_id)throw new Error('Publication Package episode could not be resolved.');
+
+  const episodes=await rest(
+    '/rest/v1/radar_episodes?id=eq.'+encodeURIComponent(packageRow.episode_id)+
+    '&channel_id=eq.'+encodeURIComponent(job.channel_id)+
+    '&select='+encodeURIComponent('id,payload')
+  );
+  const episode=Array.isArray(episodes)?episodes[0]??null:null;
+  if(!episode?.id)throw new Error('Published episode could not be resolved.');
+
+  const now=new Date().toISOString();
+  const payload={
+    ...(episode.payload||{}),
+    status:'published',
+    youtubeVideoId:videoId,
+    publishedAt:episode.payload?.publishedAt||now,
+    updatedAt:now
+  };
+  const rows=await rest(
+    '/rest/v1/radar_episodes?id=eq.'+encodeURIComponent(episode.id)+
+    '&channel_id=eq.'+encodeURIComponent(job.channel_id)+
+    '&select=id',
+    {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+      body:JSON.stringify({status:'published',payload,updated_at:now})
+    }
+  );
+  if(!Array.isArray(rows)||rows.length!==1){
+    throw new Error('Episode publication state was not persisted.');
+  }
+}
+
 async function processJob(jobId,token){
   let job=await assertActive(jobId,token);
   const connection=await queryConnection(job.connection_id);
@@ -479,6 +518,7 @@ async function processJob(jobId,token){
 
     await heartbeat(job.id,token,98,'verifying-video');
     const actualPrivacyStatus=await verifyVideo(videoId,accessToken);
+    await markEpisodePublished(job,videoId);
     await updateOwned(job.id,token,{
       status:'completed',
       progress:100,
