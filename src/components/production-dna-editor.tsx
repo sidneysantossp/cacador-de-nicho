@@ -156,6 +156,15 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
         <TextField label="BENCHMARK · MOVIMENTO" value={draft.visual.qualityBenchmark.criteria.motionQuality} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,criteria:{...draft.visual.qualityBenchmark!.criteria,motionQuality:v}})} rows={4}/>
         <ListField label="REGRAS DE QA DO BENCHMARK" value={draft.visual.qualityBenchmark.qaRules} onChange={v=>visual('qualityBenchmark',{...draft.visual.qualityBenchmark!,qaRules:v})}/>
       </div>}
+      {draft.visual.anatomyScaleBible&&<section className="production-dna-content">
+        <div className="production-dna-section-head"><div><span>ANATOMY & SCALE BIBLE</span><h3>V{draft.visual.anatomyScaleBible.version} · {draft.visual.anatomyScaleBible.status.toUpperCase()} · 1G = altura canônica do Grug</h3></div></div>
+        <div className="production-dna-grid three">
+          {draft.visual.anatomyScaleBible.characters.map(item=><div className="production-dna-format" key={item.characterId}><div><span>{item.characterId}</span><strong>{item.heightG.toFixed(2)}G</strong></div><div><span>Master</span><strong>{item.masterAssetName}</strong></div><p>{item.build}</p></div>)}
+          {draft.visual.anatomyScaleBible.props.map(item=><div className="production-dna-format" key={item.id}><div><span>{item.name}</span><strong>{item.scaleRule}</strong></div><div><span>Master</span><strong>{item.masterAssetName}</strong></div></div>)}
+        </div>
+        <ListField label="GLOBAL SCALE LOCKS" value={draft.visual.anatomyScaleBible.globalRules} onChange={v=>visual('anatomyScaleBible',{...draft.visual.anatomyScaleBible!,globalRules:v})}/>
+        <ListField label="REJECTION RULES" value={draft.visual.anatomyScaleBible.rejectionRules} onChange={v=>visual('anatomyScaleBible',{...draft.visual.anatomyScaleBible!,rejectionRules:v})}/>
+      </section>}
     </div>}
 
     {tab==='characters'&&<div className="production-dna-content">
