@@ -315,11 +315,17 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
 export async function runUniverseCycle(){
   const bootstrap=await processUniverseImportQueue(25);
   const intelligence=await runUniverseDnaBootstrap(15,120_000);
-  const market=await shouldRefreshUniverseMarketIntelligence()
-    ?await runUniverseMarketIntelligence()
-    :null;
+  let market:UniverseMarketIntelligence|null=null;
+  let marketError:string|null=null;
+  if(await shouldRefreshUniverseMarketIntelligence()){
+    try{
+      market=await runUniverseMarketIntelligence();
+    }catch(error){
+      marketError=error instanceof Error?error.message:'Falha não identificada ao recalcular Market Intelligence.';
+    }
+  }
   const queue=await universeQueueSummary();
-  return {bootstrap,intelligence,market,queue};
+  return {bootstrap,intelligence,market,marketError,queue};
 }
 
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{
