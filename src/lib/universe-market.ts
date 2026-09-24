@@ -48,6 +48,34 @@ export function selectUniverseCurveEvidence(competitors:UniverseCompetitor[],max
 }
 
 
+const OPPORTUNITY_FAMILY_GENERIC_TOKENS=new Set([
+  'historical','history','engineering','engineer','engineers','system','systems','failure','failures',
+  'explained','every','type','types','most','dangerous','project','projects','modern','old'
+]);
+
+function opportunityFamilyTokens(gap:Pick<UniverseGap,'targetSpace'|'targetKeywords'>){
+  return new Set(
+    [gap.targetSpace,...(gap.targetKeywords??[])]
+      .join(' ')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[^a-z0-9]+/g,' ')
+      .split(' ')
+      .map(token=>token.length>4&&token.endsWith('s')&&!token.endsWith('ss')?token.slice(0,-1):token)
+      .filter(token=>token.length>=3&&!OPPORTUNITY_FAMILY_GENERIC_TOKENS.has(token))
+  );
+}
+
+function sameUniverseOpportunityFamily(a:UniverseGap,b:UniverseGap){
+  const aEvidence=new Set(a.targetEvidenceChannelIds.filter(Boolean));
+  const bEvidence=new Set(b.targetEvidenceChannelIds.filter(Boolean));
+  const sharedEvidence=[...aEvidence].filter(id=>bEvidence.has(id)).length;
+  if(sharedEvidence<2)return false;
+  const aTokens=opportunityFamilyTokens(a);
+  const bTokens=opportunityFamilyTokens(b);
+  return [...aTokens].some(token=>bTokens.has(token));
+}
+
 export function selectUniverseMissionOpportunities(
   intelligence:UniverseMarketIntelligence|null,
   max=5
@@ -56,7 +84,7 @@ export function selectUniverseMissionOpportunities(
   const demandRank={observed:2,partial:1} as const;
   const saturationRank={low:3,medium:2,uncertain:1} as const;
 
-  return intelligence.gaps.flatMap(gap=>{
+  const ranked=intelligence.gaps.flatMap(gap=>{
     const curve=intelligence.curves.find(item=>item.id===gap.curveId);
     if(
       !curve||
@@ -83,6 +111,7 @@ export function selectUniverseMissionOpportunities(
       independentCreators:curve.independentCreators,
       targetEvidenceCount,
       firstTest:gap.firstTests[0]??'Definir um piloto de baixo custo antes de escalar produção.',
+      alternateAngles:[] as Array<{title:string;curveName:string;targetSpace:string;firstTest:string}>,
       reasons:[
         `Curva estrutural sustentada por ${curve.independentCreators} criador(es) independente(s).`,
         `Demanda no target: ${gap.demandStatus} com ${targetEvidenceCount} canal(is) de evidência.`,
@@ -100,9 +129,40 @@ export function selectUniverseMissionOpportunities(
     if(b.independentCreators!==a.independentCreators)return b.independentCreators-a.independentCreators;
     if(b.targetEvidenceCount!==a.targetEvidenceCount)return b.targetEvidenceCount-a.targetEvidenceCount;
     return a.title.localeCompare(b.title);
-  }).slice(0,Math.max(0,Math.min(max,10)));
-}
+  });
 
+  const families:typeof ranked=[];
+  for(const candidate of ranked){
+    const candidateGap=intelligence.gaps.find(item=>item.id===candidate.gapId);
+    if(!candidateGap)continue;
+    const familyIndex=families.findIndex(existing=>{
+      const existingGap=intelligence.gaps.find(item=>item.id===existing.gapId);
+      return !!existingGap&&sameUniverseOpportunityFamily(existingGap,candidateGap);
+    });
+    if(familyIndex<0){
+      families.push(candidate);
+      continue;
+    }
+    const primary=families[familyIndex];
+    const alternateAngles=[...(primary.alternateAngles??[]),{
+      title:candidate.title,
+      curveName:candidate.curveName,
+      targetSpace:candidate.targetSpace,
+      firstTest:candidate.firstTest
+    }];
+    families[familyIndex]={
+      ...primary,
+      alternateAngles,
+      reasons:[
+        ...primary.reasons.slice(0,3),
+        `Família consolidada: ${1+alternateAngles.length} ângulo(s) editoriais sustentados pelo mesmo domínio/evidência.`,
+        ...primary.reasons.slice(3)
+      ]
+    };
+  }
+
+  return families.slice(0,Math.max(0,Math.min(max,10)));
+}
 
 const GAP_MATCH_STOP_WORDS=new Set([
   'a','an','and','are','as','at','be','became','because','been','being','between','by','can','could','did','do','does','every','first','for','from',
