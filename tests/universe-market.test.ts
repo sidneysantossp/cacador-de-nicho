@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCoverageCluster, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCoverageCluster, universeCurveClassification, universeGapDemandStatus, universeGapDnaCandidateMatch } from '../src/lib/universe-market';
 import { preserveUniverseMarketContinuity } from '../src/lib/universe-market-continuity';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
@@ -874,4 +874,91 @@ test('Mission Control keeps unrelated targets in separate opportunity families',
   const selected=selectUniverseMissionOpportunities(intelligence,5);
   assert.equal(selected.length,2);
   assert.equal(selected.every(item=>(item.alternateAngles?.length??0)===0),true);
+});
+
+
+test('DNA candidate retrieval can be broader than deterministic target evidence',()=>{
+  const gap={
+    title:"How History's Great Ocean Liners Met Their End",
+    targetSpace:'historic ocean liners',
+    targetKeywords:['ocean liners','passenger ships','shipwrecks','maritime disasters','salvage operations','Atlantic crossings'],
+    changedVariable:'Historic ocean liners',
+    firstTests:[]
+  };
+  const insight=missingDnaCompetitor(
+    'insight-fusion-shipwreck',
+    'History',
+    ["How Sweden's Greatest Warship Sank in Minutes #history #sweden #shipwreck"],
+    {breakoutRatio:2}
+  );
+
+  const candidate=universeGapDnaCandidateMatch(insight,gap);
+  assert.equal(candidate.matched,true);
+  assert.equal(candidate.strictEvidence,false);
+  assert.equal(candidate.targetMatchedTerms.includes('shipwrecks'),true);
+
+  const resolved=resolveUniverseGapEvidence([insight],gap,[]);
+  assert.deepEqual(resolved.channelIds,[]);
+});
+
+test('gap-directed DNA selector may investigate a weak target signal without promoting demand',()=>{
+  const candidate=missingDnaCompetitor(
+    'shipwreck-candidate',
+    'History',
+    ['The Warship That Became a Shipwreck'],
+    {breakoutRatio:8}
+  );
+  const unrelated=missingDnaCompetitor(
+    'huge-unrelated-breakout',
+    'Entertainment',
+    ['The Biggest Celebrity Transformation Ever'],
+    {breakoutRatio:999}
+  );
+
+  const intelligence:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T17:00:00Z',
+    sourceCompetitorIds:['a','b','c','existing-ocean'],
+    dnaCount:4,
+    curves:[{
+      id:'curve:ocean',
+      key:'ocean',
+      name:'Terminal Consequences',
+      thesis:'T',
+      mechanismSteps:['A','B','C'],
+      supportingChannelIds:['a','b','c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['History'],
+      evidence:['E'],
+      counterEvidence:[],
+      recurringTitlePatterns:['How X ended'],
+      transferableVariables:['Domain'],
+      limitations:[]
+    }],
+    gaps:[{
+      id:'gap:ocean',
+      curveId:'curve:ocean',
+      title:"How History's Great Ocean Liners Met Their End",
+      targetSpace:'historic ocean liners',
+      targetKeywords:['ocean liners','passenger ships','shipwrecks','maritime disasters','salvage operations','Atlantic crossings'],
+      preservedMechanism:'Terminal consequences',
+      changedVariable:'Ocean liners',
+      demandStatus:'partial',
+      targetEvidenceChannelIds:['existing-ocean'],
+      demandEvidence:['One confirmed target channel.'],
+      sampleSaturation:'low',
+      rationale:'Needs another independent target creator.',
+      risks:[],
+      firstTests:['How History\'s Great Ocean Liners Met Their End']
+    }],
+    limitations:[]
+  };
+
+  const selected=selectUniverseGapValidationDnaBatch([unrelated,candidate],intelligence,2);
+  assert.deepEqual(selected.map(item=>item.id),['competitor:shipwreck-candidate']);
+
+  const evidence=resolveUniverseGapEvidence([candidate],intelligence.gaps[0],[]);
+  assert.equal(universeGapDemandStatus('structural',evidence.channelIds),'hypothesis');
 });
