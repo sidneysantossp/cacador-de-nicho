@@ -213,6 +213,25 @@ export default function ExternalImportWorkspace({channel}:{channel:ManagedChanne
     finally{setBusy('');}
   }
 
+  async function autoEditBatch(){
+    if(!active)return;
+    setBusy('auto-edit');setMessage('');
+    try{
+      const res=await fetch('/api/external-import',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'autoEdit',batchId:active.id})
+      });
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao montar Auto Edit.');
+      setMessage(
+        (body.message??'Auto Edit criado.')+
+        (body.render?.id?' Render '+body.render.id+' enfileirado para preview.':'')
+      );
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao montar Auto Edit.');}
+    finally{setBusy('');}
+  }
+
   async function remap(item:ExternalImportItem,sceneId:string){
     if(!active||!sceneId)return;
     setBusy('map:'+item.id);
@@ -262,6 +281,10 @@ export default function ExternalImportWorkspace({channel}:{channel:ManagedChanne
   }
 
   const activeProgress=active?batchProgress(active):null;
+  const visualItems=active?.items.filter(item=>item.kind==='image'||item.kind==='video')??[];
+  const autoEditReady=!!active?.visualPromptSetId&&visualItems.length>0&&visualItems.every(item=>
+    item.status==='ready'||item.status==='skipped'
+  );
   const activePromptSet=active?.visualPromptSetId
     ?promptSets.find(set=>set.id===active.visualPromptSetId)??selectedPromptSet
     :selectedPromptSet;
@@ -325,6 +348,12 @@ export default function ExternalImportWorkspace({channel}:{channel:ManagedChanne
 
       <div className="external-batch-actions">
         <button className="button primary" disabled={busy==='upload'||!files.length} onClick={()=>void processPending()}><Upload size={15}/>{busy==='upload'?'Processando…':'Processar pendentes disponíveis'}</button>
+        <button className="button subtle" disabled={!autoEditReady||busy==='auto-edit'} onClick={()=>void autoEditBatch()}><Film size={15}/>{busy==='auto-edit'?'Montando preview…':'Auto Edit + Preview'}</button>
+      </div>
+      <div className="external-import-note">
+        {autoEditReady
+          ?'Auto Edit pronto: os arquivos serão encaixados na narração usando a duração real de cada take e Source In/Out.'
+          :'Auto Edit será liberado quando todos os vídeos/imagens do lote estiverem mapeados e processados.'}
       </div>
 
       <div className="external-item-list">{active.items.map(item=>{
