@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCoverageCluster, universeCurveClassification, universeGapDemandStatus, universeGapDnaCandidateMatch } from '../src/lib/universe-market';
-import { preserveUniverseMarketContinuity } from '../src/lib/universe-market-continuity';
+import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '../src/lib/universe-market-continuity';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -1181,4 +1181,158 @@ test('gap demand resolver can use a corroborator outside the curve extraction sa
     universeGapDemandStatus('structural',resolved.channelIds),
     'observed'
   );
+});
+
+
+test('deterministic Market evidence revalidation promotes a current gap without generating new curves',()=>{
+  const current:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T18:00:00Z',
+    sourceCompetitorIds:['curve-a','curve-b','curve-c','bridge-a'],
+    dnaCount:40,
+    curves:[{
+      id:'curve:bridge',
+      key:'bridge',
+      name:'Bridge Curve',
+      thesis:'T',
+      mechanismSteps:['A','B','C'],
+      supportingChannelIds:['curve-a','curve-b','curve-c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['Engineering'],
+      evidence:['E'],
+      counterEvidence:[],
+      recurringTitlePatterns:[],
+      transferableVariables:['Domain'],
+      limitations:[]
+    }],
+    gaps:[{
+      id:'gap:bridge',
+      curveId:'curve:bridge',
+      title:'Every Type of Bridge Failure Explained',
+      targetSpace:'bridge engineering',
+      targetKeywords:['bridge failures','suspension bridges','bridge piers'],
+      preservedMechanism:'Taxonomy',
+      changedVariable:'Bridge engineering',
+      demandStatus:'partial',
+      targetEvidenceChannelIds:['bridge-a'],
+      demandEvidence:['Prior evidence'],
+      sampleSaturation:'low',
+      rationale:'R',
+      risks:[],
+      firstTests:['Bridge pilot']
+    }],
+    limitations:['Original AI Market']
+  };
+
+  const a=competitor('bridge-a','Engineering');
+  a.recentUploads=[{
+    id:'a1',
+    title:'Why Suspension Bridges Sway in the Wind',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:100000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+  const b=competitor('bridge-b','Engineering');
+  b.recentUploads=[{
+    id:'b1',
+    title:'Bridge Engineering: How Piers Carry the Load',
+    publishedAt:'2026-09-21T00:00:00Z',
+    views:90000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+
+  const next=revalidateUniverseMarketEvidenceReport(
+    current,
+    [a,b],
+    '2026-09-24T18:45:00Z'
+  );
+
+  assert.equal(next.generatedAt,current.generatedAt);
+  assert.equal(next.evidenceRevalidatedAt,'2026-09-24T18:45:00Z');
+  assert.equal(next.evidenceDnaCount,2);
+  assert.equal(next.dnaCount,2);
+  assert.equal(next.curves.length,1);
+  assert.equal(next.curves[0].id,'curve:bridge');
+  assert.equal(next.gaps[0].demandStatus,'observed');
+  assert.deepEqual(new Set(next.gaps[0].targetEvidenceChannelIds),new Set(['bridge-a','bridge-b']));
+  assert.equal(next.sourceCompetitorIds.includes('bridge-b'),true);
+  assert.equal(next.limitations.some(item=>item.includes('nenhuma nova curva foi gerada')),true);
+});
+
+test('deterministic Market evidence revalidation can demote stale target demand while preserving the AI generation timestamp',()=>{
+  const current:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T18:00:00Z',
+    sourceCompetitorIds:['curve-a','curve-b','curve-c','valid','stale'],
+    dnaCount:50,
+    curves:[{
+      id:'curve:medical',
+      key:'medical',
+      name:'Medical Curve',
+      thesis:'T',
+      mechanismSteps:['A','B','C'],
+      supportingChannelIds:['curve-a','curve-b','curve-c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['History'],
+      evidence:['E'],
+      counterEvidence:[],
+      recurringTitlePatterns:[],
+      transferableVariables:['Domain'],
+      limitations:[]
+    }],
+    gaps:[{
+      id:'gap:plague',
+      curveId:'curve:medical',
+      title:'Why Plague Doctors Wore Those Beaked Masks',
+      targetSpace:'medical history',
+      targetKeywords:['plague doctors','beaked masks','Black Death','historical medicine','quarantine'],
+      preservedMechanism:'Functional paradox',
+      changedVariable:'Plague-doctor equipment',
+      demandStatus:'observed',
+      targetEvidenceChannelIds:['valid','stale'],
+      demandEvidence:['Old evidence'],
+      sampleSaturation:'medium',
+      rationale:'R',
+      risks:[],
+      firstTests:['Pilot']
+    }],
+    limitations:[]
+  };
+  const valid=competitor('valid','History');
+  valid.recentUploads=[{
+    id:'v1',
+    title:'Why Did Plague Doctors Wear Beaked Masks?',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:100000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+  const stale=competitor('stale','History');
+  stale.recentUploads=[{
+    id:'s1',
+    title:'The Doctor Who Changed Medical History',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:80000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+
+  const next=revalidateUniverseMarketEvidenceReport(
+    current,
+    [valid,stale],
+    '2026-09-24T18:50:00Z'
+  );
+  assert.equal(next.generatedAt,'2026-09-24T18:00:00Z');
+  assert.equal(next.gaps[0].demandStatus,'partial');
+  assert.deepEqual(next.gaps[0].targetEvidenceChannelIds,['valid']);
 });

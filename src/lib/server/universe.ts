@@ -6,7 +6,7 @@ import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
-import { preserveUniverseMarketContinuity } from '@/lib/universe-market-continuity';
+import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -327,12 +327,13 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
 export async function runUniverseBootstrapCycle(){
   const bootstrap=await processUniverseImportQueue(25);
   const intelligence=await runUniverseDnaBootstrap(15,120_000);
+  const evidence=await revalidateUniverseMarketEvidence();
   const queue=await universeQueueSummary();
-  return {bootstrap,intelligence,queue};
+  return {bootstrap,intelligence,evidence,queue};
 }
 
 export async function runUniverseCycle(){
-  const {bootstrap,intelligence,queue}=await runUniverseBootstrapCycle();
+  const {bootstrap,intelligence,evidence,queue}=await runUniverseBootstrapCycle();
   let market:UniverseMarketIntelligence|null=null;
   let marketError:string|null=null;
   if(await shouldRefreshUniverseMarketIntelligence()){
@@ -342,7 +343,7 @@ export async function runUniverseCycle(){
       marketError=error instanceof Error?error.message:'Falha não identificada ao recalcular Market Intelligence.';
     }
   }
-  return {bootstrap,intelligence,market,marketError,queue};
+  return {bootstrap,intelligence,evidence,market,marketError,queue};
 }
 
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{
@@ -357,6 +358,16 @@ export async function universeMarketIntelligenceState(){
 export async function universePreviousMarketIntelligenceState(){
   const analyses=await list<unknown>('radar_analyses',300);
   return analyses.find((item):item is UniverseMarketIntelligence=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:previous')??null;
+}
+
+
+export async function revalidateUniverseMarketEvidence(){
+  const current=await universeMarketIntelligenceState();
+  if(!current)return null;
+  const competitors=await universeState();
+  const report=revalidateUniverseMarketEvidenceReport(current,competitors);
+  await put('radar_analyses',report.id,report);
+  return report;
 }
 
 export async function shouldRefreshUniverseMarketIntelligence(){

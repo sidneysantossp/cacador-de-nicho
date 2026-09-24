@@ -1,7 +1,7 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
 import { runAiJob } from '@/lib/server/ai-job';
-import { backfillUniverseSourceClusters, runUniverseBootstrapCycle, runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
+import { backfillUniverseSourceClusters, revalidateUniverseMarketEvidence, runUniverseBootstrapCycle, runUniverseCycle, runUniverseMarketIntelligence } from '@/lib/server/universe';
 
 export const runtime='nodejs';
 export const maxDuration=300;
@@ -29,9 +29,19 @@ export async function GET(request:Request){
       const result=await runAiJob('universe-queue','cron-daily-dna',()=>runUniverseBootstrapCycle());
       return Response.json({scope,...result});
     }
-    if(scope==='market'){
-      const result=await runUniverseMarketIntelligence();
+    if(scope==='market-evidence'){
+      const result=await revalidateUniverseMarketEvidence();
       return Response.json({scope,result});
+    }
+    if(scope==='market'){
+      try{
+        const result=await runUniverseMarketIntelligence();
+        return Response.json({scope,result,marketError:null});
+      }catch(error){
+        const marketError=error instanceof Error?error.message:'Falha não identificada ao recalcular Market Intelligence.';
+        const evidence=await revalidateUniverseMarketEvidence();
+        return Response.json({scope,result:null,evidence,marketError});
+      }
     }
     if(scope==='source-clusters'){
       const result=await backfillUniverseSourceClusters(25);

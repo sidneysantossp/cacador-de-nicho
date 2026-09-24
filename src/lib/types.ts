@@ -391,6 +391,8 @@ export type UniverseMarketIntelligence = {
  kind: 'universe-market-intelligence';
  id: string;
  generatedAt: string;
+ evidenceRevalidatedAt?: string;
+ evidenceDnaCount?: number;
  sourceCompetitorIds: string[];
  dnaCount: number;
  curves: UniverseCurve[];
