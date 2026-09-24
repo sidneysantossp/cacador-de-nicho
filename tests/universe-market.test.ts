@@ -1057,3 +1057,79 @@ test('specific single-word target keyword such as shipwreck remains a valid DNA 
   assert.equal(match.strictEvidence,false);
   assert.equal(match.targetMatchedTerms.includes('shipwrecks'),true);
 });
+
+
+test('weak station anchors do not validate abandoned railway stations without railway context',()=>{
+  const gap={
+    title:'The Abandoned Railway Station That Became a Night Market',
+    targetSpace:'abandoned railway stations',
+    targetKeywords:['railway stations','platforms','ticket halls','night markets','rail corridors'],
+    changedVariable:'Railway stations',
+    firstTests:[]
+  };
+  const secretLegacy=competitor('secret-legacy-station','Dramatic Storytelling');
+  secretLegacy.recentUploads=[
+    {id:'s1',title:'Homeless at 19, She Worked Nights at a Gas Station',publishedAt:'2026-09-20T00:00:00Z',views:40000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const timber=competitor('timber-rail','Design Transformation');
+  timber.recentUploads=[
+    {id:'t1',title:'Abandoned Train Turned Into a Dream Home on Rails',publishedAt:'2026-09-20T00:00:00Z',views:2600000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const railway=competitor('railway-station-target','Rail History');
+  railway.recentUploads=[
+    {id:'r1',title:'How an Abandoned Railway Station Became a Night Market',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([secretLegacy,timber,railway],gap,[]);
+  assert.deepEqual(resolved.channelIds,['railway-station-target']);
+});
+
+test('broad medical anchor does not validate a plague-doctor target',()=>{
+  const gap={
+    title:'Why Plague Doctors Wore Those Beaked Masks',
+    targetSpace:'medical history',
+    targetKeywords:['plague doctors','beaked masks','Black Death','historical medicine','quarantine'],
+    changedVariable:'Plague-doctor equipment',
+    firstTests:[]
+  };
+  const insight=competitor('insight-medical-noise','Animated Curiosities');
+  insight.recentUploads=[
+    {id:'i1',title:'The Doctor Who Was Called Crazy for Saving Lives #medical #history',publishedAt:'2026-09-20T00:00:00Z',views:22805,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const paint=competitor('paint-plague-target','History');
+  paint.recentUploads=[
+    {id:'p1',title:'Why Did Plague Doctors Wear Beaked Masks Instead of Normal Masks?',publishedAt:'2026-09-20T00:00:00Z',views:65941,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([insight,paint],gap,[]);
+  assert.deepEqual(resolved.channelIds,['paint-plague-target']);
+});
+
+test('strong surname and bridge anchors remain valid when supported in the same title',()=>{
+  const surnameGap={
+    title:'Why Your Family Name Still Carries a Medieval Job',
+    targetSpace:'occupational surnames',
+    targetKeywords:['occupational surnames','medieval trades','family names','guild occupations','name origins'],
+    changedVariable:'Surname origins',
+    firstTests:[]
+  };
+  const surname=competitor('surname-strong','Everyday History');
+  surname.recentUploads=[
+    {id:'s1',title:'Surnames That Prove Your Ancestor Had a Job Nobody Wanted',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const bridgeGap={
+    title:'Every Type of Bridge Failure Explained',
+    targetSpace:'bridge engineering',
+    targetKeywords:['bridge failures','suspension bridges','truss bridges','bridge piers','expansion joints','fatigue cracks'],
+    changedVariable:'Bridge engineering',
+    firstTests:[]
+  };
+  const bridge=competitor('bridge-strong','Engineering');
+  bridge.recentUploads=[
+    {id:'b1',title:'The GENIUS Engineering Behind Bailey Bridges!',publishedAt:'2026-09-20T00:00:00Z',views:1190000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  assert.deepEqual(resolveUniverseGapEvidence([surname],surnameGap,[]).channelIds,['surname-strong']);
+  assert.deepEqual(resolveUniverseGapEvidence([bridge],bridgeGap,[]).channelIds,['bridge-strong']);
+});

@@ -280,6 +280,15 @@ function universeGapText(gap:UniverseGapDescriptor){
   return [gap.title,universeGapTargetText(gap)].join(' ');
 }
 
+const GAP_EVIDENCE_WEAK_DOMAIN_ANCHORS=new Set([
+  'abandoned','coastal','domestic','flood','historic','household','infrastructure',
+  'medical','ocean','object','station','urban'
+]);
+
+function strongGapDomainAnchors(anchors:string[]){
+  return anchors.filter(anchor=>!GAP_EVIDENCE_WEAK_DOMAIN_ANCHORS.has(anchor));
+}
+
 export function universeGapEvidenceMatch(
   competitor:UniverseCompetitor,
   gap:UniverseGapDescriptor
@@ -288,9 +297,10 @@ export function universeGapEvidenceMatch(
   const direct=directGapMatches(competitor,gap);
   const hasExplicitKeywords=!!gap.targetKeywords?.length;
   const familyMatch=hasExplicitKeywords?false:semanticGapFamilyMatch(competitor,gapText);
-  const directDomainMatch=
-    (direct.targetMatchedTerms.length>=1||direct.domainAnchorMatchedTerms.length>=1)&&
-    direct.matchedTerms.length>=2;
+  const strongDomainAnchors=strongGapDomainAnchors(direct.domainAnchorMatchedTerms);
+  const directKeywordMatch=direct.targetMatchedTerms.length>=1&&direct.matchedTerms.length>=2;
+  const strongAnchorMatch=strongDomainAnchors.length>=1&&direct.matchedTerms.length>=2;
+  const directDomainMatch=directKeywordMatch||strongAnchorMatch;
   return {
     matched:directDomainMatch||familyMatch,
     matchedTerms:direct.matchedTerms,
