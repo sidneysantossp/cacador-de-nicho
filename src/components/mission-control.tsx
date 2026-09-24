@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { AlertCircle, ArrowUpRight, CheckCircle2, PlayCircle, Rocket, Sparkles } from 'lucide-react';
-import type { Decision, MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
+import type { Decision, ManagedChannel, MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
 
 function statusLabel(status:MissionBrief['status']){
   return status==='completed'?'Missão concluída':status==='partial'?'Missão parcial':'Missão bloqueada';
@@ -17,7 +18,10 @@ export default function MissionControl({
   onRun,
   onOpenStudy,
   onPilotDecision,
+  onPilotHandoff,
+  onOpenPilotHandoff,
   pilotDecisions,
+  managedChannels,
   searchBudget
 }:{
   brief?:MissionBrief|null;
@@ -26,10 +30,14 @@ export default function MissionControl({
   onRun:()=>Promise<boolean|undefined>;
   onOpenStudy:(channelStudyId:string)=>void;
   onPilotDecision:(gapId:string,decision:'approved'|'rejected')=>Promise<boolean|undefined>;
+  onPilotHandoff:(decisionId:string,channelId:string)=>Promise<boolean|undefined>;
+  onOpenPilotHandoff:(channelId:string)=>void;
   pilotDecisions:Decision[];
+  managedChannels:ManagedChannel[];
   searchBudget?:YouTubeSearchBudgetState|null;
 }){
   const universeOpportunities=brief?.universeOpportunities??[];
+  const [pilotChannels,setPilotChannels]=useState<Record<string,string>>({});
   const pilotDecisionFor=(gapId:string)=>pilotDecisions.find(item=>item.kind==='universe-pilot'&&item.opportunityId===gapId);
   return <div className="mission-control">
     <section className="mission-hero">
@@ -116,6 +124,25 @@ export default function MissionControl({
                 <strong>{pilotDecisionFor(item.gapId)?.pilotBrief?.firstTest}</strong>
                 <p>{pilotDecisionFor(item.gapId)?.pilotBrief?.hypothesis}</p>
                 <small>{pilotDecisionFor(item.gapId)?.pilotBrief?.testPlan.successGate.slice(0,2).join(' · ')}</small>
+              </div>}
+              {pilotDecisionFor(item.gapId)?.decision==='approved'&&pilotDecisionFor(item.gapId)?.pilotBrief&&!pilotDecisionFor(item.gapId)?.pilotHandoff&&<div className="mission-first-episode">
+                <span>ENVIAR PARA CONTENT OS</span>
+                <select value={pilotChannels[item.gapId]??''} onChange={event=>setPilotChannels(prev=>({...prev,[item.gapId]:event.target.value}))}>
+                  <option value="">Escolha explicitamente o canal próprio…</option>
+                  {managedChannels.map(channel=><option value={channel.id} key={channel.id}>{channel.name} · {channel.niche}</option>)}
+                </select>
+                <small>O handoff cria apenas um draft com fact-check pendente. Roteiro e produção continuam bloqueados até revisão humana.</small>
+                <button className="button primary small" disabled={mode==='demo'||!!busy||!(pilotChannels[item.gapId]??'')} onClick={()=>{
+                  const decision=pilotDecisionFor(item.gapId);
+                  const channelId=pilotChannels[item.gapId]??'';
+                  if(decision&&channelId)void onPilotHandoff(decision.id,channelId);
+                }}>Criar draft no Content OS</button>
+              </div>}
+              {pilotDecisionFor(item.gapId)?.pilotHandoff&&<div className="mission-first-episode">
+                <span>CONTENT OS · HANDOFF CONCLUÍDO</span>
+                <strong>{pilotDecisionFor(item.gapId)?.pilotHandoff?.channelName}</strong>
+                <p>Episódio e Content Project foram criados em draft. Pesquisa, fact-check e aprovação ainda são obrigatórios.</p>
+                <button className="button subtle small" onClick={()=>onOpenPilotHandoff(pilotDecisionFor(item.gapId)!.pilotHandoff!.channelId)}>Abrir Content OS <ArrowUpRight size={15}/></button>
               </div>}
               <div className="mission-actions">
                 <button className="button primary small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='approved'} onClick={()=>void onPilotDecision(item.gapId,'approved')}>Aprovar piloto</button>
