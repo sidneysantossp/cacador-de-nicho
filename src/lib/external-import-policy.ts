@@ -10,6 +10,7 @@ export type ExternalFileDescriptor={
 };
 
 export type ExternalMediaMarker=
+  | {kind:'production';channelCode:string;episodeNumber:number;sequence:number;takeNumber:number;label:string}
   | {kind:'timecode';startSeconds:number;label:string}
   | {kind:'sequence';sequence:number;label:string};
 
@@ -36,6 +37,24 @@ export function classifyExternalFile(file:Pick<ExternalFileDescriptor,'name'|'ty
 
 export function parseExternalMediaMarker(fileName:string):ExternalMediaMarker|null{
   const stem=fileName.replace(/\.[^.]+$/,'');
+  const production=stem.match(/(?:^|[^a-z0-9])([a-z0-9]{2,24})_v0*(\d{1,5})_s0*(\d{1,5})_t0*(\d{1,4})(?=$|[^a-z0-9])/i);
+  if(production){
+    const episodeNumber=Number(production[2]);
+    const sequence=Number(production[3]);
+    const takeNumber=Number(production[4]);
+    if(episodeNumber>0&&sequence>0&&takeNumber>0){
+      const channelCode=production[1].toUpperCase();
+      return {
+        kind:'production',
+        channelCode,
+        episodeNumber,
+        sequence,
+        takeNumber,
+        label:channelCode+'_V'+String(episodeNumber).padStart(2,'0')+'_S'+String(sequence).padStart(3,'0')+'_T'+String(takeNumber).padStart(2,'0')
+      };
+    }
+  }
+
   const scene=stem.match(/(?:^|[^a-z0-9])scene[\s_-]*0*(\d{1,5})(?=$|[^0-9])/i);
   if(scene){
     const sequence=Number(scene[1]);
@@ -66,7 +85,7 @@ export function matchExternalFileToScene(
   const marker=parseExternalMediaMarker(fileName);
   if(!marker)return {sceneId:null as string|null,marker:null as ExternalMediaMarker|null};
 
-  if(marker.kind==='sequence'){
+  if(marker.kind==='sequence'||marker.kind==='production'){
     const scene=scenes.find(item=>item.sequence===marker.sequence);
     return {sceneId:scene?.sceneId??null,marker};
   }
@@ -105,10 +124,15 @@ export function previewExternalImportFiles(
       matchedTimeSeconds:mapping.marker?.kind==='timecode'?mapping.marker.startSeconds:undefined,
       status,
       payload:{
-        detectedBy:mapping.marker?.kind==='timecode'?'timecode' as const:
+        detectedBy:mapping.marker?.kind==='production'?'production-name' as const:
+          mapping.marker?.kind==='timecode'?'timecode' as const:
           mapping.marker?.kind==='sequence'?'scene-number' as const:
           kind==='image'||kind==='video'?'none' as const:undefined,
-        normalizedMarker:mapping.marker?.label
+        normalizedMarker:mapping.marker?.label,
+        productionChannelCode:mapping.marker?.kind==='production'?mapping.marker.channelCode:undefined,
+        productionEpisodeNumber:mapping.marker?.kind==='production'?mapping.marker.episodeNumber:undefined,
+        productionSceneNumber:mapping.marker?.kind==='production'?mapping.marker.sequence:undefined,
+        productionTakeNumber:mapping.marker?.kind==='production'?mapping.marker.takeNumber:undefined
       }
     };
   });
