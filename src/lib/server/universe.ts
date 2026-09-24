@@ -335,12 +335,12 @@ function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketInte
 
 export async function universeMarketIntelligenceState(){
   const analyses=await list<unknown>('radar_analyses',300);
-  return analyses.find(item=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:latest')??null;
+  return analyses.find((item):item is UniverseMarketIntelligence=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:latest')??null;
 }
 
 export async function universePreviousMarketIntelligenceState(){
   const analyses=await list<unknown>('radar_analyses',300);
-  return analyses.find(item=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:previous')??null;
+  return analyses.find((item):item is UniverseMarketIntelligence=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:previous')??null;
 }
 
 export async function shouldRefreshUniverseMarketIntelligence(){
