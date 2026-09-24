@@ -372,7 +372,8 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
   const all=await universeState();
   const previous=await universeMarketIntelligenceState();
   const olderPrevious=await universePreviousMarketIntelligenceState();
-  const sample=selectUniverseCurveEvidence(all,40,8);
+  const withDna=all.filter(item=>!!item.dna);
+  const sample=selectUniverseCurveEvidence(withDna,40,8);
   if(sample.length<2)throw new Error('O Universe precisa de Channel DNA em pelo menos 2 concorrentes antes de extrair curvas.');
 
   const raw=await analyzeUniverseCurvesAndGaps(sample);
@@ -409,7 +410,7 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
     const curve=curveByKey.get(key);
     if(!curve)return [];
     const resolvedEvidence=resolveUniverseGapEvidence(
-      sample,
+      withDna,
       candidate,
       candidate.targetEvidenceChannelIds.filter(id=>validIds.has(id))
     );
@@ -433,19 +434,21 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
     }];
   });
 
+  const gapEvidenceIds=[...new Set(gaps.flatMap(gap=>gap.targetEvidenceChannelIds))];
   const baseReport:UniverseMarketIntelligence={
     kind:'universe-market-intelligence',
     id:'universe-market-intelligence:latest',
     generatedAt:new Date().toISOString(),
-    sourceCompetitorIds:sample.map(item=>item.channelId),
-    dnaCount:all.filter(item=>!!item.dna).length,
+    sourceCompetitorIds:[...new Set([...sample.map(item=>item.channelId),...gapEvidenceIds])],
+    dnaCount:withDna.length,
     curves,
     gaps,
     limitations:[
       ...raw.limitations,
       'Classificações de curva são recalculadas no backend por criadores independentes: 1=hypothesis, 2=emerging, 3+=structural.',
       'Saturação descreve apenas a amostra do Competitor Universe analisada; não representa todo o YouTube.',
-      'Gaps sem evidência explícita no targetSpace permanecem hypothesis, mesmo quando a curva de origem é estrutural.'
+      'Gaps sem evidência explícita no targetSpace permanecem hypothesis, mesmo quando a curva de origem é estrutural.',
+      `Curvas foram extraídas de uma amostra balanceada de ${sample.length} canais; target evidence dos gaps foi revalidada deterministicamente contra todos os ${withDna.length} canais com Channel DNA.`
     ]
   };
 
