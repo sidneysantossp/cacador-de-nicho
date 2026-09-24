@@ -59,7 +59,7 @@ export async function loadAutopilotControl():Promise<AutopilotControl>{
       503
     );
   }
-  return normalize(row as ControlRow);
+  return normalize(row as unknown as ControlRow);
 }
 
 export async function loadAutopilotControlHistory(limit=30):Promise<AutopilotControlVersion[]>{
