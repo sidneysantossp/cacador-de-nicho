@@ -954,3 +954,5 @@
 .managed-autopilot-readiness li strong{font-size:7px;color:#5e675a}
 .managed-autopilot-readiness li span{font-size:7px;line-height:1.4;color:#7d8679}
 @media(max-width:640px){.managed-autopilot-actions{flex-direction:column}.managed-autopilot-actions .button{width:100%}}
+
+.managed-autopilot-gate-note{display:block;margin:3px 0 8px;font-size:8px;line-height:1.45;color:#7f897b}
