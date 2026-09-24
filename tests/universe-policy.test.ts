@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareUniverseDnaPriority, selectUniverseDnaBatch, summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent } from '../src/lib/universe-policy';
+import { compareUniverseDnaPriority, selectUniverseDnaBatch, summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_MARKET_MIN_NEW_DNA } from '../src/lib/universe-policy';
 import type { UniverseCompetitor } from '../src/lib/types';
 
 function competitor(overrides:Partial<UniverseCompetitor>={}):UniverseCompetitor{
@@ -224,4 +224,32 @@ test('retryable Universe failures remain unresolved',()=>{
   assert.equal(summary.resolved,1);
   assert.equal(summary.retryable,1);
   assert.equal(summary.progressPct,50);
+});
+
+
+test('scheduled Market Intelligence waits for a meaningful DNA delta',()=>{
+  assert.equal(UNIVERSE_MARKET_MIN_NEW_DNA,10);
+  assert.deepEqual(
+    universeMarketRefreshDecision(109,109),
+    {run:false,newDna:0,minimumNewDna:10,reason:'waiting-for-batch'}
+  );
+  assert.deepEqual(
+    universeMarketRefreshDecision(118,109),
+    {run:false,newDna:9,minimumNewDna:10,reason:'waiting-for-batch'}
+  );
+  assert.deepEqual(
+    universeMarketRefreshDecision(119,109),
+    {run:true,newDna:10,minimumNewDna:10,reason:'threshold-met'}
+  );
+});
+
+test('first Market Intelligence run is allowed once enough DNA exists',()=>{
+  assert.deepEqual(
+    universeMarketRefreshDecision(3,null),
+    {run:true,newDna:3,minimumNewDna:10,reason:'initial-market'}
+  );
+  assert.deepEqual(
+    universeMarketRefreshDecision(2,null),
+    {run:false,newDna:0,minimumNewDna:10,reason:'insufficient-dna'}
+  );
 });

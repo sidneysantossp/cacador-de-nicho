@@ -7,6 +7,18 @@ export const UNIVERSE_MONITORING_HOURS:Record<UniverseCompetitor['monitoringTier
   dormant:168
 };
 
+export const UNIVERSE_MARKET_MIN_NEW_DNA=10;
+
+export function universeMarketRefreshDecision(dnaCount:number,marketDnaCount:number|null|undefined,minNewDna=UNIVERSE_MARKET_MIN_NEW_DNA){
+  const threshold=Math.max(1,Math.floor(minNewDna));
+  if(dnaCount<3)return {run:false,newDna:0,minimumNewDna:threshold,reason:'insufficient-dna' as const};
+  if(marketDnaCount===null||marketDnaCount===undefined)return {run:true,newDna:dnaCount,minimumNewDna:threshold,reason:'initial-market' as const};
+  const newDna=Math.max(0,dnaCount-marketDnaCount);
+  return newDna>=threshold
+    ?{run:true,newDna,minimumNewDna:threshold,reason:'threshold-met' as const}
+    :{run:false,newDna,minimumNewDna:threshold,reason:'waiting-for-batch' as const};
+}
+
 export const UNIVERSE_STATUS_RANK:Record<UniverseCompetitor['status'],number>={
   'production-reference':8,
   'gap-found':7,

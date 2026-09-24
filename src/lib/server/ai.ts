@@ -24,9 +24,18 @@ function openAIHttpError(error:unknown,stage:string){
  if(lower.includes('invalid schema')||lower.includes('response_format')||lower.includes('json schema'))return new HttpError(`A OpenAI recusou o formato estruturado durante ${stage}. O backend precisa ajustar o schema desta etapa.`,502);
  return new HttpError(`A OpenAI falhou durante ${stage}. Verifique a chave/modelo e tente novamente.`,502);
 }
-async function structured<T extends z.ZodType>(schema:T,name:string,task:string,input:unknown,role:'analysis'|'script'='analysis'):Promise<z.infer<T>>{
+export const UNIVERSE_DNA_MODEL='gpt-5.6-luna' as const;
+export const UNIVERSE_MARKET_MODEL='gpt-5.6-terra' as const;
+
+type StructuredOptions={
+ model?:'gpt-5.6-luna'|'gpt-5.6-terra'|'gpt-5.6-sol';
+ maxOutputTokens?:number;
+ reasoningEffort?:'low'|'medium'|'high';
+};
+
+async function structured<T extends z.ZodType>(schema:T,name:string,task:string,input:unknown,role:'analysis'|'script'='analysis',options:StructuredOptions={}):Promise<z.infer<T>>{
  const config=await settings();
- const model=role==='script'?config.scriptModel:config.analysisModel;
+ const model=options.model??(role==='script'?config.scriptModel:config.analysisModel);
  try{
   const response=await (await client()).responses.parse({
    model,
@@ -34,7 +43,11 @@ async function structured<T extends z.ZodType>(schema:T,name:string,task:string,
    instructions:instructions+'\n'+editorialMethod,
    input:JSON.stringify({task,evidence:input}),
    text:{format:zodTextFormat(schema,name)},
-   max_output_tokens:6000
+   max_output_tokens:options.maxOutputTokens??6000,
+   ...(options.reasoningEffort?{reasoning:{effort:options.reasoningEffort}}:{}),
+   // These calls are stateless and their evidence changes on every request.
+   // Explicit mode with no breakpoints disables prompt-cache writes on GPT-5.6+.
+   prompt_cache_options:{mode:'explicit'}
   });
   if(!response.output_parsed)throw new HttpError('A análise foi recusada ou ficou incompleta. Tente novamente.',502);
   return schema.parse(response.output_parsed);
@@ -111,7 +124,7 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
   channelId:competitor.channelId,
   name:competitor.name,
   handle:competitor.handle,
-  description:competitor.description,
+  description:competitor.description.slice(0,1500),
   country:competitor.country??null,
   language:competitor.language,
   subscribers:competitor.subscribers,
@@ -119,8 +132,8 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
   recentAverageViews:competitor.recentAverageViews,
   recentMedianViews:competitor.recentMedianViews,
   uploadsLast30d:competitor.uploadsLast30d,
-  observedSignals:competitor.signalDetails??[],
-  recentUploads:competitor.recentUploads.slice(0,20).map(video=>({
+  observedSignals:(competitor.signalDetails??[]).slice(0,8),
+  recentUploads:competitor.recentUploads.slice(0,12).map(video=>({
    title:video.title,
    views:video.views,
    publishedAt:video.publishedAt,
@@ -132,7 +145,13 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
   z.object({channels:z.array(universeChannelDNA).min(1).max(5)}),
   'universe_channel_dna',
   'Para cada concorrente, extraia um Channel DNA SOMENTE dos metadados fornecidos. primaryNiche e subniche devem ser rótulos curtos e estáveis em INGLÊS para permitir clustering entre canais. summary, audienceIntent, editorialPromise, differentiationSignals e limitations devem ser em português para o operador. formatSignature pode ser um rótulo curto em inglês. Content pillars, recurring entities, title patterns, curiosity mechanisms e emotional drivers descrevem padrões observáveis nos títulos/descrição; não afirme que assistiu vídeos, não infira CTR, retenção, receita ou causalidade. Diferencie repetição editorial de um único outlier. Se a amostra não sustentar uma conclusão, registre a limitação explicitamente.',
-  {competitors:sample}
+  {competitors:sample},
+  'analysis',
+  {
+   model:UNIVERSE_DNA_MODEL,
+   reasoningEffort:'low',
+   maxOutputTokens:4000
+  }
  );
  const now=new Date().toISOString();
  return result.channels.map(item=>({
@@ -212,7 +231,13 @@ export async function analyzeUniverseCurvesAndGaps(competitors:UniverseCompetito
   }),
   'universe_curves_gaps',
   'Compare os concorrentes como evidência de mercado. CURVA significa um mecanismo editorial repetível compartilhado entre canais: combinação de promessa, ângulo, curiosidade, estrutura ou payoff. Não agrupe canais somente porque pertencem ao mesmo tema. Cada supportingChannelId e targetEvidenceChannelId deve existir exatamente na evidência recebida; nunca invente IDs, canais ou vídeos. A classificação hipótese/emergente/estrutural será calculada pelo backend, então NÃO tente classificá-la. GAPS devem preservar uma curva observada e alterar deliberadamente uma variável (tema, perspectiva, público, entidade, formato ou contexto). Para cada gap, targetSpace DEVE ser uma frase nominal curta EM INGLÊS que descreva exclusivamente o DOMÍNIO DE CONTEÚDO do alvo — assunto, entidades, objetos, instituições, ambiente ou prática — e NÃO a fórmula do título, mecanismo de curiosidade ou packaging. targetKeywords DEVE conter de 3 a 8 termos ou frases nominais curtas EM INGLÊS que identifiquem o conteúdo do target; use substantivos específicos do domínio e exclua palavras de packaging como weird, side, every, why, then, now, day, iconic, explained e equivalentes. targetEvidenceChannelIds só pode incluir um canal quando os títulos fornecidos contêm evidência observável do DOMÍNIO target, não apenas da curva ou do formato de título. sampleSaturation descreve apenas a amostra fornecida, nunca o YouTube inteiro. demandEvidence precisa citar evidência realmente fornecida; se não houver evidência no targetSpace, deixe targetEvidenceChannelIds vazio e trate como hipótese na justificativa. title e firstTests são títulos destinados ao público e devem ser em INGLÊS. targetSpace e targetKeywords também devem ser em INGLÊS. Explicações, tese, preservedMechanism, changedVariable, rationale, riscos e limitações devem ser em português. Não infira CTR, retenção, receita, RPM, causalidade ou demanda fora da amostra.',
-  {competitors:sample}
+  {competitors:sample},
+  'analysis',
+  {
+   model:UNIVERSE_MARKET_MODEL,
+   reasoningEffort:'medium',
+   maxOutputTokens:5000
+  }
  );
 }
 
@@ -256,7 +281,8 @@ export async function analyzeChannelThumbnails(
    instructions:instructions+'\nAnalise visualmente apenas as imagens realmente fornecidas nesta solicitação.',
    input:[{role:'user',content:content as never}],
    text:{format:zodTextFormat(channelThumbnailAnalysis,'channel_thumbnail_anatomy')},
-   max_output_tokens:3500
+   max_output_tokens:3500,
+   prompt_cache_options:{mode:'explicit'}
   });
   if(!response.output_parsed)throw new Error('thumbnail analysis incomplete');
   return {...channelThumbnailAnalysis.parse(response.output_parsed),inspected:true};

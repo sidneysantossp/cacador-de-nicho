@@ -1,10 +1,10 @@
 import 'server-only';
 
 import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
-import { checked, db, list, put, settings } from './db';
+import { checked, db, list, put } from './db';
 import { collectUniverseCompetitor } from './youtube';
-import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, UNIVERSE_DNA_MODEL } from './ai';
+import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
 
@@ -206,7 +206,6 @@ export async function runUniverseIntelligence(ids?:string[]){
     };
   }
 
-  const config=await settings();
   const attemptedAt=new Date().toISOString();
   let results:Awaited<ReturnType<typeof analyzeUniverseCompetitorDNA>>;
   try{
@@ -257,7 +256,7 @@ export async function runUniverseIntelligence(ids?:string[]){
         provenance:{
           schemaVersion:1,
           generatedBy:'platform',
-          model:config.analysisModel,
+          model:UNIVERSE_DNA_MODEL,
           sourceVideoCount:Math.min(20,competitor.recentUploads.length),
           sourceSignalCount:competitor.signalDetails?.length??competitor.signals.length,
           observedAt:competitor.lastMonitoredAt
@@ -402,13 +401,15 @@ export async function revalidateUniverseMarketEvidence(){
   return report;
 }
 
-export async function shouldRefreshUniverseMarketIntelligence(){
+export async function universeMarketRefreshState(){
   const competitors=await universeState();
-  const withDna=competitors.filter(item=>!!item.dna);
-  if(withDna.length<3)return false;
+  const dnaCount=competitors.filter(item=>!!item.dna).length;
   const current=await universeMarketIntelligenceState();
-  if(!current)return true;
-  return withDna.some(item=>Date.parse(item.dna?.generatedAt??'')>Date.parse(current.generatedAt));
+  return universeMarketRefreshDecision(dnaCount,current?.dnaCount);
+}
+
+export async function shouldRefreshUniverseMarketIntelligence(){
+  return (await universeMarketRefreshState()).run;
 }
 
 export async function runUniverseMarketIntelligence():Promise<UniverseMarketIntelligence>{
