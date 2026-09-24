@@ -32,10 +32,22 @@ test('External import parses explicit scene numbers without confusing them with 
   assert.deepEqual(parseExternalMediaMarker('my_scene_0007_final.webp'),{kind:'sequence',sequence:7,label:'scene-007'});
 });
 
-test('External import maps timestamped files to the correct scene',()=>{
+test('External import parses canonical production filenames with video scene and take',()=>{
+  assert.deepEqual(parseExternalMediaMarker('GRUG_V03_S001_T01.mp4'),{
+    kind:'production',channelCode:'GRUG',episodeNumber:3,sequence:1,takeNumber:1,
+    label:'GRUG_V03_S001_T01'
+  });
+  assert.deepEqual(parseExternalMediaMarker('dinoknows_v12_s042_t03.mov'),{
+    kind:'production',channelCode:'DINOKNOWS',episodeNumber:12,sequence:42,takeNumber:3,
+    label:'DINOKNOWS_V12_S042_T03'
+  });
+});
+
+test('External import maps timestamped and canonical production files to the correct scene',()=>{
   assert.equal(matchExternalFileToScene('0-03.png',scenes).sceneId,scenes[1].sceneId);
   assert.equal(matchExternalFileToScene('#0-07 animation.mp4',scenes).sceneId,scenes[2].sceneId);
   assert.equal(matchExternalFileToScene('scene-001.png',scenes).sceneId,scenes[0].sceneId);
+  assert.equal(matchExternalFileToScene('GRUG_V03_S003_T02.mp4',scenes).sceneId,scenes[2].sceneId);
 });
 
 test('External import refuses to guess when a timestamp is outside tolerance',()=>{
