@@ -1,4 +1,5 @@
-import type { Channel, OpportunityReport } from './types';
+import type { Channel, MissionBrief, OpportunityReport, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from './types';
+import { selectUniverseMissionOpportunities } from './universe-market';
 
 const positive = new Set(['medium','high']);
 
@@ -42,4 +43,34 @@ export function compareMissionCandidates(a:Channel,b:Channel){
   if(pb.breakout!==pa.breakout)return pb.breakout-pa.breakout;
   if(pb.views!==pa.views)return pb.views-pa.views;
   return pa.ageMs-pb.ageMs;
+}
+
+
+export function universeCompetitorHasSignals(competitor:UniverseCompetitor){
+  return Math.max(competitor.signalDetails?.length??0,competitor.signals.length)>0;
+}
+
+export function hydrateMissionBriefUniverse(
+  brief:MissionBrief|null|undefined,
+  competitors:UniverseCompetitor[],
+  intelligence:UniverseMarketIntelligence|null|undefined,
+  queue:UniverseImportQueueSummary
+):MissionBrief|null{
+  if(!brief)return null;
+  const universeOpportunities=selectUniverseMissionOpportunities(intelligence??null,5);
+  return {
+    ...brief,
+    market:{
+      ...brief.market,
+      competitors:competitors.length,
+      competitorSignals:competitors.filter(universeCompetitorHasSignals).length,
+      competitorDna:competitors.filter(item=>!!item.dna).length,
+      universeCurves:intelligence?.curves.length??0,
+      universeGaps:intelligence?.gaps.length??0,
+      universeActionableGaps:universeOpportunities.length,
+      universeQueuePending:queue.pending+queue.processing+queue.retryable,
+      universeQueueCompleted:queue.completed
+    },
+    universeOpportunities
+  };
 }
