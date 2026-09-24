@@ -44,7 +44,10 @@ function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseComp
   return {
     ...snapshot,
     importedAt:prior.importedAt,
+    sourceCluster:prior.sourceCluster??snapshot.sourceCluster??prior.cluster,
+    cluster:prior.dna?prior.cluster:snapshot.cluster,
     subniche:prior.subniche,
+    format:prior.dna?prior.format:snapshot.format,
     monitoringTier:prior.monitoringTier,
     status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
     snapshots:[...(snapshot.snapshots??[]),...(prior.snapshots??[])].filter((item,index,array)=>array.findIndex(other=>other.observedAt===item.observedAt)===index).slice(0,30),
@@ -180,6 +183,7 @@ export async function runUniverseIntelligence(ids?:string[]){
     ].filter(Boolean).slice(0,5);
     const next:UniverseCompetitor={
       ...competitor,
+      sourceCluster:competitor.sourceCluster??competitor.cluster,
       cluster:dna.primaryNiche||competitor.cluster,
       subniche:dna.subniche||competitor.subniche,
       format:dna.formatSignature||competitor.format,
