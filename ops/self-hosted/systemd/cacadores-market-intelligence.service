@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores Universe Curves and Gaps
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-market-intelligence
+TimeoutStartSec=5min
