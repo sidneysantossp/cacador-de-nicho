@@ -200,14 +200,17 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     :step('content','waiting',{
       entityId:String(src.project.id),entityVersion:Number(src.project.version),
       reason:'Revise e aprove o Content Project antes da geração do roteiro.',
-      requiresOperator:true
+      requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
 
   const script=src.script;
   if(!contentApproved){
     steps.push(step('script','pending',{reason:'Aguardando Content Project aprovado.'}));
   }else if(!script){
-    steps.push(step('script','ready',{reason:'Content Project aprovado; roteiro pode ser gerado.'}));
+    steps.push(step('script','ready',{
+      reason:'Content Project aprovado; roteiro pode ser gerado.',
+      requiresOperator:!run.policy.autoGenerateScript
+    }));
   }else if(script.status==='approved'){
     steps.push(step('script','completed',{entityId:String(script.id),entityVersion:Number(script.version)}));
   }else{
@@ -235,7 +238,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('voice','ready',{reason:'Roteiro aprovado e voz configurada no Production DNA.'}));
+    steps.push(step('voice','ready',{
+      reason:'Roteiro aprovado e voz configurada no Production DNA.',
+      requiresOperator:!run.policy.autoGenerateVoice
+    }));
   }
 
   const voiceReady=voice?.status==='ready';
@@ -251,7 +257,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
   }else{
-    steps.push(step('transcript','ready',{reason:'Take pronto; transcript pode ser criado a partir do alignment ou Scribe.'}));
+    steps.push(step('transcript','ready',{
+      reason:'Take pronto; transcript pode ser criado a partir do alignment ou Scribe.',
+      requiresOperator:!run.policy.autoCreateTranscript
+    }));
   }
 
   const transcriptApproved=transcript?.status==='approved';
@@ -267,7 +276,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('scenes','ready',{reason:'Transcript aprovado; Scene Plan pode ser criado.'}));
+    steps.push(step('scenes','ready',{
+      reason:'Transcript aprovado; Scene Plan pode ser criado.',
+      requiresOperator:!run.policy.autoCreateScenes
+    }));
   }
 
   const sceneApproved=scenePlan?.status==='approved';
@@ -288,7 +300,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('visual-prompts','ready',{reason:'Scene Plan e Production DNA prontos para direção visual.'}));
+    steps.push(step('visual-prompts','ready',{
+      reason:'Scene Plan e Production DNA prontos para direção visual.',
+      requiresOperator:!run.policy.autoGenerateVisualPrompts
+    }));
   }
 
   const scenePayload=rowPayload<{scenes?:Array<{id?:string}>}>(scenePlan);
@@ -326,7 +341,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:!run.policy.autoApproveObjectiveGates
     }));
   }else{
-    steps.push(step('timeline','ready',{reason:'Fontes aprovadas e assets cobrem todas as cenas.'}));
+    steps.push(step('timeline','ready',{
+      reason:'Fontes aprovadas e assets cobrem todas as cenas.',
+      requiresOperator:!run.policy.autoBuildTimeline
+    }));
   }
 
   const timelineApproved=timeline?.status==='approved';
@@ -342,7 +360,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('video-edit','ready',{reason:'Timeline aprovada; Video Edit pode ser criado.'}));
+    steps.push(step('video-edit','ready',{
+      reason:'Timeline aprovada; Video Edit pode ser criado.',
+      requiresOperator:!run.policy.autoCreateVideoEdit
+    }));
   }
 
   const editApproved=edit?.status==='approved';
@@ -361,7 +382,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       entityId:String(render.id),reason:String(render.error??'Render falhou.')
     }));
   }else{
-    steps.push(step('render','ready',{reason:'Video Edit aprovado; render pode ser enfileirado.'}));
+    steps.push(step('render','ready',{
+      reason:'Video Edit aprovado; render pode ser enfileirado.',
+      requiresOperator:!run.policy.autoRender
+    }));
   }
 
   const renderCompleted=render?.status==='completed';
@@ -383,7 +407,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('quality','ready',{reason:'Render concluído; QA pode ser executado.'}));
+    steps.push(step('quality','ready',{
+      reason:'Render concluído; QA pode ser executado.',
+      requiresOperator:!run.policy.autoRunQuality
+    }));
   }
 
   const qualityApproved=quality?.status==='approved';
@@ -399,7 +426,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       requiresOperator:true
     }));
   }else{
-    steps.push(step('packaging','ready',{reason:'Release gate aprovado; Publication Package pode ser criado.'}));
+    steps.push(step('packaging','ready',{
+      reason:'Release gate aprovado; Publication Package pode ser criado.',
+      requiresOperator:!run.policy.autoCreatePackage
+    }));
   }
 
   const packageApproved=pkg?.status==='approved';
@@ -436,9 +466,11 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     ?'completed'
     :actionable?.status==='failed'
       ?'failed'
-      :actionable?.status==='waiting'||actionable?.status==='blocked'
-        ?'waiting'
-        :'active';
+      :actionable?.status==='running'
+        ?'running'
+        :actionable?.status==='blocked'||actionable?.requiresOperator
+          ?'waiting'
+          :'active';
 
   return {
     steps,
