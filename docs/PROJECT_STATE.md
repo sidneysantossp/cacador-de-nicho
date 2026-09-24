@@ -417,3 +417,21 @@ Correção:
 - a lista visual `universeOpportunities` continua limitada aos 5 melhores cards;
 - a mesma regra é aplicada tanto ao Mission Brief recém-gerado quanto à hidratação live de `/api/radar`;
 - regressão cobre 7 acionáveis, contador 7 e somente 5 cards renderizáveis.
+
+
+## Universe Opportunity Families — 24/09/2026
+
+Com 64 Channel DNAs e continuidade habilitada, o Market atual expôs dois `PILOT READY` no mesmo domínio de pontes:
+- `Every Type of Bridge Failure Explained`;
+- `How History's Most Dangerous Bridges Failed`.
+
+Os dois compartilham Sabin Civil Engineering e nknows como evidência central, mas usam curvas editoriais diferentes.
+
+Correção:
+- oportunidades acionáveis são agrupadas em famílias quando compartilham pelo menos 2 canais de evidência e ao menos 1 token substantivo de domínio;
+- o card mais forte permanece como oportunidade principal;
+- os demais são preservados como `alternateAngles`;
+- `universeActionableGaps` passa a contar todas as famílias acionáveis, enquanto a UI continua limitada aos 5 melhores cards;
+- apenas compartilhar um canal não agrupa targets distintos.
+
+Resultado esperado no caso real: bridge engineering aparece como 1 família PILOT READY, com o ângulo histórico de falhas mostrado como alternativa editorial.

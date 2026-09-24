@@ -147,6 +147,12 @@ export type MissionBrief = {
   independentCreators: number;
   targetEvidenceCount: number;
   firstTest: string;
+  alternateAngles?: Array<{
+   title: string;
+   curveName: string;
+   targetSpace: string;
+   firstTest: string;
+  }>;
   reasons: string[];
   risks: string[];
  }>;
