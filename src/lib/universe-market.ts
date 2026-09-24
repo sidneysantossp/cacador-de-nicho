@@ -150,39 +150,8 @@ function competitorEvidenceUnits(competitor:UniverseCompetitor){
     .filter(Boolean);
 }
 function hasAnyTerm(corpus:string,terms:string[]){
-  return terms.some(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\function lexicalNormalize(value:string){
-  return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
-}
-function lexicalTokens(value:string){
-  return lexicalNormalize(value).split(' ').filter(token=>token.length>=3&&!GAP_MATCH_STOP_WORDS.has(token));
-}
-function competitorLexicalCorpus(competitor:UniverseCompetitor){
-  return lexicalNormalize([
-    competitor.name,
-    competitor.description,
-    ...competitor.recentUploads.slice(0,30).map(video=>video.title)
-  ].join(' '));
-}
-function hasAnyTerm(corpus:string,terms:string[]){
-  return terms.some(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?: |$)`).test(corpus));
-}
-function directGapMatches(competitor:UniverseCompetitor,gapText:string){
-  const corpus=competitorLexicalCorpus(competitor);
-  const terms=[...new Set(lexicalTokens(gapText))];
-  return terms.filter(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?: |$)`).test(corpus));
-}
-function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
-  const query=lexicalNormalize(gapText);
-  const corpus=competitorLexicalCorpus(competitor);
-  const animalTarget=/(?:^| )(animal|animals|wildlife)(?: |$)/.test(query);
-  if(animalTarget&&hasAnyTerm(corpus,ANIMAL_SPECIFIC_TERMS)&&hasAnyTerm(corpus,ANIMAL_LIFE_CUES))return true;
-
-  const professionTarget=/(?:^| )(job|jobs|profession|professions|worker|workers|work)(?: |$)/.test(query);
-  const historyTarget=hasAnyTerm(query,HISTORY_CONTEXT_TERMS);
-  if(professionTarget&&historyTarget&&hasAnyTerm(corpus,PROFESSION_TERMS)&&hasAnyTerm(corpus,HISTORY_CONTEXT_TERMS))return true;
-
-  return false;
-}')}(?: |$)`).test(corpus));
+  const tokens=new Set(lexicalNormalize(corpus).split(' ').filter(Boolean));
+  return terms.some(term=>tokens.has(term));
 }
 function directGapMatches(competitor:UniverseCompetitor,gapText:string){
   const terms=[...new Set(lexicalTokens(gapText))];
