@@ -21,6 +21,7 @@ import {
   acceptNextEpisodeCandidate, generateNextEpisodePlan
 } from './next-episode';
 import { loadAutopilotOperationalIssues } from './autopilot-operational';
+import { assertAutopilotControlRunning } from './autopilot-control';
 
 type JobRow={
   id:string;
@@ -206,6 +207,7 @@ async function assertClaim(jobId:string,workerToken:string){
 }
 
 async function heartbeat(jobId:string,workerToken:string,stage:string){
+  await assertAutopilotControlRunning('Closed Loop Intelligence');
   const result=await db().rpc('heartbeat_learning_loop_job',{
     p_job_id:jobId,
     p_worker_token:workerToken,
@@ -389,6 +391,10 @@ function needsOperator(error:unknown){
 function transient(error:unknown){
   return error instanceof HttpError&&[429,502,503].includes(error.status);
 }
+function controlPlanePaused(error:unknown){
+  return error instanceof HttpError&&error.status===409&&
+    error.message.includes('Autopilot Control Plane está pausado');
+}
 
 export async function processClaimedLearningLoopJob(jobId:string,workerToken:string){
   let job=await assertClaim(jobId,workerToken);
@@ -502,6 +508,17 @@ export async function processClaimedLearningLoopJob(jobId:string,workerToken:str
     job=await loadLearningLoopJob(job.id)??job;
     if(job.status!=='processing')return job;
 
+    if(controlPlanePaused(error)){
+      await ownedUpdate(job.id,workerToken,{
+        status:'scheduled',
+        stage:'control-plane-paused',
+        due_at:new Date().toISOString(),
+        last_error:message.slice(0,4000),
+        worker_token:null,
+        lease_until:null
+      });
+      return (await loadLearningLoopJob(job.id))!;
+    }
     if(isAnalyticsImmature(error)){
       return reschedule(job,workerToken,message,6);
     }
