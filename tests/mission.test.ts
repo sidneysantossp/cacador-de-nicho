@@ -167,3 +167,113 @@ test('Mission Control hydrates Universe cards and counts from live market state'
   assert.equal(hydrated.market.universeQueueCompleted,223);
   assert.deepEqual(hydrated.universeOpportunities.map(item=>item.gapId),['gap:partial']);
 });
+
+
+test('Mission Control counts every actionable Universe gap while rendering only the top five cards',()=>{
+  const brief:MissionBrief={
+    kind:'mission-brief',
+    id:'mission-brief:count-test',
+    objective:'Test',
+    status:'completed',
+    startedAt:'2026-09-24T12:00:00Z',
+    completedAt:'2026-09-24T12:05:00Z',
+    health:{supabase:true,youtube:true,openai:true,blockers:[]},
+    market:{qualifiedChannels:0,channelStudies:0,opportunityReports:0,productionReady:0},
+    workCompleted:[],
+    productionQueue:[],
+    universeOpportunities:[],
+    decisionsNeeded:[],
+    blockers:[],
+    notes:[]
+  };
+
+  const baseCompetitor={
+    kind:'competitor',
+    id:'competitor:test',
+    channelId:'test',
+    name:'Test',
+    handle:'@test',
+    url:'https://youtube.com/@test',
+    avatar:'',
+    language:'en',
+    cluster:'Engineering',
+    subniche:'Sub',
+    format:'Long form',
+    description:'',
+    subscribers:1000,
+    videoCount:10,
+    createdAt:'2026-01-01T00:00:00Z',
+    importedAt:'2026-09-01T00:00:00Z',
+    lastMonitoredAt:'2026-09-24T00:00:00Z',
+    monitoringTier:'active',
+    status:'breakout',
+    recentAverageViews:100000,
+    recentMedianViews:90000,
+    recentVideoCount:5,
+    uploadsLast30d:3,
+    breakoutRatio:5,
+    strongestRecentVideo:null,
+    recentUploads:[],
+    signals:['Breakout'],
+    signalDetails:[],
+    snapshots:[],
+    dnaTags:[],
+    updatedAt:'2026-09-24T00:00:00Z'
+  } satisfies UniverseCompetitor;
+
+  const curve={
+    id:'curve:structural',
+    key:'structural',
+    name:'Structural Curve',
+    thesis:'T',
+    mechanismSteps:['A','B','C'],
+    supportingChannelIds:['a','b','c'],
+    independentCreators:3,
+    classification:'structural' as const,
+    clusters:['Engineering'],
+    evidence:['E'],
+    counterEvidence:[],
+    recurringTitlePatterns:[],
+    transferableVariables:[],
+    limitations:[]
+  };
+
+  const gaps=Array.from({length:7},(_,index)=>({
+    id:`gap:${index}`,
+    curveId:curve.id,
+    title:`Gap ${index}`,
+    targetSpace:`Target ${index}`,
+    preservedMechanism:'M',
+    changedVariable:'V',
+    demandStatus:(index<2?'observed':'partial') as 'observed'|'partial',
+    targetEvidenceChannelIds:index<2?['a','b']:['a'],
+    demandEvidence:['D'],
+    sampleSaturation:(index<2?'low':'medium') as 'low'|'medium',
+    rationale:'R',
+    risks:[],
+    firstTests:[`Test ${index}`]
+  }));
+
+  const intelligence:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T16:30:00Z',
+    sourceCompetitorIds:['a','b','c'],
+    dnaCount:3,
+    curves:[curve],
+    gaps,
+    limitations:[]
+  };
+
+  const hydrated=hydrateMissionBriefUniverse(
+    brief,
+    [baseCompetitor],
+    intelligence,
+    {total:228,pending:0,processing:0,completed:223,failed:5,retryable:0,terminalFailed:5,resolved:228,progressPct:100}
+  );
+
+  assert.ok(hydrated);
+  assert.equal(hydrated.market.universeActionableGaps,7);
+  assert.equal(hydrated.universeOpportunities.length,5);
+  assert.deepEqual(hydrated.universeOpportunities.slice(0,2).map(item=>item.readiness),['pilot-ready','pilot-ready']);
+});
