@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, BrainCircuit, CheckCircle2, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
 import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import { universeMarketFreshness } from '@/lib/universe-market';
 
 function compact(value:number|null){
   if(value===null)return '—';
@@ -13,6 +14,9 @@ function relativeDate(value:string){
   if(hours<24)return `${Math.max(1,hours)}h`;
   const days=Math.floor(hours/24);
   return `${days}d`;
+}
+function marketDate(value:string){
+  return new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
 const statusMeta:Record<UniverseCompetitorStatus,{label:string;className:string;rank:number}>={
   'production-reference':{label:'Production Reference',className:'production',rank:8},
@@ -173,6 +177,7 @@ export default function CompetitorUniverse({
   const dnaProgressPct=competitors.length?Math.round((dnaReady/competitors.length)*100):0;
   const gaps=intelligence?.gaps.length??0;
   const curves=intelligence?.curves.length??0;
+  const marketFreshness=universeMarketFreshness(intelligence);
   const competitorName=(channelId:string)=>competitors.find(item=>item.channelId===channelId)?.name??channelId;
 
   return <div className="universe-page">
@@ -199,6 +204,17 @@ export default function CompetitorUniverse({
       <div><BrainCircuit size={18}/><span>DNA PRONTO</span><strong>{dnaReady}</strong></div>
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
     </section>
+
+    {marketFreshness&&<div className="info-strip">
+      {marketFreshness.evidenceNewerThanCurves?<AlertCircle size={18}/>:<CheckCircle2 size={18}/>}
+      <span>
+        <strong>{marketFreshness.evidenceNewerThanCurves?'Evidência mais nova que as curvas.':'Market no mesmo snapshot.'}</strong>{' '}
+        Curvas/gaps gerados por IA em {marketDate(marketFreshness.generatedAt)}.
+        {marketFreshness.evidenceNewerThanCurves
+          ?` Evidência revalidada em ${marketDate(marketFreshness.evidenceRevalidatedAt)} contra ${marketFreshness.evidenceDnaCount} DNAs; nenhuma nova curva foi gerada nessa etapa.`
+          :` Evidência no mesmo snapshot, com ${marketFreshness.evidenceDnaCount} DNAs considerados.`}
+      </span>
+    </div>}
 
     {competitors.length>0&&<section className="universe-bootstrap">
       <div className="universe-bootstrap-head">
