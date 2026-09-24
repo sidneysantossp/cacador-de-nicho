@@ -405,3 +405,15 @@ Correção:
 Regressão real:
 - `occupational surnames` + Historic Dave: `surname` + `job` no mesmo título continua válido;
 - profissão histórica genérica sem `surname/family name/name origin` é rejeitada.
+
+
+## Mission Control actionable count — 24/09/2026
+
+O Market atual possui 7 gaps acionáveis, porém o Mission Control limitava a consulta a 5 itens e reutilizava o tamanho dessa lista como contador total. Isso fazia o status exibir 5 acionáveis mesmo existindo 7.
+
+Correção:
+- o backend calcula até 10 oportunidades acionáveis para obter o total real;
+- `market.universeActionableGaps` recebe o total completo;
+- a lista visual `universeOpportunities` continua limitada aos 5 melhores cards;
+- a mesma regra é aplicada tanto ao Mission Brief recém-gerado quanto à hidratação live de `/api/radar`;
+- regressão cobre 7 acionáveis, contador 7 e somente 5 cards renderizáveis.
