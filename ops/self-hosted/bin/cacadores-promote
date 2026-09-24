@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+PROJECT=cacador-de-nicho
+ROOT="$BASE/projects/$PROJECT/source"
+REPO=https://github.com/sidneysantossp/cacador-de-nicho.git
+ENV_FILE="$BASE/env/$PROJECT.production.env"
+STATE_FILE="$BASE/state/$PROJECT.json"
+LOG_DIR="$BASE/logs/$PROJECT"
+SHA="${1:-}"
+
+if [[ -z "$SHA" ]]; then
+  echo "usage: cacadores-promote <commit-sha>" >&2
+  exit 64
+fi
+
+mkdir -p "$LOG_DIR"
+cd "$ROOT"
+git fetch --prune origin master
+FULL_SHA="$(git rev-parse "$SHA^{commit}")"
+SHORT="${FULL_SHA:0:7}"
+IMAGE="auditseo/$PROJECT:$SHORT"
+
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  git checkout --detach "$FULL_SHA"
+  git reset --hard "$FULL_SHA"
+  docker build --pull=false -t "$IMAGE" .
+fi
+
+CURRENT_PORT="$(python3 - "$STATE_FILE" <<'PY'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+if not p.exists():
+    print("")
+else:
+    try:
+        s=json.loads(p.read_text())
+        print((s.get("production") or {}).get("port",""))
+    except Exception:
+        print("")
+PY
+)"
+
+if [[ "$CURRENT_PORT" == "3102" ]]; then CANDIDATE_PORT=3103; else CANDIDATE_PORT=3102; fi
+CANDIDATE_CONTAINER="$PROJECT-prod-$CANDIDATE_PORT"
+
+sed -i "s/^APP_COMMIT_SHA=.*/APP_COMMIT_SHA=$FULL_SHA/" "$ENV_FILE"
+sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" "$ENV_FILE"
+
+docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+docker run -d   --name "$CANDIDATE_CONTAINER"   --restart unless-stopped   --env-file "$ENV_FILE"   -p "127.0.0.1:$CANDIDATE_PORT:3000"   "$IMAGE" >/dev/null
+
+BODY=""
+for i in $(seq 1 30); do
+  if BODY="$(curl -fsS "http://127.0.0.1:$CANDIDATE_PORT/api/health" 2>/dev/null)"; then
+    if python3 - "$FULL_SHA" "$BODY" <<'PY'
+import json,sys
+try:
+    sha=sys.argv[1]
+    b=json.loads(sys.argv[2])
+    ok=b.get("ok") is True and b.get("commit")==sha and b.get("databaseConnected") is True
+except Exception:
+    ok=False
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      break
+    fi
+  fi
+  BODY=""
+  sleep 1
+done
+
+if [[ -z "$BODY" ]]; then
+  docker logs "$CANDIDATE_CONTAINER" --tail 100 || true
+  docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+  echo "candidate health failed" >&2
+  exit 1
+fi
+
+"$BASE/bin/cacadores-route-production" "$CANDIDATE_PORT"
+
+ROUTE_OK=0
+for i in $(seq 1 20); do
+  EXT_BODY="$(curl -fsS "https://cacadores.159.198.40.98.sslip.io/api/health" 2>/dev/null || true)"
+  if [[ -n "$EXT_BODY" ]] && python3 - "$FULL_SHA" "$EXT_BODY" <<'PYROUTE'
+import json,sys
+try:
+    sha=sys.argv[1]
+    b=json.loads(sys.argv[2])
+    ok=b.get("ok") is True and b.get("commit")==sha and b.get("databaseConnected") is True
+except Exception:
+    ok=False
+raise SystemExit(0 if ok else 1)
+PYROUTE
+  then
+    ROUTE_OK=1
+    break
+  fi
+  sleep 0.5
+done
+
+if [[ "$ROUTE_OK" != 1 ]]; then
+  if [[ -n "$CURRENT_PORT" ]]; then
+    "$BASE/bin/cacadores-route-production" "$CURRENT_PORT" || true
+  fi
+  docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
+  echo "public route validation failed" >&2
+  exit 1
+fi
+
+python3 - "$STATE_FILE" "$FULL_SHA" "$IMAGE" "$CANDIDATE_PORT" "$CANDIDATE_CONTAINER" <<'PY'
+from pathlib import Path
+import json,sys,datetime
+p=Path(sys.argv[1])
+state={}
+if p.exists():
+    try: state=json.loads(p.read_text())
+    except Exception: state={}
+old=state.get("production")
+if old:
+    state["previousProduction"]=old
+state["production"]={
+    "sha":sys.argv[2],
+    "image":sys.argv[3],
+    "port":int(sys.argv[4]),
+    "container":sys.argv[5],
+    "deployedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
+}
+state["project"]="cacador-de-nicho"
+p.write_text(json.dumps(state,indent=2)+"\n")
+PY
+
+# Synchronize versioned self-hosted wrappers and systemd units from the exact
+# promoted commit so GitHub remains the operational source of truth.
+if [[ -d "$ROOT/ops/self-hosted/bin" ]]; then
+  for FILE in "$ROOT"/ops/self-hosted/bin/*; do
+    [[ -f "$FILE" ]] || continue
+    install -m 0755 "$FILE" "$BASE/bin/$(basename "$FILE")"
+  done
+fi
+if [[ -d "$ROOT/ops/self-hosted/systemd" ]]; then
+  for FILE in "$ROOT"/ops/self-hosted/systemd/*; do
+    [[ -f "$FILE" ]] || continue
+    install -m 0644 "$FILE" "/etc/systemd/system/$(basename "$FILE")"
+  done
+  systemctl daemon-reload
+  MODE_FILE="$BASE/state/cacador-de-nicho-operation-mode.json"
+  OPERATION_MODE="$(python3 - "$MODE_FILE" <<'PYMODE'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+mode=""
+if p.exists():
+    try: mode=str(json.loads(p.read_text()).get("mode",""))
+    except Exception: pass
+print(mode)
+PYMODE
+)"
+  for FILE in "$ROOT"/ops/self-hosted/systemd/*.timer; do
+    [[ -f "$FILE" ]] || continue
+    TIMER="$(basename "$FILE")"
+    if [[ "$OPERATION_MODE" == "assisted-manual" ]] && [[ "$TIMER" == "cacadores-universe-cycle.timer" || "$TIMER" == "cacadores-market-intelligence.timer" ]]; then
+      systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
+      continue
+    fi
+    systemctl enable "$TIMER" >/dev/null 2>&1 || true
+    systemctl start "$TIMER" >/dev/null 2>&1 || true
+  done
+  systemctl reset-failed cacadores-universe-batch.service >/dev/null 2>&1 || true
+fi
+
+echo "PROMOTED sha=$FULL_SHA port=$CANDIDATE_PORT"
+echo "$BODY"
