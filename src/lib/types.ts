@@ -549,9 +549,35 @@ export type ProductionDnaCharacter = {
  id: string;
  name: string;
  description: string;
+ role?: string;
+ referenceStatus?: 'locked' | 'needs-reference' | 'ready';
  visualRules: string[];
  forbidden: string[];
  referenceAssets: string[];
+};
+
+export type ProductionDnaQualityBenchmark = {
+ id: string;
+ label: string;
+ status: 'locked' | 'reference';
+ sourceKind: 'video' | 'image';
+ sourceProvider: string;
+ sourceFileId: string;
+ sourceFileName: string;
+ technical: {
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+ };
+ criteria: {
+  characterConsistency: string;
+  materialTexture: string;
+  lightingEnvironment: string;
+  motionQuality: string;
+ };
+ qaRules: string[];
+ approvedAt: string;
 };
 export type ProductionDnaPayload = {
  kind: 'production-dna';
@@ -575,6 +601,8 @@ export type ProductionDnaPayload = {
   scenePromptTemplate: string;
   negativePrompt: string;
   forbidden: string[];
+  visualMoat?: string;
+  qualityBenchmark?: ProductionDnaQualityBenchmark;
  };
  characters: ProductionDnaCharacter[];
  voice: {
