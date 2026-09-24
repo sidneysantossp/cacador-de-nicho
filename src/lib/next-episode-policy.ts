@@ -74,7 +74,11 @@ export function buildNextEpisodeEvidenceContext(
     });
   });
 
-  for(const concept of nextNarrativeConcepts(bundle.concepts).slice(0,30)){
+  const prioritizedConcepts=nextNarrativeConcepts(bundle.concepts);
+  const prioritizedKeys=new Set(prioritizedConcepts.map(item=>item.key));
+  const establishedConcepts=bundle.concepts
+    .filter(item=>item.status==='established'&&!prioritizedKeys.has(item.key));
+  for(const concept of [...prioritizedConcepts,...establishedConcepts].slice(0,40)){
     sources.push({
       ref:'concept:'+concept.key,
       type:'concept',
