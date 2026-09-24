@@ -108,6 +108,75 @@ export function nextEpisodeAutoAcceptIssues(
   return [...new Set(issues)];
 }
 
+export type AutopilotDecisionPreview = {
+  triggerWindowHours:number|null;
+  action:'disabled'|'generate-plan'|'review'|'auto-accept';
+  candidateId:string|null;
+  candidateTitle:string|null;
+  evidenceStrength:'low'|'medium'|'high'|null;
+  issues:string[];
+};
+
+export function autopilotDecisionPreview(
+  channel:Pick<ManagedChannel,'autopilot'>,
+  plan:{
+    recommendedCandidateId:string|null;
+    candidates:Array<{
+      id:string;
+      workingTitle?:string;
+      narrativeReady:boolean;
+      blockers:string[];
+      evidenceStrength:'low'|'medium'|'high';
+      evidenceRefs:string[];
+    }>;
+    context:{evidenceSnapshot:Array<{
+      ref:string;
+      type:'learning'|'thread'|'concept'|'arc'|'episode';
+      confidence?:'low'|'medium'|'high';
+    }>};
+  }|null
+):AutopilotDecisionPreview{
+  const autopilot=effectiveChannelAutopilot(channel);
+  const triggerWindowHours=channelNextEpisodeTriggerWindow(channel);
+
+  if(!autopilot.enabled||!autopilot.learningLoopEnabled||!autopilot.autoPlanNextEpisode){
+    const issues:string[]=[];
+    if(!autopilot.enabled)issues.push('autopilot-disabled');
+    if(!autopilot.learningLoopEnabled)issues.push('learning-loop-disabled');
+    if(!autopilot.autoPlanNextEpisode)issues.push('auto-plan-disabled');
+    return {
+      triggerWindowHours,
+      action:'disabled',
+      candidateId:null,
+      candidateTitle:null,
+      evidenceStrength:null,
+      issues
+    };
+  }
+
+  if(!plan){
+    return {
+      triggerWindowHours,
+      action:'generate-plan',
+      candidateId:null,
+      candidateTitle:null,
+      evidenceStrength:null,
+      issues:[]
+    };
+  }
+
+  const candidate=plan.candidates.find(item=>item.id===plan.recommendedCandidateId)??null;
+  const issues=nextEpisodeAutoAcceptIssues(channel,plan);
+  return {
+    triggerWindowHours,
+    action:issues.length?'review':'auto-accept',
+    candidateId:candidate?.id??null,
+    candidateTitle:candidate?.workingTitle?.trim()||null,
+    evidenceStrength:candidate?.evidenceStrength??null,
+    issues
+  };
+}
+
 export async function startAcceptedEpisodeAutopilot<T extends {id:string;mode:'assisted'|'autonomous'}>(
   channel:Pick<ManagedChannel,'autopilot'>,
   contentProjectId:string,
