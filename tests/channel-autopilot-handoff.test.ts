@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   channelAutopilotLearningEnabled, channelAutopilotStartsAcceptedEpisode,
   channelLearningWindows, channelNextEpisodeTriggerWindow,
-  autopilotActivationRequirement, autopilotDecisionPreview, autopilotOperationalIssues, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
+  autopilotActivationReadinessIssues, autopilotActivationRequirement,
+  autopilotDecisionPreview, autopilotOperationalIssues, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
   effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
@@ -135,6 +136,51 @@ test('Autopilot activation gate requires readiness only when capability increase
   assert.equal(autopilotActivationRequirement(autonomous,autoAccept),'autonomous');
   assert.equal(autopilotActivationRequirement(autonomous,assisted),'none');
   assert.equal(autopilotActivationRequirement(autoAccept,off),'none');
+});
+
+test('Autopilot activation readiness gate stays identical for UI and server',()=>{
+  const base={
+    channelId:'11111111-1111-4111-8111-111111111111',
+    hasBrain:true,
+    hasProductionDna:true,
+    providers:{openai:true,elevenlabs:true,googleai:true},
+    workers:{automation:true,learningLoop:true},
+    youtube:{
+      oauthConfigured:true,
+      connected:true,
+      scopes:[
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/yt-analytics.readonly'
+      ]
+    },
+    operations:{
+      automaticAcceptanceInLast24Hours:false,
+      activeEpisodeAutomation:false,
+      activeLearningLoop:false
+    }
+  };
+
+  const blocked=buildAutopilotReadiness({...base,hasBrain:false});
+  assert.ok(
+    autopilotActivationReadinessIssues('assisted',blocked)
+      .some(check=>check.code==='channel-brain')
+  );
+  assert.ok(
+    autopilotActivationReadinessIssues('autonomous',blocked)
+      .some(check=>check.code==='channel-brain')
+  );
+
+  const held=buildAutopilotReadiness({
+    ...base,
+    operations:{...base.operations,automaticAcceptanceInLast24Hours:true}
+  });
+  assert.deepEqual(autopilotActivationReadinessIssues('assisted',held),[]);
+  assert.deepEqual(
+    autopilotActivationReadinessIssues('autonomous',held).map(check=>check.code),
+    ['auto-accept-cooldown']
+  );
+  assert.deepEqual(autopilotActivationReadinessIssues('none',held),[]);
 });
 
 test('Autopilot Canary Gate blocks overlapping automatic episode decisions',()=>{
