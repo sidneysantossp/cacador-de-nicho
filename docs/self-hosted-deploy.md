@@ -56,9 +56,23 @@ The 12:00 phase executes queue processing plus bounded Channel DNA bootstrap onl
 
 The exact watchdog, Universe wrappers and critical systemd units used by the VPS are versioned under `ops/self-hosted/`.
 
-The production health watchdog also verifies that `cacadores-auto-deploy.timer`, `cacadores-universe-cycle.timer` and `cacadores-market-intelligence.timer` remain enabled and active. If either timer is stopped or disabled, the watchdog restores it before evaluating application health. This closes the failure mode observed on 24/09/2026, when production stayed healthy but automatic GitHub promotion stopped because the deploy timer was inactive.
+The production health watchdog always verifies that `cacadores-auto-deploy.timer` remains enabled and active. Universe and Market timers are self-healed only when the runtime operation mode is not `assisted-manual`. In assisted-manual mode, editorial AI, render, publication and learning workers stay stopped until the operator explicitly asks ChatGPT to run the corresponding operation.
 
 
 ## Runtime sync
 
-The source-of-truth wrappers and systemd units live under `ops/self-hosted/`. Production promotion must synchronize those files to `/srv/auditseo-deploy/bin` and `/etc/systemd/system`, run `systemctl daemon-reload`, and keep the critical timers enabled. This prevents the repository and the active VPS scheduler from drifting apart.
+The source-of-truth wrappers and systemd units live under `ops/self-hosted/`. Production promotion must synchronize those files to `/srv/auditseo-deploy/bin` and `/etc/systemd/system`, run `systemctl daemon-reload`, and preserve the runtime operation mode. Infrastructure timers remain enabled; editorial/productive timers may remain deliberately disabled in `assisted-manual` mode. This prevents deployment from silently restoring autonomous work.
+
+
+## Assisted-manual operation mode — 24/09/2026
+
+The current production operating model is `assisted-manual`.
+
+- OpenAI, YouTube and other provider integrations remain configured and available.
+- No editorial AI scheduler runs autonomously.
+- No production, render, learning-loop or YouTube-publish worker remains continuously active.
+- `cacadores-universe-cycle.timer` and `cacadores-market-intelligence.timer` stay disabled.
+- worker-sync timers for episode automation, closed loop, render and YouTube publishing stay disabled.
+- health-watch, auto-deploy and maintenance remain automatic because they protect infrastructure rather than make editorial decisions.
+- ChatGPT is the operational assistant: the human operator explicitly requests a morning, afternoon or evening run; ChatGPT inspects current state, starts only the required process, validates the result, persists approved machine output and reports back for human decision.
+- Automatic API fallback must never be enabled merely because the assisted workflow is unavailable.
