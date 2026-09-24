@@ -300,6 +300,35 @@ export function universeGapEvidenceMatch(
   };
 }
 
+export function universeGapDnaCandidateMatch(
+  competitor:UniverseCompetitor,
+  gap:UniverseGapDescriptor
+){
+  const strict=universeGapEvidenceMatch(competitor,gap);
+  const direct=directGapMatches(competitor,gap);
+  const targetSignalCount=direct.targetMatchedTerms.length;
+  const domainAnchorCount=direct.domainAnchorMatchedTerms.length;
+  const lexicalCount=direct.matchedTerms.length;
+  const matched=
+    strict.matched||
+    targetSignalCount>0||
+    domainAnchorCount>0||
+    lexicalCount>=2;
+  const score=
+    (strict.matched?100:0)+
+    targetSignalCount*20+
+    domainAnchorCount*10+
+    Math.min(lexicalCount,5);
+  return {
+    matched,
+    score,
+    strictEvidence:strict.matched,
+    matchedTerms:direct.matchedTerms,
+    targetMatchedTerms:direct.targetMatchedTerms,
+    domainAnchorMatchedTerms:direct.domainAnchorMatchedTerms
+  };
+}
+
 export function resolveUniverseGapEvidence(
   competitors:UniverseCompetitor[],
   gap:UniverseGapDescriptor,
@@ -348,19 +377,22 @@ export function selectUniverseGapValidationDnaBatch(
     .filter(competitor=>!competitor.dna)
     .flatMap(competitor=>{
       let matchedGaps=0;
-      let strongestDirectMatchCount=0;
+      let strictEvidenceGaps=0;
+      let strongestCandidateScore=0;
       for(const gap of investigate){
-        const match=universeGapEvidenceMatch(competitor,gap);
+        const match=universeGapDnaCandidateMatch(competitor,gap);
         if(match.matched){
           matchedGaps++;
-          strongestDirectMatchCount=Math.max(strongestDirectMatchCount,match.matchedTerms.length);
+          if(match.strictEvidence)strictEvidenceGaps++;
+          strongestCandidateScore=Math.max(strongestCandidateScore,match.score);
         }
       }
-      return matchedGaps?[{competitor,matchedGaps,strongestDirectMatchCount}]:[];
+      return matchedGaps?[{competitor,matchedGaps,strictEvidenceGaps,strongestCandidateScore}]:[];
     })
     .sort((a,b)=>{
+      if(b.strictEvidenceGaps!==a.strictEvidenceGaps)return b.strictEvidenceGaps-a.strictEvidenceGaps;
       if(b.matchedGaps!==a.matchedGaps)return b.matchedGaps-a.matchedGaps;
-      if(b.strongestDirectMatchCount!==a.strongestDirectMatchCount)return b.strongestDirectMatchCount-a.strongestDirectMatchCount;
+      if(b.strongestCandidateScore!==a.strongestCandidateScore)return b.strongestCandidateScore-a.strongestCandidateScore;
       return compareUniverseDnaPriority(a.competitor,b.competitor);
     })
     .slice(0,limit)
