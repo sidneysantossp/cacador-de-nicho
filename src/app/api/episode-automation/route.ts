@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  cancelEpisodeAutomationRun, createEpisodeAutomationRun,
+  advanceEpisodeAutomationRun, cancelEpisodeAutomationRun, createEpisodeAutomationRun,
   episodeAutomationChannelState, listEpisodeAutomationEvents,
-  loadEpisodeAutomationRun, reconcileEpisodeAutomationRun,
+  loadEpisodeAutomationRun, reconcileEpisodeAutomationRun, resumeEpisodeAutomationRun,
   updateEpisodeAutomationRun
 } from '@/lib/server/episode-automation';
 
@@ -35,6 +35,8 @@ const schema=z.discriminatedUnion('action',[
     mode:z.enum(['assisted','autonomous'])
   }).strict(),
   z.object({action:z.literal('reconcile'),runId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('advance'),runId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('resume'),runId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('update'),
     runId:z.string().uuid(),
@@ -84,6 +86,14 @@ export async function POST(request:Request){
     if(body.action==='reconcile'){
       const run=await reconcileEpisodeAutomationRun(body.runId);
       return Response.json({message:'Estado reconciliado com os engines.',run});
+    }
+    if(body.action==='advance'){
+      const run=await advanceEpisodeAutomationRun(body.runId);
+      return Response.json({message:'Uma transição segura foi executada.',run});
+    }
+    if(body.action==='resume'){
+      const run=await resumeEpisodeAutomationRun(body.runId);
+      return Response.json({message:'Hold removido. O run pode tentar a etapa novamente.',run});
     }
     if(body.action==='update'){
       const run=await updateEpisodeAutomationRun(body);
