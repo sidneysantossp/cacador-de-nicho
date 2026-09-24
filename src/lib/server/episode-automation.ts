@@ -143,7 +143,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
       .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
     client.from('radar_production_dna')
       .select('id,version,payload,updated_at')
-      .eq('channel_id',run.channelId).maybeSingle()
+      .eq('id',run.channelId).maybeSingle()
   ]);
 
   const project=checked(projectResult);
@@ -1062,6 +1062,17 @@ export async function advanceEpisodeAutomationRun(runId:string,workerToken?:stri
 export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToken:string){
   try{
     return await advanceEpisodeAutomationRun(runId,workerToken);
+  }catch(error){
+    const message=error instanceof Error?error.message:'Falha desconhecida no Automation Worker.';
+    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
+      throw error;
+    }
+    const run=await loadEpisodeAutomationRun(runId).catch(()=>null);
+    if(!run||run.status==='completed'||run.status==='cancelled')throw error;
+    if(automationOperatorHold(error)){
+      return holdAutomationRun(run,run.currentStep,message);
+    }
+    return failAutomationRun(run,run.currentStep,message);
   }finally{
     await releaseAutomationLease(runId,workerToken).catch(()=>{});
   }
