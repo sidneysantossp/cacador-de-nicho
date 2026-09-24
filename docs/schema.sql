@@ -119,9 +119,9 @@ create or replace function public.claim_radar_universe_queue(p_limit int default
 returns table(id text,input text,status text,attempts int,last_error text,created_at timestamptz,updated_at timestamptz)
 language plpgsql security invoker set search_path='' as $
 begin
-update public.radar_universe_queue
+update public.radar_universe_queue as q
 set status='pending',updated_at=now()
-where status='processing' and updated_at<now()-interval '30 minutes';
+where q.status='processing' and q.updated_at<now()-interval '30 minutes';
 return query
 with picked as (
  select q.id from public.radar_universe_queue q
