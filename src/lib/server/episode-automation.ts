@@ -2,7 +2,7 @@ import 'server-only';
 
 import type {
   EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
-  EpisodeAutomationRun, EpisodeAutomationRunPayload, EpisodeAutomationStatus,
+  EpisodeAutomationRun, EpisodeAutomationRunPayload,
   EpisodeAutomationStep, EpisodeAutomationStepState
 } from '@/lib/types';
 import { checked, db } from './db';
@@ -33,6 +33,10 @@ import {
 } from './production-quality';
 import { createPublicationPackage } from './publication-package';
 import { queueYouTubePublication } from './youtube-publisher';
+import {
+  assistedAutomationPolicy, autonomousAutomationPolicy,
+  automationHttpErrorShouldHold, episodeAutomationLabels, inspectAutomationSteps
+} from '@/lib/episode-automation-policy';
 
 type RunRow={
   id:string;channel_id:string;episode_id:string;content_project_id:string;
@@ -43,55 +47,6 @@ type RunRow={
 };
 
 const runSelection='id,channel_id,episode_id,content_project_id,mode,status,current_step,attempts,payload,last_error,hold_step,hold_reason,hold_created_at,created_at,updated_at';
-
-export const assistedAutomationPolicy:EpisodeAutomationPolicy={
-  autoGenerateScript:false,
-  autoApproveObjectiveGates:false,
-  autoGenerateVoice:false,
-  autoCreateTranscript:false,
-  autoCreateScenes:false,
-  autoGenerateVisualPrompts:false,
-  autoGenerateVisualAssets:false,
-  autoBuildTimeline:false,
-  autoCreateVideoEdit:false,
-  autoRender:false,
-  autoRunQuality:false,
-  autoCreatePackage:false,
-  autoPublish:false
-};
-
-export const autonomousAutomationPolicy:EpisodeAutomationPolicy={
-  autoGenerateScript:true,
-  autoApproveObjectiveGates:true,
-  autoGenerateVoice:true,
-  autoCreateTranscript:true,
-  autoCreateScenes:true,
-  autoGenerateVisualPrompts:true,
-  autoGenerateVisualAssets:true,
-  autoBuildTimeline:true,
-  autoCreateVideoEdit:true,
-  autoRender:true,
-  autoRunQuality:true,
-  autoCreatePackage:true,
-  autoPublish:false
-};
-
-const labels:Record<EpisodeAutomationStep,string>={
-  content:'Content Project',
-  script:'Script',
-  voice:'Voice',
-  transcript:'Transcript',
-  scenes:'Scene Plan',
-  'visual-prompts':'Visual Prompts',
-  'visual-assets':'Visual Assets',
-  timeline:'Timeline',
-  'video-edit':'Video Edit',
-  render:'Render',
-  quality:'Production QA',
-  packaging:'Packaging',
-  publish:'Publish',
-  done:'Concluído'
-};
 
 function normalizeRun(row:RunRow):EpisodeAutomationRun{
   const payload=row.payload as EpisodeAutomationRunPayload;
@@ -127,7 +82,7 @@ function step(
   return {
     step:name,
     status,
-    label:labels[name],
+    label:episodeAutomationLabels[name],
     entityId:options.entityId,
     entityVersion:options.entityVersion,
     reason:options.reason,
@@ -495,29 +450,9 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const actionable=steps.find(item=>item.status!=='completed'&&item.status!=='skipped');
-  const currentStep=actionable?.step??'done';
-  const blockers=steps
-    .filter(item=>item.status==='blocked'||item.status==='failed')
-    .map(item=>item.label+': '+(item.reason??item.status));
-  const status:EpisodeAutomationStatus=currentStep==='done'
-    ?'completed'
-    :actionable?.status==='failed'
-      ?'failed'
-      :actionable?.status==='running'
-        ?'running'
-        :actionable?.status==='blocked'||actionable?.requiresOperator
-          ?'waiting'
-          :'active';
-
   return {
     steps,
-    currentStep,
-    blockers,
-    status,
-    lastDecision:currentStep==='done'
-      ?'Episódio concluiu toda a linha de produção.'
-      :(actionable?.reason??labels[currentStep])
+    ...inspectAutomationSteps(steps)
   };
 }
 
@@ -749,9 +684,7 @@ export async function resumeEpisodeAutomationRun(runId:string){
 
 
 function automationOperatorHold(error:unknown){
-  if(!(error instanceof HttpError))return false;
-  if([400,409,422,429,503].includes(error.status))return true;
-  return false;
+  return error instanceof HttpError&&automationHttpErrorShouldHold(error.status);
 }
 
 async function holdAutomationRun(
