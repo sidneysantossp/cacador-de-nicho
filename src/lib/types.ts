@@ -362,6 +362,23 @@ export type ChannelAutopilotSettings = {
  nextEpisodeTriggerHours: number;
  nextEpisodeMinEvidence: 'medium' | 'high';
 };
+export type AutopilotReadinessCheck = {
+ code:string;
+ label:string;
+ area:'editorial'|'production'|'youtube'|'workers'|'operations';
+ status:'pass'|'blocker'|'warning';
+ requiredFor:'assisted'|'autonomous'|'closed-loop';
+ detail:string;
+};
+export type AutopilotReadiness = {
+ channelId:string;
+ assistedReady:boolean;
+ productionAutonomousReady:boolean;
+ closedLoopReady:boolean;
+ autonomousReady:boolean;
+ checks:AutopilotReadinessCheck[];
+ checkedAt:string;
+};
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
  id: string;
