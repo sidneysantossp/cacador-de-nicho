@@ -158,3 +158,15 @@ Objetivo: manter o bootstrap e Channel DNA avançando sem exigir clique do opera
 - Cron Universe agora encadeia bootstrap → DNA → Curves/Gaps condicionalmente, apenas quando o DNA mudou. O DNA diário usa burst limitado, tenta cada canal no máximo uma vez por execução e recalcula Curves/Gaps somente depois dos lotes.
 
 - Cron diário do Universe passa a registrar execução no Activity Ledger e respeitar a exclusão mútua dos jobs pesados.
+
+
+## Universe → Mission Control — 24/09/2026
+
+Implementado bridge operacional entre a inteligência cross-channel do Universe e o Mission Control:
+- somente gaps ligados a curvas estruturais podem virar oportunidade acionável;
+- gaps com demanda hypothesis ou saturação high ficam fora da fila acionável;
+- demanda observed + saturação low/medium vira `PILOT READY`;
+- demais gaps elegíveis ficam como `INVESTIGAR`;
+- cada card mostra curva de origem, target, primeiro teste, razões verificáveis e riscos;
+- oportunidades do Universe permanecem separadas de `Production Ready`, que continua exigindo Opportunity Report profundo;
+- ordenação baseada em estados de evidência explícitos, sem score opaco.

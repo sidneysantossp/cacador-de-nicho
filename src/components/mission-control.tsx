@@ -25,6 +25,7 @@ export default function MissionControl({
   onOpenStudy:(channelStudyId:string)=>void;
   searchBudget?:YouTubeSearchBudgetState|null;
 }){
+  const universeOpportunities=brief?.universeOpportunities??[];
   return <div className="mission-control">
     <section className="mission-hero">
       <div>
@@ -70,7 +71,7 @@ export default function MissionControl({
         <span className={`mission-status ${brief.status}`}><CheckCircle2 size={15}/>{statusLabel(brief.status)}</span>
         <span>Última execução: {when(brief.completedAt)}</span>
         <span>{brief.market.qualifiedChannels} candidato(s) rígido(s) · {brief.market.channelStudies} análise(s) · {brief.market.opportunityReports} report(s)</span>
-        {((brief.market.competitors??0)>0||(brief.market.universeQueuePending??0)>0)&&<span>Universe: {brief.market.competitors??0} concorrente(s) · {brief.market.competitorSignals??0} com sinal · {brief.market.competitorDna??0} com DNA · {brief.market.universeCurves??0} curva(s) · {brief.market.universeGaps??0} gap(s) · {brief.market.universeQueueCompleted??0} importados / {brief.market.universeQueuePending??0} pendentes</span>}
+        {((brief.market.competitors??0)>0||(brief.market.universeQueuePending??0)>0)&&<span>Universe: {brief.market.competitors??0} concorrente(s) · {brief.market.competitorSignals??0} com sinal · {brief.market.competitorDna??0} com DNA · {brief.market.universeCurves??0} curva(s) · {brief.market.universeGaps??0} gap(s) · {brief.market.universeActionableGaps??universeOpportunities.length} acionável(is) · {brief.market.universeQueueCompleted??0} importados / {brief.market.universeQueuePending??0} pendentes</span>}
       </div>
 
       <section className="mission-priority">
@@ -88,6 +89,22 @@ export default function MissionControl({
           </article>)}
         </div>:<div className="mission-zero"><PlayCircle size={24}/><div><strong>Nenhuma oportunidade atingiu o nível de produção nesta missão.</strong><p>Os critérios não foram relaxados para preencher a fila.</p></div></div>}
       </section>
+
+
+      {universeOpportunities.length>0&&<section className="mission-priority">
+        <div className="section-heading"><div><h2>Oportunidades do Universe <span className="count-pill">{universeOpportunities.length}</span></h2><p>Gaps sustentados por curvas estruturais. “Pilot Ready” significa evidência suficiente para um teste controlado, não aprovação automática para produção em escala.</p></div></div>
+        <div className="mission-production-grid">
+          {universeOpportunities.map((item,index)=><article className="mission-production-card" key={item.gapId}>
+            <div className="opportunity-top"><span className="big-number">{String(index+1).padStart(2,'0')}</span><span className={`tag ${item.readiness==='pilot-ready'?'green':'blue'}`}>{item.readiness==='pilot-ready'?'PILOT READY':'INVESTIGAR'}</span></div>
+            <span className="mission-source">Curva: {item.curveName} · {item.independentCreators} criadores</span>
+            <h3>{item.title}</h3>
+            <p>Target: {item.targetSpace}</p>
+            <div className="mission-first-episode"><span>PRIMEIRO TESTE</span><strong>{item.firstTest}</strong></div>
+            <ul>{item.reasons.slice(0,4).map(reason=><li key={reason}>{reason}</li>)}</ul>
+            {item.risks.length>0&&<div className="mission-next"><span>RISCOS</span><p>{item.risks.slice(0,3).join(' · ')}</p></div>}
+          </article>)}
+        </div>
+      </section>}
 
       {brief.decisionsNeeded.length>0&&<section className="mission-decisions">
         <div className="section-heading"><div><h2>Requer sua decisão <span className="count-pill">{brief.decisionsNeeded.length}</span></h2><p>O sistema chegou ao limite do que deve decidir sozinho.</p></div></div>
