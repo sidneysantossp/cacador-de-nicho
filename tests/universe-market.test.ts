@@ -436,3 +436,42 @@ test('coverage selector groups pending channels by source cluster instead of ref
   const selected=selectUniverseCoverageDnaBatch([history,education,explained],3);
   assert.deepEqual(new Set(selected.map(item=>item.sourceCluster)),new Set(['History','Education','Explained']));
 });
+
+
+test('generic day-earth overlap cannot validate an extreme-cave survival target',()=>{
+  const gap={
+    title:'A Day Surviving the Deepest Cave on Earth',
+    targetSpace:'Extreme-environment survival documentary and cave exploration',
+    changedVariable:'Cave survival',
+    firstTests:[]
+  };
+  const prehistoric=competitor('wild-horizons-noise','Prehistoric Earth');
+  prehistoric.recentUploads=[
+    {id:'w1',title:"The Day The Sea Died — Earth's Forgotten Mass Extinction",publishedAt:'2026-09-20T00:00:00Z',views:90000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const cave=competitor('cave-survival','Exploration');
+  cave.recentUploads=[
+    {id:'c1',title:'Surviving the Deepest Cave: 48 Hours Underground',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([prehistoric,cave],gap,[]);
+  assert.deepEqual(resolved.channelIds,['cave-survival']);
+});
+
+test('used-ancient overlap cannot validate a dentist-tool target',()=>{
+  const gap={
+    title:'Every Strange Tool Used by Ancient Dentists Explained',
+    targetSpace:'Historical dentistry, health tools and pre-modern medical solutions',
+    changedVariable:'Dental tools',
+    firstTests:[]
+  };
+  const weapons=competitor('ancient-weapons-noise','History');
+  weapons.recentUploads=[
+    {id:'w1',title:'Every Weapon Ancient Humans Used to Hunt Giants Explained',publishedAt:'2026-09-20T00:00:00Z',views:187739,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const dentistry=competitor('dentistry-target','Medical History');
+  dentistry.recentUploads=[
+    {id:'d1',title:'Medieval Dentist Tools That Made Tooth Extraction Terrifying',publishedAt:'2026-09-20T00:00:00Z',views:120000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([weapons,dentistry],gap,[]);
+  assert.deepEqual(resolved.channelIds,['dentistry-target']);
+});

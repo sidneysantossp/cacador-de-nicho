@@ -325,3 +325,15 @@ Correções:
 - canais pendentes podem receber `sourceCluster` localmente; canais já com DNA são rechecados pelas APIs públicas de channels/uploads/videos;
 - falha apenas na recomputação de Market não invalida bootstrap/DNA já concluídos; o ciclo retorna `marketError` e deixa o Market para retry posterior;
 - timeout do wrapper sobe para 390s e o unit systemd para 7 minutos.
+
+
+## Generic evidence token hardening — 24/09/2026
+
+A recomputação com 59 DNAs revelou dois falsos `partial` em curvas estruturais:
+- Wild Horizons validava um gap de caverna apenas por `day + earth`;
+- Paint It Simple validava ferramentas de dentistas por `used + ancient` em um vídeo sobre armas.
+
+Correção:
+- termos genéricos de embalagem/contexto (`day`, `earth`, `used/use/using`, `ancient`, `iconic`, `greatest`, `strange`, `thing(s)`, `world`) deixam de contar como evidência lexical direta;
+- regressões reais exigem termos substantivos do target, como `surviving + cave` ou `dentist + tool`;
+- semantic-family rules existentes continuam cobrindo famílias explicitamente modeladas.
