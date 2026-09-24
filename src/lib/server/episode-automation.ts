@@ -942,6 +942,7 @@ async function executeAutomationTransition(
         sceneId:target.sceneId,
         imageSize:'2K'
       });
+      if(!asset)throw new HttpError('A geração visual não retornou asset persistido.',502);
       await selectSceneAsset(asset.id);
       return 'Asset visual gerado e selecionado para '+target.timecodeLabel+'.';
     }
