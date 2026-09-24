@@ -132,6 +132,13 @@ export type UniversePilotBrief = {
   stopGate:string[];
  };
  nextGate:'produce-one-pilot';
+ handoff?:{
+  status:'prepared';
+  channelId:string;
+  episodeId:string;
+  contentProjectId:string;
+  preparedAt:string;
+ };
 };
 export type Decision = {
  id: string;
