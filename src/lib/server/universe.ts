@@ -396,6 +396,7 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
       curveId:curve.id,
       title:candidate.title,
       targetSpace:candidate.targetSpace,
+      targetKeywords:candidate.targetKeywords,
       preservedMechanism:candidate.preservedMechanism,
       changedVariable:candidate.changedVariable,
       demandStatus,
