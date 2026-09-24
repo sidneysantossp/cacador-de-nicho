@@ -1336,3 +1336,104 @@ test('deterministic Market evidence revalidation can demote stale target demand 
   assert.equal(next.gaps[0].demandStatus,'partial');
   assert.deepEqual(next.gaps[0].targetEvidenceChannelIds,['valid']);
 });
+
+
+test('generic detail/building anchors do not validate historic building details from unrelated fandom titles',()=>{
+  const gap={
+    title:'Why Do Old Buildings Have Tiny Doors Near the Sidewalk?',
+    targetSpace:'Historic building details',
+    targetKeywords:['historic buildings','coal chutes','basement doors','stone facades','street-level architecture'],
+    changedVariable:'Historic building details',
+    firstTests:[]
+  };
+  const webhead=competitor('webhead-lore','Superhero Lore');
+  webhead.recentUploads=[
+    {id:'w1',title:'6 Levels of Mutant Classification EXPLAINED in Detail',publishedAt:'2026-09-20T00:00:00Z',views:6968,duration:'PT10M',thumbnail:'',url:''},
+    {id:'w2',title:'The ENTIRE Story of Spider-Man 1994 Explained (Every Detail You Missed)',publishedAt:'2026-09-20T00:00:00Z',views:112125,duration:'PT24M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([webhead],gap,[]);
+  assert.deepEqual(resolved.channelIds,[]);
+});
+
+test('deterministic revalidation removes stale resolver evidence that no longer maps to valid channel IDs',()=>{
+  const current:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T18:00:00Z',
+    sourceCompetitorIds:['curve-a','curve-b','curve-c','valid','stale'],
+    dnaCount:50,
+    curves:[{
+      id:'curve:medical',
+      key:'medical',
+      name:'Medical Curve',
+      thesis:'T',
+      mechanismSteps:['A','B','C'],
+      supportingChannelIds:['curve-a','curve-b','curve-c'],
+      independentCreators:3,
+      classification:'structural',
+      clusters:['History'],
+      evidence:['E'],
+      counterEvidence:[],
+      recurringTitlePatterns:[],
+      transferableVariables:['Domain'],
+      limitations:[]
+    }],
+    gaps:[{
+      id:'gap:plague',
+      curveId:'curve:medical',
+      title:'Why Plague Doctors Wore Those Beaked Masks',
+      targetSpace:'medical history',
+      targetKeywords:['plague doctors','beaked masks','Black Death','historical medicine','quarantine'],
+      preservedMechanism:'Functional paradox',
+      changedVariable:'Plague-doctor equipment',
+      demandStatus:'observed',
+      targetEvidenceChannelIds:['valid','stale'],
+      demandEvidence:[
+        'Sugestão da IA validada em Valid Channel: domínio target: plague doctors.',
+        'Corroboração do backend em Stale Channel: âncora do target: medical.',
+        'Contexto editorial fornecido originalmente pela análise.'
+      ],
+      sampleSaturation:'medium',
+      rationale:'R',
+      risks:[],
+      firstTests:['Pilot']
+    }],
+    limitations:[]
+  };
+
+  const valid=competitor('valid','History');
+  valid.name='Valid Channel';
+  valid.recentUploads=[{
+    id:'v1',
+    title:'Why Did Plague Doctors Wear Beaked Masks?',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:100000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+  const stale=competitor('stale','History');
+  stale.name='Stale Channel';
+  stale.recentUploads=[{
+    id:'s1',
+    title:'The Doctor Who Changed Medical History',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:80000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+
+  const next=revalidateUniverseMarketEvidenceReport(
+    current,
+    [valid,stale],
+    '2026-09-24T19:00:00Z'
+  );
+  const evidence=next.gaps[0].demandEvidence;
+  assert.equal(next.gaps[0].demandStatus,'partial');
+  assert.deepEqual(next.gaps[0].targetEvidenceChannelIds,['valid']);
+  assert.equal(evidence.some(item=>item.includes('Stale Channel')),false);
+  assert.equal(evidence.some(item=>item.startsWith('Sugestão da IA validada em Valid Channel')),true);
+  assert.equal(evidence.includes('Contexto editorial fornecido originalmente pela análise.'),true);
+});
