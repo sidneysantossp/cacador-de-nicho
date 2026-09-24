@@ -71,18 +71,9 @@ export async function universeQueueSummary():Promise<UniverseImportQueueSummary>
 }
 
 export async function processUniverseImportQueue(maxItems=25){
-  const cutoff=new Date(Date.now()-30*60_000).toISOString();
-  checked(await db().from('radar_universe_queue')
-    .update({status:'pending',updated_at:new Date().toISOString()})
-    .eq('status','processing')
-    .lt('updated_at',cutoff));
-
-  const rows=checked(await db().from('radar_universe_queue')
-    .select('*')
-    .in('status',['pending','failed'])
-    .lt('attempts',3)
-    .order('created_at',{ascending:true})
-    .limit(Math.max(1,Math.min(maxItems,50)))) as UniverseQueueRow[];
+  const rows=checked(await db().rpc('claim_radar_universe_queue',{
+    p_limit:Math.max(1,Math.min(maxItems,50))
+  })) as UniverseQueueRow[];
 
   if(!rows.length)return {processed:0,succeeded:0,failed:0,summary:await universeQueueSummary()};
 
@@ -90,11 +81,6 @@ export async function processUniverseImportQueue(maxItems=25){
   const byChannel=new Map(existing.map(item=>[item.channelId,item]));
 
   const results=await mapLimit(rows,4,async row=>{
-    const nextAttempt=row.attempts+1;
-    checked(await db().from('radar_universe_queue')
-      .update({status:'processing',attempts:nextAttempt,last_error:null,updated_at:new Date().toISOString()})
-      .eq('id',row.id));
-
     try{
       const snapshot=await collectUniverseCompetitor(row.input);
       const merged=mergeCompetitorSnapshot(snapshot,byChannel.get(snapshot.channelId));
