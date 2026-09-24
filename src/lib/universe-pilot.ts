@@ -1,4 +1,4 @@
-import type { Decision, MissionBrief, UniverseMarketIntelligence, UniversePilotBrief } from './types';
+import type { ChannelEpisode, ContentProjectPayload, Decision, MissionBrief, UniverseMarketIntelligence, UniversePilotBrief } from './types';
 import { selectUniverseMissionOpportunities } from './universe-market';
 
 export type UniversePilotDecisionChoice='approved'|'rejected';
@@ -107,4 +107,84 @@ export function buildUniversePilotDecision(input:{
     alternateAngles:opportunity.alternateAngles??[],
     pilotBrief
   };
+}
+
+
+export function buildUniversePilotProductionArtifacts(input:{
+  decision:Decision;
+  channelId:string;
+  sequence:number;
+  episodeId:string;
+  contentProjectId:string;
+  createdAt:string;
+}):{
+  marker:string;
+  episode:ChannelEpisode;
+  project:ContentProjectPayload;
+}{
+  const {decision,channelId,sequence,episodeId,contentProjectId,createdAt}=input;
+  if(decision.kind!=='universe-pilot'||decision.decision!=='approved'||!decision.pilotBrief){
+    throw new Error('Somente uma decisão de piloto aprovada com Pilot Brief pode entrar em produção.');
+  }
+  const brief=decision.pilotBrief;
+  const marker=`universe-pilot:${decision.id}`;
+  const evidenceNotes=[
+    `Universe Pilot Brief: ${brief.id}`,
+    `Market snapshot: ${brief.marketGeneratedAt}`,
+    `Target: ${brief.targetSpace}`,
+    `Evidence: ${brief.evidence.targetEvidenceCount} creator(es) no target; curva sustentada por ${brief.evidence.independentCreators} criador(es).`,
+    ...brief.evidence.demandEvidence.map(item=>`Evidence note: ${item}`),
+    ...brief.risks.map(item=>`Risk: ${item}`)
+  ].join('\n');
+
+  const episode:ChannelEpisode={
+    id:episodeId,
+    channelId,
+    sequence,
+    status:'planned',
+    title:brief.firstTest.slice(0,300),
+    thesis:brief.hypothesis,
+    narrativeSummary:`Piloto controlado do Universe para ${brief.targetSpace}. Preservar: ${brief.testPlan.preserveMechanism} Alterar: ${brief.testPlan.changedVariable}`,
+    prerequisiteConcepts:[],
+    introducesConcepts:[],
+    reinforcesConcepts:[],
+    opensThreads:[],
+    resolvesThreads:[],
+    repetitionKeys:[marker],
+    createdAt,
+    updatedAt:createdAt
+  };
+
+  const project:ContentProjectPayload={
+    kind:'content-project',
+    id:contentProjectId,
+    channelId,
+    episodeId,
+    opportunityId:marker,
+    brief:{
+      theme:brief.targetSpace,
+      thesis:brief.hypothesis,
+      angle:brief.testPlan.changedVariable,
+      promise:`Testar ${brief.targetSpace} preservando o mecanismo editorial ${brief.curveName}.`,
+      workingTitle:brief.firstTest.slice(0,300),
+      thumbnailConcept:'',
+      targetAudience:'',
+      objective:brief.testPlan.purpose,
+      previousEpisodeConnection:'',
+      arcConnection:''
+    },
+    research:{
+      notes:evidenceNotes.slice(0,20000),
+      sources:[],
+      factChecks:[]
+    },
+    approval:{
+      status:'draft',
+      notes:'Criado a partir de um Universe Pilot Brief aprovado. Requer pesquisa, definição de público, fact-check e revisão humana antes de avançar.'
+    },
+    createdAt,
+    updatedAt:createdAt
+  };
+
+  return {marker,episode,project};
 }
