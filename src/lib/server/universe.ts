@@ -280,6 +280,17 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
 }
 
 
+
+export async function runUniverseCycle(){
+  const bootstrap=await processUniverseImportQueue(25);
+  const intelligence=await runUniverseDnaBootstrap(15,120_000);
+  const market=await shouldRefreshUniverseMarketIntelligence()
+    ?await runUniverseMarketIntelligence()
+    :null;
+  const queue=await universeQueueSummary();
+  return {bootstrap,intelligence,market,queue};
+}
+
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='universe-market-intelligence';
 }
