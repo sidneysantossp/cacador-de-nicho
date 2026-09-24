@@ -307,3 +307,21 @@ A seleção de DNA passa a combinar três objetivos:
 3. o restante preserva prioridade global por status, sinais, breakout e atividade.
 
 A mesma seleção balanceada é usada no bootstrap diário e no botão/manual/mission de próximo lote DNA. O objetivo é aumentar representatividade sem perder sinais fortes.
+
+
+## Source cluster + partial-cycle hardening — 24/09/2026
+
+A rodada balanceada elevou Channel DNA de 44 para 59, porém revelou dois problemas operacionais:
+
+1. `cluster` era usado tanto para o cluster de entrada quanto para o nicho refinado pelo DNA. Após gerar DNA, o cluster original era perdido; um refresh posterior podia ainda substituir novamente o refinamento.
+2. O wrapper self-hosted encerrava a chamada do ciclo em ~295s. A rodada de 59 DNAs persistiu os 15 novos DNAs, mas a chamada terminou antes de concluir/rejeitar a recomputação de Market Intelligence, deixando o job inteiro como failed apesar do trabalho útil já salvo.
+
+Correções:
+- `sourceCluster` passa a guardar o cluster de entrada para cobertura/bootstrap;
+- `cluster` permanece o cluster editorial refinado pelo DNA;
+- refresh preserva `cluster` quando existe DNA e atualiza `sourceCluster` pela regra pública de ingestão;
+- o seletor balanceado usa `sourceCluster`, com fallback para dados legados;
+- endpoint autenticado `scope=source-clusters` permite backfill sem `search.list`;
+- canais pendentes podem receber `sourceCluster` localmente; canais já com DNA são rechecados pelas APIs públicas de channels/uploads/videos;
+- falha apenas na recomputação de Market não invalida bootstrap/DNA já concluídos; o ciclo retorna `marketError` e deixa o Market para retry posterior;
+- timeout do wrapper sobe para 390s e o unit systemd para 7 minutos.
