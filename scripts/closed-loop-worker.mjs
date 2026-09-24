@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-const URL=(process.env.LEARNING_LOOP_WORKER_URL||'').trim();
+const WORKER_URL=(process.env.LEARNING_LOOP_WORKER_URL||'').trim();
 const SECRET=(process.env.LEARNING_LOOP_WORKER_SECRET||'').trim();
 const POLL_MS=Math.max(5000,Number(process.env.LEARNING_LOOP_WORKER_POLL_MS||30000));
 
-if(!URL||SECRET.length<32){
+if(!WORKER_URL||SECRET.length<32){
   console.error('Closed Loop worker requires LEARNING_LOOP_WORKER_URL and LEARNING_LOOP_WORKER_SECRET.');
   process.exit(1);
 }
@@ -16,7 +16,7 @@ async function tick(){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),290000);
   try{
-    const response=await fetch(URL,{
+    const response=await fetch(WORKER_URL,{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
@@ -48,7 +48,7 @@ async function tick(){
 console.log(JSON.stringify({
   event:'closed-loop-worker-started',
   pollMs:POLL_MS,
-  workerOrigin:new URL(URL).origin
+  workerOrigin:new URL(WORKER_URL).origin
 }));
 
 while(true){
