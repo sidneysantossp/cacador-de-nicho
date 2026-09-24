@@ -18,7 +18,8 @@ function authorize(request:Request){
 export async function GET(request:Request){
   try{
     authorize(request);
-    const scope=new URL(request.url).searchParams.get('scope')??'radar';
+    const url=new URL(request.url);
+    const scope=url.pathname.endsWith('/universe')?'universe':url.searchParams.get('scope')??'radar';
     if(scope==='universe'){
       const bootstrap=await processUniverseImportQueue(25);
       const intelligence=await runUniverseIntelligence();
