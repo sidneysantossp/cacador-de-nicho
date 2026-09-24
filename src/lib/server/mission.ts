@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
 import { compareMissionCandidates, productionReadiness } from '@/lib/mission';
+import { selectUniverseMissionOpportunities } from '@/lib/universe-market';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { runChannelStudy } from './channel-study';
 import { checked, db, list, put, settings } from './db';
@@ -93,6 +94,8 @@ function buildBrief(input:{
     }];
   }).slice(0,5);
 
+  const universeOpportunities=selectUniverseMissionOpportunities(input.universeIntelligence,5);
+
   const decisionsNeeded:MissionBrief['decisionsNeeded']=[];
   for(const report of input.reports){
     if(decisionsNeeded.length>=5)break;
@@ -138,11 +141,13 @@ function buildBrief(input:{
       competitorDna:input.universe.filter(item=>!!item.dna).length,
       universeCurves:input.universeIntelligence?.curves.length??0,
       universeGaps:input.universeIntelligence?.gaps.length??0,
+      universeActionableGaps:universeOpportunities.length,
       universeQueuePending:input.universeQueue.pending+input.universeQueue.retryable+input.universeQueue.processing,
       universeQueueCompleted:input.universeQueue.completed
     },
     workCompleted:input.workCompleted,
     productionQueue,
+    universeOpportunities,
     decisionsNeeded,
     blockers:input.blockers,
     notes:input.notes
@@ -333,7 +338,7 @@ export async function runMission():Promise<MissionBrief>{
     });
 
     await put('radar_analyses',brief.id,brief);
-    await put('radar_runs',key,{...run,status:'completed',message:`Missão ${status}: ${brief.market.productionReady} oportunidade(s) pronta(s) para produção; ${brief.decisionsNeeded.length} decisão(ões) do operador.`});
+    await put('radar_runs',key,{...run,status:'completed',message:`Missão ${status}: ${brief.market.productionReady} oportunidade(s) pronta(s) para produção; ${brief.universeOpportunities.length} oportunidade(s) acionável(is) do Universe; ${brief.decisionsNeeded.length} decisão(ões) do operador.`});
     checked(await db().rpc('finish_radar_job',{job_key:key,lease_token:token,success:true}));
     return brief;
   }catch(error){
