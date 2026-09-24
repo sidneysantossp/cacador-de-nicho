@@ -115,6 +115,32 @@ create table if not exists public.radar_autopilot_control_versions(id bigint gen
 create index if not exists radar_autopilot_control_versions_control_version on public.radar_autopilot_control_versions(control_id,version desc);
 create table if not exists public.radar_universe_queue(id text primary key,input text not null unique,status text not null default 'pending' check(status in ('pending','processing','completed','failed')),attempts int not null default 0,last_error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_universe_queue_status_created on public.radar_universe_queue(status,created_at);
+create or replace function public.claim_radar_universe_queue(p_limit int default 25)
+returns table(id text,input text,status text,attempts int,last_error text,created_at timestamptz,updated_at timestamptz)
+language plpgsql security invoker set search_path='' as $
+begin
+update public.radar_universe_queue
+set status='pending',updated_at=now()
+where status='processing' and updated_at<now()-interval '30 minutes';
+return query
+with picked as (
+ select q.id from public.radar_universe_queue q
+ where q.status in ('pending','failed') and q.attempts<3
+ order by q.created_at asc
+ for update skip locked
+ limit greatest(1,least(coalesce(p_limit,25),50))
+),claimed as (
+ update public.radar_universe_queue q
+ set status='processing',attempts=q.attempts+1,last_error=null,updated_at=now()
+ from picked where q.id=picked.id
+ returning q.id,q.input,q.status,q.attempts,q.last_error,q.created_at,q.updated_at
+)
+select c.id,c.input,c.status,c.attempts,c.last_error,c.created_at,c.updated_at
+from claimed c order by c.created_at asc;
+end;
+$;
+revoke all on function public.claim_radar_universe_queue(int) from public,anon,authenticated;
+grant execute on function public.claim_radar_universe_queue(int) to service_role;
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
