@@ -92,7 +92,30 @@ export type Opportunity = { id: string; name: string; lens: string; promise: str
 export type GapOpportunity = { id: string; format: string; niche: string; status: 'investigate'; strength: number; rationale: string; directReferences: string[]; analogReferences: string[]; observedChannels: string[] };
 export type Analysis = { observation: string; mechanism: string; hypotheses: string[]; gaps: string[]; limitations: string[]; opportunities: Opportunity[]; sources: { title: string; url: string }[]; review: string; createdAt: string };
 export type Channel = { id: string; name: string; handle: string; niche: string; language: string; country?: string; format: string; description: string; lens: string; thumbnail: string; avatar?: string; url: string; createdAt: string; firstSeenAt: string; observedAt: string; videoCount: number; subscribers: number | null; video: { id: string; title: string; publishedAt: string; views: number; duration: string; thumbnail: string; url: string }; status: 'new' | 'watching' | 'analyzed' | 'archived'; evidence: string[]; analysis?: Analysis; demo?: boolean; discoverySource?: 'reference' | 'reference-adjacent'; reference?: { catalogName: string; tier: 'Legendary' | 'Really Good' | 'Reference'; format: string; niche: string } };
-export type Decision = { id: string; channelId: string; opportunityId?: string; decision: 'approved' | 'rejected' | 'note'; reason: string; createdAt: string };
+export type Decision = {
+ id: string;
+ channelId: string;
+ opportunityId?: string;
+ decision: 'approved' | 'rejected' | 'note';
+ reason: string;
+ createdAt: string;
+ kind?: 'channel' | 'universe-pilot';
+ marketGeneratedAt?: string;
+ title?: string;
+ targetSpace?: string;
+ readiness?: 'pilot-ready' | 'investigate';
+ demandStatus?: 'observed' | 'partial';
+ sampleSaturation?: 'low' | 'medium' | 'uncertain';
+ independentCreators?: number;
+ targetEvidenceCount?: number;
+ firstTest?: string;
+ alternateAngles?: Array<{
+  title: string;
+  curveName: string;
+  targetSpace: string;
+  firstTest: string;
+ }>;
+};
 export type ResearchContext = { id: string; title: string; content: string; createdAt: string };
 export type Script = { id: string; channelId: string; opportunityId: string; title: string; content: string; createdAt: string; status: 'draft' };
 export type MissionBrief = {

@@ -435,3 +435,20 @@ Correção:
 - apenas compartilhar um canal não agrupa targets distintos.
 
 Resultado esperado no caso real: bridge engineering aparece como 1 família PILOT READY, com o ângulo histórico de falhas mostrado como alternativa editorial.
+
+
+## Universe Pilot Decisions — 24/09/2026
+
+A primeira família `PILOT READY` real do Universe revelou uma lacuna de workflow: o Mission Control conseguia recomendar um piloto, mas não havia ação persistente para o operador aprovar ou rejeitar esse teste.
+
+Implementação:
+- nova ação autenticada `universePilotDecision`;
+- aprovação/rejeição só é aceita se o gap ainda estiver `PILOT READY` no Market atual;
+- se a oportunidade deixar de ser acionável ou cair para `INVESTIGAR`, a API responde 409 e não grava aprovação;
+- decisão é persistida no ledger `radar_decisions` com `kind: universe-pilot`;
+- cada decisão registra snapshot do Market no momento da escolha: generatedAt, título, target, readiness, demand, saturação, criadores independentes, quantidade de evidências, primeiro teste e ângulos alternativos;
+- o Mission Control exibe `Aprovar piloto` e `Não seguir` apenas nos cards `PILOT READY`;
+- após a decisão, o card mostra o status e motivo persistidos;
+- o histórico continua no ledger de decisões da operação.
+
+A decisão continua humana: o backend apenas verifica se a evidência ainda satisfaz os gates antes de registrar a escolha.
