@@ -6,7 +6,8 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import {
-  channelAutopilotLearningEnabled, channelLearningWindows, effectiveChannelAutopilot
+  channelAutopilotLearningEnabled, channelLearningWindows, channelShouldAutoPlanNextEpisode,
+  effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues
 } from '@/lib/channel-autopilot-policy';
 import {
   approvePerformanceReport, collectYouTubePerformance
@@ -16,6 +17,9 @@ import {
   approveAudienceIntelligence, createAudienceIntelligence
 } from './audience-intelligence';
 import { applyAudienceReportToBrain } from './audience-learning-loop';
+import {
+  acceptNextEpisodeCandidate, generateNextEpisodePlan
+} from './next-episode';
 
 type JobRow={
   id:string;
@@ -32,6 +36,10 @@ type JobRow={
   performance_report_id:string|null;
   audience_report_id:string|null;
   brain_version:number|null;
+  next_episode_plan_id:string|null;
+  next_episode_episode_id:string|null;
+  next_episode_automation_run_id:string|null;
+  next_episode_action:LearningLoopJob['nextEpisodeAction']|null;
   last_error:string|null;
   payload:unknown;
   completed_at:string|null;
@@ -41,7 +49,9 @@ type JobRow={
 const selection=[
   'id','channel_id','publish_job_id','package_id','episode_id','window_hours','due_at',
   'status','attempts','stage','observation_id','performance_report_id','audience_report_id',
-  'brain_version','last_error','payload','completed_at','updated_at'
+  'brain_version','next_episode_plan_id','next_episode_episode_id',
+  'next_episode_automation_run_id','next_episode_action',
+  'last_error','payload','completed_at','updated_at'
 ].join(',');
 
 function normalizeJob(row:JobRow):LearningLoopJob{
@@ -62,6 +72,10 @@ function normalizeJob(row:JobRow):LearningLoopJob{
     performanceReportId:row.performance_report_id??undefined,
     audienceReportId:row.audience_report_id??undefined,
     brainVersion:row.brain_version??undefined,
+    nextEpisodePlanId:row.next_episode_plan_id??undefined,
+    nextEpisodeEpisodeId:row.next_episode_episode_id??undefined,
+    nextEpisodeAutomationRunId:row.next_episode_automation_run_id??undefined,
+    nextEpisodeAction:row.next_episode_action??undefined,
     lastError:row.last_error??undefined,
     completedAt:row.completed_at??undefined,
     updatedAt:row.updated_at
@@ -215,6 +229,10 @@ async function finish(job:LearningLoopJob,workerToken:string,input:{
   performanceReportId:string;
   audienceReportId?:string;
   brainVersion:number;
+  nextEpisodePlanId?:string;
+  nextEpisodeEpisodeId?:string;
+  nextEpisodeAutomationRunId?:string;
+  nextEpisodeAction?:LearningLoopJob['nextEpisodeAction'];
 }){
   await ownedUpdate(job.id,workerToken,{
     status:'completed',
@@ -223,6 +241,10 @@ async function finish(job:LearningLoopJob,workerToken:string,input:{
     performance_report_id:input.performanceReportId,
     audience_report_id:input.audienceReportId??null,
     brain_version:input.brainVersion,
+    next_episode_plan_id:input.nextEpisodePlanId??null,
+    next_episode_episode_id:input.nextEpisodeEpisodeId??null,
+    next_episode_automation_run_id:input.nextEpisodeAutomationRunId??null,
+    next_episode_action:input.nextEpisodeAction??null,
     worker_token:null,
     lease_until:null,
     last_error:null,
@@ -263,6 +285,90 @@ async function reschedule(job:LearningLoopJob,workerToken:string,reason:string,h
     lease_until:null
   });
   return (await loadLearningLoopJob(job.id))!;
+}
+
+type NextEpisodeHandoff={
+  stage?:string;
+  planId?:string;
+  episodeId?:string;
+  automationRunId?:string;
+  action?:LearningLoopJob['nextEpisodeAction'];
+};
+
+async function maybeAdvanceNextEpisode(
+  channel:ManagedChannel,
+  job:LearningLoopJob,
+  workerToken:string
+):Promise<NextEpisodeHandoff>{
+  if(!channelShouldAutoPlanNextEpisode(channel,job.windowHours))return {};
+
+  await heartbeat(job.id,workerToken,'planning-next-episode');
+  const generated=await generateNextEpisodePlan(channel.id);
+  const plan=generated.plan;
+  await ownedUpdate(job.id,workerToken,{
+    next_episode_plan_id:plan.id,
+    next_episode_action:'planned',
+    stage:'next-episode-plan'
+  });
+
+  const autopilot=effectiveChannelAutopilot(channel);
+  if(autopilot.mode!=='autonomous'||!autopilot.autoAcceptNextEpisode){
+    return {
+      stage:'completed-next-episode-planned',
+      planId:plan.id,
+      action:'planned'
+    };
+  }
+
+  const issues=nextEpisodeAutoAcceptIssues(channel,plan);
+  if(issues.length){
+    return {
+      stage:'completed-next-episode-review',
+      planId:plan.id,
+      action:'review'
+    };
+  }
+
+  const candidate=plan.candidates.find(item=>item.id===plan.recommendedCandidateId);
+  if(!candidate){
+    return {
+      stage:'completed-next-episode-review',
+      planId:plan.id,
+      action:'review'
+    };
+  }
+
+  await heartbeat(job.id,workerToken,'accepting-next-episode');
+  const accepted=await acceptNextEpisodeCandidate({
+    planId:plan.id,
+    candidateId:candidate.id,
+    expectedVersion:plan.version,
+    notes:'Aceito automaticamente pelo Autopilot após Closed Loop · janela '+job.windowHours+'h.'
+  });
+  if(accepted.automationError){
+    throw new HttpError(
+      'Next Episode foi aceito, mas Episode Automation não iniciou: '+accepted.automationError,
+      502
+    );
+  }
+
+  return {
+    stage:accepted.automationStarted
+      ?'completed-next-episode-automation'
+      :'completed-next-episode-accepted',
+    planId:plan.id,
+    episodeId:accepted.episodeId,
+    automationRunId:accepted.automationRunId,
+    action:accepted.automationStarted?'automation-started':'accepted'
+  };
+}
+
+function nextEpisodeConflict(error:unknown){
+  return error instanceof HttpError&&error.status===409&&(
+    error.message.includes('Channel Brain mudou')||
+    error.message.includes('desatualizado')||
+    error.message.includes('já foi aceito')
+  );
 }
 
 function isAnalyticsImmature(error:unknown){
@@ -326,11 +432,18 @@ export async function processClaimedLearningLoopJob(jobId:string,workerToken:str
 
     const commentCount=collected.observation.comments.length;
     if(!policy.autoAnalyzeAudience||commentCount<3){
+      const nextEpisode=await maybeAdvanceNextEpisode(channel,job,workerToken);
       return finish(job,workerToken,{
-        stage:commentCount<3?'completed-insufficient-comment-sample':'completed-performance-only',
+        stage:nextEpisode.stage??(
+          commentCount<3?'completed-insufficient-comment-sample':'completed-performance-only'
+        ),
         observationId:collected.observation.id,
         performanceReportId:performance.id,
-        brainVersion
+        brainVersion,
+        nextEpisodePlanId:nextEpisode.planId,
+        nextEpisodeEpisodeId:nextEpisode.episodeId,
+        nextEpisodeAutomationRunId:nextEpisode.automationRunId,
+        nextEpisodeAction:nextEpisode.action
       });
     }
 
@@ -364,14 +477,21 @@ export async function processClaimedLearningLoopJob(jobId:string,workerToken:str
     const audienceLearning=await applyAudienceReportToBrain(audience.id);
     brainVersion=Math.max(brainVersion,audienceLearning.currentVersion);
 
+    const nextEpisode=await maybeAdvanceNextEpisode(channel,job,workerToken);
     return finish(job,workerToken,{
-      stage:audienceLearning.nothingToApply
-        ?'completed-no-audience-learning'
-        :'completed',
+      stage:nextEpisode.stage??(
+        audienceLearning.nothingToApply
+          ?'completed-no-audience-learning'
+          :'completed'
+      ),
       observationId:collected.observation.id,
       performanceReportId:performance.id,
       audienceReportId:audience.id,
-      brainVersion
+      brainVersion,
+      nextEpisodePlanId:nextEpisode.planId,
+      nextEpisodeEpisodeId:nextEpisode.episodeId,
+      nextEpisodeAutomationRunId:nextEpisode.automationRunId,
+      nextEpisodeAction:nextEpisode.action
     });
   }catch(error){
     const message=error instanceof Error?error.message:'Falha desconhecida no Closed Loop Intelligence.';
@@ -383,6 +503,9 @@ export async function processClaimedLearningLoopJob(jobId:string,workerToken:str
     }
     if(needsOperator(error)){
       return wait(job,workerToken,{stage:'youtube-reauth-required',reason:message});
+    }
+    if(nextEpisodeConflict(error)&&job.attempts<4){
+      return reschedule(job,workerToken,message,1);
     }
     if(transient(error)&&job.attempts<4){
       return reschedule(job,workerToken,message,Math.min(12,Math.pow(2,job.attempts)));
