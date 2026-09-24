@@ -92,6 +92,47 @@ export type Opportunity = { id: string; name: string; lens: string; promise: str
 export type GapOpportunity = { id: string; format: string; niche: string; status: 'investigate'; strength: number; rationale: string; directReferences: string[]; analogReferences: string[]; observedChannels: string[] };
 export type Analysis = { observation: string; mechanism: string; hypotheses: string[]; gaps: string[]; limitations: string[]; opportunities: Opportunity[]; sources: { title: string; url: string }[]; review: string; createdAt: string };
 export type Channel = { id: string; name: string; handle: string; niche: string; language: string; country?: string; format: string; description: string; lens: string; thumbnail: string; avatar?: string; url: string; createdAt: string; firstSeenAt: string; observedAt: string; videoCount: number; subscribers: number | null; video: { id: string; title: string; publishedAt: string; views: number; duration: string; thumbnail: string; url: string }; status: 'new' | 'watching' | 'analyzed' | 'archived'; evidence: string[]; analysis?: Analysis; demo?: boolean; discoverySource?: 'reference' | 'reference-adjacent'; reference?: { catalogName: string; tier: 'Legendary' | 'Really Good' | 'Reference'; format: string; niche: string } };
+export type UniversePilotBrief = {
+ kind:'universe-pilot-brief';
+ id:string;
+ decisionId:string;
+ gapId:string;
+ marketGeneratedAt:string;
+ createdAt:string;
+ status:'approved-for-test';
+ title:string;
+ targetSpace:string;
+ curveId:string;
+ curveName:string;
+ firstTest:string;
+ alternateAngles:Array<{
+  title:string;
+  curveName:string;
+  targetSpace:string;
+  firstTest:string;
+ }>;
+ hypothesis:string;
+ evidence:{
+  curveClassification:'structural';
+  independentCreators:number;
+  targetEvidenceCount:number;
+  demandStatus:'observed';
+  sampleSaturation:'low'|'medium'|'uncertain';
+  supportingChannelIds:string[];
+  targetEvidenceChannelIds:string[];
+  demandEvidence:string[];
+ };
+ risks:string[];
+ testPlan:{
+  episodeTitle:string;
+  purpose:string;
+  preserveMechanism:string;
+  changedVariable:string;
+  successGate:string[];
+  stopGate:string[];
+ };
+ nextGate:'produce-one-pilot';
+};
 export type Decision = {
  id: string;
  channelId: string;
@@ -115,6 +156,7 @@ export type Decision = {
   targetSpace: string;
   firstTest: string;
  }>;
+ pilotBrief?: UniversePilotBrief;
 };
 export type ResearchContext = { id: string; title: string; content: string; createdAt: string };
 export type Script = { id: string; channelId: string; opportunityId: string; title: string; content: string; createdAt: string; status: 'draft' };
