@@ -81,6 +81,41 @@ test('among channels missing DNA, stronger operational status has priority',()=>
   assert.equal([watch,breakout].sort(compareUniverseDnaPriority)[0].id,'breakout');
 });
 
+
+test('DNA priority rotates previously failed attempts behind never-attempted backlog',()=>{
+  const failedHighPriority=competitor({
+    id:'failed-high-priority',
+    channelId:'failed-high-priority',
+    status:'breakout',
+    dnaAttempts:1,
+    lastDnaAttemptAt:'2026-09-24T18:30:00Z',
+    lastDnaError:'Structured output failed.'
+  });
+  const freshLowerPriority=competitor({
+    id:'fresh-lower-priority',
+    channelId:'fresh-lower-priority',
+    status:'watch'
+  });
+  assert.equal([failedHighPriority,freshLowerPriority].sort(compareUniverseDnaPriority)[0].id,'fresh-lower-priority');
+});
+
+
+test('DNA batch consumes fresh backlog before retrying previously failed channels',()=>{
+  const failed=Array.from({length:5},(_,index)=>competitor({
+    id:`failed-${index}`,
+    channelId:`failed-${index}`,
+    status:'breakout',
+    dnaAttempts:1,
+    lastDnaAttemptAt:'2026-09-24T18:30:00Z'
+  }));
+  const fresh=Array.from({length:5},(_,index)=>competitor({
+    id:`fresh-${index}`,
+    channelId:`fresh-${index}`,
+    status:'watch'
+  }));
+  assert.deepEqual(selectUniverseDnaBatch([...failed,...fresh],5).map(item=>item.id).sort(),fresh.map(item=>item.id).sort());
+});
+
 test('among equal-status channels, stronger corroborated signals outrank import order',()=>{
   const olderWeak=competitor({
     id:'older-weak',
