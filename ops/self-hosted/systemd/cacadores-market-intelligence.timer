@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Caçadores Universe Market Intelligence after daily DNA phase
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Timer]
+OnCalendar=*-*-* 12:08:00 UTC
+Persistent=false
+AccuracySec=1min
+Unit=cacadores-market-intelligence.service
+
+[Install]
+WantedBy=timers.target
