@@ -78,3 +78,48 @@ export function preserveUniverseMarketContinuity(
     ]
   };
 }
+
+
+export function revalidateUniverseMarketEvidenceReport(
+  current:UniverseMarketIntelligence,
+  competitors:UniverseCompetitor[],
+  revalidatedAt=new Date().toISOString()
+):UniverseMarketIntelligence{
+  const withDna=competitors.filter(item=>!!item.dna);
+  const curveById=new Map(current.curves.map(curve=>[curve.id,curve]));
+  const sourceIds=new Set(current.sourceCompetitorIds);
+
+  const gaps=current.gaps.map(gap=>{
+    const curve=curveById.get(gap.curveId);
+    if(!curve)return gap;
+    const resolved=resolveUniverseGapEvidence(withDna,gap,gap.targetEvidenceChannelIds);
+    const demandStatus=universeGapDemandStatus(curve.classification,resolved.channelIds);
+    resolved.channelIds.forEach(id=>sourceIds.add(id));
+    const preserved=gap.demandEvidence.filter(item=>!item.startsWith('Revalidação determinística do Market:'));
+    const demandEvidence=[
+      `Revalidação determinística do Market: ${withDna.length} Channel DNAs verificados em ${revalidatedAt}.`,
+      ...resolved.evidence,
+      ...preserved
+    ].filter((item,index,array)=>array.indexOf(item)===index).slice(0,8);
+    return {
+      ...gap,
+      demandStatus,
+      targetEvidenceChannelIds:resolved.channelIds,
+      demandEvidence
+    };
+  });
+
+  const limitation=`Target evidence dos gaps foi revalidada deterministicamente contra ${withDna.length} canais com Channel DNA; nenhuma nova curva foi gerada nesta etapa.`;
+  return {
+    ...current,
+    evidenceRevalidatedAt:revalidatedAt,
+    evidenceDnaCount:withDna.length,
+    dnaCount:withDna.length,
+    sourceCompetitorIds:[...sourceIds],
+    gaps,
+    limitations:[
+      ...current.limitations.filter(item=>!item.startsWith('Target evidence dos gaps foi revalidada deterministicamente contra ')),
+      limitation
+    ]
+  };
+}
