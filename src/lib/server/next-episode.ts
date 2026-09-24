@@ -13,7 +13,10 @@ import { compileNextEpisodePlan } from '@/lib/next-episode-policy';
 import { episodeNarrativeReadiness } from '@/lib/narrative-policy';
 import { loadContentProject, saveContentProject } from './content-os';
 import { createEpisodeAutomationRun } from './episode-automation';
-import { startAcceptedEpisodeAutopilot } from '@/lib/channel-autopilot-policy';
+import {
+  autopilotDecisionPreview, startAcceptedEpisodeAutopilot
+} from '@/lib/channel-autopilot-policy';
+import { loadAutopilotOperationalIssues } from './autopilot-operational';
 
 type Row={
   id:string;channel_id:string;brain_version:number;version:number;
@@ -341,15 +344,28 @@ export async function acceptNextEpisodeCandidate(input:{
 }
 
 export async function nextEpisodeChannelState(channelId:string){
-  const [plans,brain,bundle]=await Promise.all([
+  const [plans,brain,bundle,managed,operationalIssues]=await Promise.all([
     listNextEpisodePlans(channelId),
     loadChannelBrain(channelId),
-    loadNarrativeBundle(channelId)
+    loadNarrativeBundle(channelId),
+    channel(channelId),
+    loadAutopilotOperationalIssues(channelId)
   ]);
+  const activePlan=plans.find(item=>item.status==='review')??null;
+  const basePreview=autopilotDecisionPreview(managed,activePlan);
+  const canaryBlocks=basePreview.action==='auto-accept'?operationalIssues:[];
   return {
     plans,
     brainVersion:brain?.version??0,
     episodeCount:bundle.episodes.length,
-    activePlan:plans.find(item=>item.status==='review')??null
+    activePlan,
+    operationalIssues,
+    autopilotDecision:{
+      ...basePreview,
+      action:basePreview.action==='auto-accept'&&canaryBlocks.length
+        ?'review'
+        :basePreview.action,
+      issues:[...basePreview.issues,...canaryBlocks]
+    }
   };
 }
