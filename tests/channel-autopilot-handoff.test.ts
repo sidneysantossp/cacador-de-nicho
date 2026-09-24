@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   channelAutopilotLearningEnabled, channelAutopilotStartsAcceptedEpisode,
   channelLearningWindows, channelNextEpisodeTriggerWindow,
-  channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
+  autopilotDecisionPreview, channelShouldAutoPlanNextEpisode, defaultChannelAutopilot,
   effectiveChannelAutopilot, nextEpisodeAutoAcceptIssues,
   startAcceptedEpisodeAutopilot
 } from '../src/lib/channel-autopilot-policy';
@@ -110,6 +110,54 @@ test('Auto Next Episode chooses the first learning window at or after target',()
   assert.equal(channelShouldAutoPlanNextEpisode(channel,24),false);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,72),true);
   assert.equal(channelShouldAutoPlanNextEpisode(channel,168),false);
+});
+
+test('Autopilot Dry Run exposes disabled generate review and auto-accept states',()=>{
+  const plan={
+    recommendedCandidateId:'candidate-1',
+    candidates:[{
+      id:'candidate-1',
+      workingTitle:'The next test',
+      narrativeReady:true,
+      blockers:[],
+      evidenceStrength:'high' as const,
+      evidenceRefs:['learning:1']
+    }],
+    context:{evidenceSnapshot:[
+      {ref:'learning:1',type:'learning' as const,confidence:'high' as const}
+    ]}
+  };
+
+  const disabled=autopilotDecisionPreview({},plan);
+  assert.equal(disabled.action,'disabled');
+  assert.ok(disabled.issues.includes('autopilot-disabled'));
+
+  const planning=autopilotDecisionPreview({
+    autopilot:{...defaultChannelAutopilot,enabled:true}
+  },null);
+  assert.equal(planning.action,'generate-plan');
+  assert.equal(planning.triggerWindowHours,72);
+
+  const review=autopilotDecisionPreview({
+    autopilot:{...defaultChannelAutopilot,enabled:true,mode:'assisted'}
+  },plan);
+  assert.equal(review.action,'review');
+  assert.equal(review.candidateTitle,'The next test');
+  assert.ok(review.issues.includes('autonomous-mode-required'));
+
+  const automatic=autopilotDecisionPreview({
+    autopilot:{
+      ...defaultChannelAutopilot,
+      enabled:true,
+      mode:'autonomous',
+      autoAcceptNextEpisode:true,
+      nextEpisodeMinEvidence:'high'
+    }
+  },plan);
+  assert.equal(automatic.action,'auto-accept');
+  assert.equal(automatic.candidateId,'candidate-1');
+  assert.equal(automatic.evidenceStrength,'high');
+  assert.deepEqual(automatic.issues,[]);
 });
 
 test('Automatic acceptance requires autonomous mode, threshold and strong learning evidence',()=>{
