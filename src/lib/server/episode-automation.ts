@@ -7,6 +7,32 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { loadContentProject, saveContentProject } from './content-os';
+import { generateScriptForProject, loadEpisodeScript, saveEpisodeScript } from './episode-script';
+import { generateElevenLabsVoice, loadVoiceAsset } from './voice-engine';
+import {
+  createTranscriptFromAlignment, loadTranscript, saveTranscript, transcribeWithScribe
+} from './transcription-engine';
+import {
+  createScenePlanFromTranscript, loadScenePlan, saveScenePlan
+} from './scene-timecode';
+import {
+  createVisualPromptSet, generateVisualPromptDrafts,
+  loadVisualPromptSet, saveVisualPromptSet
+} from './visual-prompt-engine';
+import {
+  generateGoogleImage, listSceneAssets, selectSceneAsset
+} from './asset-factory';
+import { createTimelineFromPlan, loadTimeline, saveTimeline } from './timeline-engine';
+import {
+  createVideoEditFromTimeline, loadVideoEdit, saveVideoEdit
+} from './video-editor';
+import { createRenderJob } from './render-engine';
+import {
+  approveProductionQuality, loadProductionQualityReport, runProductionQuality
+} from './production-quality';
+import { createPublicationPackage } from './publication-package';
+import { queueYouTubePublication } from './youtube-publisher';
 
 type RunRow={
   id:string;channel_id:string;episode_id:string;content_project_id:string;
@@ -719,6 +745,347 @@ export async function resumeEpisodeAutomationRun(runId:string){
     payload:{previousHold:run.holdReason??null}
   });
   return reconcileEpisodeAutomationRun(runId);
+}
+
+
+function automationOperatorHold(error:unknown){
+  if(!(error instanceof HttpError))return false;
+  if([400,409,422,429,503].includes(error.status))return true;
+  return false;
+}
+
+async function holdAutomationRun(
+  run:EpisodeAutomationRun,
+  stepName:EpisodeAutomationStep,
+  message:string
+){
+  const now=new Date().toISOString();
+  checked(await db().from('radar_episode_automation_runs').update({
+    status:'waiting',
+    current_step:stepName,
+    hold_step:stepName,
+    hold_reason:message.slice(0,4000),
+    hold_created_at:now,
+    worker_token:null,
+    lease_until:null,
+    last_error:null,
+    updated_at:now
+  }).eq('id',run.id));
+  await appendEvent(run.id,{
+    step:stepName,
+    status:'blocked',
+    message:message.slice(0,4000),
+    payload:{kind:'automation-hold'}
+  });
+  return reconcileEpisodeAutomationRun(run.id);
+}
+
+async function failAutomationRun(
+  run:EpisodeAutomationRun,
+  stepName:EpisodeAutomationStep,
+  message:string
+){
+  const now=new Date().toISOString();
+  checked(await db().from('radar_episode_automation_runs').update({
+    status:'failed',
+    current_step:stepName,
+    worker_token:null,
+    lease_until:null,
+    last_error:message.slice(0,4000),
+    updated_at:now
+  }).eq('id',run.id));
+  await appendEvent(run.id,{
+    step:stepName,
+    status:'failed',
+    message:message.slice(0,4000),
+    payload:{kind:'automation-failure'}
+  });
+  return (await loadEpisodeAutomationRun(run.id))!;
+}
+
+function payloadOnly<T extends {version:number;status:string}>(value:T){
+  const {version:_version,status:_status,...payload}=value;
+  return payload;
+}
+
+function automationStep(run:EpisodeAutomationRun,name:EpisodeAutomationStep){
+  return run.steps.find(item=>item.step===name);
+}
+
+async function executeAutomationTransition(
+  run:EpisodeAutomationRun,
+  current:EpisodeAutomationStepState
+){
+  switch(current.step){
+    case 'content':{
+      if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática do Content Project está desativada.',409);
+      const project=await loadContentProject(run.contentProjectId);
+      if(!project)throw new HttpError('Content Project não encontrado.',404);
+      const payload=payloadOnly(project);
+      await saveContentProject({
+        ...payload,
+        approval:{
+          ...payload.approval,
+          status:'approved',
+          notes:payload.approval.notes.trim()||
+            'Aprovado pelo Episode Automation após passar no gate objetivo do Content OS.'
+        }
+      },project.version);
+      return 'Content Project aprovado pelo gate objetivo.';
+    }
+
+    case 'script':{
+      if(current.status==='ready'){
+        if(!run.policy.autoGenerateScript)throw new HttpError('Geração automática de roteiro está desativada.',409);
+        const script=await generateScriptForProject(run.contentProjectId);
+        return 'Roteiro gerado como draft: '+script.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de roteiro está desativada.',409);
+        if(!current.entityId)throw new HttpError('Roteiro atual não identificado.',409);
+        const script=await loadEpisodeScript(current.entityId);
+        if(!script)throw new HttpError('Roteiro não encontrado.',404);
+        await saveEpisodeScript(payloadOnly(script),'approved',script.version);
+        return 'Roteiro aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Roteiro não está elegível para avanço automático.',409);
+    }
+
+    case 'voice':{
+      if(!run.policy.autoGenerateVoice)throw new HttpError('Geração automática de voz está desativada.',409);
+      const scriptId=automationStep(run,'script')?.entityId;
+      if(!scriptId)throw new HttpError('Roteiro aprovado não identificado para Voice Engine.',409);
+      const asset=await generateElevenLabsVoice({scriptId});
+      return 'Narração gerada e selecionada: take '+asset.take+'.';
+    }
+
+    case 'transcript':{
+      if(current.status==='ready'){
+        if(!run.policy.autoCreateTranscript)throw new HttpError('Criação automática de transcript está desativada.',409);
+        const voiceId=automationStep(run,'voice')?.entityId;
+        if(!voiceId)throw new HttpError('Take de voz selecionado não identificado.',409);
+        const voice=await loadVoiceAsset(voiceId);
+        if(!voice)throw new HttpError('Take de voz não encontrado.',404);
+        const transcript=voice.alignment
+          ?await createTranscriptFromAlignment(voice.id)
+          :await transcribeWithScribe(voice.id);
+        return 'Transcript criado como draft: '+transcript.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de transcript está desativada.',409);
+        if(!current.entityId)throw new HttpError('Transcript atual não identificado.',409);
+        const transcript=await loadTranscript(current.entityId);
+        if(!transcript)throw new HttpError('Transcript não encontrado.',404);
+        await saveTranscript(payloadOnly(transcript),'approved',transcript.version);
+        return 'Transcript aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Transcript não está elegível para avanço automático.',409);
+    }
+
+    case 'scenes':{
+      if(current.status==='ready'){
+        if(!run.policy.autoCreateScenes)throw new HttpError('Criação automática de cenas está desativada.',409);
+        const transcriptId=automationStep(run,'transcript')?.entityId;
+        if(!transcriptId)throw new HttpError('Transcript aprovado não identificado.',409);
+        const plan=await createScenePlanFromTranscript(transcriptId);
+        return 'Scene Plan criado como draft: '+plan.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Scene Plan está desativada.',409);
+        if(!current.entityId)throw new HttpError('Scene Plan atual não identificado.',409);
+        const plan=await loadScenePlan(current.entityId);
+        if(!plan)throw new HttpError('Scene Plan não encontrado.',404);
+        await saveScenePlan(payloadOnly(plan),'approved',plan.version);
+        return 'Scene Plan aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Scene Plan não está elegível para avanço automático.',409);
+    }
+
+    case 'visual-prompts':{
+      if(current.status==='ready'){
+        if(!run.policy.autoGenerateVisualPrompts)throw new HttpError('Geração automática de prompts visuais está desativada.',409);
+        const scenePlanId=automationStep(run,'scenes')?.entityId;
+        if(!scenePlanId)throw new HttpError('Scene Plan aprovado não identificado.',409);
+        const created=await createVisualPromptSet(scenePlanId);
+        const generated=await generateVisualPromptDrafts(created.id);
+        return 'Visual Prompt Set gerado como draft: '+generated.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de prompts visuais está desativada.',409);
+        if(!current.entityId)throw new HttpError('Visual Prompt Set atual não identificado.',409);
+        const promptSet=await loadVisualPromptSet(current.entityId);
+        if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
+        await saveVisualPromptSet(payloadOnly(promptSet),'approved',promptSet.version,true);
+        return 'Visual Prompt Set aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Visual Prompt Set não está elegível para avanço automático.',409);
+    }
+
+    case 'visual-assets':{
+      if(!run.policy.autoGenerateVisualAssets)throw new HttpError('Geração automática de assets visuais está desativada.',409);
+      const promptSetId=automationStep(run,'visual-prompts')?.entityId;
+      if(!promptSetId)throw new HttpError('Visual Prompt Set aprovado não identificado.',409);
+      const [promptSet,assets]=await Promise.all([
+        loadVisualPromptSet(promptSetId),
+        listSceneAssets(promptSetId)
+      ]);
+      if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
+      if(promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
+      const selectedReady=new Set(
+        assets.filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
+          .map(asset=>asset.sceneId)
+      );
+      const target=promptSet.scenePrompts.find(item=>!selectedReady.has(item.sceneId));
+      if(!target)return 'Todos os assets visuais já estão cobertos.';
+      const asset=await generateGoogleImage({
+        promptSetId:promptSet.id,
+        sceneId:target.sceneId,
+        imageSize:'2K'
+      });
+      await selectSceneAsset(asset.id);
+      return 'Asset visual gerado e selecionado para '+target.timecodeLabel+'.';
+    }
+
+    case 'timeline':{
+      if(current.status==='ready'){
+        if(!run.policy.autoBuildTimeline)throw new HttpError('Montagem automática de Timeline está desativada.',409);
+        const scenePlanId=automationStep(run,'scenes')?.entityId;
+        if(!scenePlanId)throw new HttpError('Scene Plan aprovado não identificado.',409);
+        const timeline=await createTimelineFromPlan(scenePlanId);
+        return 'Timeline criada como draft: '+timeline.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Timeline está desativada.',409);
+        if(!current.entityId)throw new HttpError('Timeline atual não identificada.',409);
+        const timeline=await loadTimeline(current.entityId);
+        if(!timeline)throw new HttpError('Timeline não encontrada.',404);
+        await saveTimeline(payloadOnly(timeline),'approved',timeline.version);
+        return 'Timeline aprovada pelo gate objetivo.';
+      }
+      throw new HttpError('Timeline não está elegível para avanço automático.',409);
+    }
+
+    case 'video-edit':{
+      if(current.status==='ready'){
+        if(!run.policy.autoCreateVideoEdit)throw new HttpError('Criação automática de Video Edit está desativada.',409);
+        const timelineId=automationStep(run,'timeline')?.entityId;
+        if(!timelineId)throw new HttpError('Timeline aprovada não identificada.',409);
+        const edit=await createVideoEditFromTimeline(timelineId);
+        return 'Video Edit criado como draft: '+edit.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Video Edit está desativada.',409);
+        if(!current.entityId)throw new HttpError('Video Edit atual não identificado.',409);
+        const edit=await loadVideoEdit(current.entityId);
+        if(!edit)throw new HttpError('Video Edit não encontrado.',404);
+        await saveVideoEdit(payloadOnly(edit),'approved',edit.version);
+        return 'Video Edit aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Video Edit não está elegível para avanço automático.',409);
+    }
+
+    case 'render':{
+      if(!run.policy.autoRender)throw new HttpError('Render automático está desativado.',409);
+      const videoEditId=automationStep(run,'video-edit')?.entityId;
+      if(!videoEditId)throw new HttpError('Video Edit aprovado não identificado.',409);
+      const job=await createRenderJob({videoEditId,preset:'hd-1080p30'});
+      return 'Render enfileirado: '+job.id+'.';
+    }
+
+    case 'quality':{
+      if(current.status==='ready'){
+        if(!run.policy.autoRunQuality)throw new HttpError('Production QA automático está desativado.',409);
+        const renderId=automationStep(run,'render')?.entityId;
+        if(!renderId)throw new HttpError('Render concluído não identificado.',409);
+        const report=await runProductionQuality(renderId);
+        return 'Production QA executado: '+report.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Liberação automática do Production QA está desativada.',409);
+        if(!current.entityId)throw new HttpError('Production QA atual não identificado.',409);
+        const report=await loadProductionQualityReport(current.entityId);
+        if(!report)throw new HttpError('Production QA não encontrado.',404);
+        if(report.summary.blockers>0||report.summary.manualReview>0){
+          throw new HttpError('Production QA exige correção ou revisão humana antes da aprovação.',409);
+        }
+        await approveProductionQuality({
+          reportId:report.id,
+          expectedVersion:report.version,
+          notes:'Aprovado pelo Episode Automation: todos os checks objetivos passaram sem revisão manual.',
+          overrides:[]
+        });
+        return 'Production QA aprovado automaticamente sem overrides.';
+      }
+      throw new HttpError('Production QA não está elegível para avanço automático.',409);
+    }
+
+    case 'packaging':{
+      if(!run.policy.autoCreatePackage)throw new HttpError('Criação automática de Packaging está desativada.',409);
+      const reportId=automationStep(run,'quality')?.entityId;
+      if(!reportId)throw new HttpError('Production QA aprovado não identificado.',409);
+      const pkg=await createPublicationPackage(reportId);
+      return 'Publication Package criado como draft: '+pkg.id+'.';
+    }
+
+    case 'publish':{
+      if(!run.policy.autoPublish)throw new HttpError('Publicação automática está desativada por policy.',409);
+      const packageId=automationStep(run,'packaging')?.entityId;
+      if(!packageId)throw new HttpError('Publication Package aprovado não identificado.',409);
+      const job=await queueYouTubePublication(packageId);
+      return 'Publicação YouTube enfileirada: '+job.id+'.';
+    }
+
+    case 'done':
+      return 'Episódio já concluiu toda a linha de produção.';
+
+    default:
+      throw new HttpError('Etapa de automação não suportada.',409);
+  }
+}
+
+export async function advanceEpisodeAutomationRun(runId:string){
+  let run=await reconcileEpisodeAutomationRun(runId);
+  if(run.status==='completed'||run.status==='cancelled')return run;
+  if(run.holdStep){
+    throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
+  }
+
+  const current=run.steps.find(item=>item.step===run.currentStep);
+  if(!current)throw new HttpError('Etapa atual do Automation Run não foi encontrada.',409);
+  if(current.requiresOperator){
+    throw new HttpError(current.reason??'Esta etapa exige ação do operador.',409);
+  }
+  if(current.status==='running'){
+    return run;
+  }
+  if(!['ready','waiting'].includes(current.status)){
+    throw new HttpError(current.reason??'A etapa atual ainda não está pronta para avançar.',409);
+  }
+
+  await appendEvent(run.id,{
+    step:current.step,
+    status:'started',
+    message:'Executor iniciou '+current.label+'.',
+    payload:{stepStatus:current.status}
+  });
+
+  try{
+    const message=await executeAutomationTransition(run,current);
+    await appendEvent(run.id,{
+      step:current.step,
+      status:'completed',
+      message,
+      payload:{stepStatus:current.status}
+    });
+    run=await reconcileEpisodeAutomationRun(run.id);
+    return run;
+  }catch(error){
+    const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
+    if(automationOperatorHold(error)){
+      return holdAutomationRun(run,current.step,message);
+    }
+    return failAutomationRun(run,current.step,message);
+  }
 }
 
 export async function cancelEpisodeAutomationRun(runId:string){
