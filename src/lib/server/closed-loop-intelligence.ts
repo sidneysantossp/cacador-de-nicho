@@ -20,6 +20,7 @@ import { applyAudienceReportToBrain } from './audience-learning-loop';
 import {
   acceptNextEpisodeCandidate, generateNextEpisodePlan
 } from './next-episode';
+import { loadAutopilotOperationalIssues } from './autopilot-operational';
 
 type JobRow={
   id:string;
@@ -321,6 +322,9 @@ async function maybeAdvanceNextEpisode(
   }
 
   const issues=nextEpisodeAutoAcceptIssues(channel,plan);
+  if(!issues.length){
+    issues.push(...await loadAutopilotOperationalIssues(channel.id));
+  }
   if(issues.length){
     return {
       stage:'completed-next-episode-review',
