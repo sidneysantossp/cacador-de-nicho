@@ -20,6 +20,26 @@ export function universeKey(value:string){
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,72)||'curve';
 }
 
+
+export function universeMarketFreshness(
+  intelligence:UniverseMarketIntelligence|null|undefined
+){
+  if(!intelligence)return null;
+  const generatedAt=intelligence.generatedAt;
+  const evidenceRevalidatedAt=intelligence.evidenceRevalidatedAt??generatedAt;
+  const generatedMs=Date.parse(generatedAt);
+  const evidenceMs=Date.parse(evidenceRevalidatedAt);
+  return {
+    generatedAt,
+    evidenceRevalidatedAt,
+    evidenceDnaCount:intelligence.evidenceDnaCount??intelligence.dnaCount,
+    evidenceNewerThanCurves:
+      Number.isFinite(generatedMs)&&
+      Number.isFinite(evidenceMs)&&
+      evidenceMs>generatedMs
+  };
+}
+
 export function selectUniverseCurveEvidence(competitors:UniverseCompetitor[],max=40,perCluster=8){
   const groups=new Map<string,UniverseCompetitor[]>();
   for(const competitor of competitors.filter(item=>!!item.dna)){
