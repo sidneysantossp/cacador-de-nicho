@@ -16,7 +16,7 @@ test('Autopilot Control Plane defaults fail closed',()=>{
   assert.equal(control.maxConcurrentLearningJobs,1);
   assert.equal(control.updatedBy,'system');
   assert.ok(control.pauseReason.length>0);
-  assert.equal(autopilotControlCanRun({...control,version:1}),false);
+  assert.equal(autopilotControlCanRun({status:control.status}),false);
 });
 
 test('Autopilot concurrency is bounded between safe limits',()=>{
@@ -49,8 +49,8 @@ test('Autopilot Control normalization trims reason and bounds concurrency',()=>{
 test('Autopilot Control running state is explicit',()=>{
   const paused={...defaultAutopilotControl(now),version:1};
   const running={...paused,status:'running' as const};
-  assert.equal(autopilotControlCanRun(paused),false);
-  assert.equal(autopilotControlCanRun(running),true);
+  assert.equal(autopilotControlCanRun({status:paused.status}),false);
+  assert.equal(autopilotControlCanRun({status:running.status}),true);
   assert.equal(autopilotControlStatusLabel('paused'),'Paused');
   assert.equal(autopilotControlStatusLabel('running'),'Running');
 });
