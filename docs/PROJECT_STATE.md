@@ -389,3 +389,19 @@ Caso real usado como regressão:
 - WhirlTales já sustentava `suspension bridges`;
 - após DNA dirigido, nknows passou a sustentar `bridge piers`;
 - a continuidade deve revalidar os dois criadores independentes e elevar o target de `partial` para `observed`, tornando-o elegível a piloto pela regra existente.
+
+
+## Target-space domain anchors — 24/09/2026
+
+A primeira execução da continuidade revelou um falso `observed` em `occupational surnames`: Ink Story era aceito pelo fallback semântico de "profissão histórica" mesmo sem evidência de sobrenomes.
+
+Correção:
+- gaps com `targetKeywords` explícitos deixam de usar semantic-family como atalho;
+- evidência direta pode ser validada por uma keyword/frase completa OU por pelo menos uma âncora lexical do `targetSpace`;
+- a mesma unidade/título ainda precisa conter pelo menos dois sinais relevantes no total;
+- gaps legados sem `targetKeywords` preservam o fallback semântico para compatibilidade;
+- o detalhe persistido diferencia `domínio target`, `âncora do target` e `padrão semântico legado`.
+
+Regressão real:
+- `occupational surnames` + Historic Dave: `surname` + `job` no mesmo título continua válido;
+- profissão histórica genérica sem `surname/family name/name origin` é rejeitada.
