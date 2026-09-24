@@ -106,7 +106,7 @@ export function selectUniverseMissionOpportunities(
 
 const GAP_MATCH_STOP_WORDS=new Set([
   'a','an','and','as','at','be','being','by','for','from','how','in','into','is','it','of','on','or','the','their','through','to','what','why','with',
-  'every','first','explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests'
+  'every','first','explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests','animal','animals'
 ]);
 
 const ANIMAL_SPECIFIC_TERMS=[
