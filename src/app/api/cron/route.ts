@@ -1,6 +1,6 @@
 import { authConfigured, equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { runRadar } from '@/lib/server/jobs';
-import { runUniverseIntelligence, runUniverseMarketIntelligence } from '@/lib/server/universe';
+import { processUniverseImportQueue, runUniverseIntelligence, runUniverseMarketIntelligence, universeQueueSummary } from '@/lib/server/universe';
 
 export const runtime='nodejs';
 export const maxDuration=300;
@@ -20,8 +20,10 @@ export async function GET(request:Request){
     authorize(request);
     const scope=new URL(request.url).searchParams.get('scope')??'radar';
     if(scope==='universe'){
-      const result=await runUniverseIntelligence();
-      return Response.json({scope,result});
+      const bootstrap=await processUniverseImportQueue(25);
+      const intelligence=await runUniverseIntelligence();
+      const queue=await universeQueueSummary();
+      return Response.json({scope,bootstrap,intelligence,queue});
     }
     if(scope==='market'){
       const result=await runUniverseMarketIntelligence();
