@@ -125,6 +125,7 @@ export default function CompetitorUniverse({
   onCurves,
   queue,
   onQueue,
+  onCycle,
   onOpenDna
 }:{
   competitors:UniverseCompetitor[];
@@ -138,6 +139,7 @@ export default function CompetitorUniverse({
   onCurves:()=>Promise<boolean|undefined>;
   queue?:UniverseImportQueueSummary|null;
   onQueue:()=>Promise<boolean|undefined>;
+  onCycle:()=>Promise<boolean|undefined>;
   onOpenDna:(competitor:UniverseCompetitor)=>void;
 }){
   const [query,setQuery]=useState('');
@@ -182,6 +184,7 @@ export default function CompetitorUniverse({
       <div className="universe-hero-actions">
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar atrasados'}</button>
         <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length||dnaPending===0} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':dnaPending===0?'DNA completo':'Gerar próximo lote DNA'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onCycle()}><RefreshCw size={16}/>{busy==='universeCycle'?'Executando ciclo…':'Executar ciclo completo'}</button>
         <button className="button subtle" disabled={mode==='demo'||!!busy||dnaReady<2} onClick={()=>void onCurves()}><Layers3 size={16}/>{busy==='universeCurves'?'Extraindo…':'Extrair curvas'}</button>
         <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar concorrentes</button>
       </div>
