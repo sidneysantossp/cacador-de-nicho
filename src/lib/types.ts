@@ -310,6 +310,11 @@ export type ChannelAutopilotSettings = {
  enabled: boolean;
  mode: 'assisted' | 'autonomous';
  startOnAcceptedNextEpisode: boolean;
+ learningLoopEnabled: boolean;
+ learningWindowsHours: number[];
+ autoApprovePerformance: boolean;
+ autoAnalyzeAudience: boolean;
+ autoApproveAudience: boolean;
 };
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
