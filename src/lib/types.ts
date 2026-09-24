@@ -228,6 +228,7 @@ export type UniverseCompetitor = {
  avatar: string;
  country?: string;
  language: string;
+ sourceCluster?: string;
  cluster: string;
  subniche: string;
  format: string;
