@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareUniverseDnaPriority, selectUniverseDnaBatch, universeCompetitorDue, universeImportFailureIsPermanent } from '../src/lib/universe-policy';
+import { compareUniverseDnaPriority, selectUniverseDnaBatch, summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent } from '../src/lib/universe-policy';
 import type { UniverseCompetitor } from '../src/lib/types';
 
 function competitor(overrides:Partial<UniverseCompetitor>={}):UniverseCompetitor{
@@ -166,4 +166,27 @@ test('permanent Universe import failures stop retrying 404 and missing channels'
   assert.equal(universeImportFailureIsPermanent('Channel not found'),true);
   assert.equal(universeImportFailureIsPermanent('YouTube indisponível (HTTP 429).'),false);
   assert.equal(universeImportFailureIsPermanent('Falha temporária de rede.'),false);
+});
+
+
+test('Universe queue progress counts terminal failures as resolved without counting them as competitors',()=>{
+  const summary=summarizeUniverseQueueRows([
+    ...Array.from({length:223},()=>({status:'completed' as const,attempts:1})),
+    ...Array.from({length:5},()=>({status:'failed' as const,attempts:3}))
+  ]);
+  assert.equal(summary.completed,223);
+  assert.equal(summary.terminalFailed,5);
+  assert.equal(summary.retryable,0);
+  assert.equal(summary.resolved,228);
+  assert.equal(summary.progressPct,100);
+});
+
+test('retryable Universe failures remain unresolved',()=>{
+  const summary=summarizeUniverseQueueRows([
+    {status:'completed',attempts:1},
+    {status:'failed',attempts:1}
+  ]);
+  assert.equal(summary.resolved,1);
+  assert.equal(summary.retryable,1);
+  assert.equal(summary.progressPct,50);
 });
