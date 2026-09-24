@@ -977,7 +977,43 @@ async function executeAutomationTransition(
   }
 }
 
-export async function advanceEpisodeAutomationRun(runId:string){
+async function assertAutomationAdvanceLease(runId:string,workerToken?:string){
+  const row=checked(await db().from('radar_episode_automation_runs')
+    .select('id,mode,status,worker_token,lease_until')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!row)throw new HttpError('Automation Run não encontrado.',404);
+
+  const token=row.worker_token?String(row.worker_token):'';
+  const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
+  const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
+
+  if(workerToken){
+    if(String(row.mode)!=='autonomous'){
+      throw new HttpError('Worker só pode avançar runs Autonomous.',409);
+    }
+    if(!activeLease||token!==workerToken){
+      throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
+    }
+    return;
+  }
+
+  if(activeLease){
+    throw new HttpError('Automation Run já está sendo processado pelo worker.',409);
+  }
+}
+
+async function releaseAutomationLease(runId:string,workerToken:string){
+  const result=await db().from('radar_episode_automation_runs').update({
+    worker_token:null,
+    lease_until:null,
+    updated_at:new Date().toISOString()
+  }).eq('id',runId).eq('worker_token',workerToken);
+  if(result.error)throw new HttpError('Falha ao liberar lease do Automation Worker.',502);
+}
+
+export async function advanceEpisodeAutomationRun(runId:string,workerToken?:string){
+  await assertAutomationAdvanceLease(runId,workerToken);
   let run=await reconcileEpisodeAutomationRun(runId);
   if(run.status==='completed'||run.status==='cancelled')return run;
   if(run.holdStep){
@@ -1019,6 +1055,14 @@ export async function advanceEpisodeAutomationRun(runId:string){
       return holdAutomationRun(run,current.step,message);
     }
     return failAutomationRun(run,current.step,message);
+  }
+}
+
+export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToken:string){
+  try{
+    return await advanceEpisodeAutomationRun(runId,workerToken);
+  }finally{
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
   }
 }
 
