@@ -60,3 +60,11 @@ export function selectUniverseDnaBatch(competitors:UniverseCompetitor[],maxItems
     .sort(compareUniverseDnaPriority)
     .slice(0,limit);
 }
+
+
+export function universeImportFailureIsPermanent(message:string){
+  const normalized=message.toLowerCase();
+  return normalized.includes('http 404')
+    ||normalized.includes('não encontrado')
+    ||normalized.includes('not found');
+}
