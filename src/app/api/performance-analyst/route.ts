@@ -12,6 +12,9 @@ import {
 import {
   applyPerformanceReportToBrain, learningLoopChannelState
 } from '@/lib/server/learning-loop';
+import {
+  closedLoopChannelState, resumeLearningLoopJob, scheduleClosedLoopJobs
+} from '@/lib/server/closed-loop-intelligence';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -35,6 +38,14 @@ const actionSchema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('apply-learning-loop'),
     reportId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('schedule-closed-loop'),
+    channelId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('resume-closed-loop'),
+    jobId:z.string().uuid()
   }).strict()
 ]);
 
@@ -56,11 +67,12 @@ export async function GET(request:Request){
 
     const channelId=url.searchParams.get('channelId')?.trim();
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
-    const [state,learningLoop]=await Promise.all([
+    const [state,learningLoop,closedLoop]=await Promise.all([
       performanceAnalystChannelState(channelId),
-      learningLoopChannelState(channelId)
+      learningLoopChannelState(channelId),
+      closedLoopChannelState(channelId)
     ]);
-    return Response.json({...state,learningLoop},{
+    return Response.json({...state,learningLoop,closedLoop},{
       headers:{'Cache-Control':'no-store'}
     });
   }catch(error){return errorResponse(error);}
@@ -96,6 +108,25 @@ export async function POST(request:Request){
           ?'Este Performance Report já estava incorporado ao Channel Brain.'
           :learningLoop.applied+' learning(s) de performance incorporado(s) ao Channel Brain.',
         learningLoop
+      });
+    }
+
+    if(body.action==='schedule-closed-loop'){
+      const scheduled=await scheduleClosedLoopJobs(body.channelId);
+      return Response.json({
+        message:scheduled.created
+          ?scheduled.created+' janela(s) do Closed Loop agendada(s).'
+          :'Nenhuma nova janela precisava ser criada.',
+        scheduled,
+        closedLoop:await closedLoopChannelState(body.channelId)
+      });
+    }
+
+    if(body.action==='resume-closed-loop'){
+      const job=await resumeLearningLoopJob(body.jobId);
+      return Response.json({
+        message:'Closed Loop job liberado para nova tentativa.',
+        job
       });
     }
 
