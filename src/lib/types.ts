@@ -579,6 +579,41 @@ export type ProductionDnaQualityBenchmark = {
  qaRules: string[];
  approvedAt: string;
 };
+
+export type ProductionDnaAnatomyScaleBible = {
+ version: number;
+ status: 'draft' | 'locked';
+ unit: {
+  symbol: 'G';
+  definition: string;
+ };
+ characters: Array<{
+  characterId: string;
+  heightG: number;
+  build: string;
+  headBodyRule: string;
+  postureRule: string;
+  proportionRules: string[];
+  masterAssetName: string;
+  masterAssetFileId?: string;
+ }>;
+ props: Array<{
+  id: string;
+  name: string;
+  scaleRule: string;
+  dimensionsG: {
+   height?: number;
+   width?: number;
+   diameter?: number;
+  };
+  visualRules: string[];
+  masterAssetName: string;
+  masterAssetFileId?: string;
+ }>;
+ globalRules: string[];
+ rejectionRules: string[];
+ approvedAt?: string;
+};
 export type ProductionDnaPayload = {
  kind: 'production-dna';
  channelId: string;
@@ -603,6 +638,7 @@ export type ProductionDnaPayload = {
   forbidden: string[];
   visualMoat?: string;
   qualityBenchmark?: ProductionDnaQualityBenchmark;
+  anatomyScaleBible?: ProductionDnaAnatomyScaleBible;
  };
  characters: ProductionDnaCharacter[];
  voice: {
