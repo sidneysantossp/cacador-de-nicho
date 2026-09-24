@@ -379,6 +379,27 @@ export type AutopilotReadiness = {
  checks:AutopilotReadinessCheck[];
  checkedAt:string;
 };
+export type AutopilotControlStatus = 'running' | 'paused';
+export type AutopilotControlPayload = {
+ kind:'autopilot-control';
+ id:'global';
+ status:AutopilotControlStatus;
+ pauseReason:string;
+ maxConcurrentAutomationRuns:number;
+ maxConcurrentLearningJobs:number;
+ updatedBy:'operator'|'system';
+ createdAt:string;
+ updatedAt:string;
+};
+export type AutopilotControl = AutopilotControlPayload & {
+ version:number;
+};
+export type AutopilotControlVersion = {
+ version:number;
+ status:AutopilotControlStatus;
+ payload:AutopilotControlPayload;
+ createdAt:string;
+};
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
  id: string;
