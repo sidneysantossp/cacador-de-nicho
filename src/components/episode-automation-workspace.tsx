@@ -181,6 +181,8 @@ function RunCard({run,busy,onAction,onPolicy}:{
     </div>
 
     {run.blockers.length>0&&<div className="automation-blockers">{run.blockers.map(item=><p key={item}><AlertTriangle size={12}/>{item}</p>)}</div>}
+    {run.holdReason&&<div className="automation-hold"><CirclePause size={14}/><div><strong>RUN PAUSADO EM {run.holdStep?.toUpperCase()}</strong><p>{run.holdReason}</p></div></div>}
+
 
     <div className="automation-steps">{run.steps.map(item=><div key={item.step} className={'automation-step '+item.status}>
       <div>{stepIcon(item)}<strong>{item.label}</strong></div>
@@ -212,6 +214,8 @@ function RunCard({run,busy,onAction,onPolicy}:{
         </button>}
       </div>
       <div>
+        {run.status==='active'&&<button className="button primary small" disabled={busy==='advance:'+run.id} onClick={()=>void onAction({action:'advance',runId:run.id},'advance:'+run.id)}><Play size={13}/>{busy==='advance:'+run.id?'Avançando…':'Avançar 1 etapa'}</button>}
+        {(run.holdStep||run.status==='failed')&&<button className="button subtle small" disabled={busy==='resume:'+run.id} onClick={()=>void onAction({action:'resume',runId:run.id},'resume:'+run.id)}><RefreshCw size={13}/>{run.holdStep?'Retomar após correção':'Tentar novamente'}</button>}
         {active&&<button className="button subtle small" disabled={busy==='reconcile:'+run.id} onClick={()=>void onAction({action:'reconcile',runId:run.id},'reconcile:'+run.id)}><RefreshCw size={13}/>Reconciliar</button>}
         {active&&<button className="button subtle small danger" disabled={busy==='cancel:'+run.id} onClick={()=>void onAction({action:'cancel',runId:run.id},'cancel:'+run.id)}><StopCircle size={13}/>Cancelar</button>}
       </div>
