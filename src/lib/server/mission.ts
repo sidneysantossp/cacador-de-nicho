@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { Channel, ChannelStudy, MissionBrief, OpportunityReport, Run, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
-import { compareMissionCandidates, productionReadiness } from '@/lib/mission';
+import { compareMissionCandidates, productionReadiness, universeCompetitorHasSignals } from '@/lib/mission';
 import { selectUniverseMissionOpportunities } from '@/lib/universe-market';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { runChannelStudy } from './channel-study';
@@ -137,7 +137,7 @@ function buildBrief(input:{
       opportunityReports:input.reports.length,
       productionReady:productionQueue.length,
       competitors:input.universe.length,
-      competitorSignals:input.universe.filter(item=>(item.signalDetails?.length??item.signals.length)>0).length,
+      competitorSignals:input.universe.filter(universeCompetitorHasSignals).length,
       competitorDna:input.universe.filter(item=>!!item.dna).length,
       universeCurves:input.universeIntelligence?.curves.length??0,
       universeGaps:input.universeIntelligence?.gaps.length??0,
