@@ -51,7 +51,8 @@ export function normalizeProductionDnaPayload(
       negativePrompt:String(visual.negativePrompt??''),
       forbidden:list(visual.forbidden),
       visualMoat:visual.visualMoat?String(visual.visualMoat):undefined,
-      qualityBenchmark:visual.qualityBenchmark
+      qualityBenchmark:visual.qualityBenchmark,
+      anatomyScaleBible:visual.anatomyScaleBible
     },
     characters:Array.isArray(value.characters)?value.characters.map((item:any)=>({
       id:String(item?.id??crypto.randomUUID()),
