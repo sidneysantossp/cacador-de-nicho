@@ -263,8 +263,10 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
   const updated:string[]=[];
   const market=await universeMarketIntelligenceState();
   let batches=0;
+  let failedBatches=0;
   let attemptedChannels=0;
   let targetedAttempts=0;
+  const errors:string[]=[];
 
   while(attemptedChannels<cap&&Date.now()-startedAt<budget){
     const all=await universeState();
@@ -285,9 +287,14 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
       attempted.add(competitor.channelId);
     }
 
-    const result=await runUniverseIntelligence(selected.map(item=>item.id));
     batches++;
-    updated.push(...result.updated);
+    try{
+      const result=await runUniverseIntelligence(selected.map(item=>item.id));
+      updated.push(...result.updated);
+    }catch(error){
+      failedBatches++;
+      errors.push((error instanceof Error?error.message:'Falha não identificada no lote de Channel DNA.').slice(0,500));
+    }
   }
 
   const after=await universeState();
@@ -299,23 +306,33 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
     batches,
     attempted:attemptedChannels,
     targetedAttempts,
+    failedBatches,
+    errors:errors.slice(0,3),
     total:after.length,
     ready,
     remaining,
     timeBudgetReached:remaining>0&&Date.now()-startedAt>=budget,
     message:updated.length
-      ?`Channel DNA bootstrap: ${updated.length} concorrente(s) analisado(s) em ${batches} lote(s). Progresso: ${ready}/${after.length}; ${remaining} pendente(s).`
+      ?`Channel DNA bootstrap: ${updated.length} concorrente(s) analisado(s) em ${batches} lote(s), ${failedBatches} lote(s) com falha isolada. Progresso: ${ready}/${after.length}; ${remaining} pendente(s).`
       :remaining===0
         ?'Channel DNA já concluído para todos os concorrentes.'
-        :'Nenhum concorrente adicional produziu DNA utilizável nesta execução.'
+        :failedBatches
+          ?`Channel DNA bootstrap terminou sem novos DNAs; ${failedBatches} lote(s) falharam isoladamente e serão elegíveis novamente em uma próxima execução.`
+          :'Nenhum concorrente adicional produziu DNA utilizável nesta execução.'
   };
 }
 
 
 
-export async function runUniverseCycle(){
+export async function runUniverseBootstrapCycle(){
   const bootstrap=await processUniverseImportQueue(25);
   const intelligence=await runUniverseDnaBootstrap(15,120_000);
+  const queue=await universeQueueSummary();
+  return {bootstrap,intelligence,queue};
+}
+
+export async function runUniverseCycle(){
+  const {bootstrap,intelligence,queue}=await runUniverseBootstrapCycle();
   let market:UniverseMarketIntelligence|null=null;
   let marketError:string|null=null;
   if(await shouldRefreshUniverseMarketIntelligence()){
@@ -325,7 +342,6 @@ export async function runUniverseCycle(){
       marketError=error instanceof Error?error.message:'Falha não identificada ao recalcular Market Intelligence.';
     }
   }
-  const queue=await universeQueueSummary();
   return {bootstrap,intelligence,market,marketError,queue};
 }
 
