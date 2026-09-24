@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectUniverseCurveEvidence, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -120,4 +120,84 @@ test('observed demand with non-high saturation is pilot-ready and ranks before i
 
 test('Universe opportunity selector respects the requested output cap',()=>{
   assert.equal(selectUniverseMissionOpportunities(marketIntelligence(),1).length,1);
+});
+
+
+function missingDnaCompetitor(
+  id:string,
+  cluster:string,
+  titles:string[],
+  overrides:Partial<UniverseCompetitor>={}
+){
+  const item=competitor(id,cluster,'breakout');
+  delete item.dna;
+  item.recentUploads=titles.map((title,index)=>({
+    id:`${id}-v${index}`,
+    title,
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:100000-index*1000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:`https://youtube.com/watch?v=${id}-v${index}`
+  }));
+  Object.assign(item,overrides);
+  return item;
+}
+
+function gapDirectedMarket():UniverseMarketIntelligence{
+  return {
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:'2026-09-24T00:00:00Z',
+    sourceCompetitorIds:['source-a','source-b','source-c'],
+    dnaCount:3,
+    curves:[
+      {id:'curve:animal',key:'animal',name:'Concrete Curiosity',thesis:'T',mechanismSteps:['A','B','C'],supportingChannelIds:['a','b','c'],independentCreators:3,classification:'structural',clusters:['Education'],evidence:['E'],counterEvidence:[],recurringTitlePatterns:[],transferableVariables:['target'],limitations:['Sample']},
+      {id:'curve:jobs',key:'jobs',name:'Physical Stakes History',thesis:'T',mechanismSteps:['A','B','C'],supportingChannelIds:['a','b','c'],independentCreators:3,classification:'structural',clusters:['History'],evidence:['E'],counterEvidence:[],recurringTitlePatterns:[],transferableVariables:['target'],limitations:['Sample']}
+    ],
+    gaps:[
+      {id:'gap:animal',curveId:'curve:animal',title:'Animal POV Survival',targetSpace:'Animal life from the perspective of being born as the animal',preservedMechanism:'M',changedVariable:'POV animal life',demandStatus:'partial',targetEvidenceChannelIds:['known-animal'],demandEvidence:['D'],sampleSaturation:'low',rationale:'Target still needs independent creators.',risks:[],firstTests:['Why Being Born a Sea Turtle Is a Survival Nightmare','What It Costs to Be Born a Cockroach','Why Being Born an Octopus Is So Brutal']},
+      {id:'gap:jobs',curveId:'curve:jobs',title:'The Price of Ancient Jobs',targetSpace:'Historical professions explained through physical cost and survival',preservedMechanism:'M',changedVariable:'Ancient jobs and professions',demandStatus:'partial',targetEvidenceChannelIds:['known-job'],demandEvidence:['D'],sampleSaturation:'low',rationale:'Professions need more independent evidence.',risks:[],firstTests:['Why Being a Roman Miner Was Almost a Death Sentence','What It Cost to Be a Medieval Tanner','How Ancient Sailors Survived Months at Sea']}
+    ],
+    limitations:['Sample only']
+  };
+}
+
+test('gap-directed DNA finds animal POV evidence across clusters from real title language',()=>{
+  const wildlife=missingDnaCompetitor('wildlife','Animals',['POV: Your Life as Every Rank in a Wolf Pack']);
+  const dinzo=missingDnaCompetitor('dinzo','Storytelling',['Why It Sucks to Be Born as a Giant Anaconda']);
+  const selected=selectUniverseGapValidationDnaBatch([wildlife,dinzo],gapDirectedMarket(),5);
+  assert.deepEqual(new Set(selected.map(item=>item.id)),new Set(['competitor:wildlife','competitor:dinzo']));
+});
+
+test('gap-directed DNA rejects noisy cluster matches without target semantics',()=>{
+  const geo=missingDnaCompetitor('geo','Animals',['Chances of being born in Africa'],{description:'Daily maps, countries and statistics.'});
+  const food=missingDnaCompetitor('food','Animals',['Which Country Food Would You Pick?'],{description:'Flags, food and landmarks.'});
+  const roblox=missingDnaCompetitor('roblox','Animals',['POV: Intern vs Barney in Animal Hospital'],{description:'Roblox gameplay.'});
+  assert.deepEqual(selectUniverseGapValidationDnaBatch([geo,food,roblox],gapDirectedMarket(),5),[]);
+});
+
+test('gap-directed DNA recognizes profession plus historical context',()=>{
+  const miner=missingDnaCompetitor('miner','Explained',['I tried being a coal miner in Pennsylvania 1905 #history']);
+  const gladiator=missingDnaCompetitor('gladiator','History',['What If You Were a Roman Gladiator?']);
+  const ruins=missingDnaCompetitor('ruins','History',['10 Ancient Structures That Break Modern Engineering Physics']);
+  const selected=selectUniverseGapValidationDnaBatch([miner,gladiator,ruins],gapDirectedMarket(),5);
+  assert.equal(selected.some(item=>item.id==='competitor:miner'),true);
+  assert.equal(selected.some(item=>item.id==='competitor:gladiator'),true);
+  assert.equal(selected.some(item=>item.id==='competitor:ruins'),false);
+});
+
+test('DNA bootstrap reserves targeted slots without starving global priority',()=>{
+  const targetedA=missingDnaCompetitor('target-a','Storytelling',['Why It Sucks to Be Born as a Lion'],{breakoutRatio:2});
+  const targetedB=missingDnaCompetitor('target-b','Animals',['POV: Your Life as Every Rank in a BEE Colony'],{breakoutRatio:3});
+  const normal=Array.from({length:5},(_,index)=>missingDnaCompetitor(
+    `normal-${index}`,
+    'Engineering',
+    [`Massive machine explained ${index}`],
+    {breakoutRatio:100-index}
+  ));
+  const selected=selectUniverseDnaBootstrapBatch([...normal,targetedA,targetedB],gapDirectedMarket(),5,2);
+  assert.equal(selected.length,5);
+  assert.equal(selected.slice(0,2).every(item=>item.id==='competitor:target-a'||item.id==='competitor:target-b'),true);
+  assert.equal(selected.slice(2).every(item=>item.id.startsWith('competitor:normal-')),true);
 });
