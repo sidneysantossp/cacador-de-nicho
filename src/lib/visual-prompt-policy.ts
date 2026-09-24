@@ -192,7 +192,7 @@ export function buildInitialVisualPromptSet(
   };
 }
 
-export function normalizeVisualPromptSet(payload:VisualPromptSetPayload){
+export function normalizeVisualPromptSet(payload:VisualPromptSetPayload,touchUpdatedAt=true){
   const naming=payload.productionNaming??{
     channelCode:'CHANNEL',
     episodeNumber:1,
@@ -226,7 +226,7 @@ export function normalizeVisualPromptSet(payload:VisualPromptSetPayload){
           outputFileName:outputFileStem+'.mp4'
         };
       }),
-    updatedAt:new Date().toISOString()
+    updatedAt:touchUpdatedAt?new Date().toISOString():payload.updatedAt
   };
 }
 
