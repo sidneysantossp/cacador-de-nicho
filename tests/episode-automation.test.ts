@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
@@ -92,4 +93,9 @@ test('Recoverable HTTP errors become durable Automation holds',()=>{
   for(const status of [401,403,404,500,502,504]){
     assert.equal(automationHttpErrorShouldHold(status),false,status+' should fail');
   }
+});
+
+
+test('Episode Automation worker is valid Node ESM syntax',()=>{
+  execFileSync(process.execPath,['--check','scripts/episode-automation-worker.mjs'],{stdio:'pipe'});
 });
