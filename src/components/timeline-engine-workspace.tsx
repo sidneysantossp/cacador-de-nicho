@@ -10,7 +10,7 @@ import type {
   TimelineVersion
 } from '@/lib/types';
 import {
-  normalizeTimeline, timelineStructuralIssues
+  autoFitSourceWindow, normalizeTimeline, timelineStructuralIssues
 } from '@/lib/timeline-policy';
 
 type Source={
@@ -19,6 +19,7 @@ type Source={
   signedUrl:string|null;
   mimeType:string;
   title:string;
+  durationSeconds:number|null;
 };
 type Tab='timeline'|'review'|'history';
 
@@ -139,6 +140,22 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     });
   }
 
+  function autoFitSelectedVideo(){
+    if(!selectedClip||selectedClip.clip.clipKind!=='video'||!selectedClip.clip.assetId)return;
+    const source=sourceMap.get(selectedClip.clip.assetId);
+    const fit=autoFitSourceWindow(source?.durationSeconds??null,selectedClip.clip.durationSeconds);
+    updateClip(selectedClip.track.id,selectedClip.clip.id,{
+      sourceStartSeconds:fit.sourceStartSeconds,
+      sourceEndSeconds:fit.sourceEndSeconds,
+      playback:fit.playback
+    });
+    setMessage(
+      source?.durationSeconds
+        ?'Auto-fit aplicado: take '+source.durationSeconds.toFixed(2)+'s → janela '+selectedClip.clip.durationSeconds.toFixed(2)+'s.'
+        :'Auto-fit aplicado sem duração detectada; revise o corte manualmente.'
+    );
+  }
+
   if(loading)return <div className="timeline-loading"><Sparkles className="spin" size={20}/>Carregando Timeline Engine…</div>;
 
   if(draft&&scenePlan){
@@ -171,11 +188,17 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
             <div className="timeline-inspector-times"><strong>{time(selectedClip.clip.startSeconds)}</strong><em>→</em><strong>{time(selectedClip.clip.endSeconds)}</strong><small>{selectedClip.clip.durationSeconds.toFixed(2)}s</small></div>
             {selectedClip.track.type==='visual'&&selectedClip.clip.clipKind!=='placeholder'&&<>
               <label>Fit<select value={selectedClip.clip.fit} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{fit:e.target.value as TimelineClip['fit']})}><option value="cover">Cover</option><option value="contain">Contain</option><option value="stretch">Stretch</option></select></label>
-              {selectedClip.clip.clipKind==='video'&&<div className="timeline-inspector-grid">
-                <label>Playback<select value={selectedClip.clip.playback} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{playback:e.target.value as TimelineClip['playback']})}><option value="trim">Trim</option><option value="loop">Loop</option></select></label>
-                <label>Source start<input type="number" min="0" step=".01" value={selectedClip.clip.sourceStartSeconds??0} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{sourceStartSeconds:Number(e.target.value)})}/></label>
-                <label>Source end<input type="number" min="0" step=".01" value={selectedClip.clip.sourceEndSeconds??selectedClip.clip.durationSeconds} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{sourceEndSeconds:Number(e.target.value)})}/></label>
-              </div>}
+              {selectedClip.clip.clipKind==='video'&&<>
+                <div className="timeline-inspector-grid">
+                  <label>Playback<select value={selectedClip.clip.playback} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{playback:e.target.value as TimelineClip['playback']})}><option value="trim">Trim</option><option value="loop">Loop</option></select></label>
+                  <label>Source start<input type="number" min="0" step=".01" value={selectedClip.clip.sourceStartSeconds??0} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{sourceStartSeconds:Number(e.target.value)})}/></label>
+                  <label>Source end<input type="number" min="0" step=".01" value={selectedClip.clip.sourceEndSeconds??selectedClip.clip.durationSeconds} onChange={e=>updateClip(selectedClip.track.id,selectedClip.clip.id,{sourceEndSeconds:Number(e.target.value)})}/></label>
+                </div>
+                <div className="timeline-inspector-times">
+                  <small>Raw take: {selectedClip.clip.assetId&&sourceMap.get(selectedClip.clip.assetId)?.durationSeconds!==null&&sourceMap.get(selectedClip.clip.assetId)?.durationSeconds!==undefined?sourceMap.get(selectedClip.clip.assetId)!.durationSeconds!.toFixed(2)+'s':'duração não detectada'}</small>
+                  <button className="button subtle small" onClick={autoFitSelectedVideo}>Auto-fit raw take</button>
+                </div>
+              </>}
             </>}
           </div>}
         </section>
