@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { resolveUniverseGapEvidence, selectUniverseCoverageDnaBatch, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCoverageCluster, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -419,4 +419,20 @@ test('mixed DNA bootstrap keeps gap-directed, cluster-coverage and global-priori
   assert.equal(normal.some(item=>item.cluster==='History'),true);
   assert.equal(normal.some(item=>item.cluster==='Education'),true);
   assert.equal(normal.some(item=>item.id==='competitor:global-breakout'),true);
+});
+
+
+test('coverage cluster remains the immutable source cluster after DNA refinement',()=>{
+  const item=missingDnaCompetitor('refined','Technology',['How Computers Work']);
+  item.sourceCluster='Education';
+  item.cluster='Technology';
+  assert.equal(universeCoverageCluster(item),'Education');
+});
+
+test('coverage selector groups pending channels by source cluster instead of refined display cluster',()=>{
+  const history=missingDnaCompetitor('history-source','Technology',['History of Computing'],{sourceCluster:'History',breakoutRatio:20});
+  const education=missingDnaCompetitor('education-source','Technology',['Physics of Computers'],{sourceCluster:'Education',breakoutRatio:10});
+  const explained=missingDnaCompetitor('explained-source','Technology',['Computers Explained'],{sourceCluster:'Explained',breakoutRatio:5});
+  const selected=selectUniverseCoverageDnaBatch([history,education,explained],3);
+  assert.deepEqual(new Set(selected.map(item=>item.sourceCluster)),new Set(['History','Education','Explained']));
 });
