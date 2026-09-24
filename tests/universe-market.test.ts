@@ -1007,3 +1007,53 @@ test('DNA candidate retrieval still accepts a complete target keyword with only 
   assert.equal(match.strictEvidence,false);
   assert.equal(match.targetMatchedTerms.includes('shipwrecks'),true);
 });
+
+
+test('generic single-word target keywords need additional context before spending DNA',()=>{
+  const gap={
+    title:'8 Household Objects With Dark Industrial Origins',
+    targetSpace:'household objects and domestic infrastructure',
+    targetKeywords:['bathrooms','kitchens','laundry rooms','door locks','heating systems','household plumbing'],
+    changedVariable:'Domestic infrastructure',
+    firstTests:[]
+  };
+
+  const mindful=missingDnaCompetitor(
+    'mindful-kitchen-noise',
+    'Education',
+    ['7 Minimalist Japanese Kitchen Rules for a Peaceful & Clutter Free Small Home']
+  );
+  const mesigugu=missingDnaCompetitor(
+    'bathroom-sketch-noise',
+    'Explained',
+    ['boys bathroom']
+  );
+  const plumbing=missingDnaCompetitor(
+    'plumbing-target',
+    'Engineering',
+    ['Why Old Kitchen Plumbing Used Separate Drain Systems']
+  );
+
+  assert.equal(universeGapDnaCandidateMatch(mindful,gap).matched,false);
+  assert.equal(universeGapDnaCandidateMatch(mesigugu,gap).matched,false);
+  assert.equal(universeGapDnaCandidateMatch(plumbing,gap).matched,true);
+});
+
+test('specific single-word target keyword such as shipwreck remains a valid DNA candidate signal',()=>{
+  const gap={
+    title:"How History's Great Ocean Liners Met Their End",
+    targetSpace:'historic ocean liners',
+    targetKeywords:['ocean liners','passenger ships','shipwrecks','maritime disasters','salvage operations','Atlantic crossings'],
+    changedVariable:'Ocean liners',
+    firstTests:[]
+  };
+  const candidate=missingDnaCompetitor(
+    'specific-shipwreck',
+    'History',
+    ['How Sweden\'s Greatest Warship Sank in Minutes #shipwreck']
+  );
+  const match=universeGapDnaCandidateMatch(candidate,gap);
+  assert.equal(match.matched,true);
+  assert.equal(match.strictEvidence,false);
+  assert.equal(match.targetMatchedTerms.includes('shipwrecks'),true);
+});
