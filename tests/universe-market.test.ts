@@ -206,7 +206,7 @@ test('DNA bootstrap reserves targeted slots without starving global priority',()
 test('backend gap resolver adds corroborated independent target evidence and ignores semantic noise',()=>{
   const gap=gapDirectedMarket().gaps.find(item=>item.id==='gap:animal')!;
   const known=competitor('known-animal','Animal Science');
-  known.recentUploads=[{id:'known-v',title:'Animal survival explained',publishedAt:'2026-09-20T00:00:00Z',views:100000,duration:'PT8M',thumbnail:'',url:''}];
+  known.recentUploads=[{id:'known-v',title:'POV: Born as a Wolf — Animal Survival Explained',publishedAt:'2026-09-20T00:00:00Z',views:100000,duration:'PT8M',thumbnail:'',url:''}];
 
   const wildlife=competitor('wildlife-evidence','Animals');
   wildlife.recentUploads=[{id:'wild-v',title:'POV: Your Life as Every Rank in a Wolf Pack',publishedAt:'2026-09-20T00:00:00Z',views:159226,duration:'PT8M',thumbnail:'',url:''}];
@@ -225,6 +225,7 @@ test('backend gap resolver adds corroborated independent target evidence and ign
 test('backend gap resolver can corroborate historical professions beyond AI-suggested IDs',()=>{
   const gap=gapDirectedMarket().gaps.find(item=>item.id==='gap:jobs')!;
   const suggested=competitor('known-job','History');
+  suggested.recentUploads=[{id:'known-job-v',title:'Roman Miner: The Ancient Job That Could Kill You',publishedAt:'2026-09-20T00:00:00Z',views:210000,duration:'PT8M',thumbnail:'',url:''}];
   const historic=competitor('historic-dave','Everyday History');
   historic.recentUploads=[{id:'job-v',title:'Medieval Jobs That Were Actually Secret Death Sentence',publishedAt:'2026-09-20T00:00:00Z',views:342400,duration:'PT8M',thumbnail:'',url:''}];
 
@@ -257,4 +258,23 @@ test('backend gap resolver ignores generic packaging words and first-test leakag
   const resolved=resolveUniverseGapEvidence([noisy,relevant],gap,[]);
   assert.deepEqual(resolved.channelIds,['medieval-fire']);
   assert.equal(resolved.evidence.some(item=>item.includes('generic-language')),false);
+});
+
+
+test('AI-suggested target ids are rejected unless backend evidence matches the target',()=>{
+  const gap={
+    title:'Why Old Cities Hid Water in Plain Sight',
+    targetSpace:'Historic urban infrastructure and everyday engineering',
+    changedVariable:'Civil water systems and city design',
+    firstTests:['Why Old Cities Hid Water in Plain Sight']
+  };
+  const curveOnly=competitor('curve-only','Military History');
+  curveOnly.recentUploads=[{id:'c1',title:'Why WW2 Tanks Had Strange Armor',publishedAt:'2026-09-20T00:00:00Z',views:500000,duration:'PT8M',thumbnail:'',url:''}];
+  const target=competitor('target-city','Everyday History');
+  target.recentUploads=[{id:'t1',title:'Old Cities Hid Water in Underground Cisterns',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}];
+
+  const resolved=resolveUniverseGapEvidence([curveOnly,target],gap,['curve-only','target-city']);
+  assert.deepEqual(resolved.channelIds,['target-city']);
+  assert.equal(resolved.evidence.some(item=>item.includes('curve-only')),false);
+  assert.equal(resolved.evidence.some(item=>item.includes('Sugestão da IA validada em target-city')),true);
 });

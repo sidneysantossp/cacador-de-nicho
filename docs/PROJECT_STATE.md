@@ -226,3 +226,19 @@ Preparado fallback operacional autenticado para executar manualmente exatamente 
 Cron e ação manual passam a compartilhar `runUniverseCycle()`, evitando divergência entre o caminho automático e o caminho de contingência.
 O botão `Executar ciclo completo` fica disponível no Competitor Universe apenas para a operação autenticada.
 A ação permanece protegida pelo mesmo `runAiJob`/lease usado pelo cron, portanto não deve executar em paralelo com outro ciclo pesado.
+
+
+## Self-hosted Universe cutover — 24/09/2026
+
+O caminho crítico do Universe foi movido para o VPS:
+- watcher GitHub → VPS restaurado e validado por blue/green;
+- produção self-hosted promove apenas SHA que passa health + Supabase;
+- a RPC `claim_radar_universe_queue` foi corrigida após erro real de coluna `status` ambígua;
+- primeiro ciclo E2E no VPS concluiu: 223 concorrentes válidos, 5 referências inválidas terminais, 29 Channel DNAs;
+- 5 referências 404/not-found não entram mais em retry;
+- scripts de Universe/Market usam loopback para a porta de produção atual, sem colocar `CRON_SECRET` nos argumentos do processo;
+- agendamento recorrente passa a ser `cacadores-universe-cycle.timer` no systemd;
+- o cron Universe foi removido de `vercel.json`;
+- Vercel deixa de ser dependência do scheduler operacional.
+
+O Gap Evidence Resolver também foi endurecido: palavras genéricas e títulos propostos em `firstTests` não são usados como prova, e IDs sugeridos pela IA só contam como target evidence quando passam pela validação determinística do backend.
