@@ -352,3 +352,27 @@ test('plural target words still match singular upload wording inside one title',
   const resolved=resolveUniverseGapEvidence([relevant],gap,[]);
   assert.deepEqual(resolved.channelIds,['plural-normalization']);
 });
+
+
+test('then-and-now packaging alone cannot validate an everyday-technology target',()=>{
+  const gap={
+    title:'Then and Now: Everyday Technology',
+    targetSpace:'Visual nostalgia around household technology, workplace objects and recent-decade habits',
+    changedVariable:'Technology instead of celebrities',
+    firstTests:[]
+  };
+
+  const celebrity=competitor('celebrity-then-now','Celebrity Nostalgia');
+  celebrity.recentUploads=[
+    {id:'c1',title:'100+ Iconic Hollywood Actors: Then and Now',publishedAt:'2026-09-20T00:00:00Z',views:900000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const technology=competitor('technology-then-now','Technology History');
+  technology.recentUploads=[
+    {id:'t1',title:'Household Technology: Phones and Office Computers Then and Now',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([celebrity,technology],gap,[]);
+  assert.deepEqual(resolved.channelIds,['technology-then-now']);
+  assert.equal(resolved.evidence.some(item=>item.includes('celebrity-then-now')),false);
+});
