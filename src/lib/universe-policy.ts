@@ -68,3 +68,27 @@ export function universeImportFailureIsPermanent(message:string){
     ||normalized.includes('não encontrado')
     ||normalized.includes('not found');
 }
+
+
+export function summarizeUniverseQueueRows(
+  rows:Array<{status:'pending'|'processing'|'completed'|'failed';attempts:number}>
+){
+  const count=(status:'pending'|'processing'|'completed'|'failed')=>rows.filter(row=>row.status===status).length;
+  const completed=count('completed');
+  const failed=count('failed');
+  const retryable=rows.filter(row=>row.status==='failed'&&row.attempts<3).length;
+  const terminalFailed=failed-retryable;
+  const resolved=completed+terminalFailed;
+  const total=rows.length;
+  return {
+    total,
+    pending:count('pending'),
+    processing:count('processing'),
+    completed,
+    failed,
+    retryable,
+    terminalFailed,
+    resolved,
+    progressPct:total?Math.round((resolved/total)*100):0
+  };
+}
