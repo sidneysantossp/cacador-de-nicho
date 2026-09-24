@@ -199,3 +199,17 @@ Motivação observada no Universe real:
 - canais como Dinzo, Zoozle, giblixy e Wildlife Professor contêm evidência direta para Animal POV Survival, mas estavam longe do topo da fila global de DNA;
 - Historic Dave já possui DNA e evidência de medieval jobs; outros canais de história/profissões podem ampliar a independência do target;
 - o Market Intelligence atual está defasado em relação ao número de DNAs persistidos, portanto acelerar a evidência dirigida reduz o tempo até uma nova classificação confiável.
+
+
+## Universe Gap Evidence Resolver — 24/09/2026
+
+Implementado resolver determinístico de evidência para a recomputação de Curves/Gaps:
+- IDs sugeridos pela IA continuam aceitos apenas quando pertencem à amostra válida;
+- o backend também procura corroboradores independentes nos títulos e descrições reais dos canais da amostra;
+- correspondência usa os mesmos gates conservadores do Gap-Directed DNA;
+- ruído de cluster não conta como evidência;
+- IDs são deduplicados por criador antes de classificar demanda;
+- `partial` só sobe para `observed` quando o backend confirma pelo menos 2 criadores independentes em uma curva estrutural;
+- a evidência adicionada pelo backend é registrada em `demandEvidence` para auditoria.
+
+Objetivo: impedir que um gap permaneça subestimado apenas porque o modelo omitiu um channelId que já contém evidência observável no próprio Universe.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
+import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, selectUniverseMissionOpportunities, universeCurveClassification, universeGapDemandStatus } from '../src/lib/universe-market';
 import type { UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
 function competitor(id:string,cluster:string,status:UniverseCompetitor['status']='watch'):UniverseCompetitor{
@@ -200,4 +200,35 @@ test('DNA bootstrap reserves targeted slots without starving global priority',()
   assert.equal(selected.length,5);
   assert.equal(selected.slice(0,2).every(item=>item.id==='competitor:target-a'||item.id==='competitor:target-b'),true);
   assert.equal(selected.slice(2).every(item=>item.id.startsWith('competitor:normal-')),true);
+});
+
+
+test('backend gap resolver adds corroborated independent target evidence and ignores semantic noise',()=>{
+  const gap=gapDirectedMarket().gaps.find(item=>item.id==='gap:animal')!;
+  const known=competitor('known-animal','Animal Science');
+  known.recentUploads=[{id:'known-v',title:'Animal survival explained',publishedAt:'2026-09-20T00:00:00Z',views:100000,duration:'PT8M',thumbnail:'',url:''}];
+
+  const wildlife=competitor('wildlife-evidence','Animals');
+  wildlife.recentUploads=[{id:'wild-v',title:'POV: Your Life as Every Rank in a Wolf Pack',publishedAt:'2026-09-20T00:00:00Z',views:159226,duration:'PT8M',thumbnail:'',url:''}];
+
+  const geo=competitor('geo-noise','Animals');
+  geo.description='Daily maps, countries and statistics.';
+  geo.recentUploads=[{id:'geo-v',title:'Chances of being born in Africa',publishedAt:'2026-09-20T00:00:00Z',views:89696,duration:'PT8M',thumbnail:'',url:''}];
+
+  const resolved=resolveUniverseGapEvidence([known,wildlife,geo],gap,['known-animal','missing-id']);
+  assert.deepEqual(new Set(resolved.channelIds),new Set(['known-animal','wildlife-evidence']));
+  assert.equal(resolved.evidence.some(item=>item.includes('wildlife-evidence')),true);
+  assert.equal(resolved.evidence.some(item=>item.includes('geo-noise')),false);
+  assert.equal(universeGapDemandStatus('structural',resolved.channelIds),'observed');
+});
+
+test('backend gap resolver can corroborate historical professions beyond AI-suggested IDs',()=>{
+  const gap=gapDirectedMarket().gaps.find(item=>item.id==='gap:jobs')!;
+  const suggested=competitor('known-job','History');
+  const historic=competitor('historic-dave','Everyday History');
+  historic.recentUploads=[{id:'job-v',title:'Medieval Jobs That Were Actually Secret Death Sentence',publishedAt:'2026-09-20T00:00:00Z',views:342400,duration:'PT8M',thumbnail:'',url:''}];
+
+  const resolved=resolveUniverseGapEvidence([suggested,historic],gap,['known-job']);
+  assert.deepEqual(new Set(resolved.channelIds),new Set(['known-job','historic-dave']));
+  assert.equal(universeGapDemandStatus('structural',resolved.channelIds),'observed');
 });

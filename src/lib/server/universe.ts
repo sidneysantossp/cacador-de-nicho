@@ -5,7 +5,7 @@ import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
 import { selectUniverseDnaBatch, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
-import { selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
+import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -336,7 +336,12 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
     const key=universeKey(candidate.curveKey);
     const curve=curveByKey.get(key);
     if(!curve)return [];
-    const targetIds=[...new Set(candidate.targetEvidenceChannelIds.filter(id=>validIds.has(id)))];
+    const resolvedEvidence=resolveUniverseGapEvidence(
+      sample,
+      candidate,
+      candidate.targetEvidenceChannelIds.filter(id=>validIds.has(id))
+    );
+    const targetIds=resolvedEvidence.channelIds;
     const demandStatus=universeGapDemandStatus(curve.classification,targetIds);
     return [{
       id:`universe-gap:${curve.key}:${universeKey(candidate.targetSpace||candidate.title||String(index+1))}`,
@@ -347,7 +352,7 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
       changedVariable:candidate.changedVariable,
       demandStatus,
       targetEvidenceChannelIds:targetIds,
-      demandEvidence:candidate.demandEvidence,
+      demandEvidence:[...candidate.demandEvidence,...resolvedEvidence.evidence].slice(0,8),
       sampleSaturation:candidate.sampleSaturation,
       rationale:candidate.rationale,
       risks:candidate.risks,
