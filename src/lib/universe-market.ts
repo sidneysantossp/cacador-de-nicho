@@ -271,7 +271,7 @@ export function selectUniverseCoverageDnaBatch(
 
   const buckets=new Map<string,UniverseCompetitor[]>();
   for(const competitor of competitors.filter(item=>!item.dna)){
-    const cluster=competitor.cluster||'A classificar';
+    const cluster=competitor.sourceCluster||competitor.cluster||'A classificar';
     buckets.set(cluster,[...(buckets.get(cluster)??[]),competitor]);
   }
   for(const items of buckets.values())items.sort(compareUniverseDnaPriority);
