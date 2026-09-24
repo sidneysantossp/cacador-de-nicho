@@ -1,4 +1,4 @@
-import type { UniverseCompetitor, UniverseCurveClassification, UniverseMarketIntelligence } from './types';
+import type { UniverseCompetitor, UniverseCurveClassification, UniverseGap, UniverseMarketIntelligence } from './types';
 import { compareUniverseDnaPriority, selectUniverseDnaBatch, UNIVERSE_STATUS_RANK } from './universe-policy';
 
 export function universeCurveClassification(channelIds:string[]):UniverseCurveClassification{
@@ -158,6 +158,52 @@ function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
   return false;
 }
 
+type UniverseGapDescriptor=Pick<UniverseGap,'title'|'targetSpace'|'changedVariable'|'firstTests'>;
+
+function universeGapText(gap:UniverseGapDescriptor){
+  return [gap.title,gap.targetSpace,gap.changedVariable,...gap.firstTests].join(' ');
+}
+
+export function universeGapEvidenceMatch(
+  competitor:UniverseCompetitor,
+  gap:UniverseGapDescriptor
+){
+  const gapText=universeGapText(gap);
+  const matchedTerms=directGapMatches(competitor,gapText);
+  const familyMatch=semanticGapFamilyMatch(competitor,gapText);
+  return {
+    matched:matchedTerms.length>=2||familyMatch,
+    matchedTerms,
+    familyMatch
+  };
+}
+
+export function resolveUniverseGapEvidence(
+  competitors:UniverseCompetitor[],
+  gap:UniverseGapDescriptor,
+  suggestedChannelIds:string[]=[]
+){
+  const validIds=new Set(competitors.map(item=>item.channelId));
+  const channelIds=[...new Set(suggestedChannelIds.filter(id=>validIds.has(id)))];
+  const seen=new Set(channelIds);
+  const evidence:string[]=[];
+
+  for(const competitor of competitors){
+    const match=universeGapEvidenceMatch(competitor,gap);
+    if(!match.matched)continue;
+    if(!seen.has(competitor.channelId)){
+      seen.add(competitor.channelId);
+      channelIds.push(competitor.channelId);
+    }
+    const detail=match.matchedTerms.length
+      ?`termos do target encontrados: ${match.matchedTerms.slice(0,4).join(', ')}`
+      :'padrão semântico específico do target encontrado nos títulos/descrição';
+    evidence.push(`Corroboração do backend em ${competitor.name}: ${detail}.`);
+  }
+
+  return {channelIds,evidence:evidence.slice(0,8)};
+}
+
 export function selectUniverseGapValidationDnaBatch(
   competitors:UniverseCompetitor[],
   intelligence:UniverseMarketIntelligence|null,
@@ -178,17 +224,10 @@ export function selectUniverseGapValidationDnaBatch(
       let matchedGaps=0;
       let strongestDirectMatchCount=0;
       for(const gap of investigate){
-        const gapText=[
-          gap.title,
-          gap.targetSpace,
-          gap.changedVariable,
-          ...gap.firstTests
-        ].join(' ');
-        const direct=directGapMatches(competitor,gapText);
-        const semantic=semanticGapFamilyMatch(competitor,gapText);
-        if(direct.length>=2||semantic){
+        const match=universeGapEvidenceMatch(competitor,gap);
+        if(match.matched){
           matchedGaps++;
-          strongestDirectMatchCount=Math.max(strongestDirectMatchCount,direct.length);
+          strongestDirectMatchCount=Math.max(strongestDirectMatchCount,match.matchedTerms.length);
         }
       }
       return matchedGaps?[{competitor,matchedGaps,strongestDirectMatchCount}]:[];
