@@ -254,7 +254,7 @@ export type YouTubeSearchBudgetState = {
  recentKeys: string[];
  updatedAt: string;
 };
-export type Run = { id: string; type: string; status: 'queued' | 'running' | 'completed' | 'failed'; startedAt: string; message: string };
+export type Run = { id: string; type: string; status: 'queued' | 'running' | 'completed' | 'failed'; startedAt: string; message: string; details?: Record<string,unknown> };
 export type UniverseCompetitorStatus = 'watch' | 'heating-up' | 'breakout' | 'pattern' | 'emerging-curve' | 'structural-curve' | 'gap-found' | 'production-reference';
 export type UniverseSignal = {
  kind: 'breakout' | 'internal-outlier' | 'acceleration' | 'repeat-hit' | 'cadence-shift';
@@ -346,6 +346,9 @@ export type UniverseCompetitor = {
  signalDetails?: UniverseSignal[];
  snapshots?: UniverseCompetitorSnapshot[];
  dna?: UniverseChannelDNA;
+ dnaAttempts?: number;
+ lastDnaAttemptAt?: string;
+ lastDnaError?: string;
  dnaTags: string[];
  gapSummary?: string;
  updatedAt: string;

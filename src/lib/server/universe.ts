@@ -53,6 +53,9 @@ function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseComp
     status:['pattern','emerging-curve','structural-curve','gap-found','production-reference'].includes(prior.status)?prior.status:snapshot.status,
     snapshots:[...(snapshot.snapshots??[]),...(prior.snapshots??[])].filter((item,index,array)=>array.findIndex(other=>other.observedAt===item.observedAt)===index).slice(0,30),
     dna:prior.dna,
+    dnaAttempts:prior.dnaAttempts,
+    lastDnaAttemptAt:prior.lastDnaAttemptAt,
+    lastDnaError:prior.lastDnaError,
     dnaTags:prior.dnaTags.length?prior.dnaTags:snapshot.dnaTags,
     gapSummary:prior.gapSummary
   };
@@ -204,12 +207,39 @@ export async function runUniverseIntelligence(ids?:string[]){
   }
 
   const config=await settings();
-  const results=await analyzeUniverseCompetitorDNA(selected);
+  const attemptedAt=new Date().toISOString();
+  let results:Awaited<ReturnType<typeof analyzeUniverseCompetitorDNA>>;
+  try{
+    results=await analyzeUniverseCompetitorDNA(selected);
+  }catch(error){
+    const detail=(error instanceof Error?error.message:'Falha não identificada na análise de Channel DNA.').slice(0,500);
+    for(const competitor of selected){
+      await put('radar_managed_channels',competitor.id,{
+        ...competitor,
+        dnaAttempts:(competitor.dnaAttempts??0)+1,
+        lastDnaAttemptAt:attemptedAt,
+        lastDnaError:detail,
+        updatedAt:attemptedAt
+      });
+    }
+    throw error;
+  }
+
   const byChannel=new Map(results.map(result=>[result.channelId,result.dna]));
   const updated:string[]=[];
   for(const competitor of selected){
     const dna=byChannel.get(competitor.channelId);
-    if(!dna)continue;
+    const dnaAttempts=(competitor.dnaAttempts??0)+1;
+    if(!dna){
+      await put('radar_managed_channels',competitor.id,{
+        ...competitor,
+        dnaAttempts,
+        lastDnaAttemptAt:attemptedAt,
+        lastDnaError:'A análise não devolveu DNA utilizável para este canal.',
+        updatedAt:attemptedAt
+      });
+      continue;
+    }
     const dnaTags=[
       dna.primaryNiche,
       dna.subniche,
@@ -233,8 +263,11 @@ export async function runUniverseIntelligence(ids?:string[]){
           observedAt:competitor.lastMonitoredAt
         }
       },
+      dnaAttempts,
+      lastDnaAttemptAt:attemptedAt,
+      lastDnaError:undefined,
       dnaTags,
-      updatedAt:new Date().toISOString()
+      updatedAt:attemptedAt
     };
     await put('radar_managed_channels',next.id,next);
     updated.push(next.name);
@@ -253,7 +286,6 @@ export async function runUniverseIntelligence(ids?:string[]){
       :'A análise não devolveu DNA utilizável para os concorrentes selecionados.'
   };
 }
-
 
 export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120_000){
   const cap=Math.max(1,Math.min(maxCompetitors,25));

@@ -39,6 +39,11 @@ export function compareUniverseDnaPriority(a:UniverseCompetitor,b:UniverseCompet
   const missingB=b.dna?1:0;
   if(missingA!==missingB)return missingA-missingB;
 
+  if(!a.dna&&!b.dna){
+    const attemptDelta=(a.dnaAttempts??0)-(b.dnaAttempts??0);
+    if(attemptDelta!==0)return attemptDelta;
+  }
+
   const statusDelta=UNIVERSE_STATUS_RANK[b.status]-UNIVERSE_STATUS_RANK[a.status];
   if(statusDelta!==0)return statusDelta;
 
