@@ -4,7 +4,7 @@ import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, Un
 import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { selectUniverseDnaBatch, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { selectUniverseDnaBatch, summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
@@ -56,18 +56,7 @@ function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseComp
 
 export async function universeQueueSummary():Promise<UniverseImportQueueSummary>{
   const rows=checked(await db().from('radar_universe_queue').select('status,attempts')) as Array<Pick<UniverseQueueRow,'status'|'attempts'>>;
-  const count=(status:UniverseQueueRow['status'])=>rows.filter(row=>row.status===status).length;
-  const completed=count('completed');
-  const total=rows.length;
-  return {
-    total,
-    pending:count('pending'),
-    processing:count('processing'),
-    completed,
-    failed:count('failed'),
-    retryable:rows.filter(row=>row.status==='failed'&&row.attempts<3).length,
-    progressPct:total?Math.round((completed/total)*100):0
-  };
+  return summarizeUniverseQueueRows(rows);
 }
 
 export async function processUniverseImportQueue(maxItems=25){

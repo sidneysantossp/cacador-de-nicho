@@ -218,15 +218,15 @@ export default function CompetitorUniverse({
       <div className="universe-bootstrap-head">
         <div>
           <span className="eyebrow">BOOTSTRAP DO UNIVERSE</span>
-          <h3>{queue.completed} de {queue.total} concorrentes processados</h3>
-          <p>{queue.pending} pendentes · {queue.processing} em processamento · {queue.failed} com falha · {queue.retryable} elegíveis para retry</p>
+          <h3>{queue.resolved} de {queue.total} entradas resolvidas</h3>
+          <p>{queue.completed} concorrentes válidos · {queue.terminalFailed} inválidos terminais · {queue.pending} pendentes · {queue.processing} em processamento · {queue.retryable} elegíveis para retry</p>
         </div>
-        <button className="button primary small" disabled={mode==='demo'||!!busy||queue.completed>=queue.total} onClick={()=>void onQueue()}>
+        <button className="button primary small" disabled={mode==='demo'||!!busy||(queue.pending===0&&queue.retryable===0)} onClick={()=>void onQueue()}>
           <RefreshCw size={15}/>{busy==='universeQueue'?'Processando lote…':'Processar próximo lote'}
         </button>
       </div>
       <div className="universe-bootstrap-bar"><span style={{width:`${queue.progressPct}%`}}/></div>
-      <small>{queue.progressPct}% concluído. Cada lote resolve até 25 canais sem usar search.list.</small>
+      <small>{queue.progressPct}% resolvido. Falhas terminais ficam separadas dos concorrentes válidos e não entram novamente em retry.</small>
     </section>}
 
     <div className="universe-tabs">

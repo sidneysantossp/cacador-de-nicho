@@ -309,6 +309,8 @@ export type UniverseImportQueueSummary = {
  completed: number;
  failed: number;
  retryable: number;
+ terminalFailed: number;
+ resolved: number;
  progressPct: number;
 };
 

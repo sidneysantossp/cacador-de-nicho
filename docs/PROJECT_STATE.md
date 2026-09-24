@@ -242,3 +242,13 @@ O caminho crítico do Universe foi movido para o VPS:
 - Vercel deixa de ser dependência do scheduler operacional.
 
 O Gap Evidence Resolver também foi endurecido: palavras genéricas e títulos propostos em `firstTests` não são usados como prova, e IDs sugeridos pela IA só contam como target evidence quando passam pela validação determinística do backend.
+
+
+## Universe bootstrap terminal-state UX — 24/09/2026
+
+A fila de bootstrap diferencia conclusão operacional de concorrentes válidos:
+- `completed` continua significando concorrentes realmente importados;
+- falhas 404/not-found com tentativas esgotadas são `terminalFailed`;
+- `resolved = completed + terminalFailed`;
+- o progresso chega a 100% quando não existe mais trabalho elegível, sem contabilizar entradas inválidas como concorrentes;
+- o botão de próximo lote fica desabilitado quando não há pending nem retryable.
