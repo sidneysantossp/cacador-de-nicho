@@ -1016,6 +1016,7 @@ export async function advanceEpisodeAutomationRun(runId:string,workerToken?:stri
   await assertAutomationAdvanceLease(runId,workerToken);
   let run=await reconcileEpisodeAutomationRun(runId);
   if(run.status==='completed'||run.status==='cancelled')return run;
+  if(workerToken&&run.status==='waiting')return run;
   if(run.holdStep){
     throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
   }
