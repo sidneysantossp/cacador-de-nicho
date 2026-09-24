@@ -400,6 +400,29 @@ export type AutopilotControlVersion = {
  payload:AutopilotControlPayload;
  createdAt:string;
 };
+export type AutopilotIncidentArea =
+ | 'episode-automation'
+ | 'closed-loop'
+ | 'youtube-publisher'
+ | 'render'
+ | 'control-plane';
+export type AutopilotIncidentSeverity = 'warning' | 'critical';
+export type AutopilotIncidentStatus = 'open' | 'resolved' | 'ignored';
+export type AutopilotIncident = {
+ id:string;
+ area:AutopilotIncidentArea;
+ channelId?:string;
+ entityId:string;
+ severity:AutopilotIncidentSeverity;
+ code:string;
+ message:string;
+ status:AutopilotIncidentStatus;
+ occurrences:number;
+ firstSeenAt:string;
+ lastSeenAt:string;
+ resolvedAt?:string;
+ payload:Record<string,unknown>;
+};
 export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
  id: string;
