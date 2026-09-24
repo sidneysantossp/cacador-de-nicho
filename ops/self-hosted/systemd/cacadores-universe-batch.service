@@ -1,9 +1,9 @@
 [Unit]
-Description=Caçadores Universe daily cycle
+Description=Caçadores Universe queue and DNA phase
 After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 ExecStart=/srv/auditseo-deploy/bin/cacadores-universe-batch
-TimeoutStartSec=7min
+TimeoutStartSec=6min
