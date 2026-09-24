@@ -6,6 +6,7 @@ import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
+import { preserveUniverseMarketContinuity } from '@/lib/universe-market-continuity';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -334,7 +335,12 @@ function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketInte
 
 export async function universeMarketIntelligenceState(){
   const analyses=await list<unknown>('radar_analyses',300);
-  return analyses.find(isUniverseMarketIntelligence)??null;
+  return analyses.find(item=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:latest')??null;
+}
+
+export async function universePreviousMarketIntelligenceState(){
+  const analyses=await list<unknown>('radar_analyses',300);
+  return analyses.find(item=>isUniverseMarketIntelligence(item)&&item.id==='universe-market-intelligence:previous')??null;
 }
 
 export async function shouldRefreshUniverseMarketIntelligence(){
@@ -348,6 +354,8 @@ export async function shouldRefreshUniverseMarketIntelligence(){
 
 export async function runUniverseMarketIntelligence():Promise<UniverseMarketIntelligence>{
   const all=await universeState();
+  const previous=await universeMarketIntelligenceState();
+  const olderPrevious=await universePreviousMarketIntelligenceState();
   const sample=selectUniverseCurveEvidence(all,40,8);
   if(sample.length<2)throw new Error('O Universe precisa de Channel DNA em pelo menos 2 concorrentes antes de extrair curvas.');
 
@@ -409,7 +417,7 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
     }];
   });
 
-  const report:UniverseMarketIntelligence={
+  const baseReport:UniverseMarketIntelligence={
     kind:'universe-market-intelligence',
     id:'universe-market-intelligence:latest',
     generatedAt:new Date().toISOString(),
@@ -425,6 +433,18 @@ export async function runUniverseMarketIntelligence():Promise<UniverseMarketInte
     ]
   };
 
+  const report=preserveUniverseMarketContinuity(
+    baseReport,
+    [previous,olderPrevious],
+    all
+  );
+
+  if(previous){
+    await put('radar_analyses','universe-market-intelligence:previous',{
+      ...previous,
+      id:'universe-market-intelligence:previous'
+    });
+  }
   await put('radar_analyses',report.id,report);
 
   for(const competitor of sample){
