@@ -706,3 +706,44 @@ test('Market continuity drops a prior actionable gap when current target evidenc
   assert.equal(merged.gaps.length,0);
   assert.equal(merged.curves.length,1);
 });
+
+
+test('explicit target keywords require target-domain anchors and reject semantic-family leakage',()=>{
+  const gap={
+    title:'Why Your Family Name Still Carries a Medieval Job',
+    targetSpace:'occupational surnames',
+    targetKeywords:['occupational surnames','medieval trades','family names','guild occupations','name origins'],
+    changedVariable:'Surname origins',
+    firstTests:[]
+  };
+
+  const historicDave=competitor('historic-dave-surnames','Everyday History');
+  historicDave.recentUploads=[
+    {id:'h1',title:'Surnames That Prove Your Ancestor Had a Job Nobody Wanted',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const genericJob=competitor('generic-historical-job','History');
+  genericJob.recentUploads=[
+    {id:'i1',title:'Roman Miner: An Ancient Job Under Extreme Conditions',publishedAt:'2026-09-20T00:00:00Z',views:150000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([historicDave,genericJob],gap,['historic-dave-surnames','generic-historical-job']);
+  assert.deepEqual(resolved.channelIds,['historic-dave-surnames']);
+  assert.equal(resolved.evidence.some(item=>item.includes('âncora do target: surname')),true);
+  assert.equal(resolved.evidence.some(item=>item.includes('generic-historical-job')),false);
+});
+
+test('legacy gaps without explicit target keywords may still use semantic-family matching',()=>{
+  const gap={
+    title:'Roman Miner: An Ancient Job Under Extreme Conditions',
+    targetSpace:'Historical professions and dangerous work',
+    changedVariable:'Historical jobs',
+    firstTests:[]
+  };
+  const miner=competitor('legacy-miner','History');
+  miner.recentUploads=[
+    {id:'m1',title:'Ancient Roman Miner Jobs and Working Conditions',publishedAt:'2026-09-20T00:00:00Z',views:150000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([miner],gap,[]);
+  assert.deepEqual(resolved.channelIds,['legacy-miner']);
+});
