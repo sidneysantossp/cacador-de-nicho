@@ -1,5 +1,5 @@
 import type { UniverseCompetitor, UniverseCurveClassification, UniverseMarketIntelligence } from './types';
-import { UNIVERSE_STATUS_RANK } from './universe-policy';
+import { compareUniverseDnaPriority, UNIVERSE_STATUS_RANK } from './universe-policy';
 
 export function universeCurveClassification(channelIds:string[]):UniverseCurveClassification{
   const count=new Set(channelIds.filter(Boolean)).size;
@@ -101,4 +101,103 @@ export function selectUniverseMissionOpportunities(
     if(b.targetEvidenceCount!==a.targetEvidenceCount)return b.targetEvidenceCount-a.targetEvidenceCount;
     return a.title.localeCompare(b.title);
   }).slice(0,Math.max(0,Math.min(max,10)));
+}
+
+
+const GAP_MATCH_STOP_WORDS=new Set([
+  'a','an','and','as','at','be','being','by','for','from','how','in','into','is','it','of','on','or','the','their','through','to','what','why','with',
+  'every','first','explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests'
+]);
+
+const ANIMAL_SPECIFIC_TERMS=[
+  'wildlife','dog','dogs','cat','cats','bird','birds','fish','shark','sharks','whale','whales','wolf','wolves','bee','bees','ant','ants',
+  'insect','insects','snake','snakes','lion','lions','tiger','tigers','turtle','turtles','octopus','cockroach','cockroaches','spider','spiders',
+  'frog','frogs','horse','horses','bear','bears','eagle','eagles','penguin','penguins','anaconda','anacondas','starfish','anglerfish','snailfish'
+];
+const ANIMAL_LIFE_CUES=['pov','born','birth','life','survival','survive','rank','ranks'];
+const PROFESSION_TERMS=[
+  'job','jobs','profession','professions','worker','workers','miner','miners','mining','tanner','tanners','blacksmith','blacksmiths',
+  'sailor','sailors','farmer','farmers','servant','servants','smith','smiths','craftsman','craftsmen','laborer','laborers','labourer','labourers',
+  'merchant','merchants','gladiator','gladiators','soldier','soldiers'
+];
+const HISTORY_CONTEXT_TERMS=[
+  'ancient','medieval','roman','rome','victorian','history','historical','century','egypt','egyptian','viking','vikings','renaissance','pompeii','1905'
+];
+
+function lexicalNormalize(value:string){
+  return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
+}
+function lexicalTokens(value:string){
+  return lexicalNormalize(value).split(' ').filter(token=>token.length>=3&&!GAP_MATCH_STOP_WORDS.has(token));
+}
+function competitorLexicalCorpus(competitor:UniverseCompetitor){
+  return lexicalNormalize([
+    competitor.name,
+    competitor.description,
+    ...competitor.recentUploads.slice(0,30).map(video=>video.title)
+  ].join(' '));
+}
+function hasAnyTerm(corpus:string,terms:string[]){
+  return terms.some(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?: |$)`).test(corpus));
+}
+function directGapMatches(competitor:UniverseCompetitor,gapText:string){
+  const corpus=competitorLexicalCorpus(competitor);
+  const terms=[...new Set(lexicalTokens(gapText))];
+  return terms.filter(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?: |$)`).test(corpus));
+}
+function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
+  const query=lexicalNormalize(gapText);
+  const corpus=competitorLexicalCorpus(competitor);
+  const animalTarget=/(?:^| )(animal|animals|wildlife)(?: |$)/.test(query);
+  if(animalTarget&&hasAnyTerm(corpus,ANIMAL_SPECIFIC_TERMS)&&hasAnyTerm(corpus,ANIMAL_LIFE_CUES))return true;
+
+  const professionTarget=/(?:^| )(job|jobs|profession|professions|worker|workers|work)(?: |$)/.test(query);
+  const historyTarget=hasAnyTerm(query,HISTORY_CONTEXT_TERMS);
+  if(professionTarget&&historyTarget&&hasAnyTerm(corpus,PROFESSION_TERMS)&&hasAnyTerm(corpus,HISTORY_CONTEXT_TERMS))return true;
+
+  return false;
+}
+
+export function selectUniverseGapValidationDnaBatch(
+  competitors:UniverseCompetitor[],
+  intelligence:UniverseMarketIntelligence|null,
+  maxItems=2
+){
+  const limit=Math.max(0,Math.min(maxItems,5));
+  if(!intelligence||limit===0)return [];
+
+  const investigate=selectUniverseMissionOpportunities(intelligence,10)
+    .filter(item=>item.readiness==='investigate')
+    .map(item=>intelligence.gaps.find(gap=>gap.id===item.gapId))
+    .filter((gap):gap is UniverseMarketIntelligence['gaps'][number]=>!!gap);
+  if(!investigate.length)return [];
+
+  return competitors
+    .filter(competitor=>!competitor.dna)
+    .flatMap(competitor=>{
+      let matchedGaps=0;
+      let strongestDirectMatchCount=0;
+      for(const gap of investigate){
+        const gapText=[
+          gap.title,
+          gap.targetSpace,
+          gap.changedVariable,
+          ...gap.firstTests
+        ].join(' ');
+        const direct=directGapMatches(competitor,gapText);
+        const semantic=semanticGapFamilyMatch(competitor,gapText);
+        if(direct.length>=2||semantic){
+          matchedGaps++;
+          strongestDirectMatchCount=Math.max(strongestDirectMatchCount,direct.length);
+        }
+      }
+      return matchedGaps?[{competitor,matchedGaps,strongestDirectMatchCount}]:[];
+    })
+    .sort((a,b)=>{
+      if(b.matchedGaps!==a.matchedGaps)return b.matchedGaps-a.matchedGaps;
+      if(b.strongestDirectMatchCount!==a.strongestDirectMatchCount)return b.strongestDirectMatchCount-a.strongestDirectMatchCount;
+      return compareUniverseDnaPriority(a.competitor,b.competitor);
+    })
+    .slice(0,limit)
+    .map(item=>item.competitor);
 }
