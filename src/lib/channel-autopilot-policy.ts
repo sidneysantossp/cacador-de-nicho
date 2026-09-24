@@ -23,6 +23,26 @@ export function effectiveChannelAutopilot(
   return {...defaultChannelAutopilot,...(channel.autopilot??{})};
 }
 
+export function autopilotActivationRequirement(
+  current:Pick<ManagedChannel,'autopilot'>|null,
+  next:Pick<ManagedChannel,'autopilot'>
+):'none'|'assisted'|'autonomous'{
+  const before=effectiveChannelAutopilot(current??{});
+  const after=effectiveChannelAutopilot(next);
+
+  if(!after.enabled)return 'none';
+
+  const newlyEnabled=!before.enabled&&after.enabled;
+  const escalatesToAutonomous=after.mode==='autonomous'&&
+    (!before.enabled||before.mode!=='autonomous');
+  const enablesAutoAccept=after.autoAcceptNextEpisode&&
+    (!before.enabled||!before.autoAcceptNextEpisode);
+
+  if(escalatesToAutonomous||enablesAutoAccept)return 'autonomous';
+  if(newlyEnabled)return 'assisted';
+  return 'none';
+}
+
 export function channelAutopilotStartsAcceptedEpisode(
   channel:Pick<ManagedChannel,'autopilot'>
 ){
