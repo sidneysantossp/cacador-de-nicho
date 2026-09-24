@@ -7,10 +7,11 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
+import { loadNarrativeBundle } from './narrative';
 import { draftVisualScenes } from './visual-prompt-ai';
 import {
   buildInitialVisualPromptSet, compileCharacterReference, compileScenePrompt,
-  normalizeVisualPromptSet, recurringCharacterIds, visualPromptIssues
+  normalizeVisualPromptSet, productionChannelCode, recurringCharacterIds, visualPromptIssues
 } from '@/lib/visual-prompt-policy';
 
 function normalizeRow(row:{
@@ -75,9 +76,24 @@ async function eligibleContext(scenePlanId:string){
   const plan=await loadScenePlan(scenePlanId);
   if(!plan)throw new HttpError('Scene Plan não encontrado.',404);
   if(plan.status!=='approved')throw new HttpError('Aprove o Scene Plan antes de criar prompts visuais.',409);
-  const dna=await loadProductionDna(plan.channelId);
+
+  const [dna,bundle,channelRow]=await Promise.all([
+    loadProductionDna(plan.channelId),
+    loadNarrativeBundle(plan.channelId),
+    db().from('radar_managed_channels').select('payload').eq('id',plan.channelId).maybeSingle()
+  ]);
   if(!dna)throw new HttpError('Configure o Production DNA antes de criar prompts visuais.',409);
-  return {plan,dna};
+  if(channelRow.error)throw new HttpError('Falha ao carregar o canal para nomenclatura de produção.',502);
+
+  const channelPayload=(channelRow.data?.payload??{}) as {name?:string};
+  const episode=bundle.episodes.find(item=>item.id===plan.episodeId);
+  if(!episode)throw new HttpError('Episódio do Scene Plan não encontrado.',404);
+
+  const naming={
+    channelCode:productionChannelCode(channelPayload.name||'CHANNEL'),
+    episodeNumber:episode.sequence
+  };
+  return {plan,dna,naming};
 }
 
 function workflowStage(payload:VisualPromptSetPayload){
@@ -87,16 +103,16 @@ function workflowStage(payload:VisualPromptSetPayload){
 }
 
 export async function createVisualPromptSet(scenePlanId:string):Promise<VisualPromptSet>{
-  const {plan,dna}=await eligibleContext(scenePlanId);
+  const {plan,dna,naming}=await eligibleContext(scenePlanId);
   const existing=await loadVisualPromptSetByPlan(scenePlanId);
   if(existing)return existing;
-  return saveVisualPromptSet(buildInitialVisualPromptSet(plan,dna),'draft',0,false);
+  return saveVisualPromptSet(buildInitialVisualPromptSet(plan,dna,naming),'draft',0,false);
 }
 
 export async function generateVisualPromptDrafts(setId:string):Promise<VisualPromptSet>{
   const current=await loadVisualPromptSet(setId);
   if(!current)throw new HttpError('Visual Prompt Set não encontrado.',404);
-  const {plan,dna}=await eligibleContext(current.scenePlanId);
+  const {plan,dna,naming}=await eligibleContext(current.scenePlanId);
 
   const drafts=await draftVisualScenes(plan,dna);
   const recurring=recurringCharacterIds(drafts.map(item=>({sceneId:item.sceneId,characterIds:item.characterIds})));
@@ -117,7 +133,7 @@ export async function generateVisualPromptDrafts(setId:string):Promise<VisualPro
     const draft=drafts.find(item=>item.sceneId===scene.id);
     const characterIds=draft?.characterIds??scene.characterIds;
     const direction=draft?.direction??scene.promptDirection??scene.visualIntent??scene.narration;
-    const compiled=compileScenePrompt(scene,dna,characterIds,direction,recurring);
+    const compiled=compileScenePrompt(scene,dna,characterIds,direction,recurring,naming);
     return {...compiled,direction,characterIds};
   });
 
@@ -126,6 +142,12 @@ export async function generateVisualPromptDrafts(setId:string):Promise<VisualPro
     scenePlanVersion:plan.version,
     productionDnaVersion:dna.version,
     styleLock:dna.visual.basePrompt.trim(),
+    productionNaming:{
+      channelCode:naming.channelCode,
+      episodeNumber:naming.episodeNumber,
+      takeDigits:2,
+      pattern:'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'
+    },
     characterReferences:references,
     scenePrompts,
     workflowStage:references.some(ref=>!ref.assetReady)?'references':'complete',
@@ -141,7 +163,7 @@ export async function saveVisualPromptSet(
   expectedVersion:number|null,
   requireReadyReferences=true
 ):Promise<VisualPromptSet>{
-  const {plan,dna}=await eligibleContext(payload.scenePlanId);
+  const {plan,dna,naming}=await eligibleContext(payload.scenePlanId);
   if(payload.channelId!==plan.channelId||payload.episodeId!==plan.episodeId){
     throw new HttpError('Visual Prompt Set incompatível com o Scene Plan.',409);
   }
@@ -149,6 +171,12 @@ export async function saveVisualPromptSet(
   const existing=await loadVisualPromptSet(payload.id);
   const normalized=normalizeVisualPromptSet({
     ...payload,
+    productionNaming:{
+      channelCode:naming.channelCode,
+      episodeNumber:naming.episodeNumber,
+      takeDigits:2,
+      pattern:'{CHANNEL}_V{VIDEO}_S{SCENE}_T{TAKE}.mp4'
+    },
     workflowStage:workflowStage(payload),
     createdAt:existing?.createdAt??payload.createdAt??new Date().toISOString(),
     updatedAt:new Date().toISOString()
