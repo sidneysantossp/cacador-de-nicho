@@ -223,6 +223,55 @@ export async function runUniverseIntelligence(ids?:string[]){
 }
 
 
+export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120_000){
+  const cap=Math.max(1,Math.min(maxCompetitors,25));
+  const budget=Math.max(30_000,Math.min(timeBudgetMs,180_000));
+  const startedAt=Date.now();
+  const attempted=new Set<string>();
+  const updated:string[]=[];
+  let batches=0;
+  let attemptedChannels=0;
+
+  while(attemptedChannels<cap&&Date.now()-startedAt<budget){
+    const all=await universeState();
+    const selected=selectUniverseDnaBatch(
+      all.filter(item=>!attempted.has(item.id)&&!attempted.has(item.channelId)),
+      Math.min(5,cap-attemptedChannels)
+    );
+    if(!selected.length)break;
+
+    attemptedChannels+=selected.length;
+    for(const competitor of selected){
+      attempted.add(competitor.id);
+      attempted.add(competitor.channelId);
+    }
+
+    const result=await runUniverseIntelligence(selected.map(item=>item.id));
+    batches++;
+    updated.push(...result.updated);
+  }
+
+  const after=await universeState();
+  const ready=after.filter(item=>!!item.dna).length;
+  const remaining=Math.max(0,after.length-ready);
+  return {
+    analyzed:updated.length,
+    updated,
+    batches,
+    attempted:attemptedChannels,
+    total:after.length,
+    ready,
+    remaining,
+    timeBudgetReached:remaining>0&&Date.now()-startedAt>=budget,
+    message:updated.length
+      ?`Channel DNA bootstrap: ${updated.length} concorrente(s) analisado(s) em ${batches} lote(s). Progresso: ${ready}/${after.length}; ${remaining} pendente(s).`
+      :remaining===0
+        ?'Channel DNA já concluído para todos os concorrentes.'
+        :'Nenhum concorrente adicional produziu DNA utilizável nesta execução.'
+  };
+}
+
+
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='universe-market-intelligence';
 }
