@@ -1133,3 +1133,52 @@ test('strong surname and bridge anchors remain valid when supported in the same 
   assert.deepEqual(resolveUniverseGapEvidence([surname],surnameGap,[]).channelIds,['surname-strong']);
   assert.deepEqual(resolveUniverseGapEvidence([bridge],bridgeGap,[]).channelIds,['bridge-strong']);
 });
+
+
+test('gap demand resolver can use a corroborator outside the curve extraction sample',()=>{
+  const sampleChannel=competitor('sample-bridge','Engineering');
+  sampleChannel.recentUploads=[{
+    id:'s1',
+    title:'Why Suspension Bridges Sway in the Wind',
+    publishedAt:'2026-09-20T00:00:00Z',
+    views:200000,
+    duration:'PT8M',
+    thumbnail:'',
+    url:''
+  }];
+
+  const outsideSample=competitor('outside-bridge','Civil Engineering');
+  outsideSample.recentUploads=[{
+    id:'o1',
+    title:'Bridge Engineering: How Piers Carry the Load',
+    publishedAt:'2026-09-21T00:00:00Z',
+    views:180000,
+    duration:'PT9M',
+    thumbnail:'',
+    url:''
+  }];
+
+  const gap={
+    title:'Every Type of Bridge Failure Explained',
+    targetSpace:'bridge engineering',
+    targetKeywords:['bridge failures','suspension bridges','bridge piers'],
+    changedVariable:'Bridge engineering',
+    firstTests:[]
+  };
+
+  const resolved=resolveUniverseGapEvidence(
+    [sampleChannel,outsideSample],
+    gap,
+    ['sample-bridge']
+  );
+
+  assert.deepEqual(
+    new Set(resolved.channelIds),
+    new Set(['sample-bridge','outside-bridge'])
+  );
+  assert.equal(resolved.channelIds.length,2);
+  assert.equal(
+    universeGapDemandStatus('structural',resolved.channelIds),
+    'observed'
+  );
+});
