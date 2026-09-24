@@ -1,4 +1,4 @@
-import type { Decision, MissionBrief, UniverseMarketIntelligence, UniversePilotBrief } from './types';
+import type { ChannelBrain, ChannelEpisode, ContentProjectPayload, Decision, ManagedChannel, MissionBrief, UniverseMarketIntelligence, UniversePilotBrief } from './types';
 import { selectUniverseMissionOpportunities } from './universe-market';
 
 export type UniversePilotDecisionChoice='approved'|'rejected';
@@ -107,4 +107,94 @@ export function buildUniversePilotDecision(input:{
     alternateAngles:opportunity.alternateAngles??[],
     pilotBrief
   };
+}
+
+
+export function buildUniversePilotContentHandoff(input:{
+  decision:Decision;
+  channel:ManagedChannel;
+  brain:ChannelBrain|null;
+  sequence:number;
+  episodeId:string;
+  projectId:string;
+  factCheckId:string;
+  createdAt:string;
+}):{episode:ChannelEpisode;project:ContentProjectPayload}{
+  const {decision,channel,brain,sequence,episodeId,projectId,factCheckId,createdAt}=input;
+  const pilot=decision.pilotBrief;
+  if(decision.kind!=='universe-pilot'||decision.decision!=='approved'||!pilot){
+    throw new Error('O Pilot Brief precisa estar aprovado antes do handoff para Content OS.');
+  }
+
+  const evidenceNotes=[
+    `Origem: Universe Pilot Brief ${pilot.id}`,
+    `Decision ID: ${decision.id}`,
+    `Gap: ${pilot.gapId}`,
+    `Market snapshot: ${pilot.marketGeneratedAt}`,
+    `Curva: ${pilot.curveName}`,
+    `Target: ${pilot.targetSpace}`,
+    '',
+    'Evidência de demanda:',
+    ...pilot.evidence.demandEvidence.map(item=>`- ${item}`),
+    '',
+    'Riscos conhecidos:',
+    ...pilot.risks.map(item=>`- ${item}`)
+  ].join('\n');
+
+  const episode:ChannelEpisode={
+    id:episodeId,
+    channelId:channel.id,
+    sequence,
+    status:'idea',
+    title:pilot.firstTest,
+    thesis:pilot.hypothesis,
+    narrativeSummary:pilot.testPlan.purpose,
+    prerequisiteConcepts:[],
+    introducesConcepts:[],
+    reinforcesConcepts:[],
+    opensThreads:[],
+    resolvesThreads:[],
+    repetitionKeys:[],
+    createdAt,
+    updatedAt:createdAt
+  };
+
+  const project:ContentProjectPayload={
+    kind:'content-project',
+    id:projectId,
+    channelId:channel.id,
+    episodeId,
+    opportunityId:decision.id,
+    brief:{
+      theme:pilot.targetSpace,
+      thesis:pilot.hypothesis,
+      angle:`${pilot.testPlan.preserveMechanism}\n\nVariável alterada: ${pilot.testPlan.changedVariable}`,
+      promise:'',
+      workingTitle:pilot.firstTest,
+      thumbnailConcept:'',
+      targetAudience:brain?.constitution.audience?.trim()??'',
+      objective:pilot.testPlan.purpose,
+      previousEpisodeConnection:'',
+      arcConnection:brain?.narrative.currentArc?.trim()??''
+    },
+    research:{
+      notes:evidenceNotes,
+      sources:[],
+      factChecks:[{
+        id:factCheckId,
+        claim:`Os fatos e explicações técnicas necessários para "${pilot.firstTest}" precisam estar sustentados por fontes rastreáveis antes da aprovação para roteiro.`,
+        status:'unverified',
+        sourceIds:[],
+        notes:'Bloqueio criado automaticamente pelo handoff do Universe Pilot. Resolva no Content OS antes de aprovar o projeto.'
+      }]
+    },
+    approval:{
+      status:'draft',
+      notes:`Criado a partir do Pilot Brief aprovado ${pilot.id}. Revisar adequação ao canal, pesquisa e fact-check antes do Script Engine.`
+    },
+    createdAt,
+    updatedAt:createdAt
+  };
+
+  return {episode,project};
 }
