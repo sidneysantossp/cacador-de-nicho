@@ -111,7 +111,7 @@ const GAP_MATCH_STOP_WORDS=new Set([
   'como','com','da','das','de','do','dos','e','em','entre','era','essa','esse','esta','este','foi','mais','na','nas','no','nos','o','os','ou','para',
   'pela','pelas','pelo','pelos','por','que','se','sem','ser','seu','sua','suas','seus','um','uma','uns','umas',
   'explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests','channel','channels','video','videos',
-  'history','historical','people','person','ordinary','animal','animals'
+  'history','historical','people','person','ordinary','animal','animals','old'
 ]);
 
 const ANIMAL_SPECIFIC_TERMS=[
@@ -130,6 +130,27 @@ const HISTORY_CONTEXT_TERMS=[
 ];
 
 function lexicalNormalize(value:string){
+  return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
+}
+function lexicalCanonicalToken(token:string){
+  if(token.length>5&&token.endsWith('ies'))return token.slice(0,-3)+'y';
+  if(token.length>4&&token.endsWith('s')&&!token.endsWith('ss'))return token.slice(0,-1);
+  return token;
+}
+function lexicalTokens(value:string){
+  return lexicalNormalize(value)
+    .split(' ')
+    .filter(token=>token.length>=3&&!GAP_MATCH_STOP_WORDS.has(token))
+    .map(lexicalCanonicalToken);
+}
+function competitorEvidenceUnits(competitor:UniverseCompetitor){
+  return competitor.recentUploads
+    .slice(0,30)
+    .map(video=>lexicalNormalize(video.title))
+    .filter(Boolean);
+}
+function hasAnyTerm(corpus:string,terms:string[]){
+  return terms.some(term=>new RegExp(`(?:^| )${term.replace(/[.*+?^${}()|[\]\\]/g,'\\function lexicalNormalize(value:string){
   return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
 }
 function lexicalTokens(value:string){
@@ -159,6 +180,29 @@ function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
   const professionTarget=/(?:^| )(job|jobs|profession|professions|worker|workers|work)(?: |$)/.test(query);
   const historyTarget=hasAnyTerm(query,HISTORY_CONTEXT_TERMS);
   if(professionTarget&&historyTarget&&hasAnyTerm(corpus,PROFESSION_TERMS)&&hasAnyTerm(corpus,HISTORY_CONTEXT_TERMS))return true;
+
+  return false;
+}')}(?: |$)`).test(corpus));
+}
+function directGapMatches(competitor:UniverseCompetitor,gapText:string){
+  const terms=[...new Set(lexicalTokens(gapText))];
+  let best:string[]=[];
+  for(const unit of competitorEvidenceUnits(competitor)){
+    const unitTokens=new Set(lexicalTokens(unit));
+    const matched=terms.filter(term=>unitTokens.has(term));
+    if(matched.length>best.length)best=matched;
+  }
+  return best;
+}
+function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
+  const query=lexicalNormalize(gapText);
+  const units=competitorEvidenceUnits(competitor);
+  const animalTarget=/(?:^| )(animal|animals|wildlife)(?: |$)/.test(query);
+  if(animalTarget&&units.some(unit=>hasAnyTerm(unit,ANIMAL_SPECIFIC_TERMS)&&hasAnyTerm(unit,ANIMAL_LIFE_CUES)))return true;
+
+  const professionTarget=/(?:^| )(job|jobs|profession|professions|worker|workers|work)(?: |$)/.test(query);
+  const historyTarget=hasAnyTerm(query,HISTORY_CONTEXT_TERMS);
+  if(professionTarget&&historyTarget&&units.some(unit=>hasAnyTerm(unit,PROFESSION_TERMS)&&hasAnyTerm(unit,HISTORY_CONTEXT_TERMS)))return true;
 
   return false;
 }
