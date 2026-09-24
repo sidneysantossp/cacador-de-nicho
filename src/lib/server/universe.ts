@@ -4,7 +4,7 @@ import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, Un
 import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { selectUniverseDnaBatch, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { selectUniverseDnaBatch, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
@@ -38,13 +38,6 @@ type UniverseQueueRow={
   created_at:string;
   updated_at:string;
 };
-
-function permanentUniverseImportFailure(message:string){
-  const normalized=message.toLowerCase();
-  return normalized.includes('http 404')
-    ||normalized.includes('não encontrado')
-    ||normalized.includes('not found');
-}
 
 function mergeCompetitorSnapshot(snapshot:UniverseCompetitor,prior?:UniverseCompetitor):UniverseCompetitor{
   if(!prior)return snapshot;
@@ -102,7 +95,7 @@ export async function processUniverseImportQueue(maxItems=25){
       checked(await db().from('radar_universe_queue')
         .update({
           status:'failed',
-          attempts:permanentUniverseImportFailure(message)?Math.max(row.attempts,3):row.attempts,
+          attempts:universeImportFailureIsPermanent(message)?Math.max(row.attempts,3):row.attempts,
           last_error:message,
           updated_at:new Date().toISOString()
         })
