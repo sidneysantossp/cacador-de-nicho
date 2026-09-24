@@ -34,6 +34,9 @@ import {
 import { createPublicationPackage } from './publication-package';
 import { queueYouTubePublication } from './youtube-publisher';
 import {
+  assertAutopilotControlRunning, loadAutopilotControl
+} from './autopilot-control';
+import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, episodeAutomationLabels, inspectAutomationSteps
 } from '@/lib/episode-automation-policy';
@@ -571,6 +574,9 @@ export async function createEpisodeAutomationRun(input:{
   const project=checked(await db().from('radar_content_projects')
     .select('id,channel_id,episode_id').eq('id',input.contentProjectId).maybeSingle());
   if(!project)throw new HttpError('Content Project não encontrado.',404);
+  if(input.mode==='autonomous'){
+    await assertAutopilotControlRunning('Episode Automation');
+  }
 
   const existing=checked(await db().from('radar_episode_automation_runs')
     .select(runSelection).eq('episode_id',String(project.episode_id)).maybeSingle());
@@ -624,6 +630,9 @@ export async function updateEpisodeAutomationRun(input:{
   if(!run)throw new HttpError('Automation Run não encontrado.',404);
   if(run.status==='cancelled')throw new HttpError('Automation Run cancelado não pode ser alterado.',409);
   const mode=input.mode??run.mode;
+  if(mode==='autonomous'&&run.mode!=='autonomous'){
+    await assertAutopilotControlRunning('Episode Automation');
+  }
   const base=mode==='autonomous'?autonomousAutomationPolicy:assistedAutomationPolicy;
   const policy:{[K in keyof EpisodeAutomationPolicy]:boolean}={
     ...base,
@@ -662,6 +671,9 @@ export async function resumeEpisodeAutomationRun(runId:string){
   if(!run)throw new HttpError('Automation Run não encontrado.',404);
   if(run.status==='cancelled'||run.status==='completed'){
     throw new HttpError('Este Automation Run não pode ser retomado.',409);
+  }
+  if(run.mode==='autonomous'){
+    await assertAutopilotControlRunning('Episode Automation');
   }
   checked(await db().from('radar_episode_automation_runs').update({
     status:'active',
@@ -1060,6 +1072,33 @@ export async function advanceEpisodeAutomationRun(runId:string,workerToken?:stri
 }
 
 export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToken:string){
+  const control=await loadAutopilotControl();
+  if(control.status!=='running'){
+    const run=await loadEpisodeAutomationRun(runId);
+    if(run&&run.status!=='completed'&&run.status!=='cancelled'){
+      const now=new Date().toISOString();
+      const rows=checked(await db().from('radar_episode_automation_runs').update({
+        status:'active',
+        worker_token:null,
+        lease_until:null,
+        updated_at:now
+      }).eq('id',runId).eq('worker_token',workerToken).select('id'));
+      if(rows?.length){
+        await appendEvent(runId,{
+          step:run.currentStep,
+          status:'info',
+          message:'Control Plane pausado; run devolvido à fila sem avançar.',
+          payload:{
+            kind:'control-plane-pause',
+            controlVersion:control.version,
+            pauseReason:control.pauseReason
+          }
+        });
+      }
+    }
+    return (await loadEpisodeAutomationRun(runId))!;
+  }
+
   try{
     return await advanceEpisodeAutomationRun(runId,workerToken);
   }catch(error){
