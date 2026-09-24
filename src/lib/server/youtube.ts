@@ -764,7 +764,8 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
       ?'heating-up'
       :'watch';
   const snapshots=[currentSnapshot,...(existing?.snapshots??[]).filter(snapshot=>snapshot.observedAt!==observedAt)].slice(0,30);
-  const cluster=strongest?inferNiche(strongest):existing?.cluster??'A classificar';
+  const sourceCluster=strongest?inferNiche(strongest):existing?.sourceCluster??existing?.cluster??'A classificar';
+  const cluster=existing?.dna?.primaryNiche||(existing?.dna?existing.cluster:sourceCluster);
   const format=strongest?inferFormat(strongest,''):existing?.format??'Unknown';
   const language=(strongest?.snippet.defaultAudioLanguage??strongest?.snippet.defaultLanguage??channel.snippet.defaultLanguage??existing?.language??'').toLowerCase();
   return {
@@ -777,6 +778,7 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
     avatar:thumb(channel),
     country:channel.snippet.country,
     language,
+    sourceCluster,
     cluster,
     subniche:existing?.subniche??'A classificar',
     format,
