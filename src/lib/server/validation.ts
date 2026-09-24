@@ -162,6 +162,40 @@ export const productionDnaPayloadSchema=z.object({
    }).strict(),
    qaRules:shortList(50,1000),
    approvedAt:z.string().datetime()
+  }).strict().optional(),
+  anatomyScaleBible:z.object({
+   version:z.number().int().min(1).max(1000),
+   status:z.enum(['draft','locked']),
+   unit:z.object({
+    symbol:z.literal('G'),
+    definition:z.string().trim().min(1).max(1000)
+   }).strict(),
+   characters:z.array(z.object({
+    characterId:z.string().trim().min(1).max(120),
+    heightG:z.number().min(.1).max(5),
+    build:z.string().trim().max(1000),
+    headBodyRule:z.string().trim().max(1000),
+    postureRule:z.string().trim().max(1000),
+    proportionRules:shortList(50,1000),
+    masterAssetName:z.string().trim().min(1).max(200),
+    masterAssetFileId:z.string().trim().max(300).optional()
+   }).strict()).max(30),
+   props:z.array(z.object({
+    id:z.string().trim().min(1).max(120),
+    name:z.string().trim().min(1).max(180),
+    scaleRule:z.string().trim().max(1000),
+    dimensionsG:z.object({
+     height:z.number().min(0).max(5).optional(),
+     width:z.number().min(0).max(5).optional(),
+     diameter:z.number().min(0).max(5).optional()
+    }).strict(),
+    visualRules:shortList(50,1000),
+    masterAssetName:z.string().trim().min(1).max(200),
+    masterAssetFileId:z.string().trim().max(300).optional()
+   }).strict()).max(100),
+   globalRules:shortList(100,1000),
+   rejectionRules:shortList(100,1000),
+   approvedAt:z.string().datetime().optional()
   }).strict().optional()
  }).strict(),
  characters:z.array(z.object({
