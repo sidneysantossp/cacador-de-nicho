@@ -152,3 +152,8 @@ Por execução:
 - sem reprocessamento automático de concorrentes que já possuem DNA.
 
 O endpoint usa a mesma proteção `CRON_SECRET` do cron principal. Se a variável estiver ausente ou inválida, a execução falha fechada com 401.
+
+
+### Refresh condicional de mercado
+
+Depois do lote de Channel DNA, o cron do Universe verifica `shouldRefreshUniverseMarketIntelligence()`. Curves/Gaps só são recalculados quando existe DNA novo desde o último relatório. Sem mudança de evidência, nenhuma chamada de Market Intelligence é feita.
