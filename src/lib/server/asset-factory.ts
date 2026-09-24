@@ -309,7 +309,7 @@ export async function uploadSceneAsset(input:{
   return persistReady(reservation.id,bytes,mime,{
     ...metadata,
     generation:{
-      ...(metadata.generation as Record<string,unknown>??{}),
+      ...((metadata.generation as Record<string,unknown>|undefined)??{}),
       probedDurationSeconds:durationSeconds
     }
   },{durationSeconds});
