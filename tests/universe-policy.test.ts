@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareUniverseDnaPriority, selectUniverseDnaBatch, universeCompetitorDue } from '../src/lib/universe-policy';
+import { compareUniverseDnaPriority, selectUniverseDnaBatch, universeCompetitorDue, universeImportFailureIsPermanent } from '../src/lib/universe-policy';
 import type { UniverseCompetitor } from '../src/lib/types';
 
 function competitor(overrides:Partial<UniverseCompetitor>={}):UniverseCompetitor{
@@ -157,4 +157,13 @@ test('automatic DNA batches never reanalyze channels that already have DNA',()=>
 test('automatic DNA batches are capped at five competitors',()=>{
   const items=Array.from({length:8},(_,index)=>competitor({id:`p-${index}`,channelId:`p-${index}`}));
   assert.equal(selectUniverseDnaBatch(items,25).length,5);
+});
+
+
+test('permanent Universe import failures stop retrying 404 and missing channels',()=>{
+  assert.equal(universeImportFailureIsPermanent('YouTube indisponível (HTTP 404).'),true);
+  assert.equal(universeImportFailureIsPermanent('Canal do YouTube não encontrado.'),true);
+  assert.equal(universeImportFailureIsPermanent('Channel not found'),true);
+  assert.equal(universeImportFailureIsPermanent('YouTube indisponível (HTTP 429).'),false);
+  assert.equal(universeImportFailureIsPermanent('Falha temporária de rede.'),false);
 });

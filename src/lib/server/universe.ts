@@ -4,7 +4,7 @@ import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, Un
 import { checked, db, list, put, settings } from './db';
 import { collectUniverseCompetitor } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps } from './ai';
-import { selectUniverseDnaBatch, universeCompetitorDue, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
+import { selectUniverseDnaBatch, universeCompetitorDue, universeImportFailureIsPermanent, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
@@ -93,7 +93,12 @@ export async function processUniverseImportQueue(maxItems=25){
     }catch(error){
       const message=(error instanceof Error?error.message:'Falha não identificada.').slice(0,1000);
       checked(await db().from('radar_universe_queue')
-        .update({status:'failed',last_error:message,updated_at:new Date().toISOString()})
+        .update({
+          status:'failed',
+          attempts:universeImportFailureIsPermanent(message)?Math.max(row.attempts,3):row.attempts,
+          last_error:message,
+          updated_at:new Date().toISOString()
+        })
         .eq('id',row.id));
       return {ok:false as const,id:row.id,error:message};
     }
@@ -279,6 +284,17 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
   };
 }
 
+
+
+export async function runUniverseCycle(){
+  const bootstrap=await processUniverseImportQueue(25);
+  const intelligence=await runUniverseDnaBootstrap(15,120_000);
+  const market=await shouldRefreshUniverseMarketIntelligence()
+    ?await runUniverseMarketIntelligence()
+    :null;
+  const queue=await universeQueueSummary();
+  return {bootstrap,intelligence,market,queue};
+}
 
 function isUniverseMarketIntelligence(value:unknown):value is UniverseMarketIntelligence{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='universe-market-intelligence';

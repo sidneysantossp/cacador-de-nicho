@@ -213,3 +213,16 @@ Implementado resolver determinístico de evidência para a recomputação de Cur
 - a evidência adicionada pelo backend é registrada em `demandEvidence` para auditoria.
 
 Objetivo: impedir que um gap permaneça subestimado apenas porque o modelo omitiu um channelId que já contém evidência observável no próprio Universe.
+
+
+## Universe Manual Cycle fallback — 24/09/2026
+
+Preparado fallback operacional autenticado para executar manualmente exatamente o mesmo pipeline do cron diário:
+- fila de imports (até 25);
+- Channel DNA bootstrap (até 15 / 120s);
+- recomputação condicional de Curves/Gaps;
+- resumo final da fila.
+
+Cron e ação manual passam a compartilhar `runUniverseCycle()`, evitando divergência entre o caminho automático e o caminho de contingência.
+O botão `Executar ciclo completo` fica disponível no Competitor Universe apenas para a operação autenticada.
+A ação permanece protegida pelo mesmo `runAiJob`/lease usado pelo cron, portanto não deve executar em paralelo com outro ciclo pesado.

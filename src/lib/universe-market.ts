@@ -105,8 +105,13 @@ export function selectUniverseMissionOpportunities(
 
 
 const GAP_MATCH_STOP_WORDS=new Set([
-  'a','an','and','as','at','be','being','by','for','from','how','in','into','is','it','of','on','or','the','their','through','to','what','why','with',
-  'every','first','explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests','animal','animals'
+  'a','an','and','are','as','at','be','became','because','been','being','between','by','can','could','did','do','does','every','first','for','from',
+  'had','has','have','how','if','in','into','is','it','its','life','my','nobody','of','on','only','or','our','out','over','still','than','that','the',
+  'their','them','they','this','through','to','was','were','what','when','where','which','who','why','with','without','you','your',
+  'como','com','da','das','de','do','dos','e','em','entre','era','essa','esse','esta','este','foi','mais','na','nas','no','nos','o','os','ou','para',
+  'pela','pelas','pelo','pelos','por','que','se','sem','ser','seu','sua','suas','seus','um','uma','uns','umas',
+  'explained','explain','target','space','variable','changed','change','preserved','mechanism','test','tests','channel','channels','video','videos',
+  'history','historical','people','person','ordinary','animal','animals'
 ]);
 
 const ANIMAL_SPECIFIC_TERMS=[
@@ -161,7 +166,7 @@ function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
 type UniverseGapDescriptor=Pick<UniverseGap,'title'|'targetSpace'|'changedVariable'|'firstTests'>;
 
 function universeGapText(gap:UniverseGapDescriptor){
-  return [gap.title,gap.targetSpace,gap.changedVariable,...gap.firstTests].join(' ');
+  return [gap.title,gap.targetSpace,gap.changedVariable].join(' ');
 }
 
 export function universeGapEvidenceMatch(
