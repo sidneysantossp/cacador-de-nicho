@@ -6,4 +6,4 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/srv/auditseo-deploy/bin/cacadores-market-intelligence
-TimeoutStartSec=5min
+TimeoutStartSec=6min
