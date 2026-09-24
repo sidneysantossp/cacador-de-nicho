@@ -19,7 +19,7 @@ function normalizeRow(row:{
   version:number;status:VisualPromptSet['status'];payload:unknown;
   created_at:string;updated_at:string;
 }):VisualPromptSet{
-  const payload=row.payload as VisualPromptSetPayload;
+  const payload=normalizeVisualPromptSet(row.payload as VisualPromptSetPayload,false);
   return {
     ...payload,
     id:row.id,
