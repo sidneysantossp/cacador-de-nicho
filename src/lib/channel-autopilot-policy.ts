@@ -1,5 +1,5 @@
 import type {
-  ChannelAutopilotSettings, ManagedChannel
+  AutopilotReadiness, ChannelAutopilotSettings, ManagedChannel
 } from './types';
 
 export const defaultChannelAutopilot:ChannelAutopilotSettings={
@@ -41,6 +41,19 @@ export function autopilotActivationRequirement(
   if(escalatesToAutonomous||enablesAutoAccept)return 'autonomous';
   if(newlyEnabled)return 'assisted';
   return 'none';
+}
+
+export function autopilotActivationReadinessIssues(
+  requirement:'none'|'assisted'|'autonomous',
+  readiness:AutopilotReadiness
+){
+  if(requirement==='none')return [];
+  if(requirement==='assisted'){
+    return readiness.checks.filter(
+      check=>check.requiredFor==='assisted'&&check.status==='blocker'
+    );
+  }
+  return readiness.checks.filter(check=>check.status!=='pass');
 }
 
 export function channelAutopilotStartsAcceptedEpisode(
