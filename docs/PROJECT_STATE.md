@@ -525,3 +525,21 @@ Regressões reais:
 - doctor + medical/history não valida plague doctors;
 - railway station explícita valida;
 - surname + job e bridge + engineering continuam válidos.
+
+
+## Universe Pilot Brief — 24/09/2026
+
+O fluxo `PILOT READY` já exigia decisão humana, mas a aprovação terminava apenas no ledger `radar_decisions`. Não existia ainda um plano operacional persistente para transformar a decisão em um teste controlado.
+
+Implementação:
+- aprovação humana continua obrigatória; nenhuma oportunidade é aprovada automaticamente;
+- a decisão `approved` passa a incluir atomicamente um `UniversePilotBrief` persistido no mesmo registro de decisão;
+- rejeição continua sem criar brief;
+- o brief congela o snapshot do Market usado na decisão: curve, gap, target evidence, demand status, saturation, supporting channels e demand evidence;
+- registra hipótese de transferência, primeiro episódio, ângulos alternativos, riscos, mecanismo preservado e variável alterada;
+- success gates não inventam CTR, retenção, views ou percentuais: exigem publicação controlada, comparação apenas contra baseline real do canal próprio quando disponível e feedback pós-publicação;
+- stop gates impedem escala se revisão factual falhar, se não houver evidência real do canal próprio ou se o Market perder PILOT READY antes da produção;
+- próximo gate explícito: `produce-one-pilot`;
+- Mission Control mostra o Pilot Brief dentro do card depois da aprovação.
+
+A persistência fica atômica porque decisão + brief são um único payload em `radar_decisions`, evitando decisão aprovada sem plano correspondente.
