@@ -238,7 +238,8 @@ test('backend gap resolver can corroborate historical professions beyond AI-sugg
 test('backend gap resolver ignores generic packaging words and first-test leakage',()=>{
   const gap={
     title:'Why Your Hallway Is Shaped by a Medieval Fire Problem',
-    targetSpace:'Domestic architecture shaped by old constraints',
+    targetSpace:'Domestic architecture, medieval hallways and historical fire-design constraints',
+    targetKeywords:['domestic architecture','medieval hallway','fire design'],
     changedVariable:'Home layouts',
     firstTests:[
       'Why Old Houses Had Windows in the Strangest Places',
@@ -264,7 +265,8 @@ test('backend gap resolver ignores generic packaging words and first-test leakag
 test('AI-suggested target ids are rejected unless backend evidence matches the target',()=>{
   const gap={
     title:'Why Old Cities Hid Water in Plain Sight',
-    targetSpace:'Historic urban infrastructure and everyday engineering',
+    targetSpace:'Urban water infrastructure, cisterns and historic city utilities',
+    targetKeywords:['city water','urban infrastructure','cisterns'],
     changedVariable:'Civil water systems and city design',
     firstTests:['Why Old Cities Hid Water in Plain Sight']
   };
@@ -474,4 +476,50 @@ test('used-ancient overlap cannot validate a dentist-tool target',()=>{
   ];
   const resolved=resolveUniverseGapEvidence([weapons,dentistry],gap,[]);
   assert.deepEqual(resolved.channelIds,['dentistry-target']);
+});
+
+
+test('title packaging cannot validate an unrelated target domain',()=>{
+  const gap={
+    title:'The Weird Side of Everyday Institutions',
+    targetSpace:'Everyday public institutions, municipal services, civic signs and public-service objects',
+    targetKeywords:['public institutions','municipal services','civic signs','public services'],
+    changedVariable:'Institutions instead of celebrities',
+    firstTests:[]
+  };
+
+  const brainCurious=competitor('braincurious-noise','Weird Facts');
+  brainCurious.recentUploads=[
+    {id:'b1',title:'The Weird Side of Vladimir Putin!',publishedAt:'2026-09-20T00:00:00Z',views:250000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const civic=competitor('civic-target','Everyday Systems');
+  civic.recentUploads=[
+    {id:'c1',title:'Weird Rules Hidden Inside Everyday Public Services',publishedAt:'2026-09-20T00:00:00Z',views:150000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([brainCurious,civic],gap,['braincurious-noise','civic-target']);
+  assert.deepEqual(resolved.channelIds,['civic-target']);
+  assert.equal(resolved.evidence.some(item=>item.includes('braincurious-noise')),false);
+  assert.equal(resolved.evidence.some(item=>item.includes('domínio target: public, service')),true);
+});
+
+test('target keywords override title packaging when validating direct evidence',()=>{
+  const gap={
+    title:'Every Weird Thing About a Famous City',
+    targetSpace:'Urban water infrastructure, cisterns and municipal water systems',
+    targetKeywords:['water infrastructure','cisterns','municipal water'],
+    changedVariable:'Water systems',
+    firstTests:[]
+  };
+  const packaging=competitor('famous-city-noise','Celebrity Cities');
+  packaging.recentUploads=[
+    {id:'p1',title:'Every Weird Thing About a Famous City',publishedAt:'2026-09-20T00:00:00Z',views:900000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const water=competitor('water-target','Urban History');
+  water.recentUploads=[
+    {id:'w1',title:'How Cisterns Kept a City Water System Alive',publishedAt:'2026-09-20T00:00:00Z',views:180000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([packaging,water],gap,[]);
+  assert.deepEqual(resolved.channelIds,['water-target']);
 });
