@@ -166,7 +166,7 @@ function semanticGapFamilyMatch(competitor:UniverseCompetitor,gapText:string){
 type UniverseGapDescriptor=Pick<UniverseGap,'title'|'targetSpace'|'changedVariable'|'firstTests'>;
 
 function universeGapText(gap:UniverseGapDescriptor){
-  return [gap.title,gap.targetSpace,gap.changedVariable].join(' ');
+  return [gap.title,gap.targetSpace].join(' ');
 }
 
 export function universeGapEvidenceMatch(
