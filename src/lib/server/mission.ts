@@ -94,7 +94,8 @@ function buildBrief(input:{
     }];
   }).slice(0,5);
 
-  const universeOpportunities=selectUniverseMissionOpportunities(input.universeIntelligence,5);
+  const allUniverseOpportunities=selectUniverseMissionOpportunities(input.universeIntelligence,10);
+  const universeOpportunities=allUniverseOpportunities.slice(0,5);
 
   const decisionsNeeded:MissionBrief['decisionsNeeded']=[];
   for(const report of input.reports){
@@ -141,7 +142,7 @@ function buildBrief(input:{
       competitorDna:input.universe.filter(item=>!!item.dna).length,
       universeCurves:input.universeIntelligence?.curves.length??0,
       universeGaps:input.universeIntelligence?.gaps.length??0,
-      universeActionableGaps:universeOpportunities.length,
+      universeActionableGaps:allUniverseOpportunities.length,
       universeQueuePending:input.universeQueue.pending+input.universeQueue.retryable+input.universeQueue.processing,
       universeQueueCompleted:input.universeQueue.completed
     },

@@ -57,7 +57,8 @@ export function hydrateMissionBriefUniverse(
   queue:UniverseImportQueueSummary
 ):MissionBrief|null{
   if(!brief)return null;
-  const universeOpportunities=selectUniverseMissionOpportunities(intelligence??null,5);
+  const allUniverseOpportunities=selectUniverseMissionOpportunities(intelligence??null,10);
+  const universeOpportunities=allUniverseOpportunities.slice(0,5);
   return {
     ...brief,
     market:{
@@ -67,7 +68,7 @@ export function hydrateMissionBriefUniverse(
       competitorDna:competitors.filter(item=>!!item.dna).length,
       universeCurves:intelligence?.curves.length??0,
       universeGaps:intelligence?.gaps.length??0,
-      universeActionableGaps:universeOpportunities.length,
+      universeActionableGaps:allUniverseOpportunities.length,
       universeQueuePending:queue.pending+queue.processing+queue.retryable,
       universeQueueCompleted:queue.completed
     },
