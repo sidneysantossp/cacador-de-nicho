@@ -858,6 +858,9 @@ export type VisualScenePrompt = {
  referenceNames: string[];
  direction: string;
  prompt: string;
+ outputFileStem: string;
+ outputFileName: string;
+ takeNumber: number;
 };
 export type VisualPromptSetPayload = {
  kind: 'visual-prompt-set';
@@ -868,6 +871,12 @@ export type VisualPromptSetPayload = {
  scenePlanVersion: number;
  productionDnaVersion: number;
  styleLock: string;
+ productionNaming: {
+  channelCode: string;
+  episodeNumber: number;
+  takeDigits: number;
+  pattern: string;
+ };
  workflowStage: 'references' | 'scenes' | 'complete';
  characterReferences: VisualCharacterReference[];
  scenePrompts: VisualScenePrompt[];
@@ -974,8 +983,12 @@ export type ExternalImportItem = {
  resourceId?: string;
  error?: string;
  payload: {
-  detectedBy?: 'timecode' | 'scene-number' | 'manual' | 'none';
+  detectedBy?: 'production-name' | 'timecode' | 'scene-number' | 'manual' | 'none';
   normalizedMarker?: string;
+  productionChannelCode?: string;
+  productionEpisodeNumber?: number;
+  productionSceneNumber?: number;
+  productionTakeNumber?: number;
  };
  createdAt: string;
  updatedAt: string;
