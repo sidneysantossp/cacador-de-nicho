@@ -100,6 +100,7 @@ export default function MissionControl({
             <h3>{item.title}</h3>
             <p>Target: {item.targetSpace}</p>
             <div className="mission-first-episode"><span>PRIMEIRO TESTE</span><strong>{item.firstTest}</strong></div>
+            {item.alternateAngles?.length?<div className="mission-next"><span>ÂNGULOS RELACIONADOS ({item.alternateAngles.length})</span><p>{item.alternateAngles.map(angle=>`${angle.title} — ${angle.curveName}`).join(' · ')}</p></div>:null}
             <ul>{item.reasons.slice(0,4).map(reason=><li key={reason}>{reason}</li>)}</ul>
             {item.risks.length>0&&<div className="mission-next"><span>RISCOS</span><p>{item.risks.slice(0,3).join(' · ')}</p></div>}
           </article>)}
