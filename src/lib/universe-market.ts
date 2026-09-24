@@ -165,12 +165,17 @@ function containsTokenPhrase(unitTokens:string[],phraseTokens:string[]){
 function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescriptor){
   const targetText=universeGapTargetText(gap);
   const targetTerms=[...new Set(lexicalTokens(targetText))];
+  const domainAnchorTerms=[...new Set(lexicalTokens(gap.targetSpace))];
   const targetKeywordPhrases=(gap.targetKeywords??[])
     .map(keyword=>({label:keyword,tokens:lexicalTokens(keyword)}))
     .filter(item=>item.tokens.length>0);
   const titleTerms=[...new Set(lexicalTokens(gap.title))];
-  const allTerms=[...new Set([...targetTerms,...titleTerms])];
-  let best={matchedTerms:[] as string[],targetMatchedTerms:[] as string[]};
+  const allTerms=[...new Set([...targetTerms,...domainAnchorTerms,...titleTerms])];
+  let best={
+    matchedTerms:[] as string[],
+    targetMatchedTerms:[] as string[],
+    domainAnchorMatchedTerms:[] as string[]
+  };
 
   for(const unit of competitorEvidenceUnits(competitor)){
     const rawUnitTokens=lexicalTokens(unit);
@@ -180,11 +185,14 @@ function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescripto
         .filter(keyword=>containsTokenPhrase(rawUnitTokens,keyword.tokens))
         .map(keyword=>keyword.label)
       :targetTerms.filter(term=>unitTokens.has(term));
+    const domainAnchorMatchedTerms=domainAnchorTerms.filter(term=>unitTokens.has(term));
     const matchedTerms=allTerms.filter(term=>unitTokens.has(term));
+    const directStrength=targetMatchedTerms.length+domainAnchorMatchedTerms.length;
+    const bestStrength=best.targetMatchedTerms.length+best.domainAnchorMatchedTerms.length;
     if(
-      targetMatchedTerms.length>best.targetMatchedTerms.length||
-      (targetMatchedTerms.length===best.targetMatchedTerms.length&&matchedTerms.length>best.matchedTerms.length)
-    )best={matchedTerms,targetMatchedTerms};
+      directStrength>bestStrength||
+      (directStrength===bestStrength&&matchedTerms.length>best.matchedTerms.length)
+    )best={matchedTerms,targetMatchedTerms,domainAnchorMatchedTerms};
   }
   return best;
 }
@@ -217,11 +225,16 @@ export function universeGapEvidenceMatch(
 ){
   const gapText=universeGapText(gap);
   const direct=directGapMatches(competitor,gap);
-  const familyMatch=semanticGapFamilyMatch(competitor,gapText);
+  const hasExplicitKeywords=!!gap.targetKeywords?.length;
+  const familyMatch=hasExplicitKeywords?false:semanticGapFamilyMatch(competitor,gapText);
+  const directDomainMatch=
+    (direct.targetMatchedTerms.length>=1||direct.domainAnchorMatchedTerms.length>=1)&&
+    direct.matchedTerms.length>=2;
   return {
-    matched:(direct.targetMatchedTerms.length>=1&&direct.matchedTerms.length>=2)||familyMatch,
+    matched:directDomainMatch||familyMatch,
     matchedTerms:direct.matchedTerms,
     targetMatchedTerms:direct.targetMatchedTerms,
+    domainAnchorMatchedTerms:direct.domainAnchorMatchedTerms,
     familyMatch
   };
 }
@@ -246,7 +259,9 @@ export function resolveUniverseGapEvidence(
     }
     const detail=match.targetMatchedTerms.length
       ?`domínio target: ${match.targetMatchedTerms.slice(0,4).join(', ')}; apoio no mesmo título: ${match.matchedTerms.slice(0,5).join(', ')}`
-      :'padrão semântico específico do target encontrado no mesmo título';
+      :match.domainAnchorMatchedTerms.length
+        ?`âncora do target: ${match.domainAnchorMatchedTerms.slice(0,4).join(', ')}; apoio no mesmo título: ${match.matchedTerms.slice(0,5).join(', ')}`
+        :'padrão semântico legado específico do target encontrado no mesmo título';
     const origin=suggested.has(competitor.channelId)?'Sugestão da IA validada':'Corroboração do backend';
     evidence.push(`${origin} em ${competitor.name}: ${detail}.`);
   }
