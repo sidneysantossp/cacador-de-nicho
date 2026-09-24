@@ -95,7 +95,11 @@ export function revalidateUniverseMarketEvidenceReport(
     const resolved=resolveUniverseGapEvidence(withDna,gap,gap.targetEvidenceChannelIds);
     const demandStatus=universeGapDemandStatus(curve.classification,resolved.channelIds);
     resolved.channelIds.forEach(id=>sourceIds.add(id));
-    const preserved=gap.demandEvidence.filter(item=>!item.startsWith('Revalidação determinística do Market:'));
+    const preserved=gap.demandEvidence.filter(item=>
+      !item.startsWith('Revalidação determinística do Market:')&&
+      !item.startsWith('Sugestão da IA validada em ')&&
+      !item.startsWith('Corroboração do backend em ')
+    );
     const demandEvidence=[
       `Revalidação determinística do Market: ${withDna.length} Channel DNAs verificados em ${revalidatedAt}.`,
       ...resolved.evidence,
