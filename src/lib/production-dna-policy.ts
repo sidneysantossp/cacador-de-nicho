@@ -4,6 +4,35 @@ function unique(items:string[]){
   return [...new Set(items.map(item=>item.trim()).filter(Boolean))];
 }
 
+export function anatomyScaleLockText(
+  dna:ProductionDnaPayload,
+  characterIds:string[]=[]
+){
+  const bible=dna.visual.anatomyScaleBible;
+  if(!bible||bible.status!=='locked')return '';
+  const selected=bible.characters.filter(item=>characterIds.includes(item.characterId));
+  const characters=selected.map(item=>
+    item.characterId+'='+item.heightG.toFixed(2)+'G; '+item.build+'; '+item.headBodyRule+'; '+item.postureRule+
+    (item.proportionRules.length?'; '+item.proportionRules.join('; '):'')+
+    '; master='+item.masterAssetName
+  );
+  const props=bible.props.map(item=>{
+    const dims=[
+      item.dimensionsG.height!==undefined?'H '+item.dimensionsG.height.toFixed(2)+'G':'',
+      item.dimensionsG.width!==undefined?'W '+item.dimensionsG.width.toFixed(2)+'G':'',
+      item.dimensionsG.diameter!==undefined?'D '+item.dimensionsG.diameter.toFixed(2)+'G':''
+    ].filter(Boolean).join(' / ');
+    return item.name+' ['+dims+'] '+item.scaleRule+'; master='+item.masterAssetName;
+  });
+  return [
+    'ANATOMY & SCALE LOCK V'+bible.version,
+    '1G = '+bible.unit.definition,
+    ...characters,
+    ...props,
+    ...bible.globalRules
+  ].filter(Boolean).join(' | ');
+}
+
 export function productionDnaFormatIssues(dna:ProductionDnaPayload){
   const issues:string[]=[];
   const target=dna.format.targetDurationMinutes;
@@ -27,10 +56,11 @@ export function buildProductionPrompt(
     character.description,
     ...character.visualRules
   ]).filter(Boolean).join(', ');
+  const anatomyScaleLock=anatomyScaleLockText(dna,characterIds);
 
   const variables:Record<string,string>={
     scene_direction:sceneDirection.trim(),
-    character_bible:characterBible,
+    character_bible:[characterBible,anatomyScaleLock].filter(Boolean).join(', '),
     visual_bible:dna.visual.basePrompt.trim(),
     negative_rules:unique([
       dna.visual.negativePrompt,
