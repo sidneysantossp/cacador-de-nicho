@@ -27,6 +27,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/render-worker.mjs ./scripts/render-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/youtube-publish-worker.mjs ./scripts/youtube-publish-worker.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/episode-automation-worker.mjs ./scripts/episode-automation-worker.mjs
 USER nextjs
 EXPOSE 3000
 CMD ["node","server.js"]
