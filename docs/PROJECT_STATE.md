@@ -611,3 +611,21 @@ Regras:
 - a decisão persiste `pilotHandoff` com channelId, episodeId e contentProjectId.
 
 Objetivo: conectar discovery → decisão humana → Content OS sem criar um pipeline paralelo e sem pular os gates já existentes de pesquisa, fact-check e aprovação.
+
+
+## Assisted-manual operating model — 24/09/2026
+
+Decisão operacional vigente:
+- a plataforma permanece tecnicamente completa, com APIs, Supabase, GitHub, VPS, endpoints manuais e credenciais preservados;
+- nenhuma inteligência editorial deve rodar autonomamente;
+- nenhum Channel DNA, Market Intelligence, análise profunda, Opportunity Report, Pilot Brief, Content OS, Script Engine, produção, render, learning loop ou publicação é iniciado apenas por relógio;
+- `cacadores-universe-cycle.timer` e `cacadores-market-intelligence.timer` ficam desabilitados;
+- timers de sync dos workers de episode automation, closed loop, render e YouTube publish ficam desabilitados;
+- os workers persistentes correspondentes ficam parados quando não estão sendo usados;
+- continuam automáticos somente `cacadores-health-watch.timer`, `cacadores-auto-deploy.timer` e `cacadores-maintenance.timer`, além das rotinas normais do sistema operacional;
+- o health-watch respeita o arquivo runtime `/srv/auditseo-deploy/state/cacador-de-nicho-operation-mode.json` e não pode religar Universe/Market quando `mode=assisted-manual`;
+- a operação passa a ser conduzida pelo operador em conjunto com ChatGPT: ao receber comandos como “rode a operação da manhã/tarde/noite”, ChatGPT deve inspecionar o estado live, identificar o trabalho realmente necessário, executar somente os passos explicitamente úteis e retornar os achados para decisão conjunta;
+- APIs de IA continuam disponíveis como ferramenta/fallback deliberado, mas nenhuma chamada paga deve ser disparada automaticamente;
+- o gate humano de piloto permanece obrigatório e nenhuma decisão é tomada em nome do operador.
+
+Motivação: preservar caixa enquanto os canais ainda não geram receita, aproveitar análise assistida sob demanda e eliminar gasto de IA causado apenas por cadência de scheduler.
