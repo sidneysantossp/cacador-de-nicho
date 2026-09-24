@@ -139,3 +139,16 @@ Regras:
 - o Mission Control processa a fila antes de atualizar concorrentes existentes e antes do Radar externo.
 
 A fila é persistente, protegida por RLS e visível no Universe e no Mission Brief.
+
+
+## Universe Daily Cron
+
+O projeto registra um cron Vercel em `vercel.json` para `/api/cron/universe` às 10:00 UTC (07:00 BRT).
+
+Por execução:
+- claim atômico de até 25 itens de `radar_universe_queue`;
+- resolução/enriquecimento de concorrentes sem `search.list`;
+- um lote de Channel DNA de até 5 concorrentes ainda sem DNA;
+- sem reprocessamento automático de concorrentes que já possuem DNA.
+
+O endpoint usa a mesma proteção `CRON_SECRET` do cron principal. Se a variável estiver ausente ou inválida, a execução falha fechada com 401.
