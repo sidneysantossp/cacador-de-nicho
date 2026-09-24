@@ -154,16 +154,32 @@ function hasAnyTerm(corpus:string,terms:string[]){
   const tokens=new Set(lexicalNormalize(corpus).split(' ').filter(Boolean));
   return terms.some(term=>tokens.has(term));
 }
+function containsTokenPhrase(unitTokens:string[],phraseTokens:string[]){
+  if(!phraseTokens.length||phraseTokens.length>unitTokens.length)return false;
+  for(let start=0;start<=unitTokens.length-phraseTokens.length;start++){
+    if(phraseTokens.every((token,index)=>unitTokens[start+index]===token))return true;
+  }
+  return false;
+}
+
 function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescriptor){
   const targetText=universeGapTargetText(gap);
   const targetTerms=[...new Set(lexicalTokens(targetText))];
+  const targetKeywordPhrases=(gap.targetKeywords??[])
+    .map(keyword=>({label:keyword,tokens:lexicalTokens(keyword)}))
+    .filter(item=>item.tokens.length>0);
   const titleTerms=[...new Set(lexicalTokens(gap.title))];
   const allTerms=[...new Set([...targetTerms,...titleTerms])];
   let best={matchedTerms:[] as string[],targetMatchedTerms:[] as string[]};
 
   for(const unit of competitorEvidenceUnits(competitor)){
-    const unitTokens=new Set(lexicalTokens(unit));
-    const targetMatchedTerms=targetTerms.filter(term=>unitTokens.has(term));
+    const rawUnitTokens=lexicalTokens(unit);
+    const unitTokens=new Set(rawUnitTokens);
+    const targetMatchedTerms=targetKeywordPhrases.length
+      ?targetKeywordPhrases
+        .filter(keyword=>containsTokenPhrase(rawUnitTokens,keyword.tokens))
+        .map(keyword=>keyword.label)
+      :targetTerms.filter(term=>unitTokens.has(term));
     const matchedTerms=allTerms.filter(term=>unitTokens.has(term));
     if(
       targetMatchedTerms.length>best.targetMatchedTerms.length||

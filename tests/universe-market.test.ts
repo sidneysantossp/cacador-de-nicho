@@ -501,7 +501,7 @@ test('title packaging cannot validate an unrelated target domain',()=>{
   const resolved=resolveUniverseGapEvidence([brainCurious,civic],gap,['braincurious-noise','civic-target']);
   assert.deepEqual(resolved.channelIds,['civic-target']);
   assert.equal(resolved.evidence.some(item=>item.includes('braincurious-noise')),false);
-  assert.equal(resolved.evidence.some(item=>item.includes('domínio target: public, service')),true);
+  assert.equal(resolved.evidence.some(item=>item.includes('domínio target: public services')),true);
 });
 
 test('target keywords override title packaging when validating direct evidence',()=>{
@@ -522,4 +522,46 @@ test('target keywords override title packaging when validating direct evidence',
   ];
   const resolved=resolveUniverseGapEvidence([packaging,water],gap,[]);
   assert.deepEqual(resolved.channelIds,['water-target']);
+});
+
+
+test('multiword target keywords cannot be satisfied by unrelated isolated words',()=>{
+  const gap={
+    title:'Could a Modern Fire Crew Save a Medieval City From a Major Fire?',
+    targetSpace:'urban fire response',
+    targetKeywords:['firefighters','fire engines','water pumps','city fires','firebreaks','medieval towns'],
+    changedVariable:'Modern fire response in a historical city',
+    firstTests:[]
+  };
+
+  const warZone=competitor('war-zone-engine-pump','Military History');
+  warZone.recentUploads=[
+    {id:'w1',title:'How WW1 Pilots Started an Engine Without a Fuel Pump',publishedAt:'2026-09-20T00:00:00Z',views:250000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const fireHistory=competitor('fire-history-target','Urban History');
+  fireHistory.recentUploads=[
+    {id:'f1',title:'How Medieval Towns Used Firebreaks to Stop City Fires',publishedAt:'2026-09-20T00:00:00Z',views:140000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+
+  const resolved=resolveUniverseGapEvidence([warZone,fireHistory],gap,['war-zone-engine-pump']);
+  assert.deepEqual(resolved.channelIds,['fire-history-target']);
+  assert.equal(resolved.evidence.some(item=>item.includes('war-zone-engine-pump')),false);
+});
+
+test('multiword bridge keyword validates a real bridge-domain title',()=>{
+  const gap={
+    title:"How History's Greatest Bridge Builders Died",
+    targetSpace:'historical bridge engineering',
+    targetKeywords:['bridge builders','suspension bridges','stone bridges','civil engineers','bridge construction'],
+    changedVariable:'Bridge engineering',
+    firstTests:[]
+  };
+  const whirl=competitor('whirl-bridge','History');
+  whirl.recentUploads=[
+    {id:'b1',title:'How You Invented The Suspension Bridge (Accidentally)',publishedAt:'2026-09-20T00:00:00Z',views:120000,duration:'PT8M',thumbnail:'',url:''}
+  ];
+  const resolved=resolveUniverseGapEvidence([whirl],gap,['whirl-bridge']);
+  assert.deepEqual(resolved.channelIds,['whirl-bridge']);
+  assert.equal(resolved.evidence.some(item=>item.includes('suspension bridges')),true);
 });

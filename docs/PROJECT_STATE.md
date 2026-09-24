@@ -353,3 +353,18 @@ Correção estrutural:
 - dados antigos sem `targetKeywords` continuam compatíveis via fallback para `targetSpace`.
 
 Objetivo: separar definitivamente "o formato que chama atenção" do "assunto que comprova demanda no target".
+
+
+## Phrase-aware target keywords — 24/09/2026
+
+O primeiro Market com `targetKeywords` encontrou um novo falso positivo: War Zone validava `urban fire response` porque os termos internos de `fire engines` e `water pumps` eram quebrados em palavras soltas e coincidiam com um vídeo sobre `engine + fuel pump` de aviões da WW1.
+
+Hardening:
+- quando `targetKeywords` existe, cada keyword/frase é validada como sequência semântica dentro do mesmo título;
+- `fire engines` não é satisfeito por `engine` isolado;
+- `water pumps` não é satisfeito por `fuel pump`;
+- singular/plural simples continuam normalizados;
+- gaps legados sem `targetKeywords` mantêm o fallback lexical anterior;
+- regressão real rejeita War Zone para resposta urbana a incêndio e preserva WhirlTales para `suspension bridges`.
+
+Isso mantém packaging, palavras soltas e domínio-alvo como camadas separadas.
