@@ -103,6 +103,7 @@ export default function Dashboard(){
       mode={data.mode}
       busy={busy}
       searchBudget={data.youtubeSearchBudget}
+      marketIntelligence={data.universeMarketIntelligence}
       pilotDecisions={data.decisions.filter(item=>item.kind==='universe-pilot')}
       onRun={()=>action({action:'mission'},'mission')}
       onOpenStudy={(channelStudyId)=>{setAnalysisFocusId(channelStudyId);setView('analysis');}}
