@@ -108,6 +108,16 @@ export function nextEpisodeAutoAcceptIssues(
   return [...new Set(issues)];
 }
 
+export function autopilotOperationalIssues(input:{
+  automaticAcceptanceInLast24Hours:boolean;
+  activeEpisodeAutomation:boolean;
+}){
+  const issues:string[]=[];
+  if(input.automaticAcceptanceInLast24Hours)issues.push('auto-accept-cooldown');
+  if(input.activeEpisodeAutomation)issues.push('episode-automation-active');
+  return issues;
+}
+
 export type AutopilotDecisionPreview = {
   triggerWindowHours:number|null;
   action:'disabled'|'generate-plan'|'review'|'auto-accept';
