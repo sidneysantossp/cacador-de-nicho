@@ -1,10 +1,7 @@
-export type OwnedMediaSemantic={
-  subjects:string[];
-  locations:string[];
-  periods:string[];
-  shotTypes:string[];
-  moods:string[];
-};
+import { classifyMediaTaxonomy } from './media-taxonomy';
+import type { MediaTaxonomySemantic } from './media-taxonomy';
+
+export type OwnedMediaSemantic=MediaTaxonomySemantic;
 
 const STOP=new Set([
   'a','an','and','at','by','for','from','in','into','of','on','or','the','to','with',
@@ -65,32 +62,22 @@ export function parseOwnedMediaFilename(fileName:string){
     if(raw[i].length<2||raw[i+1].length<2)continue;
     bigrams.push(raw[i]+' '+raw[i+1]);
   }
-  const tags=unique([...bigrams,...meaningful],32);
-  const locations=markerLocations(raw);
-  const shotTypes=unique([
-    raw.includes('aerial')?'aerial':'',
-    raw.includes('drone')?'drone':'',
-    raw.includes('pov')?'pov':'',
-    raw.includes('wide')?'wide':'',
-    raw.includes('closeup')||raw.includes('close')?'close-up':'',
-    raw.includes('street')?'street-level':''
-  ]);
-  const periods=unique([
-    ...raw.filter(token=>/^(19|20)\d{2}$/.test(token)),
-    raw.includes('night')?'night':'',
-    raw.includes('sunset')?'sunset':'',
-    raw.includes('sunrise')?'sunrise':'',
-    raw.includes('day')?'day':''
-  ]);
+  const taxonomy=classifyMediaTaxonomy(base);
+  const tags=unique([
+    ...bigrams,...meaningful,
+    ...taxonomy.countries,...taxonomy.regions,...taxonomy.cities,...taxonomy.districts,
+    ...taxonomy.landmarks,...taxonomy.scenes,...taxonomy.timeOfDay,...taxonomy.shotTypes
+  ],50);
+  const locations=unique([...markerLocations(raw),...taxonomy.locations],30);
+  const years=raw.filter(token=>/^(19|20)\d{2}$/.test(token));
   return {
     title:titleCase(base||fileName),
     tags,
     semantic:{
-      subjects:unique(meaningful.slice(0,12)),
+      ...taxonomy,
+      subjects:unique([...meaningful.slice(0,12),...taxonomy.scenes,...taxonomy.objects],24),
       locations,
-      periods,
-      shotTypes,
-      moods:[]
+      periods:unique([...years,...taxonomy.periods],20)
     } satisfies OwnedMediaSemantic
   };
 }
@@ -101,6 +88,10 @@ export function ownedMediaSearchText(input:{
   return [
     input.title,input.originalName,...input.tags,
     ...input.semantic.subjects,...input.semantic.locations,...input.semantic.periods,
-    ...input.semantic.shotTypes,...input.semantic.moods
+    ...input.semantic.countries,...input.semantic.regions,...input.semantic.cities,
+    ...input.semantic.districts,...input.semantic.landmarks,...input.semantic.scenes,
+    ...input.semantic.objects,...input.semantic.activities,...input.semantic.people,
+    ...input.semantic.timeOfDay,...input.semantic.weather,...input.semantic.seasons,
+    ...input.semantic.shotTypes,...input.semantic.cameraMotion,...input.semantic.moods
   ].join(' ').toLowerCase();
 }
