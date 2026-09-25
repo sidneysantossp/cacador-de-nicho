@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
+  attachOwnedMediaToScene, deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
   selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
 
@@ -25,6 +25,18 @@ const schema=z.discriminatedUnion('action',[
     modelId:z.enum(['veo-3.1-generate-preview','veo-3.1-fast-generate-preview','veo-3.1-lite-generate-preview']).optional(),
     resolution:z.enum(['720p','1080p','4k']).optional(),
     durationSeconds:z.union([z.literal(4),z.literal(6),z.literal(8)]).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('attachOwned'),
+    promptSetId:z.string().uuid(),
+    sceneId:z.string().uuid(),
+    ownedAssetId:z.string().uuid(),
+    segmentId:z.string().uuid(),
+    sourceStartSeconds:z.number().nonnegative().optional(),
+    sourceEndSeconds:z.number().positive().optional(),
+    matchScore:z.number().min(0).max(1).optional(),
+    visualCoverage:z.number().min(0).max(1).optional(),
+    select:z.boolean().optional()
   }).strict(),
   z.object({action:z.literal('refreshVideo'),assetId:z.string().uuid()}).strict(),
   z.object({action:z.literal('select'),assetId:z.string().uuid()}).strict(),
@@ -80,6 +92,14 @@ export async function POST(request:Request){
     if(body.action==='startVideo'){
       const asset=await startGoogleVideo(body);
       return Response.json({message:'Job Veo iniciado. Atualize o status até a variante ficar pronta.',asset,assets:await listSceneAssets(body.promptSetId)});
+    }
+    if(body.action==='attachOwned'){
+      const asset=await attachOwnedMediaToScene(body);
+      return Response.json({
+        message:'Trecho da Biblioteca OWNED vinculado à cena sem duplicar o arquivo.',
+        asset,
+        assets:await listSceneAssets(body.promptSetId)
+      });
     }
     if(body.action==='refreshVideo'){
       const asset=await refreshGoogleVideo(body.assetId);
