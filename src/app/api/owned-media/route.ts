@@ -4,7 +4,7 @@ import { dbConfigured } from '@/lib/server/db';
 import { mediaTaxonomyCatalog } from '@/lib/media-taxonomy';
 import {
   deleteOwnedMediaAsset, finalizeOwnedMediaUpload, listOwnedMediaAssets,
-  prepareOwnedMediaUpload, reclassifyOwnedMediaTaxonomy, updateOwnedMediaMetadata
+  preflightOwnedMediaDuplicates, prepareOwnedMediaUpload, reclassifyOwnedMediaTaxonomy, updateOwnedMediaMetadata
 } from '@/lib/server/owned-media';
 
 export const runtime='nodejs';
@@ -63,7 +63,17 @@ const schema=z.discriminatedUnion('action',[
     action:z.literal('prepare'),
     fileName:z.string().trim().min(1).max(255),
     mimeType:z.string().trim().min(1).max(120),
-    bytes:z.number().int().positive().max(2*1024*1024*1024)
+    bytes:z.number().int().positive().max(2*1024*1024*1024),
+    contentFingerprint:z.string().trim().max(96).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('preflight'),
+    files:z.array(z.object({
+      clientId:z.string().uuid(),
+      fileName:z.string().trim().min(1).max(255),
+      bytes:z.number().int().positive().max(2*1024*1024*1024),
+      contentFingerprint:z.string().trim().max(96).optional()
+    }).strict()).min(1).max(100)
   }).strict(),
   z.object({
     action:z.literal('finalize'),
@@ -92,10 +102,14 @@ export async function POST(request:Request){
   try{
     requireOperator(request);
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar a Biblioteca de Mídia.',503);
-    if(Number(request.headers.get('content-length')??0)>30000)throw new HttpError('Solicitação muito extensa.',413);
+    if(Number(request.headers.get('content-length')??0)>200000)throw new HttpError('Solicitação muito extensa.',413);
     const parsed=schema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os dados enviados para a Biblioteca.',400);
 
+    if(parsed.data.action==='preflight'){
+      const results=await preflightOwnedMediaDuplicates(parsed.data.files);
+      return Response.json({message:'Verificação de duplicidade concluída.',results});
+    }
     if(parsed.data.action==='prepare'){
       const result=await prepareOwnedMediaUpload(parsed.data);
       return Response.json({message:'Upload preparado para transmissão segura ao R2.',...result});

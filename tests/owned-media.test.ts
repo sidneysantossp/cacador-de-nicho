@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ownedMediaKind, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
+import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
 
 test('Owned Media recognizes supported video and image MIME types',()=>{
   assert.equal(ownedMediaKind('video/mp4'),'video');
@@ -46,4 +46,27 @@ test('Media Taxonomy recognizes international city and lifestyle facets',()=>{
   assert.ok(parsed.semantic.timeOfDay.includes('morning'));
   assert.ok(parsed.semantic.weather.includes('rain'));
   assert.ok(parsed.semantic.shotTypes.includes('wide'));
+});
+
+
+test('Owned Media duplicate normalization ignores browser copy suffixes',()=>{
+  assert.equal(
+    normalizeOwnedMediaDuplicateName('realistic-new-york-city-flag-waving.mov'),
+    normalizeOwnedMediaDuplicateName('realistic-new-york-city-flag-waving (1).mov')
+  );
+  assert.equal(
+    ownedMediaDuplicateNameKey('clip-copy-2.mp4',533303357),
+    ownedMediaDuplicateNameKey('clip.mp4',533303357)
+  );
+});
+
+test('Owned Media duplicate key keeps genuinely different filenames distinct',()=>{
+  assert.notEqual(
+    ownedMediaDuplicateNameKey('new-york-skyline-day.mp4',1000),
+    ownedMediaDuplicateNameKey('new-york-skyline-night.mp4',1000)
+  );
+  assert.notEqual(
+    ownedMediaDuplicateNameKey('same-name.mp4',1000),
+    ownedMediaDuplicateNameKey('same-name.mp4',1001)
+  );
 });

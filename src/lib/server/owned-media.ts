@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { OwnedMediaAsset } from '@/lib/types';
-import { ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '@/lib/owned-media-policy';
+import { normalizeOwnedMediaDuplicateName, ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '@/lib/owned-media-policy';
 import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -16,6 +16,8 @@ type Row={
   storage_path:string;
   mime_type:string;
   original_name:string;
+  normalized_name:string|null;
+  content_fingerprint:string|null;
   bytes:number|string;
   width:number|null;
   height:number|null;
@@ -77,10 +79,96 @@ async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
   };
 }
 
+export type OwnedMediaDuplicateProbe={
+  clientId:string;
+  fileName:string;
+  bytes:number;
+  contentFingerprint?:string;
+};
+
+export type OwnedMediaDuplicateResult={
+  clientId:string;
+  duplicate:boolean;
+  reason?:'batch-name'|'batch-fingerprint'|'library-name'|'library-fingerprint';
+  duplicateOfName?:string;
+};
+
+function validFingerprint(value:string|undefined){
+  const normalized=(value??'').trim().toLowerCase();
+  return /^sample-sha256-v1:[a-f0-9]{64}$/.test(normalized)?normalized:'';
+}
+
+export async function preflightOwnedMediaDuplicates(
+  probes:OwnedMediaDuplicateProbe[]
+):Promise<OwnedMediaDuplicateResult[]>{
+  const items=probes.map(item=>({
+    ...item,
+    bytes:Math.max(0,Math.round(item.bytes)),
+    normalizedName:normalizeOwnedMediaDuplicateName(item.fileName),
+    fingerprint:validFingerprint(item.contentFingerprint)
+  }));
+  const result=new Map<string,OwnedMediaDuplicateResult>();
+  const seenNames=new Map<string,{clientId:string;fingerprint:string}>();
+  const seenFingerprints=new Map<string,string>();
+
+  for(const item of items){
+    const nameKey=item.normalizedName+'::'+item.bytes;
+    const fingerprintKey=item.fingerprint?item.fingerprint+'::'+item.bytes:'';
+    const priorFingerprint=fingerprintKey?seenFingerprints.get(fingerprintKey):undefined;
+    const priorName=seenNames.get(nameKey);
+    if(priorFingerprint){
+      result.set(item.clientId,{clientId:item.clientId,duplicate:true,reason:'batch-fingerprint'});
+      continue;
+    }
+    if(priorName&&(!item.fingerprint||!priorName.fingerprint||item.fingerprint===priorName.fingerprint)){
+      result.set(item.clientId,{clientId:item.clientId,duplicate:true,reason:'batch-name'});
+      continue;
+    }
+    if(!priorName)seenNames.set(nameKey,{clientId:item.clientId,fingerprint:item.fingerprint});
+    if(fingerprintKey)seenFingerprints.set(fingerprintKey,item.clientId);
+  }
+
+  const sizes=[...new Set(items.filter(item=>!result.has(item.clientId)).map(item=>item.bytes).filter(value=>value>0))];
+  if(sizes.length){
+    const query=await db().from('radar_owned_media_assets')
+      .select('id,original_name,normalized_name,content_fingerprint,bytes,status,updated_at')
+      .in('bytes',sizes)
+      .in('status',['uploading','ready'])
+      .order('created_at',{ascending:false})
+      .limit(2000);
+    if(query.error)throw new HttpError('Falha ao verificar duplicidade da Biblioteca.',502);
+    const now=Date.now();
+    const rows=(query.data??[]).filter(row=>
+      row.status==='ready'||now-new Date(String(row.updated_at)).getTime()<2*60*60*1000
+    );
+    for(const item of items){
+      if(result.has(item.clientId))continue;
+      const match=rows.find(row=>{
+        if(Number(row.bytes)!==item.bytes)return false;
+        const rowFingerprint=validFingerprint(String(row.content_fingerprint??''));
+        if(item.fingerprint&&rowFingerprint)return item.fingerprint===rowFingerprint;
+        const rowName=String(row.normalized_name??'').trim()||normalizeOwnedMediaDuplicateName(String(row.original_name??''));
+        return !!item.normalizedName&&rowName===item.normalizedName;
+      });
+      if(!match)continue;
+      const fingerprintMatch=!!item.fingerprint&&validFingerprint(String(match.content_fingerprint??''))===item.fingerprint;
+      result.set(item.clientId,{
+        clientId:item.clientId,
+        duplicate:true,
+        reason:fingerprintMatch?'library-fingerprint':'library-name',
+        duplicateOfName:String(match.original_name??'')
+      });
+    }
+  }
+
+  return items.map(item=>result.get(item.clientId)??{clientId:item.clientId,duplicate:false});
+}
+
 export async function prepareOwnedMediaUpload(input:{
   fileName:string;
   mimeType:string;
   bytes:number;
+  contentFingerprint?:string;
 }){
   const fileName=input.fileName.trim().slice(0,255);
   const mimeType=input.mimeType.trim().toLowerCase();
@@ -90,14 +178,15 @@ export async function prepareOwnedMediaUpload(input:{
   if(!Number.isFinite(input.bytes)||input.bytes<=0)throw new HttpError('O arquivo está vazio.',400);
   if(input.bytes>MAX_BYTES)throw new HttpError('Arquivo maior que 2 GB. Divida o material antes de importar.',413);
 
-  const duplicate=checked(await db().from('radar_owned_media_assets')
-    .select('id,status')
-    .eq('original_name',fileName)
-    .eq('bytes',Math.round(input.bytes))
-    .in('status',['uploading','ready'])
-    .limit(1)
-    .maybeSingle());
-  if(duplicate)throw new HttpError('Este arquivo já existe ou está sendo enviado para a Biblioteca.',409);
+  const normalizedName=normalizeOwnedMediaDuplicateName(fileName);
+  const contentFingerprint=validFingerprint(input.contentFingerprint);
+  const [duplicate]=await preflightOwnedMediaDuplicates([{
+    clientId:'prepare',
+    fileName,
+    bytes:input.bytes,
+    contentFingerprint:contentFingerprint||undefined
+  }]);
+  if(duplicate?.duplicate)throw new HttpError('Arquivo duplicado.',409);
 
   const id=crypto.randomUUID();
   const now=new Date();
@@ -122,6 +211,8 @@ export async function prepareOwnedMediaUpload(input:{
     storage_path:storagePath,
     mime_type:mimeType,
     original_name:fileName,
+    normalized_name:normalizedName,
+    content_fingerprint:contentFingerprint||null,
     bytes:Math.round(input.bytes),
     width:null,
     height:null,
@@ -135,7 +226,8 @@ export async function prepareOwnedMediaUpload(input:{
       source:'operator-drag-drop',
       filenameIntelligence:parsed,
       taxonomyVersion:MEDIA_TAXONOMY_VERSION,
-      expectedBytes:Math.round(input.bytes)
+      expectedBytes:Math.round(input.bytes),
+      contentFingerprint:contentFingerprint||null
     }
   }));
   return {assetId:id,uploadUrl:'/api/owned-media/upload?assetId='+encodeURIComponent(id),storagePath,parsed};
