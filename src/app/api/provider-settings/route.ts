@@ -5,13 +5,13 @@ import { modelSchema } from '@/lib/server/validation';
 import { modelOptions } from '@/lib/models';
 import {
   providerSecret, providerStatuses, removeProviderSecret, saveProviderSecret,
-  saveR2ProviderConfig, testProvider
+  saveR2ProviderConfig, saveVecteezyProviderConfig, testProvider
 } from '@/lib/server/providers';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
-const provider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','r2']);
+const provider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
 const schema=z.discriminatedUnion('action',[
   z.object({action:z.literal('saveSecret'),provider,key:z.string().trim().min(8).max(1000)}).strict(),
   z.object({
@@ -21,6 +21,11 @@ const schema=z.discriminatedUnion('action',[
     secretAccessKey:z.string().trim().min(16).max(500),
     bucket:z.string().trim().min(3).max(200),
     publicUrl:z.string().trim().max(1000).optional().default('')
+  }).strict(),
+  z.object({
+    action:z.literal('saveVecteezy'),
+    accountId:z.string().trim().regex(/^\d+$/).max(50),
+    secretKey:z.string().trim().min(8).max(1000)
   }).strict(),
   z.object({action:z.literal('test'),provider}).strict(),
   z.object({action:z.literal('removeSecret'),provider}).strict(),
@@ -67,6 +72,11 @@ export async function POST(request:Request){
         publicUrl:body.publicUrl||undefined
       });
       return Response.json({...await payload(),message:'Cloudflare R2 validado e salvo no cofre.'});
+    }
+
+    if(body.action==='saveVecteezy'){
+      await saveVecteezyProviderConfig({accountId:body.accountId,secretKey:body.secretKey});
+      return Response.json({...await payload(),message:'Vecteezy validado e salvo no cofre.'});
     }
 
     if(body.action==='removeSecret'){
