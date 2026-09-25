@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
-  automationHttpErrorShouldHold, automationRenderSnapshotIssues,
+  automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
   automationTimelineSnapshotIssues, automationVideoEditSnapshotIssues, inspectAutomationSteps
 } from '../src/lib/episode-automation-policy';
 
@@ -157,4 +158,27 @@ test('Automation does not reuse a completed render from an older edit snapshot',
   });
   assert.ok(issues.includes('stale-video-edit-version'));
   assert.ok(issues.includes('stale-timeline-version'));
+});
+
+
+test('Automation invalidates QA package and publish when upstream identity changes',()=>{
+  assert.deepEqual(automationQualitySnapshotIssues({
+    payload:{renderJobId:'render-old',videoEditId:'edit-1',videoEditVersion:2},
+    renderJobId:'render-new',
+    videoEditId:'edit-1',
+    videoEditVersion:3
+  }),['stale-render-job','stale-video-edit-version']);
+
+  assert.deepEqual(automationPackageSnapshotIssues({
+    payload:{qualityReportId:'qa-old',qualityReportVersion:1,renderJobId:'render-old'},
+    qualityReportId:'qa-new',
+    qualityReportVersion:2,
+    renderJobId:'render-new'
+  }),['stale-quality-report','stale-render-job']);
+
+  assert.deepEqual(automationPublishSnapshotIssues({
+    payload:{packageId:'pkg-1',packageVersion:1},
+    packageId:'pkg-1',
+    packageVersion:2
+  }),['stale-publication-package']);
 });
