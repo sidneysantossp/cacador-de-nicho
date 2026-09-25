@@ -283,64 +283,108 @@ async function enrichOwnedAsset(
   metadata:Awaited<ReturnType<typeof probeVideoInput>>,
   assetTitle:string
 ){
-  const all=(selector:(item:OwnedMediaVisualSegment)=>string[])=>mergeUnique(...segments.map(selector));
-  const visualText=segments.map(item=>item.searchText).join(' ');
+  const credible=segments.filter(item=>item.confidence>=.72);
+  const evidence=credible.length?credible:segments;
+  const all=(selector:(item:OwnedMediaVisualSegment)=>string[])=>mergeUnique(...evidence.map(selector));
+  const visualText=evidence.map(item=>item.searchText).join(' ');
   const taxonomy=classifyMediaTaxonomy(visualText);
   const previous=ownedSemantic(source.semantic);
+  const payload=source.payload&&typeof source.payload==='object'?source.payload as Record<string,unknown>:{};
+  const filenameIntelligence=payload.filenameIntelligence&&typeof payload.filenameIntelligence==='object'
+    ?payload.filenameIntelligence as Record<string,unknown>
+    :{};
+  const filenameSemantic=ownedSemantic(filenameIntelligence.semantic);
+
+  const visualLandmarks=mergeUnique(all(item=>item.semantic.landmarks),taxonomy.landmarks);
+  const visualScenes=mergeUnique(all(item=>item.semantic.environments),taxonomy.scenes);
+  const visualObjects=mergeUnique(all(item=>item.semantic.objects),taxonomy.objects);
+  const visualActivities=mergeUnique(all(item=>item.semantic.activities),taxonomy.activities);
+  const visualTime=mergeUnique(all(item=>item.semantic.timeOfDay),taxonomy.timeOfDay);
+  const visualWeather=mergeUnique(all(item=>item.semantic.weather),taxonomy.weather);
+  const visualShots=mergeUnique(all(item=>item.semantic.shotTypes),taxonomy.shotTypes);
+  const visualMotion=mergeUnique(all(item=>item.semantic.cameraMotion),taxonomy.cameraMotion);
+  const visualMoods=mergeUnique(all(item=>[
+    ...item.semantic.moods,...item.semantic.visualStyle
+  ]),taxonomy.moods);
+  const geoContext=mergeUnique(
+    previous.countries,previous.regions,previous.cities,previous.districts
+  );
+
   const semantic:OwnedMediaAsset['semantic']={
-    subjects:mergeUnique(previous.subjects,all(item=>[
+    subjects:mergeUnique(all(item=>[
       ...item.semantic.subjects,...item.semantic.activities,...item.semantic.objects,...item.semantic.environments
-    ])),
-    locations:mergeUnique(previous.locations,all(item=>[
-      ...item.semantic.locations,...item.semantic.landmarks
-    ]),taxonomy.locations),
-    periods:mergeUnique(previous.periods,all(item=>[
-      ...item.semantic.periods,...item.semantic.timeOfDay
-    ]),taxonomy.periods),
+    ]),taxonomy.scenes,taxonomy.objects),
+    locations:mergeUnique(
+      geoContext,
+      all(item=>item.semantic.locations),
+      visualLandmarks,
+      taxonomy.locations
+    ),
+    periods:mergeUnique(
+      all(item=>[...item.semantic.periods,...item.semantic.timeOfDay]),
+      taxonomy.periods
+    ),
     countries:mergeUnique(previous.countries,taxonomy.countries),
     regions:mergeUnique(previous.regions,taxonomy.regions),
     cities:mergeUnique(previous.cities,taxonomy.cities),
     districts:mergeUnique(previous.districts,taxonomy.districts),
-    landmarks:mergeUnique(previous.landmarks,all(item=>item.semantic.landmarks),taxonomy.landmarks),
-    scenes:mergeUnique(previous.scenes,all(item=>item.semantic.environments),taxonomy.scenes),
-    objects:mergeUnique(previous.objects,all(item=>item.semantic.objects),taxonomy.objects),
-    activities:mergeUnique(previous.activities,all(item=>item.semantic.activities),taxonomy.activities),
-    people:mergeUnique(previous.people,taxonomy.people),
-    timeOfDay:mergeUnique(previous.timeOfDay,all(item=>item.semantic.timeOfDay),taxonomy.timeOfDay),
-    weather:mergeUnique(previous.weather,all(item=>item.semantic.weather),taxonomy.weather),
-    seasons:mergeUnique(previous.seasons,taxonomy.seasons),
-    shotTypes:mergeUnique(previous.shotTypes,all(item=>item.semantic.shotTypes),taxonomy.shotTypes),
-    cameraMotion:mergeUnique(previous.cameraMotion,all(item=>item.semantic.cameraMotion),taxonomy.cameraMotion),
-    moods:mergeUnique(previous.moods,all(item=>[
-      ...item.semantic.moods,...item.semantic.visualStyle
-    ]),taxonomy.moods)
+    landmarks:visualLandmarks.length?visualLandmarks:previous.landmarks,
+    scenes:visualScenes.length?visualScenes:previous.scenes,
+    objects:visualObjects.length?visualObjects:previous.objects,
+    activities:visualActivities.length?visualActivities:previous.activities,
+    people:taxonomy.people.length?mergeUnique(taxonomy.people):previous.people,
+    timeOfDay:visualTime.length?visualTime:previous.timeOfDay,
+    weather:visualWeather.length?visualWeather:previous.weather,
+    seasons:taxonomy.seasons.length?mergeUnique(taxonomy.seasons):previous.seasons,
+    shotTypes:visualShots.length?visualShots:previous.shotTypes,
+    cameraMotion:visualMotion.length?visualMotion:previous.cameraMotion,
+    moods:visualMoods.length?visualMoods:previous.moods
   };
+
   const tags=normalizeMediaTags([
-    ...(source.tags??[]),...semantic.landmarks,...semantic.scenes,...semantic.objects,
-    ...semantic.activities,...semantic.people,...semantic.timeOfDay,...semantic.weather,
-    ...semantic.shotTypes,...semantic.cameraMotion
+    ...semantic.countries,...semantic.regions,...semantic.cities,...semantic.districts,
+    ...semantic.landmarks,...semantic.scenes,...semantic.objects,...semantic.activities,
+    ...semantic.people,...semantic.timeOfDay,...semantic.weather,...semantic.shotTypes,
+    ...semantic.cameraMotion,...semantic.moods
   ]).slice(0,50);
+
+  const semanticTitle=assetTitle||source.title||source.original_name;
   const searchText=ownedMediaSearchText({
-    title:source.title||assetTitle,
+    title:semanticTitle,
     originalName:source.original_name,
     tags,
-    semantic
+    semantic,
+    includeOriginalName:false
   });
-  const payload=source.payload&&typeof source.payload==='object'?source.payload as Record<string,unknown>:{};
+
+  const contested={
+    landmarks:filenameSemantic.landmarks.filter(value=>!semantic.landmarks.includes(value)),
+    scenes:filenameSemantic.scenes.filter(value=>!semantic.scenes.includes(value)),
+    locations:filenameSemantic.locations.filter(value=>!semantic.locations.includes(value))
+  };
+
   checked(await db().from('radar_owned_media_assets').update({
     width:metadata.width,
     height:metadata.height,
     duration_seconds:metadata.durationSeconds,
+    title:semanticTitle,
     tags,
     semantic,
     search_text:searchText,
     payload:{
       ...payload,
       technical:{
+        ...(payload.technical&&typeof payload.technical==='object'?payload.technical as Record<string,unknown>:{}),
         fps:metadata.fps,codec:metadata.codec,bitrate:metadata.bitrate,probedAt:new Date().toISOString()
       },
+      visualAuthority:{
+        mode:'visual-over-filename',
+        confidenceFloor:.72,
+        contestedFilename:contested,
+        reconciledAt:new Date().toISOString()
+      },
       visualIntelligence:{
-        status:'completed',assetTitle,segmentCount:segments.length,analyzedAt:new Date().toISOString()
+        status:'completed',assetTitle:semanticTitle,segmentCount:segments.length,analyzedAt:new Date().toISOString()
       }
     },
     updated_at:new Date().toISOString()
@@ -365,6 +409,42 @@ export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMe
     error:analysis.error?String(analysis.error):undefined,
     segments:(rows??[]).map(segment)
   };
+}
+
+export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<OwnedMediaIntelligenceResult>{
+  const source=await ownedAsset(assetId);
+  const analysis=checked(await db().from('radar_owned_media_visual_analysis')
+    .select('asset_id,status,provider,model,asset_title,duration_seconds,payload,error,analyzed_at,created_at,updated_at')
+    .eq('asset_id',assetId).maybeSingle()) as AnalysisRow|null;
+  if(!analysis||analysis.status!=='completed')throw new HttpError('O asset ainda não possui análise visual concluída.',409);
+
+  const rows=checked(await db().from('radar_owned_media_segments')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
+  const segments=(rows??[]).map(segment);
+  if(!segments.length)throw new HttpError('A análise visual não possui segmentos para reconciliar.',409);
+
+  const payload=source.payload&&typeof source.payload==='object'?source.payload as Record<string,unknown>:{};
+  const technical=payload.technical&&typeof payload.technical==='object'
+    ?payload.technical as Record<string,unknown>
+    :{};
+  const numberOrNull=(value:unknown)=>{
+    const parsed=Number(value);
+    return Number.isFinite(parsed)&&parsed>0?parsed:null;
+  };
+  const metadata:Awaited<ReturnType<typeof probeVideoInput>>={
+    durationSeconds:numberOrNull(source.duration_seconds)??numberOrNull(analysis.duration_seconds),
+    width:numberOrNull(source.width),
+    height:numberOrNull(source.height),
+    fps:numberOrNull(technical.fps),
+    codec:String(technical.codec??'').trim()||null,
+    bitrate:numberOrNull(technical.bitrate)
+  };
+  const assetTitle=String(analysis.asset_title??'').trim()||aggregateTitle(
+    segments.map(item=>({title:item.title,semantic:item.semantic}))
+  );
+  await enrichOwnedAsset(source,segments,metadata,assetTitle);
+  return loadOwnedMediaIntelligence(assetId);
 }
 
 export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaIntelligenceResult>{

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { checked, db, dbConfigured } from '@/lib/server/db';
-import { analyzeOwnedMediaAsset } from '@/lib/server/owned-media-intelligence';
+import { analyzeOwnedMediaAsset, loadOwnedMediaIntelligence, rebuildOwnedMediaVisualMetadata } from '@/lib/server/owned-media-intelligence';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -38,7 +38,10 @@ export async function POST(request:Request){
     }
 
     try{
-      const analysis=await analyzeOwnedMediaAsset(String(job.asset_id));
+      const existing=await loadOwnedMediaIntelligence(String(job.asset_id));
+      const analysis=existing.status==='completed'&&existing.segments.length
+        ?await rebuildOwnedMediaVisualMetadata(String(job.asset_id))
+        :await analyzeOwnedMediaAsset(String(job.asset_id));
       checked(await db().from('radar_owned_media_analysis_jobs').update({
         status:'completed',
         worker_token:null,

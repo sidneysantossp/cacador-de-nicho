@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
+import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
 
 test('Owned Media recognizes supported video and image MIME types',()=>{
   assert.equal(ownedMediaKind('video/mp4'),'video');
@@ -69,4 +69,23 @@ test('Owned Media duplicate key keeps genuinely different filenames distinct',()
     ownedMediaDuplicateNameKey('same-name.mp4',1000),
     ownedMediaDuplicateNameKey('same-name.mp4',1001)
   );
+});
+
+
+test('Owned Media semantic index can exclude the literal filename after visual analysis',()=>{
+  const parsed=parseOwnedMediaFilename('bryant-park-new-york.mp4');
+  const text=ownedMediaSearchText({
+    title:'New York Public Library — Library — Daytime',
+    originalName:'bryant-park-new-york.mp4',
+    tags:['new york public library','library','daytime'],
+    semantic:{
+      ...parsed.semantic,
+      landmarks:['new york public library'],
+      scenes:['library'],
+      locations:['new york city','new york public library']
+    },
+    includeOriginalName:false
+  });
+  assert.ok(text.includes('new york public library'));
+  assert.ok(!text.includes('bryant-park-new-york.mp4'));
 });
