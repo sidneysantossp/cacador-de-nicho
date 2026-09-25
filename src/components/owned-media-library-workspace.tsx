@@ -135,10 +135,9 @@ export default function OwnedMediaLibraryWorkspace(){
     });
   }
 
-  async function uploadOne(file:File){
-    const qid=crypto.randomUUID();
-    setQueue(prev=>[{id:qid,name:file.name,stage:'Lendo metadados…'},...prev]);
+  async function uploadOne(qid:string,file:File){
     try{
+      patchQueue(qid,{stage:'Lendo metadados…',progress:0,error:undefined});
       const mimeType=inferMime(file);
       const meta=await browserMetadata(file);
       patchQueue(qid,{stage:'Preparando ingestão…',progress:0});
@@ -163,17 +162,56 @@ export default function OwnedMediaLibraryWorkspace(){
       const finished=await finalize.json().catch(()=>({}));
       if(!finalize.ok)throw new Error(finished.message??'Falha ao finalizar o cadastro.');
       patchQueue(qid,{stage:'Concluído',progress:100});
-      setMessage(file.name+' entrou na Biblioteca de Mídia.');
       await load();
+      return true;
     }catch(error){
       patchQueue(qid,{stage:'Falhou',error:error instanceof Error?error.message:'Falha no upload.'});
+      return false;
     }
   }
 
   async function uploadFiles(files:File[]){
-    const supported=files.filter(file=>/^(video\/(mp4|webm|quicktime)|image\/(jpeg|png|webp))$/.test(inferMime(file)));
-    if(!supported.length){setMessage('Selecione MP4, MOV, WebM, JPG, PNG ou WebP.');return;}
-    for(const file of supported)await uploadOne(file);
+    if(!files.length)return;
+    const supportedMime=/^(video\/(mp4|webm|quicktime)|image\/(jpeg|png|webp))$/;
+    const batch=files.map(file=>({
+      id:crypto.randomUUID(),
+      file,
+      supported:supportedMime.test(inferMime(file))
+    }));
+
+    setQueue(prev=>[
+      ...prev,
+      ...batch.map(({id,file,supported})=>({
+        id,
+        name:file.name,
+        stage:supported?'Na fila':'Falhou',
+        progress:supported?0:undefined,
+        error:supported?undefined:'Formato não suportado. Use MP4, MOV, WebM, JPG, PNG ou WebP.'
+      }))
+    ]);
+
+    const processable=batch.filter(item=>item.supported);
+    const rejected=batch.length-processable.length;
+    if(!processable.length){
+      setMessage('Nenhum dos arquivos selecionados possui formato suportado.');
+      return;
+    }
+
+    setMessage(
+      processable.length+' arquivo(s) adicionado(s) à fila'+
+      (rejected?' · '+rejected+' formato(s) não suportado(s).':'.')
+    );
+
+    let completed=0;
+    let failed=0;
+    for(const item of processable){
+      const ok=await uploadOne(item.id,item.file);
+      if(ok)completed++;else failed++;
+    }
+    setMessage(
+      completed+' upload(s) concluído(s)'+
+      (failed?' · '+failed+' falhou/falharam.':'.')
+    );
   }
 
   async function remove(item:OwnedMediaAsset){
@@ -225,7 +263,7 @@ export default function OwnedMediaLibraryWorkspace(){
       <UploadCloud size={34}/>
       <div><strong>Arraste seus arquivos aqui</strong><span>ou clique para selecionar · transmissão em streaming ao Cloudflare R2</span></div>
       <em>MP4 · MOV · WebM · JPG · PNG · WebP · até 2 GB por arquivo</em>
-      <input ref={inputRef} hidden multiple type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" onChange={e=>void uploadFiles([...(e.target.files??[])])}/>
+      <input ref={inputRef} hidden multiple type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" onChange={e=>{const files=[...(e.target.files??[])];e.currentTarget.value='';void uploadFiles(files);}}/>
     </section>
 
     {!!queue.length&&<section className="owned-upload-queue">
