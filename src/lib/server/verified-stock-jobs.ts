@@ -145,3 +145,20 @@ export async function enqueueVerifiedStockJob(input:{
   }).select(select).single()) as Row;
   return normalize(row);
 }
+
+
+export async function restartVerifiedStockJob(jobId:string){
+  const now=new Date().toISOString();
+  const row=checked(await db().from('radar_verified_stock_jobs').update({
+    status:'queued',
+    worker_token:null,
+    lease_until:null,
+    attempts:0,
+    available_at:now,
+    result:{},
+    last_error:null,
+    completed_at:null,
+    updated_at:now
+  }).eq('id',jobId).select(select).single()) as Row;
+  return normalize(row);
+}
