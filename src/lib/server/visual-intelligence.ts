@@ -10,7 +10,7 @@ import { HttpError } from './auth';
 import { checked, db } from './db';
 import { downloadMedia } from './media-storage';
 import { providerSecret } from './providers';
-import { normalizeMediaSemantic, normalizeMediaTags, scoreVisualSegment, visualSegmentSearchText } from '@/lib/media-library-policy';
+import { normalizeMediaSemantic, normalizeMediaTags, scoreExactVisualSegment, scoreVisualSegment, visualSegmentSearchText } from '@/lib/media-library-policy';\nimport type { ExactVisualMatchIntent } from '@/lib/media-library-policy';
 
 const execFile=promisify(execFileCallback);
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
@@ -263,13 +263,36 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
   }finally{await rm(root,{recursive:true,force:true}).catch(()=>{});}
 }
 
-export async function bestVisualSegment(input:{assetId:string;query:string;desiredDurationSeconds:number}){
+export async function bestVisualSegment(input:{
+  assetId:string;
+  query:string;
+  desiredDurationSeconds:number;
+  exactMatch?:ExactVisualMatchIntent;
+}){
   const rows=checked(await db().from('radar_asset_segments')
     .select('id,channel_id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',input.assetId).order('sequence',{ascending:true})) as SegmentRow[];
-  const ranked=(rows??[]).map(row=>{const segment=normalizeSegment(row),relevance=scoreVisualSegment(input.query,segment.searchText);
-    return {segment,relevance,score:relevance*.88+segment.confidence*.12};}).sort((a,b)=>b.score-a.score);
-  const best=ranked[0];if(!best||best.relevance<.08)return null;
+  const ranked=(rows??[]).map(row=>{
+    const segment=normalizeSegment(row);
+    const exact=input.exactMatch?scoreExactVisualSegment({query:input.query,intent:input.exactMatch,segment}):null;
+    const relevance=exact?.relevance??scoreVisualSegment(input.query,segment.searchText);
+    return {
+      segment,
+      relevance,
+      eligible:exact?.eligible??true,
+      score:exact?.score??(relevance*.88+segment.confidence*.12),
+      exactMatch:exact??undefined
+    };
+  }).filter(item=>item.eligible).sort((a,b)=>b.score-a.score);
+  const best=ranked[0];
+  if(!best)return null;
+  if(input.exactMatch?best.score<.35:best.relevance<.08)return null;
   const desired=Math.max(.25,input.desiredDurationSeconds),sourceStart=best.segment.startSeconds;
-  return {segment:best.segment,score:best.score,sourceStartSeconds:sourceStart,sourceEndSeconds:Math.min(best.segment.endSeconds,sourceStart+desired)};
+  return {
+    segment:best.segment,
+    score:best.score,
+    exactMatch:best.exactMatch,
+    sourceStartSeconds:sourceStart,
+    sourceEndSeconds:Math.min(best.segment.endSeconds,sourceStart+desired)
+  };
 }
