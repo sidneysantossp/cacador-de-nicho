@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, statfs } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -22,6 +22,24 @@ const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
 const MAX_SEGMENTS=24;
 const MAX_BATCH=6;
 const MAX_VIDEO_BYTES=2*1024*1024*1024;
+
+const GIB=1024*1024*1024;
+
+async function ensureAnalysisDisk(sourceBytes:number){
+  const stats=await statfs(os.tmpdir());
+  const freeBytes=Math.max(0,Number(stats.bavail)*Number(stats.bsize));
+  const requiredBytes=Math.max(2*GIB,Math.ceil(Math.max(0,sourceBytes)*2.2));
+  if(freeBytes<requiredBytes){
+    throw new HttpError(
+      'Espaço temporário insuficiente para analisar este vídeo. '+
+      'Livre: '+Math.round(freeBytes/1024/1024)+' MB · necessário: '+
+      Math.round(requiredBytes/1024/1024)+' MB.',
+      507
+    );
+  }
+  return {freeBytes,requiredBytes};
+}
+
 
 type AssetRow={
   id:string;
@@ -454,11 +472,19 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
     asset_id:source.id,status:'processing',provider:'googleai',model:'',asset_title:'',
     duration_seconds:source.duration_seconds,payload:{stage:'starting'},error:null,updated_at:now
   },{onConflict:'asset_id'}));
-  const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-owned-vision-'));
+  let root:string|null=null;
   try{
+    const disk=await ensureAnalysisDisk(Number(source.bytes));
+    root=await mkdtemp(path.join(os.tmpdir(),'cacadores-owned-vision-'));
     const inputFile=path.join(root,'input'+(path.extname(source.original_name)||'.mp4'));
     checked(await db().from('radar_owned_media_visual_analysis').update({
-      payload:{stage:'downloading',bytes:Number(source.bytes)},updated_at:new Date().toISOString()
+      payload:{
+        stage:'downloading',
+        bytes:Number(source.bytes),
+        freeBytesBeforeDownload:disk.freeBytes,
+        requiredBytes:disk.requiredBytes
+      },
+      updated_at:new Date().toISOString()
     }).eq('asset_id',source.id));
     await downloadMediaToFile(source.storage_path,inputFile);
     const metadata=await probeVideoInput(inputFile);
@@ -554,7 +580,7 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
     }).eq('id',source.id);
     throw error;
   }finally{
-    await rm(root,{recursive:true,force:true}).catch(()=>{});
+    if(root)await rm(root,{recursive:true,force:true}).catch(()=>{});
   }
 }
 

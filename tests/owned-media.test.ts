@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
 import { scoreVisualIntent, visualSemanticSearchText } from '../src/lib/media-library-policy';
+import { ownedVisualRetryPolicy } from '../src/lib/owned-media-worker-policy';
 
 test('Owned Media recognizes supported video and image MIME types',()=>{
   assert.equal(ownedMediaKind('video/mp4'),'video');
@@ -172,4 +173,35 @@ test('Media Taxonomy infers city from landmark without city name',()=>{
   assert.ok(parsed.semantic.cities.includes('new york city'));
   assert.ok(parsed.semantic.regions.includes('new york'));
   assert.ok(parsed.semantic.countries.includes('united states'));
+});
+
+
+test('Owned Visual worker retries ENOSPC with conservative backoff',()=>{
+  const retry=ownedVisualRetryPolicy({
+    status:500,
+    message:'ENOSPC: no space left on device, write',
+    attempts:1
+  });
+  assert.equal(retry.retry,true);
+  assert.equal(retry.storagePressure,true);
+  assert.equal(retry.delaySeconds,900);
+});
+
+test('Owned Visual worker stops retrying storage pressure after max attempts',()=>{
+  const retry=ownedVisualRetryPolicy({
+    status:507,
+    message:'Espaço temporário insuficiente',
+    attempts:5
+  });
+  assert.equal(retry.retry,false);
+  assert.equal(retry.storagePressure,true);
+});
+
+test('Owned Visual worker preserves provider backoff rules',()=>{
+  const quota=ownedVisualRetryPolicy({status:429,message:'quota',attempts:2});
+  assert.equal(quota.retry,true);
+  assert.equal(quota.delaySeconds,600);
+  const unavailable=ownedVisualRetryPolicy({status:503,message:'high demand',attempts:2});
+  assert.equal(unavailable.retry,true);
+  assert.equal(unavailable.delaySeconds,120);
 });
