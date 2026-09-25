@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
+import { mediaTaxonomyCatalog } from '@/lib/media-taxonomy';
 import {
   deleteOwnedMediaAsset, finalizeOwnedMediaUpload, listOwnedMediaAssets,
-  prepareOwnedMediaUpload, updateOwnedMediaMetadata
+  prepareOwnedMediaUpload, reclassifyOwnedMediaTaxonomy, updateOwnedMediaMetadata
 } from '@/lib/server/owned-media';
 
 export const runtime='nodejs';
@@ -19,18 +20,42 @@ export async function GET(request:Request){
     const kind=kindValue==='image'||kindValue==='video'?kindValue:'all';
     const page=Number(url.searchParams.get('page')??1);
     const limit=Number(url.searchParams.get('limit')??60);
-    return Response.json(await listOwnedMediaAssets({query,kind,page,limit}),{
+    const filters={
+      country:url.searchParams.get('country')??'',
+      city:url.searchParams.get('city')??'',
+      scene:url.searchParams.get('scene')??'',
+      timeOfDay:url.searchParams.get('timeOfDay')??'',
+      weather:url.searchParams.get('weather')??'',
+      season:url.searchParams.get('season')??'',
+      shotType:url.searchParams.get('shotType')??'',
+      cameraMotion:url.searchParams.get('cameraMotion')??''
+    };
+    const result=await listOwnedMediaAssets({query,kind,page,limit,...filters});
+    return Response.json({...result,taxonomy:mediaTaxonomyCatalog()},{
       headers:{'Cache-Control':'no-store'}
     });
   }catch(e){return errorResponse(e);}
 }
 
 const semantic=z.object({
-  subjects:z.array(z.string().trim().min(1).max(120)).max(50),
-  locations:z.array(z.string().trim().min(1).max(180)).max(50),
-  periods:z.array(z.string().trim().min(1).max(120)).max(50),
-  shotTypes:z.array(z.string().trim().min(1).max(120)).max(50),
-  moods:z.array(z.string().trim().min(1).max(120)).max(50)
+  subjects:z.array(z.string().trim().min(1).max(120)).max(80),
+  locations:z.array(z.string().trim().min(1).max(180)).max(80),
+  periods:z.array(z.string().trim().min(1).max(120)).max(80),
+  countries:z.array(z.string().trim().min(1).max(120)).max(40),
+  regions:z.array(z.string().trim().min(1).max(120)).max(60),
+  cities:z.array(z.string().trim().min(1).max(120)).max(60),
+  districts:z.array(z.string().trim().min(1).max(120)).max(80),
+  landmarks:z.array(z.string().trim().min(1).max(180)).max(80),
+  scenes:z.array(z.string().trim().min(1).max(120)).max(80),
+  objects:z.array(z.string().trim().min(1).max(120)).max(80),
+  activities:z.array(z.string().trim().min(1).max(120)).max(80),
+  people:z.array(z.string().trim().min(1).max(120)).max(80),
+  timeOfDay:z.array(z.string().trim().min(1).max(120)).max(40),
+  weather:z.array(z.string().trim().min(1).max(120)).max(40),
+  seasons:z.array(z.string().trim().min(1).max(120)).max(20),
+  shotTypes:z.array(z.string().trim().min(1).max(120)).max(60),
+  cameraMotion:z.array(z.string().trim().min(1).max(120)).max(60),
+  moods:z.array(z.string().trim().min(1).max(120)).max(60)
 }).strict();
 
 const schema=z.discriminatedUnion('action',[
@@ -57,6 +82,9 @@ const schema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('delete'),
     assetId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('reclassify')
   }).strict()
 ]);
 
@@ -79,6 +107,10 @@ export async function POST(request:Request){
     if(parsed.data.action==='metadata'){
       await updateOwnedMediaMetadata(parsed.data);
       return Response.json({message:'Metadados atualizados.'});
+    }
+    if(parsed.data.action==='reclassify'){
+      const result=await reclassifyOwnedMediaTaxonomy();
+      return Response.json({message:'Taxonomia do acervo atualizada.',...result});
     }
     await deleteOwnedMediaAsset(parsed.data.assetId);
     return Response.json({message:'Asset removido da Biblioteca de Mídia.'});
