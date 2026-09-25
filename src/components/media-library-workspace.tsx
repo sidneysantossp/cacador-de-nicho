@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, FileAudio, Film, Heart, Image as ImageIcon,
-  Library, Search, Sparkles, Tag, X
+  Library, ScanSearch, Search, Sparkles, Tag, X
 } from 'lucide-react';
-import type { ManagedChannel, MediaLibraryItem } from '@/lib/types';
+import type { ManagedChannel, MediaLibraryItem, VisualIntelligenceResult } from '@/lib/types';
 import { mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags } from '@/lib/media-library-policy';
 
 type KindFilter='all'|'image'|'video'|'audio';
@@ -53,6 +53,7 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
   const [periods,setPeriods]=useState('');
   const [shotTypes,setShotTypes]=useState('');
   const [moods,setMoods]=useState('');
+  const [visualAnalysis,setVisualAnalysis]=useState<VisualIntelligenceResult|null>(null);
 
   async function fetchPage(nextPage:number,append:boolean){
     if(!append)setLoading(true);
@@ -77,6 +78,35 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
     query,kind,source,favoritesOnly,staleOnly
   }),[items,query,kind,source,favoritesOnly,staleOnly]);
 
+  async function loadVisualAnalysis(item:MediaLibraryItem){
+    if(item.mediaKind!=='video'){setVisualAnalysis(null);return;}
+    setBusy('vision-load');
+    try{
+      const res=await fetch('/api/visual-intelligence?assetId='+encodeURIComponent(item.resourceId),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar Visual Intelligence.');
+      setVisualAnalysis(body.analysis??null);
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar Visual Intelligence.');}
+    finally{setBusy(current=>current==='vision-load'?'':current);}
+  }
+
+  async function analyzeVisual(item:MediaLibraryItem){
+    setBusy('vision');setMessage('');
+    try{
+      const res=await fetch('/api/visual-intelligence',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'analyze',assetId:item.resourceId})
+      });
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao analisar os frames.');
+      setVisualAnalysis(body.analysis??null);
+      setMessage(body.message??'Análise visual concluída.');
+      await fetchPage(1,false);
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao analisar os frames.');}
+    finally{setBusy('');}
+  }
+
   function open(item:MediaLibraryItem){
     setSelected(item);
     setTagInput(item.tags.join(', '));
@@ -86,7 +116,9 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
     setPeriods(item.semantic.periods.join(', '));
     setShotTypes(item.semantic.shotTypes.join(', '));
     setMoods(item.semantic.moods.join(', '));
+    setVisualAnalysis(null);
     setMessage('');
+    if(item.mediaKind==='video')void loadVisualAnalysis(item);
   }
 
   function patchItem(mediaKey:string,patch:Partial<MediaLibraryItem>){
@@ -233,6 +265,27 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
         {selected.license&&<section className="media-detail-license"><span>LICENÇA / PROVENIÊNCIA</span><strong>{selected.license.label}</strong><p>{selected.license.type}{selected.stock?' · '+selected.stock.attributionLabel:''}</p>{selected.stock?.creatorName&&<small>Creator: {selected.stock.creatorName}</small>}</section>}
 
         {selected.prompt&&<section className="media-detail-prompt"><span>PROMPT DE ORIGEM</span><p>{selected.prompt}</p></section>}
+
+        {selected.mediaKind==='video'&&<section className="media-vision-panel">
+          <div className="media-vision-head">
+            <div><span>VISUAL INTELLIGENCE</span><strong>{visualAnalysis?.assetTitle||'Reconhecimento de frames e trechos'}</strong></div>
+            <button className="button subtle small" disabled={busy==='vision'||busy==='vision-load'} onClick={()=>void analyzeVisual(selected)}><ScanSearch size={15}/>{busy==='vision'?'Analisando…':visualAnalysis?.status==='completed'?'Reanalisar frames':'Analisar frames'}</button>
+          </div>
+          {busy==='vision-load'?<p>Carregando análise…</p>:
+           visualAnalysis?.status==='failed'?<p className="warn">{visualAnalysis.error??'A análise anterior falhou.'}</p>:
+           visualAnalysis?.status==='completed'?<>
+            <div className="media-vision-summary"><span>{visualAnalysis.segments.length} segmento(s)</span><span>{visualAnalysis.model.replace('models/','')}</span>{visualAnalysis.analyzedAt&&<span>{new Date(visualAnalysis.analyzedAt).toLocaleString('pt-BR')}</span>}</div>
+            <div className="media-vision-segments">{visualAnalysis.segments.map(segment=><article key={segment.id}>
+              <header><strong>{segment.sequence}. {segment.title}</strong><b>{duration(segment.startSeconds)} → {duration(segment.endSeconds)}</b></header>
+              <p>{segment.summary}</p>
+              <div>{[
+                ...segment.semantic.landmarks,...segment.semantic.locations,...segment.semantic.activities,
+                ...segment.semantic.subjects,...segment.semantic.timeOfDay,...segment.semantic.shotTypes
+              ].slice(0,10).map(value=><span key={value}>{value}</span>)}</div>
+              <small>Confiança {(segment.confidence*100).toFixed(0)}% · keyframe {duration(segment.keyframeSeconds)}</small>
+            </article>)}</div>
+           </>:<p>Analisa mudanças de cena e keyframes para descobrir o que existe dentro do vídeo e em qual intervalo. O arquivo original permanece intacto no R2.</p>}
+        </section>}
 
         <label className="media-detail-field"><span><Tag size={13}/>TAGS</span><input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="história, cidade, nostalgia"/></label>
         <label className="media-detail-field"><span>ASSUNTOS / ENTIDADES</span><input value={subjects} onChange={e=>setSubjects(e.target.value)} placeholder="times square, skyline, shopping mall"/></label>

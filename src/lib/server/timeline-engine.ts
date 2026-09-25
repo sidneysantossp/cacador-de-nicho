@@ -15,6 +15,7 @@ import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
 import { assetIsStale } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
+import { bestVisualSegment } from './visual-intelligence';
 import {
   buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
   timelineAssetIssues, type TimelineVisualAssetRef
@@ -126,12 +127,34 @@ async function eligibleContext(scenePlanId:string){
   return {scenePlan,visualPromptSet,dna,voiceAsset,script,selectedAssets};
 }
 
-function selectedVisualRefs(rows:SceneAssetRow[]):TimelineVisualAssetRef[]{
-  return rows.map(row=>({
-    id:row.id,
-    sceneId:row.scene_id,
-    assetKind:row.asset_kind,
-    durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds)
+async function selectedVisualRefs(
+  rows:SceneAssetRow[],
+  scenePlan:ScenePlan,
+  promptSet:VisualPromptSet
+):Promise<TimelineVisualAssetRef[]>{
+  const prompts=new Map(promptSet.scenePrompts.map(item=>[item.sceneId,item]));
+  return Promise.all(rows.map(async row=>{
+    const scene=scenePlan.scenes.find(item=>item.id===row.scene_id);
+    const prompt=prompts.get(row.scene_id);
+    const query=[
+      scene?.narration??'',
+      scene?.visualIntent??'',
+      scene?.promptDirection??'',
+      prompt?.direction??'',
+      prompt?.prompt??''
+    ].filter(Boolean).join(' ');
+    const duration=scene?.durationSeconds??0;
+    const match=row.asset_kind==='video'&&query
+      ?await bestVisualSegment({assetId:row.id,query,desiredDurationSeconds:duration})
+      :null;
+    return {
+      id:row.id,
+      sceneId:row.scene_id,
+      assetKind:row.asset_kind,
+      durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds),
+      sourceStartSeconds:match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
+      sourceEndSeconds:match?.sourceEndSeconds??null
+    };
   }));
 }
 
@@ -182,7 +205,11 @@ export async function createTimelineFromPlan(scenePlanId:string):Promise<Timelin
     scenePlan:context.scenePlan,
     productionDna:context.dna,
     visualPromptSet:context.visualPromptSet,
-    visualAssets:selectedVisualRefs(context.selectedAssets.filter(asset=>asset.status==='ready')),
+    visualAssets:await selectedVisualRefs(
+      context.selectedAssets.filter(asset=>asset.status==='ready'),
+      context.scenePlan,
+      context.visualPromptSet
+    ),
     voiceAsset:context.voiceAsset
   });
   return saveTimeline(payload,'draft',0);

@@ -67,3 +67,35 @@ export function mediaLibrarySearch(
     ].filter(Boolean).join(' ').toLowerCase().includes(query);
   });
 }
+
+
+export function visualSegmentSearchText(input:{
+  title:string;
+  summary:string;
+  semantic:{
+    subjects:string[];locations:string[];landmarks:string[];activities:string[];objects:string[];
+    environments:string[];timeOfDay:string[];weather:string[];shotTypes:string[];cameraMotion:string[];
+    moods:string[];visualStyle:string[];periods:string[];
+  };
+}){
+  return [
+    input.title,input.summary,
+    ...input.semantic.subjects,...input.semantic.locations,...input.semantic.landmarks,
+    ...input.semantic.activities,...input.semantic.objects,...input.semantic.environments,
+    ...input.semantic.timeOfDay,...input.semantic.weather,...input.semantic.shotTypes,
+    ...input.semantic.cameraMotion,...input.semantic.moods,...input.semantic.visualStyle,
+    ...input.semantic.periods
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+export function scoreVisualSegment(query:string,segmentSearchText:string){
+  const stop=new Set(['the','and','for','with','from','this','that','into','over','under','uma','para','com','das','dos','que','por','entre']);
+  const tokens=(value:string)=>[...new Set(value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .split(/[^a-z0-9]+/).filter(token=>token.length>2&&!stop.has(token)))];
+  const q=tokens(query);
+  if(!q.length)return 0;
+  const text=new Set(tokens(segmentSearchText));
+  const matched=q.filter(token=>text.has(token)).length;
+  const phrase=segmentSearchText.toLowerCase().includes(query.trim().toLowerCase())?1:0;
+  return Math.min(1,(matched/q.length)*.85+phrase*.15);
+}
