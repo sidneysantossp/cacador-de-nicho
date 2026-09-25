@@ -204,7 +204,7 @@ export async function prepareOwnedMediaUpload(input:{
 
   const parsed=parseOwnedMediaFilename(fileName);
   const searchText=ownedMediaSearchText({
-    title:parsed.title,originalName:fileName,tags:parsed.tags,semantic:parsed.semantic
+    title:parsed.title,originalName:fileName,tags:parsed.tags,semantic:parsed.semantic,includeOriginalName:false
   });
   checked(await db().from('radar_owned_media_assets').insert({
     id,
@@ -378,7 +378,10 @@ export async function listOwnedMediaAssets(input:{
     if(normalized)query=query.contains('semantic',{[key]:[normalized]});
   }
   const term=(input.query??'').trim();
-  if(term)query=query.ilike('search_text','%'+term.replace(/[%_]/g,'')+'%');
+  if(term){
+    const safe=term.replace(/[^a-zA-Z0-9À-ÿ ._()\-]/g,'').replace(/[%_]/g,'').slice(0,120);
+    if(safe)query=query.or('search_text.ilike.%'+safe+'%,original_name.ilike.%'+safe+'%');
+  }
   const start=(page-1)*limit;
   const result=await query.range(start,start+limit-1);
   if(result.error)throw new HttpError('Falha ao carregar a Biblioteca de Mídia.',502);
@@ -419,7 +422,9 @@ export async function updateOwnedMediaMetadata(input:{
   const semantic=normalizedSemantic(input.semantic);
   const original=checked(await db().from('radar_owned_media_assets').select('original_name').eq('id',input.assetId).maybeSingle());
   if(!original)throw new HttpError('Asset não encontrado.',404);
-  const searchText=ownedMediaSearchText({title,originalName:String(original.original_name),tags,semantic});
+  const searchText=ownedMediaSearchText({
+    title,originalName:String(original.original_name),tags,semantic,includeOriginalName:false
+  });
   checked(await db().from('radar_owned_media_assets').update({
     title,tags,semantic,search_text:searchText,updated_at:new Date().toISOString()
   }).eq('id',input.assetId));
@@ -433,7 +438,16 @@ export async function reclassifyOwnedMediaTaxonomy(){
     .limit(5000);
   if(result.error)throw new HttpError('Falha ao carregar assets para reclassificação.',502);
   let updated=0;
+  let preservedVisual=0;
   for(const row of result.data??[]){
+    const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+    const visual=payload.visualIntelligence&&typeof payload.visualIntelligence==='object'
+      ?payload.visualIntelligence as Record<string,unknown>
+      :{};
+    if(visual.status==='completed'){
+      preservedVisual++;
+      continue;
+    }
     const parsed=parseOwnedMediaFilename(String(row.original_name??''));
     const existing=normalizedSemantic(row.semantic);
     const semantic=normalizedSemantic(Object.fromEntries(
@@ -447,8 +461,9 @@ export async function reclassifyOwnedMediaTaxonomy(){
     ));
     const tags=[...new Set([...(row.tags??[]),...parsed.tags].map(value=>String(value).trim().toLowerCase()).filter(Boolean))].slice(0,50);
     const title=String(row.title??parsed.title);
-    const searchText=ownedMediaSearchText({title,originalName:String(row.original_name??''),tags,semantic});
-    const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+    const searchText=ownedMediaSearchText({
+      title,originalName:String(row.original_name??''),tags,semantic,includeOriginalName:false
+    });
     const update=await db().from('radar_owned_media_assets').update({
       tags,semantic,search_text:searchText,
       payload:{...payload,filenameIntelligence:parsed,taxonomyVersion:MEDIA_TAXONOMY_VERSION,taxonomyReclassifiedAt:new Date().toISOString()},
@@ -457,7 +472,7 @@ export async function reclassifyOwnedMediaTaxonomy(){
     if(update.error)throw new HttpError('Falha ao atualizar a taxonomia do acervo.',502);
     updated++;
   }
-  return {updated,taxonomyVersion:MEDIA_TAXONOMY_VERSION};
+  return {updated,preservedVisual,taxonomyVersion:MEDIA_TAXONOMY_VERSION};
 }
 
 export async function deleteOwnedMediaAsset(assetId:string){
