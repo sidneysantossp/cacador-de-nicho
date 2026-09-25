@@ -17,6 +17,8 @@ These files mirror the production scheduler/watchdog artifacts installed on the 
 
 `cacadores-health-watch.timer` checks production every two minutes. The watchdog validates the public and loopback health endpoints against the promoted commit, performs rollback after repeated health failures when the previous release is healthy, and restores critical timers when needed.
 
+`cacadores-episode-automation-worker-sync.timer` keeps the lightweight Episode Automation coordinator on the promoted image. It claims autonomous runs and advances one production transition at a time while heavy media work stays delegated to specialized workers.
+
 `cacadores-owned-visual-worker-sync.timer` keeps the isolated OWNED Visual Intelligence worker on the promoted image.
 
 `cacadores-verified-stock-worker-sync.timer` keeps the isolated verified-stock resolver on the promoted image. It processes stock gaps asynchronously so the dashboard and Episode Automation do not need to stay connected while external search, download and frame validation run.
