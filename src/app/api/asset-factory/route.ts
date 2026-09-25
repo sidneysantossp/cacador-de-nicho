@@ -113,7 +113,9 @@ export async function POST(request:Request){
       const result=await resolveOwnedMediaForScene(body);
       return Response.json({
         message:result.status==='matched'
-          ?'Library First encontrou e selecionou um trecho OWNED.'
+          ?result.applied===false
+            ?'Library First encontrou um trecho OWNED forte; dry-run não alterou a cena.'
+            :'Library First encontrou e selecionou um trecho OWNED.'
           :result.status==='skipped'
             ?'A cena já possui uma mídia selecionada e atual.'
             :'Library First não encontrou match OWNED forte para esta cena.',
