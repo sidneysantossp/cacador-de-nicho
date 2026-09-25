@@ -528,7 +528,7 @@ export async function matchOwnedMediaSegments(input:{
     const item=segment(row as SegmentRow);
     const relevance=scoreVisualSegment(query,item.searchText+' '+String(asset.search_text??''));
     if(relevance<.08)return [];
-    const resolutionBonus=Number(asset.width??0)>=3840?.04:Number(asset.width??0)>=1920?.02:0;
+    const resolutionBonus=Number(asset.width??0)>=3840 ? .04 : Number(asset.width??0)>=1920 ? .02 : 0;
     const score=Math.min(1,relevance*.86+item.confidence*.10+resolutionBonus);
     const desired=Math.max(.25,input.desiredDurationSeconds);
     const sourceStart=item.startSeconds;
