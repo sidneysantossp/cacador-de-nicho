@@ -602,6 +602,8 @@ export async function matchOwnedMediaSegments(input:{
   if(segmentRows.error)throw new HttpError('Falha ao consultar os segmentos visuais.',502);
 
   const targetOrientation=input.orientation??'landscape';
+  const requestedTaxonomy=classifyMediaTaxonomy(query);
+  const requestedLandmarks=requestedTaxonomy.landmarks;
   const ranked=(segmentRows.data??[]).flatMap(row=>{
     const asset=assets.get(String(row.asset_id));
     if(!asset)return [];
@@ -617,6 +619,10 @@ export async function matchOwnedMediaSegments(input:{
     }
 
     const item=segment(row as SegmentRow);
+    if(requestedLandmarks.length){
+      const observedLandmarks=mergeUnique(item.semantic.landmarks,semantic.landmarks);
+      if(!requestedLandmarks.every(landmark=>observedLandmarks.includes(landmark)))return [];
+    }
     const visualText=visualSemanticSearchText(item.semantic);
     const contextText=[
       ...semantic.countries,...semantic.regions,...semantic.cities,...semantic.districts
@@ -662,6 +668,7 @@ export async function matchOwnedMediaSegments(input:{
       intentTokenCount:intent.intentTokenCount,
       contextRelevance:intent.contextRelevance,
       durationFit,
+      requestedLandmarks,
       score,
       sourceStartSeconds:sourceStart,
       sourceEndSeconds:Math.min(item.endSeconds,sourceStart+desired)
