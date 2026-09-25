@@ -806,3 +806,69 @@ Política operacional:
 - downloads devem estar vinculados a episódio/cena/projeto real ou iminente;
 - Asset Vault preserva assets já usados em projetos, mas não serve para aspirar especulativamente a biblioteca Vecteezy;
 - nenhuma automação editorial, render ou publicação foi habilitada.
+
+
+## Visual Intelligence Engine — Segment-level media indexing — 25/09/2026
+
+Objetivo:
+- fazer o Asset Vault entender o conteúdo visual dentro de vídeos, não apenas nome/metadata do provider;
+- indexar trechos temporais semanticamente úteis;
+- permitir que Timeline/Render usem o trecho correto em vez de iniciar todo vídeo em 0s.
+
+Modelo de dados:
+- Asset = arquivo físico original preservado no R2;
+- Segment = intervalo temporal semanticamente indexado dentro do Asset;
+- Clip = trecho efetivamente escolhido para uma cena da Timeline.
+
+Implementação:
+- radar_asset_visual_analysis: estado/modelo/título enriquecido por asset;
+- radar_asset_segments: segmentos com start/end, keyframe, título, resumo, confiança e semântica;
+- detecção local de mudança de cena via FFmpeg;
+- fallback divide trechos longos em janelas de até ~8s e limita análise a 24 segmentos por asset;
+- 1 keyframe representativo por segmento;
+- visão via Google AI/Gemini, acionada manualmente por asset;
+- modelo é resolvido dinamicamente; em 25/09/2026 o teste real selecionou gemini-3.5-flash-lite;
+- nenhuma análise automática/batch é ativada.
+
+Semântica por segmento:
+- subjects, locations, landmarks, activities, objects, environments;
+- timeOfDay, weather, shotTypes, cameraMotion, moods, visualStyle, periods;
+- confidence.
+
+Asset Vault:
+- análise agrega tags/semântica úteis ao metadata existente;
+- busca normal passa a encontrar vídeos pelo que aparece dentro deles;
+- card do vídeo usa asset_title enriquecido quando a análise está concluída;
+- detalhe do vídeo mostra segmentos e timecodes;
+- botão Analisar frames é manual e pode reanalisar o asset.
+
+Timeline:
+- TimelineVisualAssetRef aceita sourceStartSeconds/sourceEndSeconds;
+- na criação de uma nova Timeline, vídeo selecionado com segmentos analisados é comparado com narração + intenção visual + prompt;
+- matcher escolhe o melhor segmento;
+- clip nasce com o source trim correspondente;
+- arquivo original permanece inteiro no R2;
+- Render Engine já respeitava sourceStart/sourceEnd, então não há duplicação física do vídeo.
+
+Teste real:
+- asset Vecteezy: 6259f327-bc5b-4db7-bda9-42836e86f8c2;
+- arquivo: 17.916667s / 1920x1080 / ~126 MB;
+- Visual Intelligence criou 3 segmentos:
+  1. 0.00–5.97 — night highway driving / traffic;
+  2. 5.97–11.94 — night expressway driving;
+  3. 11.94–17.92 — empty highway / minimal traffic / distant lights;
+- título agregado: Highway — Driving — Night;
+- busca do Vault encontrou o asset por night, traffic, highway, driving e pov;
+- query de cena “almost empty highway at night with minimal traffic and distant glowing lights” selecionou segmento 3;
+- para cena de 5s retornou source trim 11.94 → 16.94, score 0.779.
+
+Validação:
+- TypeScript PASS;
+- 280/280 testes PASS;
+- Next.js production build PASS;
+- git diff --check PASS.
+
+Escopo futuro:
+- embeddings vetoriais podem complementar o matcher lexical;
+- batch/worker de ingestão só deve ser implementado após provar necessidade e orçamento;
+- exact-location / viewpoint matching para Then & Now permanece próxima camada especializada, sem inferir landmarks sem evidência visual.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { MediaLibraryItem } from '../src/lib/types';
 import {
   mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags, sceneLibraryItemIsStale,
-  voiceLibraryItemIsStale
+  scoreVisualSegment, visualSegmentSearchText, voiceLibraryItemIsStale
 } from '../src/lib/media-library-policy';
 
 function item(overrides:Partial<MediaLibraryItem>={}):MediaLibraryItem{
@@ -125,4 +125,29 @@ test('Media Library search includes semantic vault metadata and channel name',()
   assert.equal(mediaLibrarySearch([candidate],{query:'times square'}).length,1);
   assert.equal(mediaLibrarySearch([candidate],{query:'1947'}).length,1);
   assert.equal(mediaLibrarySearch([candidate],{query:'then and now'}).length,1);
+});
+
+
+test('Visual segment matcher ranks narration-relevant metadata above unrelated footage',()=>{
+  const relevant=visualSegmentSearchText({
+    title:'Las Vegas Boulevard traffic at night',
+    summary:'Cars move through a neon-lit avenue in Las Vegas.',
+    semantic:{
+      subjects:['cars'],locations:['las vegas'],landmarks:['las vegas boulevard'],activities:['traffic'],
+      objects:['neon signs'],environments:['urban street'],timeOfDay:['night'],weather:[],
+      shotTypes:['street-level'],cameraMotion:['static'],moods:['energetic'],visualStyle:['documentary'],periods:['present-day']
+    }
+  });
+  const unrelated=visualSegmentSearchText({
+    title:'Casino interior',
+    summary:'Close-up of slot machines indoors.',
+    semantic:{
+      subjects:['slot machines'],locations:['las vegas'],landmarks:[],activities:['gambling'],
+      objects:['slot machines'],environments:['casino interior'],timeOfDay:[],weather:[],
+      shotTypes:['close-up'],cameraMotion:['static'],moods:['bright'],visualStyle:['commercial'],periods:['present-day']
+    }
+  });
+  const query='Las Vegas night traffic cars on the boulevard';
+  assert.ok(scoreVisualSegment(query,relevant)>scoreVisualSegment(query,unrelated));
+  assert.ok(scoreVisualSegment(query,relevant)>.3);
 });

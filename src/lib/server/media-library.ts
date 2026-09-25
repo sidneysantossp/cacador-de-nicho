@@ -90,9 +90,10 @@ export async function listMediaLibrary(
 
   const scriptIds=[...new Set(selected.filter(item=>item.kind==='voice').map(item=>(item.row as VoiceRow).script_id))];
   const promptSetIds=[...new Set(selected.filter(item=>item.kind==='scene').map(item=>(item.row as SceneRow).visual_prompt_set_id))];
+  const sceneAssetIds=[...new Set(selected.filter(item=>item.kind==='scene').map(item=>(item.row as SceneRow).id))];
   const channelIds=[...new Set(selected.map(item=>String(item.row.channel_id)))];
 
-  const [scripts,promptSets,channels]=await Promise.all([
+  const [scripts,promptSets,channels,visualAnalyses]=await Promise.all([
     scriptIds.length
       ?db().from('radar_episode_scripts').select('id,version,payload').in('id',scriptIds)
       :Promise.resolve({data:[],error:null}),
@@ -101,13 +102,17 @@ export async function listMediaLibrary(
       :Promise.resolve({data:[],error:null}),
     channelIds.length
       ?db().from('radar_managed_channels').select('id,payload').in('id',channelIds)
+      :Promise.resolve({data:[],error:null}),
+    sceneAssetIds.length
+      ?db().from('radar_asset_visual_analysis').select('asset_id,status,asset_title').in('asset_id',sceneAssetIds)
       :Promise.resolve({data:[],error:null})
   ]);
 
-  if(scripts.error||promptSets.error||channels.error)throw new HttpError('Falha ao verificar a atualidade dos assets.',502);
+  if(scripts.error||promptSets.error||channels.error||visualAnalyses.error)throw new HttpError('Falha ao verificar a atualidade dos assets.',502);
 
   const scriptMap=new Map((scripts.data??[]).map(row=>[String(row.id),row]));
   const promptSetMap=new Map((promptSets.data??[]).map(row=>[String(row.id),row]));
+  const visualAnalysisMap=new Map((visualAnalyses.data??[]).map(row=>[String(row.asset_id),row]));
   const channelNameMap=new Map((channels.data??[]).map(row=>{
     const payload=(row.payload??{}) as Record<string,unknown>;
     return [String(row.id),String(payload.name??'Canal sem nome')];
@@ -191,11 +196,13 @@ export async function listMediaLibrary(
       mediaKind:row.asset_kind==='video'?'video':'image',
       sourceType:row.source_type,
       provider:row.provider??undefined,
-      title:row.original_name||[
-        'Scene',
-        String(payload.timecodeLabel??row.scene_id),
-        'v'+String(row.variant).padStart(2,'0')
-      ].join(' '),
+      title:visualAnalysisMap.get(row.id)?.status==='completed'&&String(visualAnalysisMap.get(row.id)?.asset_title??'').trim()
+        ?String(visualAnalysisMap.get(row.id)?.asset_title)
+        :row.original_name||[
+          'Scene',
+          String(payload.timecodeLabel??row.scene_id),
+          'v'+String(row.variant).padStart(2,'0')
+        ].join(' '),
       originalName:row.original_name??undefined,
       mimeType:row.mime_type,
       bytes:Number(row.bytes??0),

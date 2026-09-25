@@ -1129,6 +1129,49 @@ export type MediaLibrarySemantic = {
  shotTypes: string[];
  moods: string[];
 };
+export type VisualSegmentSemantic = {
+ subjects: string[];
+ locations: string[];
+ landmarks: string[];
+ activities: string[];
+ objects: string[];
+ environments: string[];
+ timeOfDay: string[];
+ weather: string[];
+ shotTypes: string[];
+ cameraMotion: string[];
+ moods: string[];
+ visualStyle: string[];
+ periods: string[];
+};
+export type VisualAssetSegment = {
+ id: string;
+ channelId: string;
+ assetId: string;
+ sequence: number;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ title: string;
+ summary: string;
+ semantic: VisualSegmentSemantic;
+ confidence: number;
+ searchText: string;
+ keyframeSeconds: number;
+ createdAt: string;
+ updatedAt: string;
+};
+export type VisualIntelligenceResult = {
+ assetId: string;
+ status: 'idle' | 'processing' | 'completed' | 'failed';
+ provider: 'googleai';
+ model: string;
+ assetTitle: string;
+ durationSeconds: number | null;
+ analyzedAt?: string;
+ error?: string;
+ segments: VisualAssetSegment[];
+};
 export type MediaLibraryItem = {
  mediaKey: string;
  resourceType: 'scene_asset' | 'voice_asset';

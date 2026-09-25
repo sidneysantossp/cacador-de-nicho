@@ -126,3 +126,23 @@ test('Timeline approval combines structural and current asset gates',()=>{
   const issues=timelineApprovalIssues(t,scenePlan,['voice-stale']);
   assert.deepEqual(issues,['voice-stale']);
 });
+
+
+test('Timeline preserves Visual Intelligence source trim instead of starting video at zero',()=>{
+  const trimmedAssets=[
+    assets[0],
+    {
+      ...assets[1],
+      durationSeconds:20,
+      sourceStartSeconds:13,
+      sourceEndSeconds:18
+    }
+  ];
+  const t=buildInitialTimeline({
+    scenePlan,productionDna:dna,visualPromptSet:promptSet,visualAssets:trimmedAssets,voiceAsset:voice
+  });
+  const clip=t.tracks.find(track=>track.type==='visual')!.clips[1];
+  assert.equal(clip.sourceStartSeconds,13);
+  assert.equal(clip.sourceEndSeconds,18);
+  assert.equal(clip.playback,'trim');
+});

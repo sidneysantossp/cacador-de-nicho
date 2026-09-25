@@ -10,6 +10,8 @@ export type TimelineVisualAssetRef={
   sceneId:string;
   assetKind:'image'|'video'|'graphic';
   durationSeconds:number|null;
+  sourceStartSeconds?:number|null;
+  sourceEndSeconds?:number|null;
 };
 
 export function buildInitialTimeline(input:{
@@ -49,11 +51,15 @@ export function buildInitialTimeline(input:{
       }
 
       const isVideo=asset.assetKind==='video';
+      const sourceStart=isVideo?Math.max(0,asset.sourceStartSeconds??0):null;
       const sourceEnd=isVideo
-        ?Math.min(asset.durationSeconds??scene.durationSeconds,scene.durationSeconds)
+        ?asset.sourceEndSeconds!==undefined&&asset.sourceEndSeconds!==null
+          ?Math.max(sourceStart??0,asset.sourceEndSeconds)
+          :Math.min(asset.durationSeconds??scene.durationSeconds,scene.durationSeconds)
         :null;
+      const sourceWindow=isVideo&&sourceStart!==null&&sourceEnd!==null?sourceEnd-sourceStart:null;
       const playback=isVideo
-        ?asset.durationSeconds!==null&&asset.durationSeconds+EPSILON<scene.durationSeconds?'loop':'trim'
+        ?sourceWindow!==null&&sourceWindow+EPSILON<scene.durationSeconds?'loop':'trim'
         :'hold';
 
       return {
@@ -65,7 +71,7 @@ export function buildInitialTimeline(input:{
         startSeconds:scene.startSeconds,
         endSeconds:scene.endSeconds,
         durationSeconds:scene.durationSeconds,
-        sourceStartSeconds:isVideo?0:null,
+        sourceStartSeconds:sourceStart,
         sourceEndSeconds:sourceEnd,
         fit:'cover',
         playback,
