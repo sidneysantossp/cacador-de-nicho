@@ -1,7 +1,7 @@
 import 'server-only';
 
 import {
-  DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand
+  DeleteObjectCommand, GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from './db';
@@ -10,6 +10,7 @@ import { parseR2Config, r2Client } from './r2';
 
 const SUPABASE_BUCKET='cacadores-media';
 const R2_PREFIX='r2:';
+const ensuredUploadOrigins=new Set<string>();
 
 async function r2(){
   try{
@@ -113,20 +114,71 @@ export async function removeMedia(path:string){
 }
 
 
+
+
+async function ensureR2BrowserUploadCors(
+  target:NonNullable<Awaited<ReturnType<typeof r2>>>,
+  origin:string
+){
+  const normalized=origin.trim().replace(/\/$/,'');
+  if(!/^https?:\/\/[^/]+$/i.test(normalized))throw new Error('invalid-upload-origin');
+  if(ensuredUploadOrigins.has(normalized))return;
+  let rules:Array<{
+    AllowedHeaders?:string[];
+    AllowedMethods?:string[];
+    AllowedOrigins?:string[];
+    ExposeHeaders?:string[];
+    MaxAgeSeconds?:number;
+  }>=[];
+  try{
+    const current=await target.client.send(new GetBucketCorsCommand({Bucket:target.config.bucket}));
+    rules=(current.CORSRules??[]).map(rule=>({
+      AllowedHeaders:rule.AllowedHeaders,
+      AllowedMethods:rule.AllowedMethods,
+      AllowedOrigins:rule.AllowedOrigins,
+      ExposeHeaders:rule.ExposeHeaders,
+      MaxAgeSeconds:rule.MaxAgeSeconds
+    }));
+  }catch(error){
+    const name=String((error as {name?:string})?.name??'');
+    if(name!=='NoSuchCORSConfiguration'&&name!=='NoSuchCORS')throw error;
+  }
+  const covered=rules.some(rule=>
+    (rule.AllowedOrigins??[]).some(value=>value==='*'||value===normalized)&&
+    (rule.AllowedMethods??[]).includes('PUT')&&
+    (rule.AllowedHeaders??[]).some(value=>value==='*'||value.toLowerCase()==='content-type')
+  );
+  if(!covered){
+    rules.push({
+      AllowedOrigins:[normalized],
+      AllowedMethods:['PUT'],
+      AllowedHeaders:['content-type'],
+      ExposeHeaders:['etag'],
+      MaxAgeSeconds:3600
+    });
+    await target.client.send(new PutBucketCorsCommand({
+      Bucket:target.config.bucket,
+      CORSConfiguration:{CORSRules:rules}
+    }));
+  }
+  ensuredUploadOrigins.add(normalized);
+}
+
 export async function presignedR2Upload(
   key:string,
   contentType:string,
-  expiresSeconds=1800
+  expiresSeconds=1800,
+  browserOrigin?:string
 ){
   const target=await r2();
   if(!target)throw new Error('r2-not-configured');
+  if(browserOrigin)await ensureR2BrowserUploadCors(target,browserOrigin);
   const uploadUrl=await getSignedUrl(
     target.client,
     new PutObjectCommand({
       Bucket:target.config.bucket,
       Key:key,
-      ContentType:contentType,
-      CacheControl:'31536000'
+      ContentType:contentType
     }),
     {expiresIn:Math.max(60,Math.min(expiresSeconds,3600))}
   );
