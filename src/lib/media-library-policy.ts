@@ -1,7 +1,21 @@
-import type { MediaLibraryItem } from '@/lib/types';
+import type { MediaLibraryItem, MediaLibrarySemantic } from '@/lib/types';
 
 export function normalizeMediaTags(tags:string[]){
   return [...new Set(tags.map(tag=>tag.trim().toLowerCase()).filter(Boolean))].slice(0,50);
+}
+
+function normalizeSemanticList(values:string[]){
+  return [...new Set(values.map(value=>value.trim().toLowerCase()).filter(Boolean))].slice(0,50);
+}
+
+export function normalizeMediaSemantic(input:Partial<MediaLibrarySemantic>|undefined):MediaLibrarySemantic{
+  return {
+    subjects:normalizeSemanticList(input?.subjects??[]),
+    locations:normalizeSemanticList(input?.locations??[]),
+    periods:normalizeSemanticList(input?.periods??[]),
+    shotTypes:normalizeSemanticList(input?.shotTypes??[]),
+    moods:normalizeSemanticList(input?.moods??[])
+  };
 }
 
 export function voiceLibraryItemIsStale(input:{
@@ -45,8 +59,11 @@ export function mediaLibrarySearch(
     if(options.staleOnly&&!item.stale)return false;
     if(!query)return true;
     return [
-      item.title,item.originalName,item.provider,item.sourceType,item.timecodeLabel,
-      item.prompt,item.notes,...item.tags,item.stock?.creatorName,item.stock?.attributionLabel
+      item.title,item.originalName,item.provider,item.sourceType,item.timecodeLabel,item.channelName,
+      item.prompt,item.notes,...item.tags,
+      ...item.semantic.subjects,...item.semantic.locations,...item.semantic.periods,
+      ...item.semantic.shotTypes,...item.semantic.moods,
+      item.stock?.creatorName,item.stock?.attributionLabel
     ].filter(Boolean).join(' ').toLowerCase().includes(query);
   });
 }

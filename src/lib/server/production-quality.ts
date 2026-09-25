@@ -262,7 +262,7 @@ async function projectFacts(job:RenderJob):Promise<{
   const ids=[...new Set(clips.map(clip=>clip.assetId))];
   const rows=ids.length
     ?checked(await db().from('radar_scene_assets')
-      .select('id,scene_id,status,storage_path,payload')
+      .select('id,scene_id,status,storage_path,source_type,provider,payload')
       .in('id',ids))
     :[];
   const rowMap=new Map((rows??[]).map(row=>[String(row.id),row]));
@@ -323,6 +323,11 @@ async function projectFacts(job:RenderJob):Promise<{
       promptReason='contexto exato da versão do Video Edit/Timeline não disponível';
     }
 
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const license=payload.license&&typeof payload.license==='object'
+      ?payload.license as Record<string,unknown>
+      :null;
+
     return {
       assetId:clip.assetId,
       sceneId:clip.sceneId,
@@ -331,7 +336,11 @@ async function projectFacts(job:RenderJob):Promise<{
       storagePathMatches:String(row.storage_path??'')===clip.storagePath,
       sceneMatches:String(row.scene_id??'')===clip.sceneId,
       promptAligned,
-      promptReason
+      promptReason,
+      sourceType:String(row.source_type??''),
+      provider:row.provider?String(row.provider):null,
+      licenseType:license?.type?String(license.type):null,
+      licenseLabel:license?.label?String(license.label):null
     } satisfies ProductionQualityAssetFact;
   });
 

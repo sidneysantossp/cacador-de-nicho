@@ -2,20 +2,20 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  EpisodeScriptPayload, MediaLibraryItem, SceneAssetLicense,
+  EpisodeScriptPayload, MediaLibraryItem, MediaLibrarySemantic, SceneAssetLicense,
   VisualPromptSetPayload
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { signedMediaUrl } from './media-storage';
 import {
-  normalizeMediaTags, sceneLibraryItemIsStale, voiceLibraryItemIsStale
+  normalizeMediaSemantic, normalizeMediaTags, sceneLibraryItemIsStale, voiceLibraryItemIsStale
 } from '@/lib/media-library-policy';
 
 
 type MetaRow={
   media_key:string;channel_id:string;resource_type:'scene_asset'|'voice_asset';resource_id:string;
-  favorite:boolean;tags:string[]|null;notes:string;created_at:string;updated_at:string;
+  favorite:boolean;tags:string[]|null;notes:string;semantic:unknown;created_at:string;updated_at:string;
 };
 
 type SceneRow={
@@ -50,26 +50,31 @@ async function signedUrl(path:string){
 }
 
 export async function listMediaLibrary(
-  channelId:string,
+  channelId:string|null,
   options:{page?:number;limit?:number}={}
 ){
   const page=Math.max(1,Math.min(Number(options.page??1)||1,100));
   const limit=Math.max(12,Math.min(Number(options.limit??60)||60,120));
   const fetchLimit=Math.min(page*limit,5000);
 
-  const [sceneRows,voiceRows,metaRows]=await Promise.all([
-    db().from('radar_scene_assets')
-      .select('id,channel_id,episode_id,scene_plan_id,visual_prompt_set_id,scene_id,variant,asset_kind,source_type,provider,selected,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload,created_at,updated_at')
-      .eq('channel_id',channelId).eq('status','ready')
-      .order('created_at',{ascending:false}).range(0,fetchLimit-1),
-    db().from('radar_voice_assets')
-      .select('id,channel_id,episode_id,script_id,take,source_type,provider,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
-      .eq('channel_id',channelId).eq('status','ready')
-      .order('created_at',{ascending:false}).range(0,fetchLimit-1),
-    db().from('radar_media_library_metadata')
-      .select('media_key,channel_id,resource_type,resource_id,favorite,tags,notes,created_at,updated_at')
-      .eq('channel_id',channelId)
-  ]);
+  let sceneQuery=db().from('radar_scene_assets')
+    .select('id,channel_id,episode_id,scene_plan_id,visual_prompt_set_id,scene_id,variant,asset_kind,source_type,provider,selected,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload,created_at,updated_at')
+    .eq('status','ready')
+    .order('created_at',{ascending:false}).range(0,fetchLimit-1);
+  let voiceQuery=db().from('radar_voice_assets')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .eq('status','ready')
+    .order('created_at',{ascending:false}).range(0,fetchLimit-1);
+  let metaQuery=db().from('radar_media_library_metadata')
+    .select('media_key,channel_id,resource_type,resource_id,favorite,tags,notes,semantic,created_at,updated_at');
+
+  if(channelId){
+    sceneQuery=sceneQuery.eq('channel_id',channelId);
+    voiceQuery=voiceQuery.eq('channel_id',channelId);
+    metaQuery=metaQuery.eq('channel_id',channelId);
+  }
+
+  const [sceneRows,voiceRows,metaRows]=await Promise.all([sceneQuery,voiceQuery,metaQuery]);
 
   if(sceneRows.error||voiceRows.error||metaRows.error)throw new HttpError('Falha ao carregar a Media Library.',502);
 
@@ -85,20 +90,28 @@ export async function listMediaLibrary(
 
   const scriptIds=[...new Set(selected.filter(item=>item.kind==='voice').map(item=>(item.row as VoiceRow).script_id))];
   const promptSetIds=[...new Set(selected.filter(item=>item.kind==='scene').map(item=>(item.row as SceneRow).visual_prompt_set_id))];
+  const channelIds=[...new Set(selected.map(item=>String(item.row.channel_id)))];
 
-  const [scripts,promptSets]=await Promise.all([
+  const [scripts,promptSets,channels]=await Promise.all([
     scriptIds.length
       ?db().from('radar_episode_scripts').select('id,version,payload').in('id',scriptIds)
       :Promise.resolve({data:[],error:null}),
     promptSetIds.length
       ?db().from('radar_visual_prompt_sets').select('id,version,payload').in('id',promptSetIds)
+      :Promise.resolve({data:[],error:null}),
+    channelIds.length
+      ?db().from('radar_managed_channels').select('id,payload').in('id',channelIds)
       :Promise.resolve({data:[],error:null})
   ]);
 
-  if(scripts.error||promptSets.error)throw new HttpError('Falha ao verificar a atualidade dos assets.',502);
+  if(scripts.error||promptSets.error||channels.error)throw new HttpError('Falha ao verificar a atualidade dos assets.',502);
 
   const scriptMap=new Map((scripts.data??[]).map(row=>[String(row.id),row]));
   const promptSetMap=new Map((promptSets.data??[]).map(row=>[String(row.id),row]));
+  const channelNameMap=new Map((channels.data??[]).map(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    return [String(row.id),String(payload.name??'Canal sem nome')];
+  }));
 
   const items=await Promise.all(selected.map(async entry=>{
     if(entry.kind==='voice'){
@@ -139,6 +152,8 @@ export async function listMediaLibrary(
         favorite:!!meta?.favorite,
         tags:meta?.tags??[],
         notes:meta?.notes??'',
+        semantic:normalizeMediaSemantic(meta?.semantic as Partial<MediaLibrarySemantic>|undefined),
+        channelName:channelNameMap.get(row.channel_id),
         scriptId:row.script_id,
         voiceTake:Number(row.take),
         createdAt:String(row.created_at),
@@ -194,6 +209,8 @@ export async function listMediaLibrary(
       favorite:!!meta?.favorite,
       tags:meta?.tags??[],
       notes:meta?.notes??'',
+      semantic:normalizeMediaSemantic(meta?.semantic as Partial<MediaLibrarySemantic>|undefined),
+      channelName:channelNameMap.get(row.channel_id),
       scenePlanId:row.scene_plan_id,
       visualPromptSetId:row.visual_prompt_set_id,
       sceneId:row.scene_id,
@@ -223,6 +240,7 @@ export async function saveMediaLibraryMetadata(input:{
   favorite:boolean;
   tags:string[];
   notes:string;
+  semantic:MediaLibrarySemantic;
 }){
   const table=input.resourceType==='scene_asset'?'radar_scene_assets':'radar_voice_assets';
   const exists=checked(await db().from(table)
@@ -234,6 +252,7 @@ export async function saveMediaLibraryMetadata(input:{
 
   const tags=normalizeMediaTags(input.tags);
   const notes=input.notes.trim().slice(0,5000);
+  const semantic=normalizeMediaSemantic(input.semantic);
   const key=mediaKey(input.resourceType,input.resourceId);
   const result=await db().from('radar_media_library_metadata').upsert({
     media_key:key,
@@ -243,9 +262,10 @@ export async function saveMediaLibraryMetadata(input:{
     favorite:input.favorite,
     tags,
     notes,
+    semantic,
     updated_at:new Date().toISOString()
   },{onConflict:'media_key'});
   if(result.error)throw new HttpError('Falha ao salvar os metadados da mídia.',502);
 
-  return {mediaKey:key,favorite:input.favorite,tags,notes};
+  return {mediaKey:key,favorite:input.favorite,tags,notes,semantic};
 }

@@ -1122,6 +1122,13 @@ export type ExternalImportBatch = {
  createdAt: string;
  updatedAt: string;
 };
+export type MediaLibrarySemantic = {
+ subjects: string[];
+ locations: string[];
+ periods: string[];
+ shotTypes: string[];
+ moods: string[];
+};
 export type MediaLibraryItem = {
  mediaKey: string;
  resourceType: 'scene_asset' | 'voice_asset';
@@ -1145,6 +1152,8 @@ export type MediaLibraryItem = {
  favorite: boolean;
  tags: string[];
  notes: string;
+ semantic: MediaLibrarySemantic;
+ channelName?: string;
  scriptId?: string;
  voiceTake?: number;
  scenePlanId?: string;
@@ -1493,6 +1502,7 @@ export type ProductionQualityCheckCode =
   | 'visual-coverage'
   | 'asset-duplication'
   | 'asset-provenance'
+  | 'asset-rights'
   | 'character-continuity'
   | 'prompt-asset-alignment'
   | 'text-placeholders'

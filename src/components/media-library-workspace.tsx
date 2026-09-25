@@ -6,10 +6,11 @@ import {
   Library, Search, Sparkles, Tag, X
 } from 'lucide-react';
 import type { ManagedChannel, MediaLibraryItem } from '@/lib/types';
-import { mediaLibrarySearch, normalizeMediaTags } from '@/lib/media-library-policy';
+import { mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags } from '@/lib/media-library-policy';
 
 type KindFilter='all'|'image'|'video'|'audio';
 type SourceFilter='all'|'generated'|'uploaded'|'stock';
+type ScopeFilter='channel'|'all';
 
 function bytes(value:number){
   if(value<1024)return value+' B';
@@ -39,6 +40,7 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
   const [query,setQuery]=useState('');
+  const [scope,setScope]=useState<ScopeFilter>('channel');
   const [kind,setKind]=useState<KindFilter>('all');
   const [source,setSource]=useState<SourceFilter>('all');
   const [favoritesOnly,setFavoritesOnly]=useState(false);
@@ -46,12 +48,19 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
   const [selected,setSelected]=useState<MediaLibraryItem|null>(null);
   const [tagInput,setTagInput]=useState('');
   const [notes,setNotes]=useState('');
+  const [subjects,setSubjects]=useState('');
+  const [locations,setLocations]=useState('');
+  const [periods,setPeriods]=useState('');
+  const [shotTypes,setShotTypes]=useState('');
+  const [moods,setMoods]=useState('');
 
   async function fetchPage(nextPage:number,append:boolean){
     if(!append)setLoading(true);
     setBusy('page');setMessage('');
     try{
-      const res=await fetch('/api/media-library?channelId='+encodeURIComponent(channel.id)+'&page='+nextPage+'&limit=60',{cache:'no-store'});
+      const params=new URLSearchParams({page:String(nextPage),limit:'60',scope});
+      if(scope==='channel')params.set('channelId',channel.id);
+      const res=await fetch('/api/media-library?'+params.toString(),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar Media Library.');
       const incoming=(body.items??[]) as MediaLibraryItem[];
@@ -62,7 +71,7 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
     finally{setBusy('');setLoading(false);}
   }
 
-  useEffect(()=>{void fetchPage(1,false);},[channel.id]);
+  useEffect(()=>{void fetchPage(1,false);},[channel.id,scope]);
 
   const filtered=useMemo(()=>mediaLibrarySearch(items,{
     query,kind,source,favoritesOnly,staleOnly
@@ -72,6 +81,11 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
     setSelected(item);
     setTagInput(item.tags.join(', '));
     setNotes(item.notes);
+    setSubjects(item.semantic.subjects.join(', '));
+    setLocations(item.semantic.locations.join(', '));
+    setPeriods(item.semantic.periods.join(', '));
+    setShotTypes(item.semantic.shotTypes.join(', '));
+    setMoods(item.semantic.moods.join(', '));
     setMessage('');
   }
 
@@ -82,6 +96,13 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
 
   async function saveMetadata(item:MediaLibraryItem,nextFavorite=item.favorite){
     const tags=normalizeTagInput(tagInput);
+    const semantic=normalizeMediaSemantic({
+      subjects:subjects.split(','),
+      locations:locations.split(','),
+      periods:periods.split(','),
+      shotTypes:shotTypes.split(','),
+      moods:moods.split(',')
+    });
     setBusy('metadata');setMessage('');
     try{
       const res=await fetch('/api/media-library',{
@@ -89,17 +110,18 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           action:'metadata',
-          channelId:channel.id,
+          channelId:item.channelId,
           resourceType:item.resourceType,
           resourceId:item.resourceId,
           favorite:nextFavorite,
           tags,
-          notes
+          notes,
+          semantic
         })
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar metadados.');
-      patchItem(item.mediaKey,{favorite:nextFavorite,tags,notes});
+      patchItem(item.mediaKey,{favorite:nextFavorite,tags,notes,semantic});
       setTagInput(tags.join(', '));
       setMessage(body.message??'Metadados salvos.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar metadados.');}
@@ -108,24 +130,31 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
 
   async function toggleFavorite(item:MediaLibraryItem){
     const previous=selected;
-    if(previous?.mediaKey!==item.mediaKey){
-      setSelected(item);setTagInput(item.tags.join(', '));setNotes(item.notes);
-    }
+    if(previous?.mediaKey!==item.mediaKey)open(item);
     setBusy('favorite:'+item.mediaKey);
     try{
       const tags=previous?.mediaKey===item.mediaKey?normalizeTagInput(tagInput):item.tags;
       const itemNotes=previous?.mediaKey===item.mediaKey?notes:item.notes;
+      const semantic=previous?.mediaKey===item.mediaKey
+        ?normalizeMediaSemantic({
+          subjects:subjects.split(','),
+          locations:locations.split(','),
+          periods:periods.split(','),
+          shotTypes:shotTypes.split(','),
+          moods:moods.split(',')
+        })
+        :item.semantic;
       const res=await fetch('/api/media-library',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
-          action:'metadata',channelId:channel.id,resourceType:item.resourceType,
-          resourceId:item.resourceId,favorite:!item.favorite,tags,notes:itemNotes
+          action:'metadata',channelId:item.channelId,resourceType:item.resourceType,
+          resourceId:item.resourceId,favorite:!item.favorite,tags,notes:itemNotes,semantic
         })
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao atualizar favorito.');
-      patchItem(item.mediaKey,{favorite:!item.favorite,tags,notes:itemNotes});
+      patchItem(item.mediaKey,{favorite:!item.favorite,tags,notes:itemNotes,semantic});
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao atualizar favorito.');}
     finally{setBusy('');}
   }
@@ -136,12 +165,14 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
     {message&&<div className="media-library-message"><CheckCircle2 size={15}/>{message}</div>}
 
     <section className="media-library-hero">
-      <div><span>MEDIA LIBRARY</span><h2>Todo asset produzido pelo canal, em um só lugar.</h2><p>Generated, stock e uploads externos permanecem pesquisáveis com origem, licença, cena, take, versão e estado de atualidade.</p></div>
+      <div><span>{scope==='all'?'ASSET VAULT':'MEDIA LIBRARY'}</span><h2>{scope==='all'?'Acervo visual da operação inteira.':'Todo asset produzido pelo canal, em um só lugar.'}</h2><p>{scope==='all'?'Descubra mídia reutilizável entre canais por assunto, local, período, plano, atmosfera, origem e licença.':'Generated, stock e uploads externos permanecem pesquisáveis com origem, licença, cena, take, versão e estado de atualidade.'}</p></div>
       <div><strong>{items.length}</strong><small>carregados</small></div>
     </section>
 
     <section className="media-library-toolbar">
-      <label className="media-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar nome, tag, provider, prompt…"/></label>
+      <button className={scope==='channel'?'active':''} onClick={()=>setScope('channel')}>Canal atual</button>
+      <button className={scope==='all'?'active':''} onClick={()=>setScope('all')}>Vault global</button>
+      <label className="media-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar nome, assunto, local, período, tag, provider…"/></label>
       <select value={kind} onChange={e=>setKind(e.target.value as KindFilter)}><option value="all">Todos os tipos</option><option value="image">Imagens</option><option value="video">Vídeos</option><option value="audio">Áudios</option></select>
       <select value={source} onChange={e=>setSource(e.target.value as SourceFilter)}><option value="all">Todas as origens</option><option value="generated">Generated</option><option value="uploaded">Upload</option><option value="stock">Stock</option></select>
       <button className={favoritesOnly?'active':''} onClick={()=>setFavoritesOnly(v=>!v)}><Heart size={14}/>Favoritos</button>
@@ -159,7 +190,7 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
         {item.selected&&<b>ATIVO</b>}
       </button>
       <div className="media-card-body">
-        <div className="media-card-type">{icon(item.mediaKind)}<span>{item.mediaKind}</span><span>{item.sourceType}</span>{item.provider&&<span>{item.provider}</span>}</div>
+        <div className="media-card-type">{icon(item.mediaKind)}<span>{item.mediaKind}</span><span>{item.sourceType}</span>{item.provider&&<span>{item.provider}</span>}{scope==='all'&&item.channelName&&<span>{item.channelName}</span>}</div>
         <strong title={item.title}>{item.title}</strong>
         <small>{bytes(item.bytes)}{item.durationSeconds!==null?' · '+duration(item.durationSeconds):''}{item.width&&item.height?' · '+item.width+'×'+item.height:''}</small>
         <div className="media-card-tags">{item.tags.slice(0,3).map(tag=><span key={tag}>{tag}</span>)}</div>
@@ -196,13 +227,19 @@ export default function MediaLibraryWorkspace({channel}:{channel:ManagedChannel}
           {selected.durationSeconds!==null&&<Info label="Duração" value={duration(selected.durationSeconds)}/>}
           {selected.width&&selected.height&&<Info label="Dimensão" value={selected.width+'×'+selected.height}/>}
           <Info label="MIME" value={selected.mimeType}/>
+          {selected.channelName&&<Info label="Canal de origem" value={selected.channelName}/>}
         </section>
 
         {selected.license&&<section className="media-detail-license"><span>LICENÇA / PROVENIÊNCIA</span><strong>{selected.license.label}</strong><p>{selected.license.type}{selected.stock?' · '+selected.stock.attributionLabel:''}</p>{selected.stock?.creatorName&&<small>Creator: {selected.stock.creatorName}</small>}</section>}
 
         {selected.prompt&&<section className="media-detail-prompt"><span>PROMPT DE ORIGEM</span><p>{selected.prompt}</p></section>}
 
-        <label className="media-detail-field"><span><Tag size={13}/>TAGS</span><input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="grug, economia, close-up"/></label>
+        <label className="media-detail-field"><span><Tag size={13}/>TAGS</span><input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="história, cidade, nostalgia"/></label>
+        <label className="media-detail-field"><span>ASSUNTOS / ENTIDADES</span><input value={subjects} onChange={e=>setSubjects(e.target.value)} placeholder="times square, skyline, shopping mall"/></label>
+        <label className="media-detail-field"><span>LOCAIS</span><input value={locations} onChange={e=>setLocations(e.target.value)} placeholder="new york, manhattan"/></label>
+        <label className="media-detail-field"><span>PERÍODOS</span><input value={periods} onChange={e=>setPeriods(e.target.value)} placeholder="1940s, 1970s, 2026"/></label>
+        <label className="media-detail-field"><span>TIPOS DE PLANO</span><input value={shotTypes} onChange={e=>setShotTypes(e.target.value)} placeholder="aerial, street-level, close-up"/></label>
+        <label className="media-detail-field"><span>ATMOSFERA / MOOD</span><input value={moods} onChange={e=>setMoods(e.target.value)} placeholder="nostalgic, tense, optimistic"/></label>
         <label className="media-detail-field"><span>NOTAS</span><textarea rows={5} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações para reutilização futura."/></label>
 
         <div className="media-detail-actions">
