@@ -57,7 +57,7 @@ function normalizedSemantic(value:unknown):OwnedMediaAsset['semantic']{
   };
 }
 
-async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
+async function rowToAsset(row:Row,visualIntelligence?:OwnedMediaAsset['visualIntelligence']):Promise<OwnedMediaAsset>{
   return {
     id:String(row.id),
     assetKind:row.asset_kind,
@@ -75,6 +75,7 @@ async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
     semantic:normalizedSemantic(row.semantic),
     signedUrl:row.status==='ready'?await signedMediaUrl(row.storage_path,3600):null,
     etag:row.etag??undefined,
+    visualIntelligence,
     createdAt:String(row.created_at),
     updatedAt:String(row.updated_at)
   };
@@ -370,7 +371,27 @@ export async function listOwnedMediaAssets(input:{
   const result=await query.range(start,start+limit-1);
   if(result.error)throw new HttpError('Falha ao carregar a Biblioteca de Mídia.',502);
   const rows=(result.data??[]) as Row[];
-  const items=await Promise.all(rows.map(rowToAsset));
+  const assetIds=rows.map(row=>String(row.id));
+  const intelligenceByAsset=new Map<string,OwnedMediaAsset['visualIntelligence']>();
+  if(assetIds.length){
+    const intelligence=await db().from('radar_owned_media_visual_analysis')
+      .select('asset_id,status,payload,error,analyzed_at')
+      .in('asset_id',assetIds);
+    if(!intelligence.error){
+      for(const row of intelligence.data??[]){
+        const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+        intelligenceByAsset.set(String(row.asset_id),{
+          status:(['processing','completed','failed'].includes(String(row.status))?String(row.status):'idle') as 'idle'|'processing'|'completed'|'failed',
+          segmentCount:Math.max(0,Number(payload.segmentCount??0)||0),
+          analyzedAt:row.analyzed_at?String(row.analyzed_at):undefined,
+          error:row.error?String(row.error):undefined
+        });
+      }
+    }
+  }
+  const items=await Promise.all(rows.map(row=>rowToAsset(row,intelligenceByAsset.get(String(row.id))??{
+    status:'idle',segmentCount:0
+  })));
   const total=Number(result.count??items.length);
   return {items,page,limit,total,hasMore:start+items.length<total};
 }
