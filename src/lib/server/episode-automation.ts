@@ -1067,7 +1067,7 @@ async function executeAutomationTransition(
           );
         }
 
-        if(!existingJob||existingJob.status!=='completed'&&existingJob.status!=='failed'){
+        if(!existingJob||existingJob.status==='queued'||existingJob.status==='processing'){
           const queued=await enqueueVerifiedStockJob({
             promptSetId:promptSet.id,
             sceneId:target.sceneId,
