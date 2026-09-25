@@ -38,7 +38,25 @@ export function assetIsStale(
   return asset.promptSetVersion!==promptSetVersion||asset.prompt!==currentPrompt.prompt;
 }
 
+export function ownedSceneAssetTrim(asset:Pick<SceneAsset,'sourceType'|'owned'>){
+  if(asset.sourceType!=='owned'||!asset.owned)return null;
+  const sourceStartSeconds=Number(asset.owned.sourceStartSeconds);
+  const sourceEndSeconds=Number(asset.owned.sourceEndSeconds);
+  if(
+    !Number.isFinite(sourceStartSeconds)||
+    !Number.isFinite(sourceEndSeconds)||
+    sourceStartSeconds<0||
+    sourceEndSeconds-sourceStartSeconds<.20
+  )return null;
+  return {sourceStartSeconds,sourceEndSeconds};
+}
+
+export function sceneAssetOwnsStorage(asset:Pick<SceneAsset,'sourceType'>){
+  return asset.sourceType!=='owned';
+}
+
 export function generationLabel(asset:Pick<SceneAsset,'sourceType'|'provider'|'modelId'>){
   if(asset.sourceType==='uploaded')return 'External upload';
+  if(asset.sourceType==='owned')return 'OWNED Media Library';
   return [asset.provider,asset.modelId].filter(Boolean).join(' · ')||'Generated';
 }
