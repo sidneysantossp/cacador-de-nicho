@@ -202,13 +202,22 @@ export function classifyMediaTaxonomy(value:string):MediaTaxonomySemantic{
   const matchedCities=GEO.filter(item=>
     [item.city,...(item.aliases??[])].some(alias=>includesPhrase(text,alias))
   );
-  const countries=unique(matchedCities.map(item=>item.country));
-  const regions=unique(matchedCities.map(item=>item.region??''));
-  const cities=unique(matchedCities.map(item=>item.city));
-  const districts=unique(matchedCities.flatMap(item=>
+  const matchedLandmarkCities=GEO.filter(item=>
+    (item.landmarks??[]).some(name=>includesPhrase(text,name))
+  );
+  const matchedDistrictCities=GEO.filter(item=>
+    (item.districts??[]).some(name=>includesPhrase(text,name))
+  );
+  const geographicMatches=[...new Set([
+    ...matchedCities,...matchedLandmarkCities,...matchedDistrictCities
+  ])];
+  const countries=unique(geographicMatches.map(item=>item.country));
+  const regions=unique(geographicMatches.map(item=>item.region??''));
+  const cities=unique(geographicMatches.map(item=>item.city));
+  const districts=unique(geographicMatches.flatMap(item=>
     (item.districts??[]).filter(name=>includesPhrase(text,name))
   ));
-  const landmarks=unique(matchedCities.flatMap(item=>
+  const landmarks=unique(geographicMatches.flatMap(item=>
     (item.landmarks??[]).filter(name=>includesPhrase(text,name))
   ));
   const scenes=labelsFor(text,SCENES);
