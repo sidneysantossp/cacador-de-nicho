@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { MediaLibraryItem } from '../src/lib/types';
 import {
   mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags, sceneLibraryItemIsStale,
-  scoreVisualSegment, visualSegmentSearchText, voiceLibraryItemIsStale
+  scoreExactVisualSegment, scoreVisualSegment, visualSegmentSearchText, voiceLibraryItemIsStale
 } from '../src/lib/media-library-policy';
 
 function item(overrides:Partial<MediaLibraryItem>={}):MediaLibraryItem{
@@ -150,4 +150,76 @@ test('Visual segment matcher ranks narration-relevant metadata above unrelated f
   const query='Las Vegas night traffic cars on the boulevard';
   assert.ok(scoreVisualSegment(query,relevant)>scoreVisualSegment(query,unrelated));
   assert.ok(scoreVisualSegment(query,relevant)>.3);
+});
+
+
+test('Exact visual matcher rejects a generic Fremont candidate without required landmark evidence',()=>{
+  const target={
+    query:'Golden Gate on Fremont Street from a street-level historic comparison viewpoint',
+    intent:{
+      exactLocation:'Fremont Street Las Vegas',
+      landmarkAliases:['Golden Gate Hotel','Sal Sagev'],
+      shotTypes:['street-level'],
+      cameraMotion:['static']
+    },
+    segment:{
+      searchText:'fremont street las vegas casino exterior night street-level static',
+      confidence:.91,
+      semantic:{
+        locations:['fremont street','las vegas'],
+        landmarks:['casino exterior'],
+        shotTypes:['street-level'],
+        cameraMotion:['static'],
+        timeOfDay:['night']
+      }
+    }
+  };
+  const result=scoreExactVisualSegment(target);
+  assert.equal(result.eligible,false);
+  assert.equal(result.score,0);
+  assert.ok(result.reasons.includes('landmark-missing'));
+});
+
+test('Exact visual matcher prefers the compatible THEN/NOW viewpoint when location evidence is equal',()=>{
+  const intent={
+    exactLocation:'Fremont Street Las Vegas',
+    landmarkAliases:['Golden Gate Hotel'],
+    shotTypes:['street-level','wide'],
+    cameraMotion:['static'],
+    timeOfDay:['night']
+  };
+  const street=scoreExactVisualSegment({
+    query:'Golden Gate Fremont Street facade at night',
+    intent,
+    segment:{
+      searchText:'golden gate hotel fremont street las vegas facade night street-level wide static',
+      confidence:.88,
+      semantic:{
+        locations:['fremont street','las vegas'],
+        landmarks:['golden gate hotel'],
+        shotTypes:['street-level','wide'],
+        cameraMotion:['static'],
+        timeOfDay:['night']
+      }
+    }
+  });
+  const aerial=scoreExactVisualSegment({
+    query:'Golden Gate Fremont Street facade at night',
+    intent,
+    segment:{
+      searchText:'golden gate hotel fremont street las vegas aerial drone night',
+      confidence:.95,
+      semantic:{
+        locations:['fremont street','las vegas'],
+        landmarks:['golden gate hotel'],
+        shotTypes:['aerial','wide'],
+        cameraMotion:['drone'],
+        timeOfDay:['night']
+      }
+    }
+  });
+  assert.equal(street.eligible,true);
+  assert.equal(aerial.eligible,true);
+  assert.ok(street.viewpointScore>aerial.viewpointScore);
+  assert.ok(street.score>aerial.score);
 });
