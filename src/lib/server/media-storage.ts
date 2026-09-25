@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand, GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { CORSRule } from '@aws-sdk/client-s3';
 import { db } from './db';
 import { providerSecret } from './providers';
 import { parseR2Config, r2Client } from './r2';
@@ -123,22 +124,10 @@ async function ensureR2BrowserUploadCors(
   const normalized=origin.trim().replace(/\/$/,'');
   if(!/^https?:\/\/[^/]+$/i.test(normalized))throw new Error('invalid-upload-origin');
   if(ensuredUploadOrigins.has(normalized))return;
-  let rules:Array<{
-    AllowedHeaders?:string[];
-    AllowedMethods?:string[];
-    AllowedOrigins?:string[];
-    ExposeHeaders?:string[];
-    MaxAgeSeconds?:number;
-  }>=[];
+  let rules:CORSRule[]=[];
   try{
     const current=await target.client.send(new GetBucketCorsCommand({Bucket:target.config.bucket}));
-    rules=(current.CORSRules??[]).map(rule=>({
-      AllowedHeaders:rule.AllowedHeaders,
-      AllowedMethods:rule.AllowedMethods,
-      AllowedOrigins:rule.AllowedOrigins,
-      ExposeHeaders:rule.ExposeHeaders,
-      MaxAgeSeconds:rule.MaxAgeSeconds
-    }));
+    rules=[...(current.CORSRules??[])];
   }catch(error){
     const name=String((error as {name?:string})?.name??'');
     if(name!=='NoSuchCORSConfiguration'&&name!=='NoSuchCORS')throw error;
