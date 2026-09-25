@@ -7,6 +7,7 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
@@ -15,7 +16,6 @@ import {
   type GoogleImageModel, type GoogleVideoModel, validVideoGeneration
 } from '@/lib/asset-factory-policy';
 
-const BUCKET='cacadores-media';
 const MAX_IMAGE_BYTES=25*1024*1024;
 const MAX_VIDEO_BYTES=250*1024*1024;
 
@@ -169,10 +169,10 @@ async function persistReady(
     timecode+'-v'+String(asset.variant).padStart(3,'0')+'.'+extension(mimeType)
   ].join('/');
 
-  const uploaded=await db().storage.from(BUCKET).upload(storagePath,bytes,{
-    contentType:mimeType,upsert:false,cacheControl:'3600'
-  });
-  if(uploaded.error){
+  let persistedPath:string;
+  try{
+    persistedPath=await putMedia(storagePath,bytes,mimeType,{cacheControl:'3600'});
+  }catch{
     await db().from('radar_scene_assets').update({
       status:'failed',selected:false,payload:{...metadata,error:'storage-upload-failed'},updated_at:new Date().toISOString()
     }).eq('id',assetId);
@@ -181,7 +181,7 @@ async function persistReady(
 
   checked(await db().from('radar_scene_assets').update({
     status:'ready',
-    storage_path:storagePath,
+    storage_path:persistedPath,
     mime_type:mimeType,
     bytes:bytes.length,
     width:fields.width??null,
@@ -247,8 +247,7 @@ export async function listSceneAssets(promptSetId:string){
   return Promise.all(assets.map(async asset=>{
     let signedUrl:string|null=null;
     if(asset.status==='ready'&&asset.storagePath){
-      const signed=await db().storage.from(BUCKET).createSignedUrl(asset.storagePath,3600);
-      if(!signed.error)signedUrl=signed.data.signedUrl;
+      signedUrl=await signedMediaUrl(asset.storagePath,3600);
     }
     const current=promptMap.get(asset.sceneId);
     return {...asset,signedUrl,stale:current?assetIsStale(asset,promptSet.version,current):true};
@@ -281,7 +280,7 @@ export async function uploadSceneAsset(input:{
 export async function persistStockSceneAsset(input:{
   promptSetId:string;
   sceneId:string;
-  provider:'pexels'|'pixabay';
+  provider:'pexels'|'pixabay'|'unsplash';
   providerAssetId:string;
   kind:'image'|'video';
   bytes:Buffer;
@@ -501,8 +500,8 @@ export async function deleteSceneAsset(assetId:string){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset não encontrado.',404);
   if(asset.storagePath){
-    const removal=await db().storage.from(BUCKET).remove([asset.storagePath]);
-    if(removal.error)throw new HttpError('Falha ao remover o arquivo do storage.',502);
+    try{await removeMedia(asset.storagePath);}
+    catch{throw new HttpError('Falha ao remover o arquivo do storage.',502);}
   }
   checked(await db().from('radar_scene_assets').delete().eq('id',asset.id));
   if(asset.selected){

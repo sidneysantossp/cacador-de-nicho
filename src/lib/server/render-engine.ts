@@ -7,6 +7,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { signedMediaUrl } from './media-storage';
 import { loadVideoEdit, listVideoEdits, loadVideoEditWorkspace } from './video-editor';
 import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
@@ -20,7 +21,6 @@ import {
   renderOutputPath, renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '@/lib/render-policy';
 
-const BUCKET='cacadores-media';
 
 type Row={
   id:string;channel_id:string;episode_id:string;video_edit_id:string;video_edit_version:number;
@@ -40,8 +40,7 @@ function hash(value:string){
 
 async function signedOutput(path:string|null){
   if(!path)return null;
-  const signed=await db().storage.from(BUCKET).createSignedUrl(path,3600);
-  return signed.error?null:signed.data.signedUrl;
+  return signedMediaUrl(path,3600);
 }
 
 async function normalizeRow(row:Row):Promise<RenderJob>{

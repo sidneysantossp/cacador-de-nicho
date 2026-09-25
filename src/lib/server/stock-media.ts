@@ -95,12 +95,36 @@ function pixabayVideo(item:Record<string,unknown>):StockMediaResult{
   };
 }
 
+function unsplashPhoto(item:Record<string,unknown>):StockMediaResult{
+  const urls=(item.urls??{}) as Record<string,unknown>;
+  const links=(item.links??{}) as Record<string,unknown>;
+  const user=(item.user??{}) as Record<string,unknown>;
+  const userLinks=(user.links??{}) as Record<string,unknown>;
+  const description=String(item.alt_description??item.description??'Unsplash photo');
+  return {
+    provider:'unsplash',
+    providerAssetId:String(item.id??''),
+    kind:'image',
+    title:description||'Unsplash photo',
+    previewUrl:String(urls.regular??urls.small??urls.thumb??''),
+    pageUrl:String(links.html??'https://unsplash.com'),
+    creatorName:String(user.name??user.username??'Unsplash contributor'),
+    creatorUrl:userLinks.html?String(userLinks.html):undefined,
+    width:Number(item.width)||null,
+    height:Number(item.height)||null,
+    durationSeconds:null,
+    licenseLabel:'Unsplash License',
+    attributionLabel:'Photo by '+String(user.name??user.username??'Unsplash contributor')+' on Unsplash'
+  };
+}
+
 export async function searchStockMedia(input:{
   promptSetId:string;sceneId:string;provider:StockMediaProvider;kind:'image'|'video';query:string;
 }){
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   const query=input.query.trim();
   if(!validStockQuery(query))throw new HttpError('A busca deve ter entre 1 e 100 caracteres.',400);
+  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
 
   let results:StockMediaResult[]=[];
   let remaining:string|null=null;
@@ -120,7 +144,7 @@ export async function searchStockMedia(input:{
     results=(items??[]).map(item=>input.kind==='image'?pexelsPhoto(item):pexelsVideo(item)).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
     reset=response.headers.get('x-ratelimit-reset');
-  }else{
+  }else if(input.provider==='pixabay'){
     const key=await providerSecret('pixabay');
     const endpoint=input.kind==='image'?'https://pixabay.com/api/':'https://pixabay.com/api/videos/';
     const params=new URLSearchParams({key,q:query,per_page:'24',safesearch:'true'});
@@ -134,6 +158,24 @@ export async function searchStockMedia(input:{
     results=(body.hits??[]).map(item=>input.kind==='image'?pixabayImage(item):pixabayVideo(item)).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
     reset=response.headers.get('x-ratelimit-reset');
+  }else{
+    const key=await providerSecret('unsplash');
+    const params=new URLSearchParams({
+      query,orientation:'landscape',per_page:'24',page:'1',content_filter:'high'
+    });
+    let response:Response;
+    try{
+      response=await fetch('https://api.unsplash.com/search/photos?'+params,{
+        headers:{Authorization:'Client-ID '+key,'Accept-Version':'v1'},
+        signal:AbortSignal.timeout(20000),
+        cache:'no-store'
+      });
+    }catch{throw new HttpError('Não foi possível pesquisar no Unsplash.',502);}
+    if(response.status===429)throw new HttpError('O Unsplash atingiu o limite de API.',429);
+    if(!response.ok)throw new HttpError('O Unsplash recusou a pesquisa.',502);
+    const body=await response.json() as {results?:Record<string,unknown>[]};
+    results=(body.results??[]).map(unsplashPhoto).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
+    remaining=response.headers.get('x-ratelimit-remaining');
   }
 
   checked(await db().from('radar_stock_searches').insert({
@@ -197,6 +239,7 @@ export async function importStockMedia(input:{
   promptSetId:string;sceneId:string;provider:StockMediaProvider;kind:'image'|'video';providerAssetId:string;
 }){
   await sceneContext(input.promptSetId,input.sceneId);
+  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
 
   let pageUrl='',creatorName='',creatorUrl:string|undefined,downloadUrl='',mimeType='',width:number|null=null,height:number|null=null,duration:number|null=null,attribution='',licenseLabel='',licenseUrl='';
 
@@ -225,7 +268,7 @@ export async function importStockMedia(input:{
       downloadUrl=String(file.link);width=Number(file.width)||null;height=Number(file.height)||null;duration=Number(item.duration)||null;
       mimeType='video/mp4';attribution='Video by '+creatorName+' on Pexels';
     }
-  }else{
+  }else if(input.provider==='pixabay'){
     const key=await providerSecret('pixabay');
     const endpoint=input.kind==='image'?'https://pixabay.com/api/':'https://pixabay.com/api/videos/';
     const params=new URLSearchParams({key,id:input.providerAssetId});
@@ -248,6 +291,12 @@ export async function importStockMedia(input:{
       downloadUrl=String(file.url);width=Number(file.width)||null;height=Number(file.height)||null;duration=Number(item.duration)||null;
       mimeType='video/mp4';attribution='Video by '+creatorName+' on Pixabay';
     }
+  }else{
+    throw new HttpError(
+      'O Unsplash está disponível nesta fase para descoberta e preview. A API exige hotlink; cópia automática para o Asset Vault fica bloqueada até o resolver externo preservar hotlink e atribuição.',
+      409
+    );
+
   }
 
   if(!downloadUrl)throw new HttpError('O provider não devolveu URL de download.',502);

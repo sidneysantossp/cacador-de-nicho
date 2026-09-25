@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -20,6 +21,7 @@ const authHeaders={
   apikey:SERVICE_KEY,
   Authorization:'Bearer '+SERVICE_KEY
 };
+let r2StorageCache=null;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 function rounded(value){return Math.round(Number(value)*1000)/1000;}
@@ -90,7 +92,39 @@ async function updateOwned(jobId,token,fields){
   });
 }
 
+async function r2Storage(){
+  if(r2StorageCache)return r2StorageCache;
+  const secret=await rpc('radar_get_secret',{p_secret_name:'cloudflare_r2_config'});
+  if(typeof secret!=='string'||!secret)return null;
+  let config;
+  try{config=JSON.parse(secret);}catch{throw new Error('Cloudflare R2 vault config is invalid.');}
+  if(!config.accountId||!config.accessKeyId||!config.secretAccessKey||!config.bucket){
+    throw new Error('Cloudflare R2 vault config is incomplete.');
+  }
+  const client=new S3Client({
+    region:'auto',
+    endpoint:'https://'+config.accountId+'.r2.cloudflarestorage.com',
+    credentials:{accessKeyId:config.accessKeyId,secretAccessKey:config.secretAccessKey}
+  });
+  r2StorageCache={client,bucket:config.bucket};
+  return r2StorageCache;
+}
+
 async function downloadStorage(storagePath,destination){
+  if(String(storagePath).startsWith('r2:')){
+    const target=await r2Storage();
+    if(!target)throw new Error('Cloudflare R2 is not configured for '+storagePath);
+    const result=await target.client.send(new GetObjectCommand({
+      Bucket:target.bucket,
+      Key:String(storagePath).slice(3)
+    }));
+    if(!result.Body)throw new Error('R2 object has no response body: '+storagePath);
+    const bytes=Buffer.from(await result.Body.transformToByteArray());
+    if(!bytes.length)throw new Error('R2 object is empty: '+storagePath);
+    await writeFile(destination,bytes);
+    return;
+  }
+
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
     {headers:authHeaders}
@@ -103,6 +137,18 @@ async function downloadStorage(storagePath,destination){
 
 async function uploadStorage(storagePath,filePath){
   const bytes=await readFile(filePath);
+  const target=await r2Storage();
+  if(target){
+    await target.client.send(new PutObjectCommand({
+      Bucket:target.bucket,
+      Key:storagePath,
+      Body:bytes,
+      ContentType:'video/mp4',
+      CacheControl:'3600'
+    }));
+    return {bytes:bytes.length,path:'r2:'+storagePath};
+  }
+
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
     {
@@ -115,7 +161,7 @@ async function uploadStorage(storagePath,filePath){
     const text=await response.text().catch(()=>'');
     throw new Error('Storage upload failed '+response.status+' '+text.slice(0,500));
   }
-  return bytes.length;
+  return {bytes:bytes.length,path:storagePath};
 }
 
 async function run(command,args,{cwd}={}){
@@ -621,21 +667,21 @@ async function processJob(jobId,token){
       job.video_edit_id,'v'+String(job.video_edit_version).padStart(4,'0'),
       job.id+'.mp4'
     ].join('/');
-    const outputBytes=await uploadStorage(outputPath,finalPath);
+    const uploadedOutput=await uploadStorage(outputPath,finalPath);
 
     await assertActive(jobId,token);
     await updateOwned(jobId,token,{
       status:'completed',
       progress:100,
       stage:'completed',
-      output_path:outputPath,
-      output_bytes:outputBytes,
+      output_path:uploadedOutput.path,
+      output_bytes:uploadedOutput.bytes,
       worker_token:null,
       lease_until:null,
       completed_at:new Date().toISOString(),
       error:null
     });
-    console.log(JSON.stringify({event:'render-completed',jobId,outputPath,outputBytes}));
+    console.log(JSON.stringify({event:'render-completed',jobId,outputPath:uploadedOutput.path,outputBytes:uploadedOutput.bytes}));
   }catch(error){
     if(error?.code==='RENDER_CANCELLED'){
       console.log(JSON.stringify({event:'render-cancelled',jobId}));

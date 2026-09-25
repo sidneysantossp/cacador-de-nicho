@@ -629,3 +629,50 @@ Decisão operacional vigente:
 - o gate humano de piloto permanece obrigatório e nenhuma decisão é tomada em nome do operador.
 
 Motivação: preservar caixa enquanto os canais ainda não geram receita, aproveitar análise assistida sob demanda e eliminar gasto de IA causado apenas por cadência de scheduler.
+
+## Source & Asset Intelligence — foundation / R2 + media providers — 24/09/2026
+
+Objetivo aprovado antes do takeoff:
+- transformar oportunidade aprovada em produção pesquisada, visualmente rica e rastreável;
+- combinar material próprio, arquivo histórico, stock licenciado e geração por IA sem depender de uma única origem;
+- construir um Asset Vault reutilizável como patrimônio da operação;
+- manter integrações de bancos de imagem/vídeo e storage centralizadas em Configurações.
+
+Fundação implementada nesta etapa:
+- nova abstração híbrida media-storage;
+- Cloudflare R2 passa a ser o storage preferencial para mídia nova quando configurado;
+- caminhos R2 são persistidos com prefixo r2: para permitir resolução determinística;
+- assets legados sem prefixo continuam sendo lidos/removidos pelo Supabase Storage cacadores-media;
+- ausência de R2 configurado mantém o comportamento legado sem migração destrutiva;
+- Asset Factory, Voice Engine, Audio Library, Media Library, Timeline, thumbnails de publicação, Render output e Production QA passam a resolver mídia pela mesma abstração;
+- Render Worker lê fontes R2 e grava o MP4 final no R2 quando configurado;
+- YouTube Publish Worker lê render/thumbnail tanto de R2 quanto do storage legado;
+- credenciais de R2 ficam cifradas no Supabase Vault como cloudflare_r2_config; workers reutilizam o mesmo cofre, sem duplicar segredos em arquivos locais;
+- Configurações recebe formulário de Cloudflare R2 com Account ID, Access Key ID, Secret Access Key, bucket e Public URL opcional;
+- o teste de conexão usa o bucket real antes de salvar a configuração.
+
+Stock Media:
+- Pexels e Pixabay permanecem integrados e copiáveis para o storage privado com provenance/licença;
+- Unsplash passa a estar configurável e pesquisável via API oficial;
+- previews do Unsplash usam os URLs hotlinked retornados pela API e preservam autor/origem;
+- nesta etapa, Unsplash é discovery-only: cópia automática para R2 fica bloqueada porque a API exige hotlink. O futuro External Asset Resolver deverá preservar hotlink, download tracking e atribuição antes de permitir uso produtivo;
+- Videezy aparece em Configurações como fonte manual; não é feito scraping nem é presumida uma API oficial. Assets só devem entrar após conferência individual de licença/atribuição.
+
+Princípio de produção:
+- o sistema escalável é editorial, não um template de vídeo;
+- cada episódio deve preservar pesquisa, narrativa original, variação visual e provenance;
+- prioridade de sourcing: Asset Vault próprio → arquivos/open media → stock licenciado → geração por IA quando necessária;
+- nenhum mix de stock/IA/narração é tratado como garantia de monetização ou imunidade a políticas de plataforma.
+
+Compatibilidade e segurança:
+- nenhuma migração destrutiva dos assets atuais;
+- nenhum segredo de R2 é retornado ao navegador;
+- modo assisted-manual permanece vigente;
+- configurar R2 não habilita workers/timers automaticamente;
+- nenhuma produção/publicação é disparada por esta implementação.
+
+Validação:
+- TypeScript: PASS;
+- suíte: 268/268 PASS;
+- Next.js production build: PASS;
+- git diff --check: PASS.

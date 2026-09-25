@@ -7,6 +7,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { signedMediaUrl } from './media-storage';
 import { loadScenePlan } from './scene-timecode';
 import { loadVisualPromptSetByPlan } from './visual-prompt-engine';
 import { loadProductionDna } from './production-dna';
@@ -19,7 +20,6 @@ import {
   timelineAssetIssues, type TimelineVisualAssetRef
 } from '@/lib/timeline-policy';
 
-const BUCKET='cacadores-media';
 
 type Row={
   id:string;channel_id:string;episode_id:string;scene_plan_id:string;script_id:string;
@@ -268,23 +268,23 @@ export async function loadTimelineSources(timeline:Timeline){
 
   for(const row of sceneRows??[]){
     const signed=String(row.storage_path??'')
-      ?await db().storage.from(BUCKET).createSignedUrl(String(row.storage_path),3600)
+      ?await signedMediaUrl(String(row.storage_path),3600)
       :null;
     sources.push({
       assetId:String(row.id),
       kind:String(row.mime_type??'').startsWith('video/')?'video':'image',
-      signedUrl:signed&&!signed.error?signed.data.signedUrl:null,
+      signedUrl:signed,
       mimeType:String(row.mime_type??''),
       title:String(row.original_name??'Scene asset')
     });
   }
 
   if(voice?.storagePath){
-    const signed=await db().storage.from(BUCKET).createSignedUrl(voice.storagePath,3600);
+    const signed=await signedMediaUrl(voice.storagePath,3600);
     sources.push({
       assetId:voice.id,
       kind:'audio',
-      signedUrl:signed.error?null:signed.data.signedUrl,
+      signedUrl:signed,
       mimeType:voice.mimeType,
       title:voice.originalName??('Voice Take '+voice.take)
     });
