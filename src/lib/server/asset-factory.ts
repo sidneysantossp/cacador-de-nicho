@@ -11,6 +11,8 @@ import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
+import { matchOwnedMediaSegments } from './owned-media-intelligence';
+import { libraryFirstMatchAccepted, libraryFirstSceneQuery } from '@/lib/media-library-policy';
 import {
   assetIsStale, assetKindForMime, googleImageModels, googleVideoModels, sceneAssetOwnsStorage,
   type GoogleImageModel, type GoogleVideoModel, validVideoGeneration
@@ -354,6 +356,133 @@ export async function attachOwnedMediaToScene(input:{
 
   if(input.select!==false)await selectSceneAsset(reservation.id);
   return rawAsset(reservation.id);
+}
+
+export async function resolveOwnedMediaForScene(input:{
+  promptSetId:string;
+  sceneId:string;
+  query?:string;
+  minimumScore?:number;
+  force?:boolean;
+  dryRun?:boolean;
+}){
+  const {promptSet,plan,dna,scene,visual}=await eligibleContext(input.promptSetId,input.sceneId);
+
+  const selectedRow=checked(await db().from('radar_scene_assets')
+    .select('id,channel_id,episode_id,scene_plan_id,visual_prompt_set_id,scene_id,variant,asset_kind,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload,created_at,updated_at')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('scene_id',input.sceneId)
+    .eq('selected',true)
+    .eq('status','ready')
+    .maybeSingle()) as Row|null;
+  if(selectedRow&&!input.force){
+    const selected=normalizeRow(selectedRow);
+    if(!assetIsStale(selected,promptSet.version,visual)){
+      return {
+        status:'skipped' as const,
+        reason:'selected-ready' as const,
+        query:'',
+        sceneId:scene.id,
+        timecodeLabel:visual.timecodeLabel,
+        asset:selected,
+        match:null
+      };
+    }
+  }
+
+  const query=libraryFirstSceneQuery({
+    visualIntent:input.query??scene.visualIntent,
+    direction:visual.direction,
+    prompt:visual.prompt,
+    narration:scene.narration
+  });
+  if(query.length<3){
+    return {
+      status:'gap' as const,
+      reason:'missing-visual-query' as const,
+      query,
+      sceneId:scene.id,
+      timecodeLabel:visual.timecodeLabel,
+      asset:null,
+      match:null
+    };
+  }
+
+  const orientation=dna.format.width===dna.format.height
+    ?'any'
+    :dna.format.width>dna.format.height?'landscape':'portrait';
+  const matches=await matchOwnedMediaSegments({
+    query,
+    desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
+    limit:5,
+    orientation
+  });
+  const best=matches.find(match=>libraryFirstMatchAccepted(
+    match,
+    Math.max(.30,Math.min(.90,input.minimumScore??.45))
+  ));
+  if(!best){
+    return {
+      status:'gap' as const,
+      reason:matches.length?'weak-match':'no-match' as const,
+      query,
+      sceneId:scene.id,
+      timecodeLabel:visual.timecodeLabel,
+      asset:null,
+      match:null,
+      candidates:matches.slice(0,3)
+    };
+  }
+
+  const asset=input.dryRun?null:await attachOwnedMediaToScene({
+    promptSetId:promptSet.id,
+    sceneId:scene.id,
+    ownedAssetId:best.assetId,
+    segmentId:best.segment.id,
+    sourceStartSeconds:best.sourceStartSeconds,
+    sourceEndSeconds:best.sourceEndSeconds,
+    matchScore:best.score,
+    visualCoverage:best.visualCoverage,
+    select:true
+  });
+  return {
+    status:'matched' as const,
+    reason:'owned-library' as const,
+    query,
+    sceneId:scene.id,
+    timecodeLabel:visual.timecodeLabel,
+    applied:!input.dryRun,
+    asset,
+    match:best
+  };
+}
+
+export async function resolveOwnedMediaForPromptSet(input:{
+  promptSetId:string;
+  minimumScore?:number;
+  force?:boolean;
+  dryRun?:boolean;
+}){
+  const promptSet=await loadVisualPromptSet(input.promptSetId);
+  if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
+  if(promptSet.status!=='approved')throw new HttpError('Aprove os prompts visuais antes do Library First.',409);
+  const results=[];
+  for(const visual of promptSet.scenePrompts){
+    results.push(await resolveOwnedMediaForScene({
+      promptSetId:promptSet.id,
+      sceneId:visual.sceneId,
+      minimumScore:input.minimumScore,
+      force:input.force,
+      dryRun:input.dryRun
+    }));
+  }
+  return {
+    promptSetId:promptSet.id,
+    matched:results.filter(item=>item.status==='matched').length,
+    gaps:results.filter(item=>item.status==='gap').length,
+    skipped:results.filter(item=>item.status==='skipped').length,
+    results
+  };
 }
 
 export async function uploadSceneAsset(input:{
