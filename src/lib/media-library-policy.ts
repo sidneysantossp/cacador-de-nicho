@@ -99,3 +99,90 @@ export function scoreVisualSegment(query:string,segmentSearchText:string){
   const phrase=segmentSearchText.toLowerCase().includes(query.trim().toLowerCase())?1:0;
   return Math.min(1,(matched/q.length)*.85+phrase*.15);
 }
+
+
+export type ExactVisualMatchIntent={
+  exactLocation?:string;
+  landmarkAliases?:string[];
+  shotTypes?:string[];
+  cameraMotion?:string[];
+  timeOfDay?:string[];
+};
+
+export type ExactVisualMatchScore={
+  eligible:boolean;
+  score:number;
+  relevance:number;
+  locationScore:number;
+  landmarkScore:number;
+  viewpointScore:number;
+  timeScore:number;
+  reasons:string[];
+};
+
+function exactMatchTokens(value:string){
+  const stop=new Set(['the','and','for','with','from','this','that','into','over','under','uma','para','com','das','dos','que','por','entre']);
+  return [...new Set(value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .split(/[^a-z0-9]+/).filter(token=>token.length>2&&!stop.has(token)))];
+}
+
+function tokenOverlap(expected:string,observed:string[]){
+  const wanted=exactMatchTokens(expected);
+  if(!wanted.length)return 1;
+  const have=new Set(exactMatchTokens(observed.join(' ')));
+  return wanted.filter(token=>have.has(token)).length/wanted.length;
+}
+
+function aliasesOverlap(aliases:string[],observed:string[]){
+  if(!aliases.length)return 1;
+  return Math.max(...aliases.map(alias=>tokenOverlap(alias,observed)),0);
+}
+
+export function scoreExactVisualSegment(input:{
+  query:string;
+  intent:ExactVisualMatchIntent;
+  segment:{
+    searchText:string;
+    confidence:number;
+    semantic:{
+      locations:string[];
+      landmarks:string[];
+      shotTypes:string[];
+      cameraMotion:string[];
+      timeOfDay:string[];
+    };
+  };
+}):ExactVisualMatchScore{
+  const exactLocation=(input.intent.exactLocation??'').trim();
+  const landmarkAliases=(input.intent.landmarkAliases??[]).map(value=>value.trim()).filter(Boolean);
+  const desiredShotTypes=(input.intent.shotTypes??[]).map(value=>value.trim()).filter(Boolean);
+  const desiredCameraMotion=(input.intent.cameraMotion??[]).map(value=>value.trim()).filter(Boolean);
+  const desiredTime=(input.intent.timeOfDay??[]).map(value=>value.trim()).filter(Boolean);
+  const semantic=input.segment.semantic;
+  const locationEvidence=[...semantic.locations,...semantic.landmarks];
+  const landmarkEvidence=[...semantic.landmarks,...semantic.locations];
+  const locationScore=exactLocation?tokenOverlap(exactLocation,locationEvidence):1;
+  const landmarkScore=aliasesOverlap(landmarkAliases,landmarkEvidence);
+  const viewpointExpected=[...desiredShotTypes,...desiredCameraMotion];
+  const viewpointObserved=[...semantic.shotTypes,...semantic.cameraMotion];
+  const viewpointScore=viewpointExpected.length?tokenOverlap(viewpointExpected.join(' '),viewpointObserved):1;
+  const timeScore=desiredTime.length?tokenOverlap(desiredTime.join(' '),semantic.timeOfDay):1;
+  const relevance=scoreVisualSegment(input.query,input.segment.searchText);
+  const locationEligible=!exactLocation||locationScore>=.5;
+  const landmarkEligible=!landmarkAliases.length||landmarkScore>=.5;
+  const eligible=locationEligible&&landmarkEligible;
+  const weighted:Array<[number,number]>=[[relevance,.45],[Math.max(0,Math.min(1,input.segment.confidence)),.10]];
+  if(exactLocation)weighted.push([locationScore,.20]);
+  if(landmarkAliases.length)weighted.push([landmarkScore,.15]);
+  if(viewpointExpected.length)weighted.push([viewpointScore,.07]);
+  if(desiredTime.length)weighted.push([timeScore,.03]);
+  const weight=weighted.reduce((sum,item)=>sum+item[1],0);
+  const score=eligible?weighted.reduce((sum,[value,w])=>sum+value*w,0)/weight:0;
+  const reasons=[
+    exactLocation?(locationEligible?'exact-location-supported':'exact-location-missing'):'exact-location-not-required',
+    landmarkAliases.length?(landmarkEligible?'landmark-supported':'landmark-missing'):'landmark-not-required',
+    viewpointExpected.length?(viewpointScore>=.5?'viewpoint-aligned':'viewpoint-weak'):'viewpoint-not-required',
+    desiredTime.length?(timeScore>=.5?'time-aligned':'time-weak'):'time-not-required'
+  ];
+  return {eligible,score,relevance,locationScore,landmarkScore,viewpointScore,timeScore,reasons};
+}
