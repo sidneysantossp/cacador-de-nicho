@@ -149,3 +149,36 @@ export function scoreVisualSegment(query:string,segmentSearchText:string){
   const phrase=segmentSearchText.toLowerCase().includes(query.trim().toLowerCase())?1:0;
   return Math.min(1,(matched/q.length)*.85+phrase*.15);
 }
+
+
+export function libraryFirstSceneQuery(input:{
+  visualIntent?:string|null;
+  direction?:string|null;
+  prompt?:string|null;
+  narration?:string|null;
+}){
+  const source=[
+    input.visualIntent,
+    input.direction,
+    input.prompt,
+    input.narration
+  ].map(value=>String(value??'').trim()).find(Boolean)??'';
+  return source
+    .replace(/\b(?:real[ -]?)?current[ -]?location stock only\b/gi,' ')
+    .replace(/\bstock only\b/gi,' ')
+    .replace(/\bexact[ -]?location comparison\b/gi,' ')
+    .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
+    .replace(/\s+/g,' ')
+    .replace(/\s+([,.;:])/g,'$1')
+    .trim();
+}
+
+export function libraryFirstMatchAccepted(
+  match:{score:number;visualCoverage?:number},
+  minimumScore=.45
+){
+  const score=Number(match.score);
+  const visualCoverage=Number(match.visualCoverage??0);
+  return Number.isFinite(score)&&score>=minimumScore&&
+    Number.isFinite(visualCoverage)&&visualCoverage>=.40;
+}
