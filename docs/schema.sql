@@ -54,10 +54,10 @@ create unique index if not exists radar_scene_assets_one_selected on public.rada
 create unique index if not exists radar_scene_assets_owned_link_unique on public.radar_scene_assets(
   visual_prompt_set_id,
   scene_id,
-  (payload->>'ownedAssetId'),
-  (payload->>'ownedSegmentId'),
-  (payload->>'sourceStartSeconds'),
-  (payload->>'sourceEndSeconds')
+  ((payload->'owned'->>'assetId')),
+  ((payload->'owned'->>'segmentId')),
+  ((payload->'owned'->>'sourceStartSeconds')),
+  ((payload->'owned'->>'sourceEndSeconds'))
 ) where source_type='owned';
 create table if not exists public.radar_stock_searches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,provider text not null check(provider in ('pexels','pixabay','unsplash','vecteezy')),media_kind text not null check(media_kind in ('image','video')),query text not null,result_count int not null default 0 check(result_count>=0),payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
 create index if not exists radar_stock_searches_scene_created on public.radar_stock_searches(visual_prompt_set_id,scene_id,created_at desc);
