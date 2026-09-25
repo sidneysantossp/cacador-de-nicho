@@ -171,7 +171,7 @@ test('Library First keeps channel style cues when they are part of the visual in
     libraryFirstSceneQuery({
       direction:'minimal hand-drawn editorial caveman with rocks on off-white paper, 16:9'
     }),
-    'minimal hand-drawn editorial caveman with rocks on off-white paper,'
+    'minimal hand-drawn editorial caveman with rocks on off-white paper'
   );
 });
 
