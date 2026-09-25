@@ -21,7 +21,7 @@ import {
   loadVisualPromptSet, saveVisualPromptSet
 } from './visual-prompt-engine';
 import {
-  generateGoogleImage, listSceneAssets, selectSceneAsset
+  generateGoogleImage, listSceneAssets, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
 import { createTimelineFromPlan, loadTimeline, saveTimeline } from './timeline-engine';
 import {
@@ -901,6 +901,21 @@ async function executeAutomationTransition(
       );
       const target=promptSet.scenePrompts.find(item=>!selectedReady.has(item.sceneId));
       if(!target)return 'Todos os assets visuais já estão cobertos.';
+
+      const libraryFirst=await resolveOwnedMediaForScene({
+        promptSetId:promptSet.id,
+        sceneId:target.sceneId
+      });
+      if(libraryFirst.status==='matched'){
+        return 'Library First selecionou mídia OWNED para '+target.timecodeLabel+
+          ' · score '+libraryFirst.match.score.toFixed(3)+
+          ' · trim '+libraryFirst.match.sourceStartSeconds.toFixed(2)+
+          '–'+libraryFirst.match.sourceEndSeconds.toFixed(2)+'s.';
+      }
+      if(libraryFirst.status==='skipped'){
+        return 'A cena '+target.timecodeLabel+' já possui mídia selecionada e atual.';
+      }
+
       const asset=await generateGoogleImage({
         promptSetId:promptSet.id,
         sceneId:target.sceneId,
@@ -908,7 +923,8 @@ async function executeAutomationTransition(
       });
       if(!asset)throw new HttpError('A geração visual não retornou asset persistido.',502);
       await selectSceneAsset(asset.id);
-      return 'Asset visual gerado e selecionado para '+target.timecodeLabel+'.';
+      return 'Library First sem match forte ('+libraryFirst.reason+'). '+
+        'Fallback gerou e selecionou asset visual para '+target.timecodeLabel+'.';
     }
 
     case 'timeline':{
