@@ -32,13 +32,15 @@ const schema=z.discriminatedUnion('action',[
     sceneId:z.string().uuid(),
     query:z.string().trim().min(3).max(2000).optional(),
     minimumScore:z.number().min(.30).max(.90).optional(),
-    force:z.boolean().optional()
+    force:z.boolean().optional(),
+    dryRun:z.boolean().optional()
   }).strict(),
   z.object({
     action:z.literal('resolveOwnedPlan'),
     promptSetId:z.string().uuid(),
     minimumScore:z.number().min(.30).max(.90).optional(),
-    force:z.boolean().optional()
+    force:z.boolean().optional(),
+    dryRun:z.boolean().optional()
   }).strict(),
   z.object({
     action:z.literal('attachOwned'),
