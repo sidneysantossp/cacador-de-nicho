@@ -31,7 +31,7 @@ export type MediaTaxonomySemantic={
 type Pattern={label:string;aliases:string[]};
 
 const GEO:TaxonomyCity[]=[
-  {country:'United States',region:'New York',city:'New York City',aliases:['new york city','new york','nyc','manhattan'],districts:['Manhattan','Brooklyn','Queens','Bronx','Staten Island','SoHo','Tribeca','Chelsea','Greenwich Village','Harlem','Chinatown','Little Italy','Upper East Side','Upper West Side','Financial District'],landmarks:['Times Square','Empire State Building','Central Park','Statue of Liberty','Brooklyn Bridge','Manhattan Bridge','One World Trade Center','Wall Street','Rockefeller Center','Grand Central Terminal','Chrysler Building','Flatiron Building','Bryant Park']},
+  {country:'United States',region:'New York',city:'New York City',aliases:['new york city','new york','nyc','manhattan'],districts:['Manhattan','Brooklyn','Queens','Bronx','Staten Island','SoHo','Tribeca','Chelsea','Greenwich Village','Harlem','Chinatown','Little Italy','Upper East Side','Upper West Side','Financial District'],landmarks:['Times Square','Empire State Building','Central Park','Statue of Liberty','Brooklyn Bridge','Manhattan Bridge','One World Trade Center','Wall Street','Rockefeller Center','Grand Central Terminal','Chrysler Building','Flatiron Building','Bryant Park','New York Public Library']},
   {country:'United States',region:'California',city:'Los Angeles',aliases:['los angeles','la california'],districts:['Downtown Los Angeles','Hollywood','Beverly Hills','Santa Monica','Venice'],landmarks:['Hollywood Sign','Griffith Observatory','Santa Monica Pier','Hollywood Boulevard']},
   {country:'United States',region:'Nevada',city:'Las Vegas',aliases:['las vegas','vegas'],districts:['Downtown Las Vegas','Las Vegas Strip','Fremont Street'],landmarks:['Bellagio','Caesars Palace','MGM Grand','Luxor','The Venetian','Paris Las Vegas','Sphere Las Vegas','Stratosphere','Golden Gate Hotel','Sal Sagev','El Cortez','Fremont Street Experience']},
   {country:'United States',region:'California',city:'San Francisco',aliases:['san francisco','sf california'],districts:['Downtown San Francisco','Mission District','Chinatown','Fisherman’s Wharf'],landmarks:['Golden Gate Bridge','Alcatraz','Transamerica Pyramid','Ferry Building']},
@@ -202,13 +202,22 @@ export function classifyMediaTaxonomy(value:string):MediaTaxonomySemantic{
   const matchedCities=GEO.filter(item=>
     [item.city,...(item.aliases??[])].some(alias=>includesPhrase(text,alias))
   );
-  const countries=unique(matchedCities.map(item=>item.country));
-  const regions=unique(matchedCities.map(item=>item.region??''));
-  const cities=unique(matchedCities.map(item=>item.city));
-  const districts=unique(matchedCities.flatMap(item=>
+  const matchedLandmarkCities=GEO.filter(item=>
+    (item.landmarks??[]).some(name=>includesPhrase(text,name))
+  );
+  const matchedDistrictCities=GEO.filter(item=>
+    (item.districts??[]).some(name=>includesPhrase(text,name))
+  );
+  const geographicMatches=[...new Set([
+    ...matchedCities,...matchedLandmarkCities,...matchedDistrictCities
+  ])];
+  const countries=unique(geographicMatches.map(item=>item.country));
+  const regions=unique(geographicMatches.map(item=>item.region??''));
+  const cities=unique(geographicMatches.map(item=>item.city));
+  const districts=unique(geographicMatches.flatMap(item=>
     (item.districts??[]).filter(name=>includesPhrase(text,name))
   ));
-  const landmarks=unique(matchedCities.flatMap(item=>
+  const landmarks=unique(geographicMatches.flatMap(item=>
     (item.landmarks??[]).filter(name=>includesPhrase(text,name))
   ));
   const scenes=labelsFor(text,SCENES);

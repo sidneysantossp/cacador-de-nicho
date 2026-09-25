@@ -156,3 +156,20 @@ test('Library First accepts compound intent when multiple visual cues are presen
   assert.equal(score.matchedIntentTokens,3);
   assert.equal(score.visualCoverage,1);
 });
+
+
+test('Media Taxonomy recognizes New York Public Library as a landmark',()=>{
+  const parsed=parseOwnedMediaFilename('new-york-public-library-daytime.mp4');
+  assert.ok(parsed.semantic.cities.includes('new york city'));
+  assert.ok(parsed.semantic.landmarks.includes('new york public library'));
+  assert.ok(parsed.semantic.scenes.includes('libraries'));
+});
+
+
+test('Media Taxonomy infers city from landmark without city name',()=>{
+  const parsed=parseOwnedMediaFilename('bryant-park-urban-park-people.mp4');
+  assert.ok(parsed.semantic.landmarks.includes('bryant park'));
+  assert.ok(parsed.semantic.cities.includes('new york city'));
+  assert.ok(parsed.semantic.regions.includes('new york'));
+  assert.ok(parsed.semantic.countries.includes('united states'));
+});
