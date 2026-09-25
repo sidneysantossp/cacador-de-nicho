@@ -69,6 +69,8 @@ create table if not exists public.radar_owned_media_assets(
   storage_path text not null unique,
   mime_type text not null,
   original_name text not null,
+  normalized_name text not null default '',
+  content_fingerprint text,
   bytes bigint not null default 0 check(bytes>=0),
   width int,
   height int,
@@ -84,6 +86,8 @@ create table if not exists public.radar_owned_media_assets(
 );
 create index if not exists radar_owned_media_assets_status_created on public.radar_owned_media_assets(status,created_at desc);
 create index if not exists radar_owned_media_assets_kind_created on public.radar_owned_media_assets(asset_kind,created_at desc);
+create index if not exists radar_owned_media_assets_duplicate_name on public.radar_owned_media_assets(bytes,normalized_name,status);
+create index if not exists radar_owned_media_assets_fingerprint on public.radar_owned_media_assets(content_fingerprint) where content_fingerprint is not null;
 create index if not exists radar_owned_media_assets_search on public.radar_owned_media_assets using gin(to_tsvector('simple',search_text));
 alter table public.radar_media_library_metadata add column if not exists semantic jsonb not null default '{}'::jsonb;
 create table if not exists public.radar_asset_visual_analysis(
