@@ -364,6 +364,7 @@ export async function resolveOwnedMediaForScene(input:{
   query?:string;
   minimumScore?:number;
   force?:boolean;
+  dryRun?:boolean;
 }){
   const {promptSet,plan,dna,scene,visual}=await eligibleContext(input.promptSetId,input.sceneId);
 
@@ -433,7 +434,7 @@ export async function resolveOwnedMediaForScene(input:{
     };
   }
 
-  const asset=await attachOwnedMediaToScene({
+  const asset=input.dryRun?null:await attachOwnedMediaToScene({
     promptSetId:promptSet.id,
     sceneId:scene.id,
     ownedAssetId:best.assetId,
@@ -450,6 +451,7 @@ export async function resolveOwnedMediaForScene(input:{
     query,
     sceneId:scene.id,
     timecodeLabel:visual.timecodeLabel,
+    applied:!input.dryRun,
     asset,
     match:best
   };
@@ -459,6 +461,7 @@ export async function resolveOwnedMediaForPromptSet(input:{
   promptSetId:string;
   minimumScore?:number;
   force?:boolean;
+  dryRun?:boolean;
 }){
   const promptSet=await loadVisualPromptSet(input.promptSetId);
   if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
@@ -469,7 +472,8 @@ export async function resolveOwnedMediaForPromptSet(input:{
       promptSetId:promptSet.id,
       sceneId:visual.sceneId,
       minimumScore:input.minimumScore,
-      force:input.force
+      force:input.force,
+      dryRun:input.dryRun
     }));
   }
   return {
