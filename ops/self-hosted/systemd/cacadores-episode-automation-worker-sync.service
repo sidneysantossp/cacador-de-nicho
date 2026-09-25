@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores Episode Automation worker synchronizer
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-episode-automation-worker-sync
+TimeoutStartSec=2min
