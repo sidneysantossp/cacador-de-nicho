@@ -23,6 +23,9 @@ import {
 import {
   generateGoogleImage, listSceneAssets, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
+import { resolveVerifiedStockMediaForScene } from './stock-media';
+import { loadProductionDna } from './production-dna';
+import { stockFallbackEligible } from '@/lib/stock-media-policy';
 import { createTimelineFromPlan, loadTimeline, saveTimeline } from './timeline-engine';
 import {
   createVideoEditFromTimeline, loadVideoEdit, saveVideoEdit
@@ -914,6 +917,30 @@ async function executeAutomationTransition(
       }
       if(libraryFirst.status==='skipped'){
         return 'A cena '+target.timecodeLabel+' já possui mídia selecionada e atual.';
+      }
+
+      const stockInstruction=[target.direction,target.prompt].filter(Boolean).join(' ');
+      if(stockFallbackEligible(stockInstruction)){
+        const dna=await loadProductionDna(promptSet.channelId);
+        const orientation=!dna||dna.format.width===dna.format.height
+          ?'any'
+          :dna.format.width>dna.format.height?'landscape':'portrait';
+        const stock=await resolveVerifiedStockMediaForScene({
+          promptSetId:promptSet.id,
+          sceneId:target.sceneId,
+          query:libraryFirst.query||target.direction||target.prompt,
+          desiredDurationSeconds:Math.max(.25,target.endSeconds-target.startSeconds),
+          orientation,
+          providers:['pexels','pixabay'],
+          maxCandidatesPerProvider:2
+        });
+        if(stock.status==='matched'){
+          return 'Library First sem OWNED forte. Stock verificado selecionado para '+
+            target.timecodeLabel+' · '+stock.provider+
+            ' · busca '+stock.searchRelevance.toFixed(3)+
+            ' · visual '+stock.visualRelevance.toFixed(3)+
+            ' · combinado '+stock.combinedScore.toFixed(3)+'.';
+        }
       }
 
       const asset=await generateGoogleImage({
