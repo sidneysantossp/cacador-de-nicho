@@ -29,6 +29,19 @@ export function stockFallbackEligible(value:string){
   return /\b(?:stock|footage|documentary|real[- ]life|realistic|photoreal|photo|present[- ]day|current[- ]location|live action)\b/.test(text);
 }
 
+export function stockDiscoveryQuery(value:string){
+  return value
+    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action)\b/gi,' ')
+    .replace(/\b(?:wide[- ]angle|wide|medium|close[- ]up|aerial|street[- ]level)?\s*establishing shot\b/gi,' ')
+    .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
+    .replace(/[\/|]+/g,' ')
+    .replace(/\s+/g,' ')
+    .replace(/\s+([,.;:])/g,'$1')
+    .replace(/[,;:.]\s*$/,'')
+    .trim()
+    .slice(0,100);
+}
+
 export function rankStockMediaResults(input:{
   query:string;
   results:StockMediaResult[];
