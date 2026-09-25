@@ -24,7 +24,7 @@ export function validStockQuery(query:string){
 
 export function stockFallbackEligible(value:string){
   const text=value.toLowerCase();
-  const generatedStyle=/\b(?:hand[- ]drawn|doodle|illustration|illustrated|cartoon|anime|3d render|3d animation|claymation|vector art)\b/.test(text);
+  const generatedStyle=/\b(?:hand[- ]drawn|doodle|illustration|illustrated|cartoon|anime|2d|3d render|3d animation|claymation|vector art)\b/.test(text);
   if(generatedStyle)return false;
   return /\b(?:stock|footage|documentary|real[- ]life|realistic|photoreal|photo|present[- ]day|current[- ]location|live action)\b/.test(text);
 }
