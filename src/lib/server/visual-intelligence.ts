@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, statfs } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -18,6 +18,23 @@ const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
 const MAX_SEGMENTS=24;
 const MAX_BATCH=6;
 const MAX_VIDEO_BYTES=750*1024*1024;
+
+const GIB=1024*1024*1024;
+
+async function ensureAnalysisDisk(sourceBytes:number){
+  const stats=await statfs(os.tmpdir());
+  const freeBytes=Math.max(0,Number(stats.bavail)*Number(stats.bsize));
+  const requiredBytes=Math.max(1.5*GIB,Math.ceil(Math.max(0,sourceBytes)*1.6));
+  if(freeBytes<requiredBytes){
+    throw new HttpError(
+      'Espaço temporário insuficiente para validar este vídeo stock. Livre: '+
+      Math.round(freeBytes/1024/1024)+' MB · necessário: '+
+      Math.round(requiredBytes/1024/1024)+' MB.',
+      507
+    );
+  }
+}
+
 
 type AssetRow={id:string;channel_id:string;asset_kind:string;status:string;storage_path:string;mime_type:string;bytes:number;duration_seconds:number|null;original_name:string|null;};
 type AnalysisRow={asset_id:string;channel_id:string;status:'processing'|'completed'|'failed';provider:string;model:string;asset_title:string;duration_seconds:number|null;payload:unknown;error:string|null;analyzed_at:string|null;created_at:string;updated_at:string;};
@@ -215,8 +232,10 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
     asset_id:source.id,channel_id:source.channel_id,status:'processing',provider:'googleai',model:'',asset_title:'',
     duration_seconds:source.duration_seconds,payload:{stage:'starting'},error:null,updated_at:now
   },{onConflict:'asset_id'}));
-  const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-vision-'));
+  let root:string|null=null;
   try{
+    await ensureAnalysisDisk(Number(source.bytes));
+    root=await mkdtemp(path.join(os.tmpdir(),'cacadores-vision-'));
     const inputFile=path.join(root,'input'+(path.extname(source.original_name??'')||'.mp4'));
     await writeFile(inputFile,await downloadMedia(source.storage_path));
     const metadata=await probe(inputFile),boundaries=await detectBoundaries(inputFile,metadata.duration);
@@ -260,7 +279,7 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
     const message=error instanceof Error?error.message:'Falha desconhecida na análise visual.';
     await db().from('radar_asset_visual_analysis').update({status:'failed',error:message.slice(0,1000),payload:{stage:'failed'},updated_at:new Date().toISOString()}).eq('asset_id',source.id);
     throw error;
-  }finally{await rm(root,{recursive:true,force:true}).catch(()=>{});}
+  }finally{if(root)await rm(root,{recursive:true,force:true}).catch(()=>{});}
 }
 
 export async function bestVisualSegment(input:{assetId:string;query:string;desiredDurationSeconds:number}){

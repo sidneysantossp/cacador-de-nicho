@@ -6,8 +6,12 @@ import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
-import { persistStockSceneAsset } from './asset-factory';
-import { stockDownloadHostAllowed, validStockQuery } from '@/lib/stock-media-policy';
+import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
+import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
+import {
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed, validStockQuery
+} from '@/lib/stock-media-policy';
+import { scoreVisualSegment } from '@/lib/media-library-policy';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
@@ -139,6 +143,7 @@ function vecteezyResult(item:Record<string,unknown>,kind:'image'|'video'):StockM
 }
 export async function searchStockMedia(input:{
   promptSetId:string;sceneId:string;provider:StockMediaProvider;kind:'image'|'video';query:string;
+  orientation?:'landscape'|'portrait'|'any';
 }){
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   const query=input.query.trim();
@@ -152,7 +157,8 @@ export async function searchStockMedia(input:{
   if(input.provider==='pexels'){
     const key=await providerSecret('pexels');
     const endpoint=input.kind==='image'?'https://api.pexels.com/v1/search':'https://api.pexels.com/v1/videos/search';
-    const params=new URLSearchParams({query,orientation:'landscape',per_page:'24',page:'1'});
+    const params=new URLSearchParams({query,per_page:'24',page:'1'});
+    if((input.orientation??'landscape')!=='any')params.set('orientation',input.orientation??'landscape');
     let response:Response;
     try{response=await fetch(endpoint+'?'+params,{headers:{Authorization:key},signal:AbortSignal.timeout(20000),cache:'no-store'});}
     catch{throw new HttpError('Não foi possível pesquisar no Pexels.',502);}
@@ -167,7 +173,9 @@ export async function searchStockMedia(input:{
     const key=await providerSecret('pixabay');
     const endpoint=input.kind==='image'?'https://pixabay.com/api/':'https://pixabay.com/api/videos/';
     const params=new URLSearchParams({key,q:query,per_page:'24',safesearch:'true'});
-    if(input.kind==='image')params.set('orientation','horizontal');
+    if(input.kind==='image'&&(input.orientation??'landscape')!=='any'){
+      params.set('orientation',(input.orientation??'landscape')==='portrait'?'vertical':'horizontal');
+    }
     let response:Response;
     try{response=await fetch(endpoint+'?'+params,{signal:AbortSignal.timeout(20000),cache:'no-store'});}
     catch{throw new HttpError('Não foi possível pesquisar no Pixabay.',502);}
@@ -180,8 +188,9 @@ export async function searchStockMedia(input:{
   }else if(input.provider==='unsplash'){
     const key=await providerSecret('unsplash');
     const params=new URLSearchParams({
-      query,orientation:'landscape',per_page:'24',page:'1',content_filter:'high'
+      query,per_page:'24',page:'1',content_filter:'high'
     });
+    if((input.orientation??'landscape')!=='any')params.set('orientation',input.orientation??'landscape');
     let response:Response;
     try{
       response=await fetch('https://api.unsplash.com/search/photos?'+params,{
@@ -206,7 +215,9 @@ export async function searchStockMedia(input:{
       family_friendly:'true',
       ai_generated:'false'
     });
-    if(input.kind==='image')params.set('orientation','horizontal');
+    if(input.kind==='image'&&(input.orientation??'landscape')!=='any'){
+      params.set('orientation',(input.orientation??'landscape')==='portrait'?'vertical':'horizontal');
+    }
     let response:Response;
     try{
       response=await fetch('https://api.vecteezy.com/v2/'+encodeURIComponent(config.accountId)+'/resources?'+params,{
@@ -280,6 +291,7 @@ function choosePexelsVideo(files:Record<string,unknown>[]):PexelsVideoFile|null{
 
 export async function importStockMedia(input:{
   promptSetId:string;sceneId:string;provider:StockMediaProvider;kind:'image'|'video';providerAssetId:string;
+  selectIfNone?:boolean;
 }){
   await sceneContext(input.promptSetId,input.sceneId);
   if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
@@ -398,6 +410,194 @@ export async function importStockMedia(input:{
     mimeType:actualMime,
     width,height,durationSeconds:duration,
     pageUrl,creatorName,creatorUrl,attributionLabel:attribution,
-    licenseLabel,licenseUrl
+    licenseLabel,licenseUrl,
+    selectIfNone:input.selectIfNone
   });
+}
+
+
+async function existingStockSceneAsset(input:{
+  promptSetId:string;
+  sceneId:string;
+  provider:StockMediaProvider;
+  providerAssetId:string;
+}){
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('id,status,payload')
+    .eq('visual_prompt_set_id',input.promptSetId)
+    .eq('scene_id',input.sceneId)
+    .eq('source_type','stock')
+    .eq('provider',input.provider)
+    .eq('status','ready')
+    .order('variant',{ascending:false})
+    .limit(100));
+  return (rows??[]).find(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const stock=payload.stock&&typeof payload.stock==='object'
+      ?payload.stock as Record<string,unknown>
+      :{};
+    return String(stock.providerAssetId??'')===input.providerAssetId;
+  })??null;
+}
+
+export async function resolveVerifiedStockMediaForScene(input:{
+  promptSetId:string;
+  sceneId:string;
+  query:string;
+  desiredDurationSeconds:number;
+  orientation?:'landscape'|'portrait'|'any';
+  providers?:StockMediaProvider[];
+  maxCandidatesPerProvider?:number;
+}){
+  const editorialQuery=input.query.trim();
+  const query=stockDiscoveryQuery(editorialQuery);
+  if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
+  const orientation=input.orientation??'landscape';
+  const providerSeed:StockMediaProvider[]=input.providers?.length
+    ?input.providers
+    :['pexels','pixabay'];
+  const providers=providerSeed.filter((provider,index,list)=>list.indexOf(provider)===index);
+  const maxCandidates=Math.max(1,Math.min(3,input.maxCandidatesPerProvider??2));
+  const attempts:Array<Record<string,unknown>>=[];
+
+  for(const provider of providers){
+    let discovered:Awaited<ReturnType<typeof searchStockMedia>>;
+    try{
+      discovered=await searchStockMedia({
+        promptSetId:input.promptSetId,
+        sceneId:input.sceneId,
+        provider,
+        kind:'video',
+        query,
+        orientation
+      });
+    }catch(error){
+      attempts.push({
+        provider,
+        stage:'search',
+        error:error instanceof Error?error.message:'Falha desconhecida na busca stock.'
+      });
+      continue;
+    }
+
+    const ranked=rankStockMediaResults({
+      query,
+      results:discovered.results,
+      desiredDurationSeconds:input.desiredDurationSeconds,
+      orientation
+    }).filter(item=>item.relevance>=.45).slice(0,maxCandidates);
+
+    for(const candidate of ranked){
+      let assetId:string|null=null;
+      let createdCandidate=false;
+      try{
+        const existing=await existingStockSceneAsset({
+          promptSetId:input.promptSetId,
+          sceneId:input.sceneId,
+          provider,
+          providerAssetId:candidate.result.providerAssetId
+        });
+        const asset=existing
+          ?{id:String(existing.id)}
+          :await importStockMedia({
+            promptSetId:input.promptSetId,
+            sceneId:input.sceneId,
+            provider,
+            kind:'video',
+            providerAssetId:candidate.result.providerAssetId,
+            selectIfNone:false
+          });
+        if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
+        assetId=asset.id;
+        createdCandidate=!existing;
+
+        const currentAnalysis=await loadVisualIntelligence(asset.id);
+        if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
+          await analyzeVisualAsset(asset.id);
+        }
+        const match=await bestVisualSegment({
+          assetId:asset.id,
+          query,
+          desiredDurationSeconds:input.desiredDurationSeconds
+        });
+        const visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
+        const combinedScore=candidate.score*.55+visualRelevance*.45;
+        if(match&&stockCandidateAccepted({
+          searchScore:candidate.relevance,
+          visualRelevance,
+          combinedScore
+        })){
+          await selectSceneAsset(asset.id);
+          const row=checked(await db().from('radar_scene_assets')
+            .select('payload')
+            .eq('id',asset.id)
+            .maybeSingle());
+          const payload=(row?.payload??{}) as Record<string,unknown>;
+          await db().from('radar_scene_assets').update({
+            payload:{
+              ...payload,
+              verifiedStock:{
+                query,
+                provider,
+                providerAssetId:candidate.result.providerAssetId,
+                searchRelevance:candidate.relevance,
+                visualRelevance,
+                combinedScore,
+                sourceStartSeconds:match.sourceStartSeconds,
+                sourceEndSeconds:match.sourceEndSeconds,
+                verifiedAt:new Date().toISOString()
+              }
+            },
+            updated_at:new Date().toISOString()
+          }).eq('id',asset.id);
+          return {
+            status:'matched' as const,
+            query,
+            editorialQuery,
+            provider,
+            assetId:asset.id,
+            candidate:candidate.result,
+            searchRelevance:candidate.relevance,
+            visualRelevance,
+            combinedScore,
+            match,
+            attempts
+          };
+        }
+
+        attempts.push({
+          provider,
+          providerAssetId:candidate.result.providerAssetId,
+          stage:'visual-verification',
+          searchRelevance:candidate.relevance,
+          visualRelevance,
+          combinedScore,
+          accepted:false
+        });
+        if(createdCandidate)await deleteSceneAsset(asset.id);
+        assetId=null;
+      }catch(error){
+        if(assetId&&createdCandidate){
+          await deleteSceneAsset(assetId).catch(()=>{});
+        }
+        attempts.push({
+          provider,
+          providerAssetId:candidate.result.providerAssetId,
+          stage:'candidate',
+          error:error instanceof Error?error.message:'Falha desconhecida no candidato stock.'
+        });
+      }
+    }
+  }
+
+  return {
+    status:'gap' as const,
+    query,
+    editorialQuery,
+    provider:null,
+    assetId:null,
+    candidate:null,
+    match:null,
+    attempts
+  };
 }

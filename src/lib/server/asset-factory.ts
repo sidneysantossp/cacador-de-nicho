@@ -62,6 +62,7 @@ function normalizeRow(row:Row):SceneAsset{
     generation:(payload.generation??{}) as SceneAsset['generation'],
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
     stock:payload.stock as SceneAsset['stock']|undefined,
+    verifiedStock:payload.verifiedStock as SceneAsset['verifiedStock']|undefined,
     owned:payload.owned as SceneAsset['owned']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
     error:payload.error?String(payload.error):undefined,
@@ -107,6 +108,7 @@ function metadataFor(
     generation:extra.generation??{},
     license:extra.license??{type:'unknown',label:'Unknown'},
     stock:extra.stock,
+    verifiedStock:extra.verifiedStock,
     owned:extra.owned,
     costUsd:extra.costUsd??null,
     modelId:extra.modelId,
@@ -162,7 +164,8 @@ async function persistReady(
   bytes:Buffer,
   mimeType:string,
   metadata:Record<string,unknown>,
-  fields:{width?:number|null;height?:number|null;durationSeconds?:number|null}={}
+  fields:{width?:number|null;height?:number|null;durationSeconds?:number|null}={},
+  selectIfNone=true
 ){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset reservado não encontrado.',404);
@@ -195,11 +198,13 @@ async function persistReady(
     updated_at:new Date().toISOString()
   }).eq('id',assetId));
 
-  await db().rpc('select_scene_asset_if_none',{
-    p_visual_prompt_set_id:asset.visualPromptSetId,
-    p_scene_id:asset.sceneId,
-    p_asset_id:assetId
-  });
+  if(selectIfNone){
+    await db().rpc('select_scene_asset_if_none',{
+      p_visual_prompt_set_id:asset.visualPromptSetId,
+      p_scene_id:asset.sceneId,
+      p_asset_id:assetId
+    });
+  }
 
   return rawAsset(assetId);
 }
@@ -525,6 +530,7 @@ export async function persistStockSceneAsset(input:{
   attributionLabel:string;
   licenseLabel:string;
   licenseUrl:string;
+  selectIfNone?:boolean;
 }){
   const {promptSet,visual}=await eligibleContext(input.promptSetId,input.sceneId);
   const metadata=metadataFor(promptSet,visual,{
@@ -551,7 +557,8 @@ export async function persistStockSceneAsset(input:{
   });
   return persistReady(
     reservation.id,input.bytes,input.mimeType,metadata,
-    {width:input.width,height:input.height,durationSeconds:input.durationSeconds}
+    {width:input.width,height:input.height,durationSeconds:input.durationSeconds},
+    input.selectIfNone!==false
   );
 }
 
