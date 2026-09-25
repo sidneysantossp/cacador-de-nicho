@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
+import { scoreVisualIntent, visualSemanticSearchText } from '../src/lib/media-library-policy';
 
 test('Owned Media recognizes supported video and image MIME types',()=>{
   assert.equal(ownedMediaKind('video/mp4'),'video');
@@ -88,4 +89,37 @@ test('Owned Media semantic index can exclude the literal filename after visual a
   });
   assert.ok(text.includes('new york public library'));
   assert.ok(!text.includes('bryant-park-new-york.mp4'));
+});
+
+
+test('Library First requires visual intent beyond geographic context',()=>{
+  const flagSemantic={
+    subjects:['flag'],locations:[],landmarks:[],activities:['waving'],objects:['flag'],
+    environments:[],timeOfDay:[],weather:[],shotTypes:['close-up','vertical framing'],
+    cameraMotion:['static'],moods:['patriotic'],visualStyle:['cinematic lighting'],periods:[]
+  };
+  const score=scoreVisualIntent(
+    'las vegas city skyline nightlife',
+    visualSemanticSearchText(flagSemantic),
+    'united states nevada las vegas'
+  );
+  assert.equal(score.hasVisualIntent,true);
+  assert.equal(score.visualRelevance,0);
+  assert.ok(score.contextRelevance>0);
+});
+
+test('Library First separates city context from supported skyline evidence',()=>{
+  const skylineSemantic={
+    subjects:['skyscrapers'],locations:[],landmarks:[],activities:[],objects:['buildings'],
+    environments:['skyline','cityscape'],timeOfDay:['daytime'],weather:['clear'],shotTypes:['wide shot'],
+    cameraMotion:['static'],moods:['urban'],visualStyle:['real-life footage'],periods:[]
+  };
+  const score=scoreVisualIntent(
+    'new york skyline skyscrapers',
+    visualSemanticSearchText(skylineSemantic),
+    'united states new york new york city manhattan'
+  );
+  assert.equal(score.hasVisualIntent,true);
+  assert.ok(score.visualRelevance>.5);
+  assert.ok(score.contextRelevance>0);
 });
