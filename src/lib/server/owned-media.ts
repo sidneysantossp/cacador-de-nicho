@@ -73,6 +73,7 @@ export async function prepareOwnedMediaUpload(input:{
   fileName:string;
   mimeType:string;
   bytes:number;
+  browserOrigin?:string;
 }){
   const fileName=input.fileName.trim().slice(0,255);
   const mimeType=input.mimeType.trim().toLowerCase();
@@ -101,7 +102,7 @@ export async function prepareOwnedMediaUpload(input:{
     safeName(fileName)
   ].join('/');
   let upload:{uploadUrl:string;storagePath:string};
-  try{upload=await presignedR2Upload(key,mimeType,1800);}
+  try{upload=await presignedR2Upload(key,mimeType,1800,input.browserOrigin);}
   catch{throw new HttpError('O Cloudflare R2 precisa estar configurado para upload direto.',503);}
 
   const parsed=parseOwnedMediaFilename(fileName);
