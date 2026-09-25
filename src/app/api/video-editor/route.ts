@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   createVideoEditFromTimeline, loadVideoEdit, loadVideoEditHistory,
-  loadVideoEditWorkspace, saveVideoEdit, videoEditorChannelState
+  loadVideoEditWorkspace, refreshVideoEditFromTimeline, saveVideoEdit, videoEditorChannelState
 } from '@/lib/server/video-editor';
 import { videoEditPayloadSchema } from '@/lib/server/validation';
 
@@ -12,6 +12,7 @@ export const dynamic='force-dynamic';
 
 const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('create'),timelineId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('refresh'),timelineId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
@@ -55,7 +56,9 @@ export async function POST(request:Request){
 
     const videoEdit=body.action==='create'
       ?await createVideoEditFromTimeline(body.timelineId)
-      :await saveVideoEdit(body.videoEdit,body.status,body.expectedVersion);
+      :body.action==='refresh'
+        ?await refreshVideoEditFromTimeline(body.timelineId)
+        :await saveVideoEdit(body.videoEdit,body.status,body.expectedVersion);
 
     const [history,workspace]=await Promise.all([
       loadVideoEditHistory(videoEdit.id,20),
@@ -65,7 +68,9 @@ export async function POST(request:Request){
     return Response.json({
       message:body.action==='create'
         ?'Video Edit criado a partir da Timeline aprovada.'
-        :body.status==='approved'
+        :body.action==='refresh'
+          ?'Video Edit reconstruído a partir da Timeline atual e voltou para draft.'
+          :body.status==='approved'
           ?'Video Edit aprovado para render.'
           :'Video Edit salvo.',
       videoEdit,

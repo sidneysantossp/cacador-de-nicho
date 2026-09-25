@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
-  automationHttpErrorShouldHold, inspectAutomationSteps
+  automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
+  automationTimelineSnapshotIssues, automationVideoEditSnapshotIssues, inspectAutomationSteps
 } from '../src/lib/episode-automation-policy';
 
 function step(
@@ -98,4 +100,85 @@ test('Recoverable HTTP errors become durable Automation holds',()=>{
 
 test('Episode Automation worker is valid Node ESM syntax',()=>{
   execFileSync(process.execPath,['--check','scripts/episode-automation-worker.mjs'],{stdio:'pipe'});
+});
+
+
+test('Automation detects stale Timeline asset selection and upstream versions',()=>{
+  const payload={
+    scenePlanVersion:2,
+    visualPromptSetVersion:3,
+    tracks:[{
+      type:'visual',
+      clips:[{sceneId:'scene-1',assetId:'asset-old'}]
+    }]
+  };
+  const issues=automationTimelineSnapshotIssues({
+    payload,
+    scenePlanVersion:2,
+    visualPromptSetVersion:3,
+    selectedAssets:[{sceneId:'scene-1',assetId:'asset-new'}]
+  });
+  assert.deepEqual(issues,['scene-asset-selection-changed']);
+});
+
+test('Automation detects Video Edit built from an older Timeline version',()=>{
+  const issues=automationVideoEditSnapshotIssues({
+    payload:{
+      timelineId:'timeline-1',
+      timelineVersion:2,
+      transcriptId:'transcript-1',
+      transcriptVersion:4
+    },
+    timelineId:'timeline-1',
+    timelineVersion:3,
+    transcriptId:'transcript-1',
+    transcriptVersion:4
+  });
+  assert.deepEqual(issues,['stale-timeline-version']);
+});
+
+test('Automation does not reuse a completed render from an older edit snapshot',()=>{
+  const issues=automationRenderSnapshotIssues({
+    payload:{
+      manifest:{
+        videoEditId:'edit-1',
+        videoEditVersion:2,
+        timelineId:'timeline-1',
+        timelineVersion:2,
+        transcriptId:'transcript-1',
+        transcriptVersion:4
+      }
+    },
+    videoEditId:'edit-1',
+    videoEditVersion:3,
+    timelineId:'timeline-1',
+    timelineVersion:3,
+    transcriptId:'transcript-1',
+    transcriptVersion:4
+  });
+  assert.ok(issues.includes('stale-video-edit-version'));
+  assert.ok(issues.includes('stale-timeline-version'));
+});
+
+
+test('Automation invalidates QA package and publish when upstream identity changes',()=>{
+  assert.deepEqual(automationQualitySnapshotIssues({
+    payload:{renderJobId:'render-old',videoEditId:'edit-1',videoEditVersion:2},
+    renderJobId:'render-new',
+    videoEditId:'edit-1',
+    videoEditVersion:3
+  }),['stale-render-job','stale-video-edit-version']);
+
+  assert.deepEqual(automationPackageSnapshotIssues({
+    payload:{qualityReportId:'qa-old',qualityReportVersion:1,renderJobId:'render-old'},
+    qualityReportId:'qa-new',
+    qualityReportVersion:2,
+    renderJobId:'render-new'
+  }),['stale-quality-report','stale-render-job']);
+
+  assert.deepEqual(automationPublishSnapshotIssues({
+    payload:{packageId:'pkg-1',packageVersion:1},
+    packageId:'pkg-1',
+    packageVersion:2
+  }),['stale-publication-package']);
 });

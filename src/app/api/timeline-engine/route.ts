@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   createTimelineFromPlan, listTimelines, loadTimeline, loadTimelineHistory,
-  loadTimelineSources, saveTimeline
+  loadTimelineSources, refreshTimelineFromPlan, saveTimeline
 } from '@/lib/server/timeline-engine';
 import { listScenePlans, loadScenePlan } from '@/lib/server/scene-timecode';
 import { timelinePayloadSchema } from '@/lib/server/validation';
@@ -13,6 +13,7 @@ export const dynamic='force-dynamic';
 
 const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('create'),scenePlanId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('refresh'),scenePlanId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
@@ -66,12 +67,16 @@ export async function POST(request:Request){
 
     const timeline=body.action==='create'
       ?await createTimelineFromPlan(body.scenePlanId)
-      :await saveTimeline(body.timeline,body.status,body.expectedVersion);
+      :body.action==='refresh'
+        ?await refreshTimelineFromPlan(body.scenePlanId)
+        :await saveTimeline(body.timeline,body.status,body.expectedVersion);
 
     return Response.json({
       message:body.action==='create'
         ?'Timeline criada a partir do Scene Plan.'
-        :body.status==='approved'
+        :body.action==='refresh'
+          ?'Timeline reconstruída a partir dos assets atualmente selecionados e voltou para draft.'
+          :body.status==='approved'
           ?'Timeline aprovada para edição/render.'
           :'Timeline salva.',
       timeline,

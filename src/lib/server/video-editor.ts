@@ -105,6 +105,49 @@ export async function createVideoEditFromTimeline(timelineId:string):Promise<Vid
   return saveVideoEdit(buildInitialVideoEdit(timeline,transcript,dna),'draft',0);
 }
 
+export async function refreshVideoEditFromTimeline(timelineId:string):Promise<VideoEdit>{
+  const existing=await loadVideoEditByTimeline(timelineId);
+  if(!existing)return createVideoEditFromTimeline(timelineId);
+  const {timeline,transcript}=await eligibleContext(timelineId);
+  const dna=await loadProductionDna(timeline.channelId);
+  const fresh=buildInitialVideoEdit(timeline,transcript,dna);
+
+  const existingStyles=new Map(existing.clipStyles.map(style=>[style.sceneId,style]));
+  fresh.clipStyles=fresh.clipStyles.map(style=>{
+    const prior=existingStyles.get(style.sceneId);
+    return prior
+      ?{...prior,timelineClipId:style.timelineClipId,sceneId:style.sceneId}
+      :style;
+  });
+
+  fresh.captions={
+    ...fresh.captions,
+    enabled:existing.captions.enabled,
+    position:existing.captions.position,
+    fontSize:existing.captions.fontSize,
+    maxLines:existing.captions.maxLines,
+    backgroundOpacity:existing.captions.backgroundOpacity,
+    styleDescription:existing.captions.styleDescription,
+    style:{...existing.captions.style},
+    cues:existing.transcriptVersion===transcript.version
+      ?structuredClone(existing.captions.cues)
+      :fresh.captions.cues
+  };
+  fresh.audioMix={...existing.audioMix};
+  if(Math.abs(existing.durationSeconds-timeline.durationSeconds)<=.03){
+    fresh.musicTrack=existing.musicTrack?structuredClone(existing.musicTrack):null;
+    fresh.sfxEvents=structuredClone(existing.sfxEvents);
+    fresh.overlays=structuredClone(existing.overlays);
+  }
+  fresh.review={...existing.review};
+
+  return saveVideoEdit({
+    ...fresh,
+    id:existing.id,
+    createdAt:existing.createdAt
+  },'draft',existing.version);
+}
+
 export async function saveVideoEdit(
   payload:VideoEditPayload,
   status:VideoEdit['status'],

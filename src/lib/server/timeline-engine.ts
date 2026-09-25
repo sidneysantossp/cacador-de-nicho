@@ -238,9 +238,7 @@ function currentAssetIssues(input:{
   });
 }
 
-export async function createTimelineFromPlan(scenePlanId:string):Promise<Timeline>{
-  const existing=await loadTimelineByPlan(scenePlanId);
-  if(existing)return existing;
+async function buildTimelineFromCurrentSources(scenePlanId:string){
   const context=await eligibleContext(scenePlanId);
   const payload=buildInitialTimeline({
     scenePlan:context.scenePlan,
@@ -253,7 +251,26 @@ export async function createTimelineFromPlan(scenePlanId:string):Promise<Timelin
     ),
     voiceAsset:context.voiceAsset
   });
+  return {context,payload};
+}
+
+export async function createTimelineFromPlan(scenePlanId:string):Promise<Timeline>{
+  const existing=await loadTimelineByPlan(scenePlanId);
+  if(existing)return existing;
+  const {payload}=await buildTimelineFromCurrentSources(scenePlanId);
   return saveTimeline(payload,'draft',0);
+}
+
+export async function refreshTimelineFromPlan(scenePlanId:string):Promise<Timeline>{
+  const existing=await loadTimelineByPlan(scenePlanId);
+  if(!existing)return createTimelineFromPlan(scenePlanId);
+  const {payload}=await buildTimelineFromCurrentSources(scenePlanId);
+  return saveTimeline({
+    ...payload,
+    id:existing.id,
+    review:existing.review,
+    createdAt:existing.createdAt
+  },'draft',existing.version);
 }
 
 export async function saveTimeline(
