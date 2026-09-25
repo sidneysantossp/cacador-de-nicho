@@ -122,3 +122,18 @@ test('Stock discovery strips production-only words but preserves semantic locati
     'Fremont Street Las Vegas'
   );
 });
+
+
+test('Stock discovery prioritizes exact landmark geography',()=>{
+  assert.equal(
+    stockDiscoveryQuery('Bryant Park Midtown Manhattan urban park skyscrapers people'),
+    'bryant park New York City'
+  );
+});
+
+test('Stock discovery prioritizes exact district geography',()=>{
+  assert.equal(
+    stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
+    'Fremont Street Las Vegas'
+  );
+});
