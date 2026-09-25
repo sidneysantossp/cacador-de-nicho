@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep Caçadores Render Worker on current Production image
+
+[Timer]
+OnBootSec=40s
+OnUnitActiveSec=60s
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
