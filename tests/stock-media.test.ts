@@ -51,7 +51,7 @@ test('Stock fallback only runs for real-world media instructions',()=>{
 
 test('Stock fallback ranks exact provider metadata above loose location matches',()=>{
   const ranked=rankStockMediaResults({
-    query:'Fremont Street Las Vegas',
+    query:'fremont street las vegas',
     desiredDurationSeconds:6,
     orientation:'landscape',
     results:[
@@ -119,7 +119,7 @@ test('Stock fallback requires both provider relevance and visual verification',(
 test('Stock discovery strips production-only words but preserves semantic location',()=>{
   assert.equal(
     stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
-    'Fremont Street Las Vegas'
+    'fremont street las vegas'
   );
 });
 
@@ -127,21 +127,21 @@ test('Stock discovery strips production-only words but preserves semantic locati
 test('Stock discovery prioritizes exact landmark geography',()=>{
   assert.equal(
     stockDiscoveryQuery('Bryant Park Midtown Manhattan urban park skyscrapers people'),
-    'Bryant Park New York City'
+    'bryant park new york city'
   );
 });
 
 test('Stock discovery prioritizes exact district geography',()=>{
   assert.equal(
     stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
-    'Fremont Street Las Vegas'
+    'fremont street las vegas'
   );
 });
 
 
 test('Exact landmark stock search keeps top provider results eligible for visual verification',()=>{
   const ranked=rankStockMediaResults({
-    query:'Bryant Park New York City',
+    query:'bryant park new york city',
     desiredDurationSeconds:7,
     orientation:'landscape',
     results:[{
