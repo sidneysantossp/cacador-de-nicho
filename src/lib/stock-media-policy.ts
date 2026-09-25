@@ -58,14 +58,20 @@ export function rankStockMediaResults(input:{
   orientation:'landscape'|'portrait'|'any';
 }){
   const desired=Math.max(.25,input.desiredDurationSeconds);
-  return input.results.map(result=>{
+  const taxonomy=classifyMediaTaxonomy(input.query);
+  const exactLocationQuery=taxonomy.landmarks.length>0||taxonomy.districts.length>0;
+  return input.results.map((result,index)=>{
     const searchText=[
       result.title,
       result.pageUrl.replace(/[-_/]+/g,' '),
       result.creatorName,
       result.kind
     ].filter(Boolean).join(' ');
-    const relevance=scoreVisualSegment(input.query,searchText);
+    const metadataRelevance=scoreVisualSegment(input.query,searchText);
+    const providerRankRelevance=exactLocationQuery
+      ?Math.max(0,1-index/Math.max(1,input.results.length))*.55
+      :0;
+    const relevance=Math.max(metadataRelevance,providerRankRelevance);
     const orientationFit=input.orientation==='any'||!result.width||!result.height
       ?1
       :input.orientation==='landscape'
@@ -75,7 +81,10 @@ export function rankStockMediaResults(input:{
       ?Math.min(1,result.durationSeconds/desired)
       :result.kind==='video'?.5:1;
     const score=Math.min(1,relevance*.78+orientationFit*.14+durationFit*.08);
-    return {result,relevance,orientationFit,durationFit,score};
+    return {
+      result,relevance,metadataRelevance,providerRankRelevance,
+      orientationFit,durationFit,score
+    };
   }).filter(item=>item.orientationFit>0)
     .sort((a,b)=>b.score-a.score);
 }
