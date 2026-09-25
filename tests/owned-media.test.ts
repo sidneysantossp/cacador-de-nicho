@@ -123,3 +123,36 @@ test('Library First separates city context from supported skyline evidence',()=>
   assert.ok(score.visualRelevance>.5);
   assert.ok(score.contextRelevance>0);
 });
+
+
+test('Library First rejects one-cue partial matches for compound visual intent',()=>{
+  const skylineDay={
+    subjects:['skyline'],locations:[],landmarks:[],activities:[],objects:['buildings'],
+    environments:['skyline'],timeOfDay:['daytime'],weather:['clear'],shotTypes:['wide shot'],
+    cameraMotion:['static'],moods:['urban'],visualStyle:['realistic'],periods:[]
+  };
+  const score=scoreVisualIntent(
+    'new york sunset skyline lights',
+    visualSemanticSearchText(skylineDay),
+    'united states new york new york city'
+  );
+  assert.equal(score.intentTokenCount,3);
+  assert.equal(score.matchedIntentTokens,1);
+  assert.ok(score.visualCoverage<.40);
+});
+
+test('Library First accepts compound intent when multiple visual cues are present',()=>{
+  const skylineNight={
+    subjects:['skyline'],locations:[],landmarks:[],activities:[],objects:['buildings','city lights'],
+    environments:['skyline','cityscape'],timeOfDay:['sunset'],weather:['clear'],shotTypes:['wide shot'],
+    cameraMotion:['static'],moods:['urban'],visualStyle:['realistic'],periods:[]
+  };
+  const score=scoreVisualIntent(
+    'new york sunset skyline lights',
+    visualSemanticSearchText(skylineNight),
+    'united states new york new york city'
+  );
+  assert.equal(score.intentTokenCount,3);
+  assert.equal(score.matchedIntentTokens,3);
+  assert.equal(score.visualCoverage,1);
+});

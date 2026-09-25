@@ -627,7 +627,10 @@ export async function matchOwnedMediaSegments(input:{
       item.semantic.landmarks.length>0||
       item.semantic.environments.length>0;
 
-    if(intent.hasVisualIntent&&intent.visualRelevance<.22)return [];
+    if(intent.hasVisualIntent){
+      const minimumCoverage=intent.intentTokenCount>=3?.40:intent.intentTokenCount===2?.50:1;
+      if(intent.visualRelevance<.22||intent.visualCoverage<minimumCoverage)return [];
+    }
     if(!intent.hasVisualIntent&&!locationOnlyEvidence)return [];
 
     const desired=Math.max(.25,input.desiredDurationSeconds);
@@ -654,6 +657,9 @@ export async function matchOwnedMediaSegments(input:{
       segment:item,
       relevance,
       visualRelevance,
+      visualCoverage:intent.visualCoverage,
+      matchedIntentTokens:intent.matchedIntentTokens,
+      intentTokenCount:intent.intentTokenCount,
       contextRelevance:intent.contextRelevance,
       durationFit,
       score,

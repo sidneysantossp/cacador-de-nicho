@@ -118,14 +118,22 @@ export function scoreVisualIntent(query:string,visualSearchText:string,contextSe
       hasVisualIntent:false,
       intentQuery:'',
       visualRelevance:0,
+      visualCoverage:0,
+      matchedIntentTokens:0,
+      intentTokenCount:0,
       contextRelevance
     };
   }
   const intentQuery=intentTokens.join(' ');
+  const visualTokenSet=new Set(visualTokens(visualSearchText));
+  const matchedIntentTokens=intentTokens.filter(token=>visualTokenSet.has(token)).length;
   return {
     hasVisualIntent:true,
     intentQuery,
     visualRelevance:scoreVisualSegment(intentQuery,visualSearchText),
+    visualCoverage:matchedIntentTokens/intentTokens.length,
+    matchedIntentTokens,
+    intentTokenCount:intentTokens.length,
     contextRelevance
   };
 }
