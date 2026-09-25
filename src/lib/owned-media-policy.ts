@@ -99,15 +99,15 @@ export function parseOwnedMediaFilename(fileName:string){
 }
 
 export function ownedMediaSearchText(input:{
-  title:string;originalName:string;tags:string[];semantic:OwnedMediaSemantic;
+  title:string;originalName:string;tags:string[];semantic:OwnedMediaSemantic;includeOriginalName?:boolean;
 }){
   return [
-    input.title,input.originalName,...input.tags,
+    input.title,input.includeOriginalName===false?'':input.originalName,...input.tags,
     ...input.semantic.subjects,...input.semantic.locations,...input.semantic.periods,
     ...input.semantic.countries,...input.semantic.regions,...input.semantic.cities,
     ...input.semantic.districts,...input.semantic.landmarks,...input.semantic.scenes,
     ...input.semantic.objects,...input.semantic.activities,...input.semantic.people,
     ...input.semantic.timeOfDay,...input.semantic.weather,...input.semantic.seasons,
     ...input.semantic.shotTypes,...input.semantic.cameraMotion,...input.semantic.moods
-  ].join(' ').toLowerCase();
+  ].filter(Boolean).join(' ').toLowerCase();
 }
