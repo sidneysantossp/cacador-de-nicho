@@ -8,7 +8,7 @@ import {
 import type { OwnedMediaAsset } from '@/lib/types';
 
 type Kind='all'|'video'|'image';
-type QueueItem={id:string;name:string;stage:string;error?:string};
+type QueueItem={id:string;name:string;stage:string;progress?:number;error?:string};
 
 function bytes(value:number){
   if(value<1024)return value+' B';
@@ -87,13 +87,37 @@ export default function OwnedMediaLibraryWorkspace(){
     setQueue(prev=>prev.map(item=>item.id===id?{...item,...patch}:item));
   }
 
+
+  function streamUpload(url:string,file:File,mimeType:string,qid:string){
+    return new Promise<void>((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('PUT',url);
+      xhr.setRequestHeader('Content-Type',mimeType);
+      xhr.withCredentials=true;
+      xhr.upload.onprogress=event=>{
+        if(!event.lengthComputable)return;
+        const progress=Math.max(0,Math.min(100,Math.round((event.loaded/event.total)*100)));
+        patchQueue(qid,{stage:'Enviando para o R2… '+progress+'%',progress});
+      };
+      xhr.onerror=()=>reject(new Error('A conexão foi interrompida durante o upload.'));
+      xhr.onabort=()=>reject(new Error('Upload cancelado.'));
+      xhr.onload=()=>{
+        if(xhr.status>=200&&xhr.status<300){resolve();return;}
+        let message='Falha ao transmitir o arquivo para o R2.';
+        try{message=JSON.parse(xhr.responseText)?.message??message;}catch{}
+        reject(new Error(message));
+      };
+      xhr.send(file);
+    });
+  }
+
   async function uploadOne(file:File){
     const qid=crypto.randomUUID();
     setQueue(prev=>[{id:qid,name:file.name,stage:'Lendo metadados…'},...prev]);
     try{
       const mimeType=inferMime(file);
       const meta=await browserMetadata(file);
-      patchQueue(qid,{stage:'Preparando R2…'});
+      patchQueue(qid,{stage:'Preparando ingestão…',progress:0});
       const prepare=await fetch('/api/owned-media',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'prepare',fileName:file.name,mimeType,bytes:file.size})
@@ -101,15 +125,10 @@ export default function OwnedMediaLibraryWorkspace(){
       const prepared=await prepare.json().catch(()=>({}));
       if(!prepare.ok)throw new Error(prepared.message??'Falha ao preparar o upload.');
 
-      patchQueue(qid,{stage:'Enviando direto para o R2…'});
-      const upload=await fetch(prepared.uploadUrl,{
-        method:'PUT',
-        headers:{'Content-Type':mimeType},
-        body:file
-      });
-      if(!upload.ok)throw new Error('O navegador não conseguiu enviar o arquivo ao R2. Verifique CORS do bucket.');
+      patchQueue(qid,{stage:'Enviando para o R2… 0%',progress:0});
+      await streamUpload(prepared.uploadUrl,file,mimeType,qid);
 
-      patchQueue(qid,{stage:'Cadastrando e categorizando…'});
+      patchQueue(qid,{stage:'Cadastrando e categorizando…',progress:100});
       const finalize=await fetch('/api/owned-media',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
@@ -119,7 +138,7 @@ export default function OwnedMediaLibraryWorkspace(){
       });
       const finished=await finalize.json().catch(()=>({}));
       if(!finalize.ok)throw new Error(finished.message??'Falha ao finalizar o cadastro.');
-      patchQueue(qid,{stage:'Concluído'});
+      patchQueue(qid,{stage:'Concluído',progress:100});
       setMessage(file.name+' entrou na Biblioteca de Mídia.');
       await load();
     }catch(error){
@@ -153,7 +172,7 @@ export default function OwnedMediaLibraryWorkspace(){
       <div>
         <span>OWN MEDIA LIBRARY</span>
         <h2>Sua própria biblioteca visual, antes de qualquer banco externo.</h2>
-        <p>Arraste vídeos e imagens. O arquivo vai direto ao R2, a nomenclatura vira inteligência inicial e o acervo passa a ser pesquisável e reutilizável.</p>
+        <p>Arraste vídeos e imagens. O arquivo é transmitido em streaming para o R2, a nomenclatura vira inteligência inicial e o acervo passa a ser pesquisável e reutilizável.</p>
       </div>
       <div className="owned-library-stats"><strong>{items.length}</strong><span>assets</span><b>{bytes(totalBytes)}</b><small>carregados nesta página</small></div>
     </section>
@@ -167,7 +186,7 @@ export default function OwnedMediaLibraryWorkspace(){
       onClick={()=>inputRef.current?.click()}
     >
       <UploadCloud size={34}/>
-      <div><strong>Arraste seus arquivos aqui</strong><span>ou clique para selecionar · upload direto ao Cloudflare R2</span></div>
+      <div><strong>Arraste seus arquivos aqui</strong><span>ou clique para selecionar · transmissão em streaming ao Cloudflare R2</span></div>
       <em>MP4 · MOV · WebM · JPG · PNG · WebP · até 2 GB por arquivo</em>
       <input ref={inputRef} hidden multiple type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" onChange={e=>void uploadFiles([...(e.target.files??[])])}/>
     </section>
@@ -176,7 +195,7 @@ export default function OwnedMediaLibraryWorkspace(){
       <header><strong>Fila de ingestão</strong><span>{queue.length} item(ns)</span></header>
       {queue.map(item=><article key={item.id}>
         <FileVideo2 size={17}/>
-        <div><strong>{item.name}</strong><span className={item.error?'error':''}>{item.error??item.stage}</span></div>
+        <div><strong>{item.name}</strong><span className={item.error?'error':''}>{item.error??item.stage}</span>{typeof item.progress==='number'&&!item.error&&item.stage!=='Concluído'&&<progress max="100" value={item.progress}/>}</div>
         {item.stage!=='Concluído'&&item.stage!=='Falhou'?<LoaderCircle className="spin" size={17}/>:item.stage==='Concluído'?<CheckCircle2 size={17}/>:null}
       </article>)}
     </section>}
