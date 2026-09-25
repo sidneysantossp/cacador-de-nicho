@@ -127,7 +127,7 @@ test('Stock discovery strips production-only words but preserves semantic locati
 test('Stock discovery prioritizes exact landmark geography',()=>{
   assert.equal(
     stockDiscoveryQuery('Bryant Park Midtown Manhattan urban park skyscrapers people'),
-    'bryant park New York City'
+    'Bryant Park New York City'
   );
 });
 
