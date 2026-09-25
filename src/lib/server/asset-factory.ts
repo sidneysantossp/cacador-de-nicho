@@ -580,7 +580,7 @@ export async function generateGoogleImage(input:{
 
   const reservation=await reserve({
     promptSet,sceneId:input.sceneId,kind:'image',sourceType:'generated',provider:'googleai',
-    mimeType:'image/png',originalName:null,metadata
+    mimeType:'image/jpeg',originalName:null,metadata
   });
 
   let response:Response;
@@ -593,7 +593,7 @@ export async function generateGoogleImage(input:{
         input:visual.prompt,
         response_format:{
           type:'image',
-          mime_type:'image/png',
+          mime_type:'image/jpeg',
           aspect_ratio:dna.format.aspectRatio,
           image_size:imageSize
         }
@@ -619,7 +619,7 @@ export async function generateGoogleImage(input:{
   if(!image?.data)throw new HttpError('A Google AI não devolveu uma imagem utilizável.',502);
   const bytes=Buffer.from(image.data,'base64');
   if(!bytes.length)throw new HttpError('A Google AI devolveu uma imagem vazia.',502);
-  return persistReady(reservation.id,bytes,image.mimeType||'image/png',metadata);
+  return persistReady(reservation.id,bytes,image.mimeType||'image/jpeg',metadata);
 }
 
 export async function startGoogleVideo(input:{
