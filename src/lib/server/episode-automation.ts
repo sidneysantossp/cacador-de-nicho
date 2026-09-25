@@ -23,7 +23,9 @@ import {
 import {
   generateGoogleImage, listSceneAssets, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
-import { resolveVerifiedStockMediaForScene } from './stock-media';
+import {
+  enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
+} from './verified-stock-jobs';
 import { loadProductionDna } from './production-dna';
 import { stockFallbackEligible } from '@/lib/stock-media-policy';
 import {
@@ -114,7 +116,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
   const client=db();
   const [
     projectResult,scriptResult,voiceResult,transcriptResult,sceneResult,promptResult,
-    assetResult,timelineResult,editResult,renderResult,qualityResult,packageResult,dnaResult
+    assetResult,stockJobResult,timelineResult,editResult,renderResult,qualityResult,packageResult,dnaResult
   ]=await Promise.all([
     client.from('radar_content_projects')
       .select('id,version,status,payload,updated_at')
@@ -138,6 +140,11 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
     client.from('radar_scene_assets')
       .select('id,scene_id,status,selected,payload,updated_at')
       .eq('episode_id',run.episodeId).eq('selected',true),
+    client.from('radar_verified_stock_jobs')
+      .select('id,scene_id,status,result,last_error,updated_at')
+      .eq('episode_id',run.episodeId)
+      .order('updated_at',{ascending:false})
+      .limit(100),
     client.from('radar_timelines')
       .select('id,version,status,payload,updated_at')
       .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
@@ -177,6 +184,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
     scenePlan:latest(checked(sceneResult)??[]),
     promptSet:latest(checked(promptResult)??[]),
     assets:checked(assetResult)??[],
+    stockJobs:checked(stockJobResult)??[],
     timeline:latest(checked(timelineResult)??[]),
     videoEdit:latest(checked(editResult)??[]),
     render:latest(checked(renderResult)??[]),
@@ -310,10 +318,18 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
+  const activeStockJobs=(src.stockJobs??[]).filter(item=>
+    missingAssets.includes(String(item.scene_id))&&
+    (item.status==='queued'||item.status==='processing')
+  );
   if(!promptsUsable){
     steps.push(step('visual-assets','pending',{reason:'Aguardando Visual Prompt Set.'}));
   }else if(sceneIds.size>0&&missingAssets.length===0){
     steps.push(step('visual-assets','completed',{reason:String(sceneIds.size)+' cena(s) com asset selecionado e pronto.'}));
+  }else if(activeStockJobs.length){
+    steps.push(step('visual-assets','running',{
+      reason:String(activeStockJobs.length)+' fallback(s) stock verificado em fila/processamento.'
+    }));
   }else{
     steps.push(step('visual-assets','ready',{
       reason:missingAssets.length
@@ -1019,22 +1035,37 @@ async function executeAutomationTransition(
         const orientation=!dna||dna.format.width===dna.format.height
           ?'any'
           :dna.format.width>dna.format.height?'landscape':'portrait';
-        const stock=await resolveVerifiedStockMediaForScene({
-          promptSetId:promptSet.id,
-          sceneId:target.sceneId,
-          query:libraryFirst.query||target.direction||target.prompt,
-          desiredDurationSeconds:Math.max(.25,target.endSeconds-target.startSeconds),
-          orientation,
-          providers:['pexels','pixabay'],
-          maxCandidatesPerProvider:2
-        });
-        if(stock.status==='matched'){
-          return 'Library First sem OWNED forte. Stock verificado selecionado para '+
-            target.timecodeLabel+' · '+stock.provider+
-            ' · busca '+stock.searchRelevance.toFixed(3)+
-            ' · visual '+stock.visualRelevance.toFixed(3)+
-            ' · combinado '+stock.combinedScore.toFixed(3)+'.';
+        const query=libraryFirst.query||target.direction||target.prompt;
+        const existingJob=await loadVerifiedStockJob(promptSet.id,target.sceneId);
+
+        if(existingJob&&(existingJob.status==='queued'||existingJob.status==='processing')){
+          return 'Fallback stock verificado já está em fila/processamento para '+target.timecodeLabel+'.';
         }
+
+        if(existingJob?.status==='completed'){
+          const result=existingJob.result as {status?:string;provider?:string;combinedScore?:number};
+          if(result.status==='matched'||result.status==='skipped'){
+            const reopened=await restartVerifiedStockJob(existingJob.id);
+            return 'Asset stock anterior não está mais selecionado; job reaberto para '+
+              target.timecodeLabel+' · '+reopened.id+'.';
+          }
+        }
+
+        if(!existingJob||existingJob.status!=='completed'&&existingJob.status!=='failed'){
+          const queued=await enqueueVerifiedStockJob({
+            promptSetId:promptSet.id,
+            sceneId:target.sceneId,
+            query,
+            desiredDurationSeconds:Math.max(.25,target.endSeconds-target.startSeconds),
+            orientation,
+            providers:['pexels','pixabay'],
+            maxCandidatesPerProvider:2
+          });
+          return 'Fallback stock verificado enfileirado para '+target.timecodeLabel+
+            ' · job '+queued.id+'.';
+        }
+
+        // completed gap or permanent failure: continue to the generated fallback below.
       }
 
       const asset=await generateGoogleImage({

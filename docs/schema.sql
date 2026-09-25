@@ -148,6 +148,36 @@ create table if not exists public.radar_owned_media_analysis_jobs(
 );
 create index if not exists radar_owned_media_analysis_jobs_status_created on public.radar_owned_media_analysis_jobs(status,available_at,created_at);
 
+
+create table if not exists public.radar_verified_stock_jobs(
+  id uuid primary key,
+  channel_id text not null references public.radar_managed_channels(id) on delete cascade,
+  episode_id uuid not null references public.radar_episodes(id) on delete cascade,
+  visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,
+  scene_id uuid not null,
+  status text not null default 'queued' check(status in ('queued','processing','completed','failed')),
+  query text not null check(char_length(query) between 1 and 2000),
+  desired_duration_seconds numeric not null check(desired_duration_seconds>0 and desired_duration_seconds<=120),
+  orientation text not null default 'landscape' check(orientation in ('landscape','portrait','any')),
+  providers text[] not null default array['pexels','pixabay']::text[],
+  max_candidates_per_provider int not null default 2 check(max_candidates_per_provider between 1 and 3),
+  worker_token uuid,
+  lease_until timestamptz,
+  attempts int not null default 0,
+  available_at timestamptz not null default now(),
+  result jsonb not null default '{}'::jsonb,
+  last_error text,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(visual_prompt_set_id,scene_id)
+);
+create index if not exists radar_verified_stock_jobs_status_available
+  on public.radar_verified_stock_jobs(status,available_at,created_at);
+create index if not exists radar_verified_stock_jobs_episode_updated
+  on public.radar_verified_stock_jobs(episode_id,updated_at desc);
+alter table public.radar_verified_stock_jobs enable row level security;
+
 alter table public.radar_media_library_metadata add column if not exists semantic jsonb not null default '{}'::jsonb;
 create table if not exists public.radar_asset_visual_analysis(
   asset_id uuid primary key references public.radar_scene_assets(id) on delete cascade,
@@ -491,9 +521,19 @@ where status='running' and mode='autonomous' and worker_token is not null and le
 select count(*) into active_runs from public.radar_episode_automation_runs
 where status='running' and worker_token is not null and lease_until is not null and lease_until>now();
 if active_runs>=coalesce(max_runs,1) then return null;end if;
-select id into picked from public.radar_episode_automation_runs
-where mode='autonomous' and hold_step is null and (status='active' or (status='running' and worker_token is null))
-order by updated_at asc for update skip locked limit 1;
+select r.id into picked from public.radar_episode_automation_runs r
+where r.mode='autonomous'
+  and r.hold_step is null
+  and (r.status='active' or (r.status='running' and r.worker_token is null))
+  and not (
+    r.current_step='visual-assets'
+    and exists(
+      select 1 from public.radar_verified_stock_jobs j
+      where j.episode_id=r.episode_id
+        and j.status in ('queued','processing')
+    )
+  )
+order by r.updated_at asc for update skip locked limit 1;
 if picked is null then return null;end if;
 update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
 return picked;
@@ -1043,3 +1083,36 @@ return picked;
 end $$;
 revoke all on function public.claim_owned_media_analysis_job(uuid,int) from public,anon,authenticated;
 grant execute on function public.claim_owned_media_analysis_job(uuid,int) to service_role;
+
+
+create or replace function public.claim_verified_stock_job(
+  p_worker_token uuid,
+  p_lease_seconds int default 1800
+) returns uuid
+language plpgsql security invoker set search_path='' as $
+declare picked uuid;
+begin
+if p_lease_seconds<300 or p_lease_seconds>7200 then raise exception 'invalid verified stock lease';end if;
+update public.radar_verified_stock_jobs
+set status='queued',worker_token=null,lease_until=null,available_at=now(),updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+
+select id into picked
+from public.radar_verified_stock_jobs
+where status='queued' and available_at<=now()
+order by available_at asc,created_at asc
+for update skip locked
+limit 1;
+
+if picked is null then return null;end if;
+
+update public.radar_verified_stock_jobs
+set status='processing',worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),
+attempts=attempts+1,last_error=null,updated_at=now()
+where id=picked;
+
+return picked;
+end $;
+revoke all on function public.claim_verified_stock_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_verified_stock_job(uuid,int) to service_role;

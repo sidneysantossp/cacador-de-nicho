@@ -19,7 +19,11 @@ if p.exists():
 print(mode)
 PYMODE
 )"
-UNITS=(cacadores-auto-deploy.timer)
+UNITS=(
+  cacadores-auto-deploy.timer
+  cacadores-owned-visual-worker-sync.timer
+  cacadores-verified-stock-worker-sync.timer
+)
 if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
   UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer)
 fi

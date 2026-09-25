@@ -15,7 +15,11 @@ These files mirror the production scheduler/watchdog artifacts installed on the 
 
 `cacadores-universe-cycle.timer` runs the bounded Universe cycle daily at 12:00 UTC (09:00 America/Sao_Paulo). It is intentionally non-persistent so re-enabling it after the daily slot does not trigger an unexpected heavy catch-up run.
 
-`cacadores-health-watch.timer` checks production every two minutes. The watchdog validates the public and loopback health endpoints against the promoted commit, performs rollback after repeated health failures when the previous release is healthy, and now also restores the two critical timers if either becomes disabled or inactive.
+`cacadores-health-watch.timer` checks production every two minutes. The watchdog validates the public and loopback health endpoints against the promoted commit, performs rollback after repeated health failures when the previous release is healthy, and restores critical timers when needed.
+
+`cacadores-owned-visual-worker-sync.timer` keeps the isolated OWNED Visual Intelligence worker on the promoted image.
+
+`cacadores-verified-stock-worker-sync.timer` keeps the isolated verified-stock resolver on the promoted image. It processes stock gaps asynchronously so the dashboard and Episode Automation do not need to stay connected while external search, download and frame validation run.
 
 ## Secret handling
 
