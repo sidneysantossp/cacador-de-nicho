@@ -179,3 +179,54 @@ export function automationRenderSnapshotIssues(input:{
   }
   return issues;
 }
+
+
+export function automationQualitySnapshotIssues(input:{
+  payload:unknown;
+  renderJobId:string;
+  videoEditId:string;
+  videoEditVersion:number;
+}){
+  const payload=automationObject(input.payload);
+  const issues:string[]=[];
+  if(String(payload.renderJobId??'')!==input.renderJobId){
+    issues.push('stale-render-job');
+  }
+  if(String(payload.videoEditId??'')!==input.videoEditId||
+    Number(payload.videoEditVersion??-1)!==input.videoEditVersion){
+    issues.push('stale-video-edit-version');
+  }
+  return issues;
+}
+
+export function automationPackageSnapshotIssues(input:{
+  payload:unknown;
+  qualityReportId:string;
+  qualityReportVersion:number;
+  renderJobId:string;
+}){
+  const payload=automationObject(input.payload);
+  const issues:string[]=[];
+  if(String(payload.qualityReportId??'')!==input.qualityReportId||
+    Number(payload.qualityReportVersion??-1)!==input.qualityReportVersion){
+    issues.push('stale-quality-report');
+  }
+  if(String(payload.renderJobId??'')!==input.renderJobId){
+    issues.push('stale-render-job');
+  }
+  return issues;
+}
+
+export function automationPublishSnapshotIssues(input:{
+  payload:unknown;
+  packageId:string;
+  packageVersion:number;
+}){
+  const payload=automationObject(input.payload);
+  const issues:string[]=[];
+  if(String(payload.packageId??'')!==input.packageId||
+    Number(payload.packageVersion??-1)!==input.packageVersion){
+    issues.push('stale-publication-package');
+  }
+  return issues;
+}
