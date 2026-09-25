@@ -108,7 +108,7 @@ export async function preflightOwnedMediaDuplicates(
     fingerprint:validFingerprint(item.contentFingerprint)
   }));
   const result=new Map<string,OwnedMediaDuplicateResult>();
-  const seenNames=new Map<string,string>();
+  const seenNames=new Map<string,{clientId:string;fingerprint:string}>();
   const seenFingerprints=new Map<string,string>();
 
   for(const item of items){
@@ -120,11 +120,11 @@ export async function preflightOwnedMediaDuplicates(
       result.set(item.clientId,{clientId:item.clientId,duplicate:true,reason:'batch-fingerprint'});
       continue;
     }
-    if(priorName){
+    if(priorName&&(!item.fingerprint||!priorName.fingerprint||item.fingerprint===priorName.fingerprint)){
       result.set(item.clientId,{clientId:item.clientId,duplicate:true,reason:'batch-name'});
       continue;
     }
-    seenNames.set(nameKey,item.clientId);
+    if(!priorName)seenNames.set(nameKey,{clientId:item.clientId,fingerprint:item.fingerprint});
     if(fingerprintKey)seenFingerprints.set(fingerprintKey,item.clientId);
   }
 
@@ -146,7 +146,7 @@ export async function preflightOwnedMediaDuplicates(
       const match=rows.find(row=>{
         if(Number(row.bytes)!==item.bytes)return false;
         const rowFingerprint=validFingerprint(String(row.content_fingerprint??''));
-        if(item.fingerprint&&rowFingerprint&&item.fingerprint===rowFingerprint)return true;
+        if(item.fingerprint&&rowFingerprint)return item.fingerprint===rowFingerprint;
         const rowName=String(row.normalized_name??'').trim()||normalizeOwnedMediaDuplicateName(String(row.original_name??''));
         return !!item.normalizedName&&rowName===item.normalizedName;
       });
