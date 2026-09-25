@@ -1080,6 +1080,17 @@ export type SceneAsset = {
   creatorUrl?: string;
   attributionLabel: string;
  };
+ verifiedStock?: {
+  query: string;
+  provider: StockMediaProvider;
+  providerAssetId: string;
+  searchRelevance: number;
+  visualRelevance: number;
+  combinedScore: number;
+  sourceStartSeconds: number;
+  sourceEndSeconds: number;
+  verifiedAt: string;
+ };
  owned?: {
   assetId: string;
   segmentId?: string;
