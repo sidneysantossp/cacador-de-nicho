@@ -60,6 +60,7 @@ function normalizeRow(row:Row):SceneAsset{
     generation:(payload.generation??{}) as SceneAsset['generation'],
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
     stock:payload.stock as SceneAsset['stock']|undefined,
+    owned:payload.owned as SceneAsset['owned']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
     error:payload.error?String(payload.error):undefined,
     createdAt:String(row.created_at),
@@ -104,6 +105,7 @@ function metadataFor(
     generation:extra.generation??{},
     license:extra.license??{type:'unknown',label:'Unknown'},
     stock:extra.stock,
+    owned:extra.owned,
     costUsd:extra.costUsd??null,
     modelId:extra.modelId,
     providerOperationId:extra.providerOperationId,
@@ -252,6 +254,106 @@ export async function listSceneAssets(promptSetId:string){
     const current=promptMap.get(asset.sceneId);
     return {...asset,signedUrl,stale:current?assetIsStale(asset,promptSet.version,current):true};
   }));
+}
+
+export async function attachOwnedMediaToScene(input:{
+  promptSetId:string;
+  sceneId:string;
+  ownedAssetId:string;
+  segmentId:string;
+  sourceStartSeconds?:number;
+  sourceEndSeconds?:number;
+  matchScore?:number;
+  visualCoverage?:number;
+  select?:boolean;
+}){
+  const {promptSet,visual}=await eligibleContext(input.promptSetId,input.sceneId);
+  const owned=checked(await db().from('radar_owned_media_assets')
+    .select('id,asset_kind,status,storage_path,mime_type,original_name,bytes,width,height,duration_seconds')
+    .eq('id',input.ownedAssetId)
+    .maybeSingle());
+  if(!owned)throw new HttpError('Asset OWNED não encontrado.',404);
+  if(owned.status!=='ready'||!owned.storage_path)throw new HttpError('O asset OWNED ainda não está pronto.',409);
+  if(owned.asset_kind!=='video')throw new HttpError('Este fluxo exige um vídeo OWNED analisado.',409);
+
+  const segment=checked(await db().from('radar_owned_media_segments')
+    .select('id,asset_id,start_seconds,end_seconds,duration_seconds')
+    .eq('id',input.segmentId)
+    .eq('asset_id',input.ownedAssetId)
+    .maybeSingle());
+  if(!segment)throw new HttpError('Segmento visual OWNED não encontrado.',404);
+
+  const segmentStart=Number(segment.start_seconds);
+  const segmentEnd=Number(segment.end_seconds);
+  const start=input.sourceStartSeconds===undefined?segmentStart:Number(input.sourceStartSeconds);
+  const end=input.sourceEndSeconds===undefined?segmentEnd:Number(input.sourceEndSeconds);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||start<segmentStart-.05||end>segmentEnd+.05||end-start<.20){
+    throw new HttpError('O trim solicitado está fora do segmento visual validado.',422);
+  }
+
+  const existingRows=checked(await db().from('radar_scene_assets')
+    .select('id,channel_id,episode_id,scene_plan_id,visual_prompt_set_id,scene_id,variant,asset_kind,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload,created_at,updated_at')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('scene_id',input.sceneId)
+    .eq('source_type','owned')
+    .eq('status','ready')
+    .order('variant',{ascending:false})
+    .limit(100)) as Row[];
+  const existing=existingRows.find(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const ownedLink=payload.owned&&typeof payload.owned==='object'
+      ?payload.owned as Record<string,unknown>
+      :{};
+    return String(ownedLink.assetId??'')===input.ownedAssetId&&
+      String(ownedLink.segmentId??'')===input.segmentId&&
+      Math.abs(Number(ownedLink.sourceStartSeconds??-1)-start)<.01&&
+      Math.abs(Number(ownedLink.sourceEndSeconds??-1)-end)<.01;
+  });
+  if(existing){
+    if(input.select!==false)await selectSceneAsset(existing.id);
+    return rawAsset(existing.id);
+  }
+
+  const metadata=metadataFor(promptSet,visual,{
+    generation:{},
+    license:{type:'owned',label:'OWNED Media Library'},
+    owned:{
+      assetId:input.ownedAssetId,
+      segmentId:input.segmentId,
+      sourceStartSeconds:start,
+      sourceEndSeconds:end,
+      matchScore:input.matchScore,
+      visualCoverage:input.visualCoverage
+    },
+    costUsd:0
+  } as Partial<SceneAsset>);
+
+  const reservation=await reserve({
+    promptSet,
+    sceneId:input.sceneId,
+    kind:'video',
+    sourceType:'owned',
+    provider:'owned-library',
+    mimeType:String(owned.mime_type),
+    originalName:String(owned.original_name??''),
+    metadata
+  });
+
+  checked(await db().from('radar_scene_assets').update({
+    status:'ready',
+    storage_path:String(owned.storage_path),
+    mime_type:String(owned.mime_type),
+    original_name:String(owned.original_name??''),
+    bytes:Number(owned.bytes??0),
+    width:owned.width===null?null:Number(owned.width),
+    height:owned.height===null?null:Number(owned.height),
+    duration_seconds:owned.duration_seconds===null?null:Number(owned.duration_seconds),
+    payload:metadata,
+    updated_at:new Date().toISOString()
+  }).eq('id',reservation.id));
+
+  if(input.select!==false)await selectSceneAsset(reservation.id);
+  return rawAsset(reservation.id);
 }
 
 export async function uploadSceneAsset(input:{
@@ -499,7 +601,7 @@ export async function selectSceneAsset(assetId:string){
 export async function deleteSceneAsset(assetId:string){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset não encontrado.',404);
-  if(asset.storagePath){
+  if(asset.storagePath&&asset.sourceType!=='owned'){
     try{await removeMedia(asset.storagePath);}
     catch{throw new HttpError('Falha ao remover o arquivo do storage.',502);}
   }
