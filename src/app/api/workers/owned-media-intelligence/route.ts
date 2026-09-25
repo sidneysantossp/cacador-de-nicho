@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { checked, db, dbConfigured } from '@/lib/server/db';
 import { analyzeOwnedMediaAsset, loadOwnedMediaIntelligence, rebuildOwnedMediaVisualMetadata } from '@/lib/server/owned-media-intelligence';
+import { ownedVisualRetryPolicy } from '@/lib/owned-media-worker-policy';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -61,13 +62,9 @@ export async function POST(request:Request){
       const message=error instanceof Error?error.message:'Falha desconhecida.';
       const status=error instanceof HttpError?error.status:500;
       const attempts=Math.max(1,Number(job.attempts??1));
-      const transient=
-        status===429||status===502||status===503||status===504||
-        /http\s+50[234]|high demand|temporar|timeout|excedeu o tempo|unavailable/i.test(message);
-      if(transient&&attempts<5){
-        const delaySeconds=status===429
-          ?Math.min(1800,300*Math.pow(2,attempts-1))
-          :Math.min(900,60*Math.pow(2,attempts-1));
+      const retry=ownedVisualRetryPolicy({status,message,attempts});
+      if(retry.retry){
+        const delaySeconds=retry.delaySeconds;
         const availableAt=new Date(Date.now()+delaySeconds*1000).toISOString();
         checked(await db().from('radar_owned_media_analysis_jobs').update({
           status:'queued',
@@ -85,6 +82,7 @@ export async function POST(request:Request){
           status:'retry_scheduled',
           attempt:attempts,
           retryAfterSeconds:delaySeconds,
+          storagePressure:retry.storagePressure,
           availableAt
         });
       }
