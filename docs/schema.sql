@@ -852,7 +852,7 @@ grant execute on function public.radar_allow_login(text) to service_role;
 create or replace function public.radar_get_secret(p_secret_name text) returns text
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
 return (select d.decrypted_secret from vault.decrypted_secrets d where d.name=p_secret_name limit 1);
 end $$;
 
@@ -860,7 +860,7 @@ create or replace function public.radar_set_secret(p_secret_name text,p_secret_v
 language plpgsql security definer set search_path='' as $$
 declare secret_id uuid;
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') or length(p_secret_value)<20 then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') or length(p_secret_value)<8 then raise exception 'secret not allowed';end if;
 select d.id into secret_id from vault.decrypted_secrets d where d.name=p_secret_name limit 1;
 if secret_id is null then
  perform vault.create_secret(p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
@@ -872,13 +872,13 @@ end $$;
 create or replace function public.radar_delete_secret(p_secret_name text) returns void
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
 delete from vault.secrets where name=p_secret_name;
 end $$;
 
 create or replace function public.radar_secret_status() returns table(secret_name text,last4 text,updated_at timestamptz)
 language sql security definer set search_path='' as $$
-select d.name::text, right(d.decrypted_secret,4), d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key');
+select d.name::text, case when d.name='cloudflare_r2_config' then '' else right(d.decrypted_secret,4) end, d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config');
 $$;
 
 revoke all on function public.radar_get_secret(text) from public,anon,authenticated;
