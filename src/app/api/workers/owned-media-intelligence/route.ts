@@ -26,7 +26,7 @@ export async function POST(request:Request){
     if(!parsed.success)throw new HttpError('Job visual inválido.',400);
 
     const job=checked(await db().from('radar_owned_media_analysis_jobs')
-      .select('id,asset_id,status,worker_token,lease_until')
+      .select('id,asset_id,status,worker_token,lease_until,attempts')
       .eq('id',parsed.data.jobId)
       .maybeSingle());
     if(!job)throw new HttpError('Job visual não encontrado.',404);
@@ -56,6 +56,35 @@ export async function POST(request:Request){
       });
     }catch(error){
       const message=error instanceof Error?error.message:'Falha desconhecida.';
+      const status=error instanceof HttpError?error.status:500;
+      const attempts=Math.max(1,Number(job.attempts??1));
+      const transient=
+        status===429||status===502||status===503||status===504||
+        /http\s+50[234]|high demand|temporar|timeout|excedeu o tempo|unavailable/i.test(message);
+      if(transient&&attempts<5){
+        const delaySeconds=status===429
+          ?Math.min(1800,300*Math.pow(2,attempts-1))
+          :Math.min(900,60*Math.pow(2,attempts-1));
+        const availableAt=new Date(Date.now()+delaySeconds*1000).toISOString();
+        checked(await db().from('radar_owned_media_analysis_jobs').update({
+          status:'queued',
+          worker_token:null,
+          lease_until:null,
+          available_at:availableAt,
+          last_error:message.slice(0,4000),
+          completed_at:null,
+          updated_at:new Date().toISOString()
+        }).eq('id',job.id));
+        return Response.json({
+          message:'Falha transitória; nova tentativa agendada.',
+          jobId:job.id,
+          assetId:job.asset_id,
+          status:'retry_scheduled',
+          attempt:attempts,
+          retryAfterSeconds:delaySeconds,
+          availableAt
+        });
+      }
       await db().from('radar_owned_media_analysis_jobs').update({
         status:'failed',
         worker_token:null,
