@@ -119,6 +119,6 @@ test('Stock fallback requires both provider relevance and visual verification',(
 test('Stock discovery strips production-only words but preserves semantic location',()=>{
   assert.equal(
     stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
-    'Fremont Street Las Vegas only'
+    'Fremont Street Las Vegas'
   );
 });
