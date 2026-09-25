@@ -1022,3 +1022,5 @@
 @media(max-width:1180px){.owned-library-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:800px){.owned-library-hero{align-items:flex-start;flex-direction:column}.owned-upload-zone{align-items:flex-start;flex-direction:column}.owned-upload-zone em{margin-left:0}.owned-library-toolbar{align-items:stretch;flex-direction:column}.owned-library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.owned-detail-facts{grid-template-columns:1fr}}
 @media(max-width:520px){.owned-library-grid{grid-template-columns:1fr}}
+
+.owned-upload-queue progress{width:min(360px,100%);height:6px;margin-top:5px;border:0;border-radius:999px;overflow:hidden;appearance:none}.owned-upload-queue progress::-webkit-progress-bar{background:#eef1f5;border-radius:999px}.owned-upload-queue progress::-webkit-progress-value{background:var(--orange);border-radius:999px}.owned-upload-queue progress::-moz-progress-bar{background:var(--orange);border-radius:999px}

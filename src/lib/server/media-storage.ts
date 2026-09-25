@@ -1,17 +1,16 @@
 import 'server-only';
 
 import {
-  DeleteObjectCommand, GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand
+  DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { CORSRule } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
 import { db } from './db';
 import { providerSecret } from './providers';
 import { parseR2Config, r2Client } from './r2';
 
 const SUPABASE_BUCKET='cacadores-media';
 const R2_PREFIX='r2:';
-const ensuredUploadOrigins=new Set<string>();
 
 async function r2(){
   try{
@@ -117,61 +116,35 @@ export async function removeMedia(path:string){
 
 
 
-async function ensureR2BrowserUploadCors(
-  target:NonNullable<Awaited<ReturnType<typeof r2>>>,
-  origin:string
-){
-  const normalized=origin.trim().replace(/\/$/,'');
-  if(!/^https?:\/\/[^/]+$/i.test(normalized))throw new Error('invalid-upload-origin');
-  if(ensuredUploadOrigins.has(normalized))return;
-  let rules:CORSRule[]=[];
-  try{
-    const current=await target.client.send(new GetBucketCorsCommand({Bucket:target.config.bucket}));
-    rules=[...(current.CORSRules??[])];
-  }catch(error){
-    const name=String((error as {name?:string})?.name??'');
-    if(name!=='NoSuchCORSConfiguration'&&name!=='NoSuchCORS')throw error;
-  }
-  const covered=rules.some(rule=>
-    (rule.AllowedOrigins??[]).some(value=>value==='*'||value===normalized)&&
-    (rule.AllowedMethods??[]).includes('PUT')&&
-    (rule.AllowedHeaders??[]).some(value=>value==='*'||value.toLowerCase()==='content-type')
-  );
-  if(!covered){
-    rules.push({
-      AllowedOrigins:[normalized],
-      AllowedMethods:['PUT'],
-      AllowedHeaders:['content-type'],
-      ExposeHeaders:['etag'],
-      MaxAgeSeconds:3600
-    });
-    await target.client.send(new PutBucketCorsCommand({
-      Bucket:target.config.bucket,
-      CORSConfiguration:{CORSRules:rules}
-    }));
-  }
-  ensuredUploadOrigins.add(normalized);
+
+export function r2StoragePath(key:string){
+  return R2_PREFIX+key;
 }
 
-export async function presignedR2Upload(
-  key:string,
+export async function putMediaStream(
+  storagePath:string,
+  body:ReadableStream<Uint8Array>,
   contentType:string,
-  expiresSeconds=1800,
-  browserOrigin?:string
+  contentLength:number
 ){
+  if(!isR2Path(storagePath))throw new Error('stream-upload-r2-only');
   const target=await r2();
   if(!target)throw new Error('r2-not-configured');
-  if(browserOrigin)await ensureR2BrowserUploadCors(target,browserOrigin);
-  const uploadUrl=await getSignedUrl(
-    target.client,
-    new PutObjectCommand({
+  if(!Number.isFinite(contentLength)||contentLength<=0)throw new Error('invalid-content-length');
+  const stream=Readable.fromWeb(body as never);
+  try{
+    await target.client.send(new PutObjectCommand({
       Bucket:target.config.bucket,
-      Key:key,
-      ContentType:contentType
-    }),
-    {expiresIn:Math.max(60,Math.min(expiresSeconds,3600))}
-  );
-  return {uploadUrl,storagePath:R2_PREFIX+key};
+      Key:r2Key(storagePath),
+      Body:stream,
+      ContentType:contentType,
+      ContentLength:contentLength,
+      CacheControl:'31536000'
+    }));
+  }catch{
+    throw new Error('r2-stream-upload-failed');
+  }
+  return storagePath;
 }
 
 export async function headMedia(path:string){

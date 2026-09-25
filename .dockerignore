@@ -8,3 +8,5 @@ npm-debug.log*
 coverage
 *.log
 .DS_Store
+tmp-*.ts
+*.bak.*

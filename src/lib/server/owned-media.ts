@@ -4,7 +4,7 @@ import type { OwnedMediaAsset } from '@/lib/types';
 import { ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '@/lib/owned-media-policy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { headMedia, presignedR2Upload, removeMedia, signedMediaUrl } from './media-storage';
+import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
 
 const MAX_BYTES=2*1024*1024*1024;
 
@@ -73,7 +73,6 @@ export async function prepareOwnedMediaUpload(input:{
   fileName:string;
   mimeType:string;
   bytes:number;
-  browserOrigin?:string;
 }){
   const fileName=input.fileName.trim().slice(0,255);
   const mimeType=input.mimeType.trim().toLowerCase();
@@ -101,9 +100,8 @@ export async function prepareOwnedMediaUpload(input:{
     id,
     safeName(fileName)
   ].join('/');
-  let upload:{uploadUrl:string;storagePath:string};
-  try{upload=await presignedR2Upload(key,mimeType,1800,input.browserOrigin);}
-  catch{throw new HttpError('O Cloudflare R2 precisa estar configurado para upload direto.',503);}
+  if(await preferredMediaStorage()!=='r2')throw new HttpError('Configure o Cloudflare R2 para usar a Biblioteca de Mídia.',503);
+  const storagePath=r2StoragePath(key);
 
   const parsed=parseOwnedMediaFilename(fileName);
   const searchText=ownedMediaSearchText({
@@ -113,7 +111,7 @@ export async function prepareOwnedMediaUpload(input:{
     id,
     asset_kind:kind,
     status:'uploading',
-    storage_path:upload.storagePath,
+    storage_path:storagePath,
     mime_type:mimeType,
     original_name:fileName,
     bytes:Math.round(input.bytes),
@@ -131,7 +129,41 @@ export async function prepareOwnedMediaUpload(input:{
       expectedBytes:Math.round(input.bytes)
     }
   }));
-  return {assetId:id,uploadUrl:upload.uploadUrl,storagePath:upload.storagePath,parsed};
+  return {assetId:id,uploadUrl:'/api/owned-media/upload?assetId='+encodeURIComponent(id),storagePath,parsed};
+}
+
+
+export async function streamOwnedMediaUpload(input:{
+  assetId:string;
+  body:ReadableStream<Uint8Array>;
+  mimeType:string;
+  bytes:number;
+}){
+  const row=checked(await db().from('radar_owned_media_assets')
+    .select('id,status,storage_path,mime_type,bytes,payload')
+    .eq('id',input.assetId)
+    .maybeSingle()) as Pick<Row,'id'|'status'|'storage_path'|'mime_type'|'bytes'|'payload'>|null;
+  if(!row)throw new HttpError('Upload não encontrado.',404);
+  if(row.status!=='uploading')throw new HttpError('Este upload não está mais aberto para recebimento.',409);
+  const expected=Number(row.bytes??0);
+  if(input.bytes!==expected)throw new HttpError('O tamanho transmitido não corresponde ao arquivo preparado.',422);
+  const mime=input.mimeType.split(';')[0].trim().toLowerCase();
+  if(mime!==String(row.mime_type).toLowerCase())throw new HttpError('O tipo do arquivo transmitido não corresponde ao arquivo preparado.',422);
+  try{
+    await putMediaStream(String(row.storage_path),input.body,mime,input.bytes);
+    checked(await db().from('radar_owned_media_assets').update({
+      payload:{...(row.payload as Record<string,unknown>??{}),uploadTransport:'same-origin-stream',uploadedAt:new Date().toISOString()},
+      updated_at:new Date().toISOString()
+    }).eq('id',row.id));
+  }catch{
+    await db().from('radar_owned_media_assets').update({
+      status:'failed',
+      payload:{...(row.payload as Record<string,unknown>??{}),error:'stream-upload-failed'},
+      updated_at:new Date().toISOString()
+    }).eq('id',row.id);
+    throw new HttpError('Falha ao transmitir o arquivo para o Cloudflare R2.',502);
+  }
+  return {assetId:row.id};
 }
 
 export async function finalizeOwnedMediaUpload(input:{
