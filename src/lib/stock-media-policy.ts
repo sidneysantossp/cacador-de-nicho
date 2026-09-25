@@ -37,7 +37,7 @@ export function stockDiscoveryQuery(value:string){
     .replace(/[\/|]+/g,' ')
     .replace(/\s+/g,' ')
     .replace(/\s+([,.;:])/g,'$1')
-    .replace(/[,;:.]\s*$/,'')
+    .replace(/\s*[,;:.]+\s*$/,'')
     .trim()
     .slice(0,100);
 }
