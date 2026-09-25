@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MediaLibraryItem } from '../src/lib/types';
 import {
-  mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags, sceneLibraryItemIsStale,
-  scoreVisualSegment, visualSegmentSearchText, voiceLibraryItemIsStale
+  libraryFirstMatchAccepted, libraryFirstSceneQuery, mediaLibrarySearch, normalizeMediaSemantic,
+  normalizeMediaTags, sceneLibraryItemIsStale, scoreVisualSegment, visualSegmentSearchText,
+  voiceLibraryItemIsStale
 } from '../src/lib/media-library-policy';
 
 function item(overrides:Partial<MediaLibraryItem>={}):MediaLibraryItem{
@@ -150,4 +151,33 @@ test('Visual segment matcher ranks narration-relevant metadata above unrelated f
   const query='Las Vegas night traffic cars on the boulevard';
   assert.ok(scoreVisualSegment(query,relevant)>scoreVisualSegment(query,unrelated));
   assert.ok(scoreVisualSegment(query,relevant)>.3);
+});
+
+
+test('Library First derives a clean scene query from the strongest visual instruction',()=>{
+  assert.equal(
+    libraryFirstSceneQuery({
+      visualIntent:'',
+      direction:'Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.',
+      prompt:'ignored fallback prompt',
+      narration:'ignored narration'
+    }),
+    'Present-day Fremont Street / Las Vegas establishing shot.'
+  );
+});
+
+test('Library First keeps channel style cues when they are part of the visual instruction',()=>{
+  assert.equal(
+    libraryFirstSceneQuery({
+      direction:'minimal hand-drawn editorial caveman with rocks on off-white paper, 16:9'
+    }),
+    'minimal hand-drawn editorial caveman with rocks on off-white paper,'
+  );
+});
+
+test('Library First only auto-selects strong visual matches',()=>{
+  assert.equal(libraryFirstMatchAccepted({score:.64,visualCoverage:.83}),true);
+  assert.equal(libraryFirstMatchAccepted({score:.44,visualCoverage:.83}),false);
+  assert.equal(libraryFirstMatchAccepted({score:.64,visualCoverage:.20}),false);
+  assert.equal(libraryFirstMatchAccepted({score:.50,visualCoverage:.50},.55),false);
 });
