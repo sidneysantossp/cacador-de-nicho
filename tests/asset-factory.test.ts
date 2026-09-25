@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { SceneAsset, VisualScenePrompt } from '../src/lib/types';
 import {
   assetIsStale, assetKindForMime, generationLabel, googleImageModels, googleVideoModels,
-  ownedSceneAssetTrim, sceneAssetOwnsStorage, validVideoGeneration
+  ownedSceneAssetTrim, sceneAssetOwnsStorage, validVideoGeneration, verifiedStockSceneAssetTrim
 } from '../src/lib/asset-factory-policy';
 
 test('Asset Factory exposes supported Google image and video model families',()=>{
@@ -70,4 +70,33 @@ test('Asset Factory labels OWNED library references distinctly',()=>{
     sourceType:'owned',
     provider:'owned-library'
   } as Pick<SceneAsset,'sourceType'|'provider'|'modelId'>),'OWNED Media Library');
+});
+
+
+test('Verified stock trim remains deterministic for Timeline',()=>{
+  const asset={
+    sourceType:'stock',
+    verifiedStock:{
+      query:'Fremont Street Las Vegas',
+      provider:'pexels',
+      providerAssetId:'26856655',
+      searchRelevance:.85,
+      visualRelevance:.72,
+      combinedScore:.79,
+      sourceStartSeconds:4.25,
+      sourceEndSeconds:10.25,
+      verifiedAt:'2026-09-25T20:00:00.000Z'
+    }
+  } as Pick<SceneAsset,'sourceType'|'verifiedStock'>;
+  assert.deepEqual(
+    verifiedStockSceneAssetTrim(asset),
+    {sourceStartSeconds:4.25,sourceEndSeconds:10.25}
+  );
+});
+
+test('Unverified stock has no deterministic trim override',()=>{
+  assert.equal(verifiedStockSceneAssetTrim({
+    sourceType:'stock',
+    verifiedStock:undefined
+  } as Pick<SceneAsset,'sourceType'|'verifiedStock'>),null);
 });
