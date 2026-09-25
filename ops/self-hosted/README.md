@@ -21,7 +21,9 @@ These files mirror the production scheduler/watchdog artifacts installed on the 
 
 `cacadores-owned-visual-worker-sync.timer` keeps the isolated OWNED Visual Intelligence worker on the promoted image.
 
-`cacadores-verified-stock-worker-sync.timer` keeps the isolated verified-stock resolver on the promoted image. It processes stock gaps asynchronously so the dashboard and Episode Automation do not need to stay connected while external search, download and frame validation run.
+`cacadores-verified-stock-worker-sync.timer` keeps the isolated verified-stock resolver on the promoted image.
+
+`cacadores-render-worker-sync.timer` keeps the ffmpeg Render Worker on the promoted image. It is resource-bounded independently from the web app and media-analysis workers. It processes stock gaps asynchronously so the dashboard and Episode Automation do not need to stay connected while external search, download and frame validation run.
 
 ## Secret handling
 
