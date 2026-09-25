@@ -170,6 +170,8 @@ export function libraryFirstSceneQuery(input:{
     .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
     .replace(/\s+/g,' ')
     .replace(/\s+([,.;:])/g,'$1')
+    .replace(/\.{2,}/g,'.')
+    .replace(/[,;:]\s*$/,'')
     .trim();
 }
 
