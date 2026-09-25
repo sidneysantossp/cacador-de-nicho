@@ -28,6 +28,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/render-worker.mjs ./scripts/render-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/youtube-publish-worker.mjs ./scripts/youtube-publish-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/episode-automation-worker.mjs ./scripts/episode-automation-worker.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/episode-automation-supervisor.mjs ./scripts/episode-automation-supervisor.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/closed-loop-worker.mjs ./scripts/closed-loop-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/owned-media-intelligence-worker.mjs ./scripts/owned-media-intelligence-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/owned-media-intelligence-supervisor.mjs ./scripts/owned-media-intelligence-supervisor.mjs
