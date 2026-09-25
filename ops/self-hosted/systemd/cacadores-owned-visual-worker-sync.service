@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores Owned Media Visual Intelligence worker synchronizer
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-owned-visual-worker-sync
+TimeoutStartSec=2min
