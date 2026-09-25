@@ -22,7 +22,8 @@ const matchSchema=z.object({
   country:z.string().trim().max(120).optional(),
   city:z.string().trim().max(120).optional(),
   scene:z.string().trim().max(120).optional(),
-  timeOfDay:z.string().trim().max(120).optional()
+  timeOfDay:z.string().trim().max(120).optional(),
+  orientation:z.enum(['landscape','portrait','any']).optional()
 }).strict();
 
 const schema=z.discriminatedUnion('action',[analyzeSchema,matchSchema]);

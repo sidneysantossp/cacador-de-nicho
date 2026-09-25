@@ -88,6 +88,48 @@ export function visualSegmentSearchText(input:{
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
+export function visualSemanticSearchText(semantic:{
+  subjects:string[];locations:string[];landmarks:string[];activities:string[];objects:string[];
+  environments:string[];timeOfDay:string[];weather:string[];shotTypes:string[];cameraMotion:string[];
+  moods:string[];visualStyle:string[];periods:string[];
+}){
+  return [
+    ...semantic.subjects,...semantic.locations,...semantic.landmarks,
+    ...semantic.activities,...semantic.objects,...semantic.environments,
+    ...semantic.timeOfDay,...semantic.weather,...semantic.shotTypes,
+    ...semantic.cameraMotion,...semantic.moods,...semantic.visualStyle,
+    ...semantic.periods
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function visualTokens(value:string){
+  const stop=new Set(['the','and','for','with','from','this','that','into','over','under','uma','para','com','das','dos','que','por','entre']);
+  return [...new Set(value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .split(/[^a-z0-9]+/).filter(token=>token.length>2&&!stop.has(token)))];
+}
+
+export function scoreVisualIntent(query:string,visualSearchText:string,contextSearchText:string){
+  const queryTokens=visualTokens(query);
+  const contextTokens=new Set(visualTokens(contextSearchText));
+  const intentTokens=queryTokens.filter(token=>!contextTokens.has(token));
+  const contextRelevance=scoreVisualSegment(query,contextSearchText);
+  if(!intentTokens.length){
+    return {
+      hasVisualIntent:false,
+      intentQuery:'',
+      visualRelevance:0,
+      contextRelevance
+    };
+  }
+  const intentQuery=intentTokens.join(' ');
+  return {
+    hasVisualIntent:true,
+    intentQuery,
+    visualRelevance:scoreVisualSegment(intentQuery,visualSearchText),
+    contextRelevance
+  };
+}
+
 export function scoreVisualSegment(query:string,segmentSearchText:string){
   const stop=new Set(['the','and','for','with','from','this','that','into','over','under','uma','para','com','das','dos','que','por','entre']);
   const tokens=(value:string)=>[...new Set(value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
