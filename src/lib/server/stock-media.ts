@@ -7,7 +7,7 @@ import { providerSecret } from './providers';
 import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
-import { analyzeVisualAsset, bestVisualSegment } from './visual-intelligence';
+import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDownloadHostAllowed, validStockQuery
 } from '@/lib/stock-media-policy';
@@ -416,6 +416,30 @@ export async function importStockMedia(input:{
 }
 
 
+async function existingStockSceneAsset(input:{
+  promptSetId:string;
+  sceneId:string;
+  provider:StockMediaProvider;
+  providerAssetId:string;
+}){
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('id,status,payload')
+    .eq('visual_prompt_set_id',input.promptSetId)
+    .eq('scene_id',input.sceneId)
+    .eq('source_type','stock')
+    .eq('provider',input.provider)
+    .eq('status','ready')
+    .order('variant',{ascending:false})
+    .limit(100));
+  return (rows??[]).find(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const stock=payload.stock&&typeof payload.stock==='object'
+      ?payload.stock as Record<string,unknown>
+      :{};
+    return String(stock.providerAssetId??'')===input.providerAssetId;
+  })??null;
+}
+
 export async function resolveVerifiedStockMediaForScene(input:{
   promptSetId:string;
   sceneId:string;
@@ -464,19 +488,32 @@ export async function resolveVerifiedStockMediaForScene(input:{
 
     for(const candidate of ranked){
       let assetId:string|null=null;
+      let createdCandidate=false;
       try{
-        const asset=await importStockMedia({
+        const existing=await existingStockSceneAsset({
           promptSetId:input.promptSetId,
           sceneId:input.sceneId,
           provider,
-          kind:'video',
-          providerAssetId:candidate.result.providerAssetId,
-          selectIfNone:false
+          providerAssetId:candidate.result.providerAssetId
         });
+        const asset=existing
+          ?{id:String(existing.id)}
+          :await importStockMedia({
+            promptSetId:input.promptSetId,
+            sceneId:input.sceneId,
+            provider,
+            kind:'video',
+            providerAssetId:candidate.result.providerAssetId,
+            selectIfNone:false
+          });
         if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
         assetId=asset.id;
+        createdCandidate=!existing;
 
-        await analyzeVisualAsset(asset.id);
+        const currentAnalysis=await loadVisualIntelligence(asset.id);
+        if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
+          await analyzeVisualAsset(asset.id);
+        }
         const match=await bestVisualSegment({
           assetId:asset.id,
           query,
@@ -535,10 +572,10 @@ export async function resolveVerifiedStockMediaForScene(input:{
           combinedScore,
           accepted:false
         });
-        await deleteSceneAsset(asset.id);
+        if(createdCandidate)await deleteSceneAsset(asset.id);
         assetId=null;
       }catch(error){
-        if(assetId){
+        if(assetId&&createdCandidate){
           await deleteSceneAsset(assetId).catch(()=>{});
         }
         attempts.push({
