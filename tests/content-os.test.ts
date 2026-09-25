@@ -146,3 +146,111 @@ test('Content OS stage reflects draft research and approval lifecycle',()=>{
   input.approval.status='blocked';
   assert.equal(contentProjectStage(input),'blocked');
 });
+
+test('Content OS validates Research Pack source links',()=>{
+  const input=project();
+  input.research.pack={
+    question:'How did this place change over time?',
+    storyAngle:'Compare one recognizable location across decades.',
+    entities:['Times Square'],
+    timeline:[{
+      id:'99999999-9999-4999-8999-999999999999',
+      dateLabel:'1947',
+      event:'A historical condition is documented.',
+      sourceIds:['88888888-8888-4888-8888-888888888888']
+    }],
+    audienceSignals:[],
+    visualLeads:[]
+  };
+  const result=contentProjectReadiness(input,episode,[saving],brain);
+  assert.equal(result.ready,false);
+  assert.equal(result.researchPackSourceErrors.length,1);
+  assert.match(result.researchPackSourceErrors[0],/^timeline:/);
+});
+
+test('Unknown visual rights are surfaced without blocking the pre-script gate',()=>{
+  const input=project();
+  input.research.pack={
+    question:'How did this place change over time?',
+    storyAngle:'Use sourced archival comparisons.',
+    entities:['Times Square'],
+    timeline:[],
+    audienceSignals:[],
+    visualLeads:[{
+      id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      title:'Historic Times Square photo',
+      pageUrl:'https://example.com/archive/photo',
+      provider:'archive',
+      mediaType:'image',
+      period:'1947',
+      location:'Times Square, New York',
+      rightsStatus:'unknown',
+      licenseLabel:'',
+      attribution:'',
+      notes:'Review before production.'
+    }]
+  };
+  const result=contentProjectReadiness(input,episode,[saving],brain);
+  assert.equal(result.ready,true);
+  assert.equal(result.unknownVisualRights.length,1);
+});
+
+test('Content OS stage recognizes structured Research Pack work',()=>{
+  const input=project();
+  input.research={
+    notes:'',sources:[],factChecks:[],
+    pack:{
+      question:'What changed?',storyAngle:'Then and now.',entities:['New York'],
+      timeline:[],audienceSignals:[],visualLeads:[]
+    }
+  };
+  assert.equal(contentProjectStage(input),'research');
+});
+
+
+test('Reddit alone cannot support a factual claim',()=>{
+  const input=project();
+  input.research.sources=[{
+    id:sourceId,
+    title:'Community thread',
+    url:'https://reddit.com/r/example/comments/example',
+    sourceType:'reference',
+    origin:'reddit',
+    role:'anecdotal',
+    claim:'Community memory only.',
+    checkedAt:now
+  }];
+  input.research.factChecks[0].sourceIds=[sourceId];
+  const result=contentProjectReadiness(input,episode,[saving],brain);
+  assert.equal(result.ready,false);
+  assert.deepEqual(result.weakFactCheckEvidence,[input.research.factChecks[0].id]);
+  assert.ok(result.blockers.some(item=>item.startsWith('fact-check-evidence:')));
+});
+
+test('Wikipedia discovery plus institutional evidence can support a factual claim',()=>{
+  const input=project();
+  const wikipediaId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  input.research.sources=[{
+    id:wikipediaId,
+    title:'Wikipedia discovery map',
+    url:'https://en.wikipedia.org/wiki/Times_Square',
+    sourceType:'reference',
+    origin:'wikipedia',
+    role:'discovery',
+    claim:'Maps entities and references.',
+    checkedAt:now
+  },{
+    id:sourceId,
+    title:'Institutional archive',
+    url:'https://example.com/archive',
+    sourceType:'primary',
+    origin:'archive',
+    role:'evidence',
+    claim:'Supports the historical claim.',
+    checkedAt:now
+  }];
+  input.research.factChecks[0].sourceIds=[wikipediaId,sourceId];
+  const result=contentProjectReadiness(input,episode,[saving],brain);
+  assert.equal(result.ready,true);
+  assert.deepEqual(result.weakFactCheckEvidence,[]);
+});

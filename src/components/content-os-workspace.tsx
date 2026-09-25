@@ -3,19 +3,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, BookOpenCheck, CheckCircle2, CircleAlert, FileCheck2, History,
-  Link2, Plus, Save, Search, Sparkles, Trash2, Workflow
+  Image as ImageIcon, Link2, Plus, Save, Search, Sparkles, Trash2, Users, Workflow
 } from 'lucide-react';
 import type {
   ChannelBrain, ChannelEpisode, ContentFactCheck, ContentProject, ContentProjectPayload,
-  ContentProjectVersion, ContentResearchSource, ManagedChannel, NarrativeBundle
+  ContentProjectVersion, ContentResearchPack, ContentResearchSource, ManagedChannel, NarrativeBundle
 } from '@/lib/types';
 import { contentProjectReadiness } from '@/lib/content-os-policy';
 
-type EditorTab='brief'|'research'|'factcheck'|'approval'|'history';
+type EditorTab='brief'|'research'|'pack'|'factcheck'|'approval'|'history';
 const emptyBundle:NarrativeBundle={arcs:[],episodes:[],concepts:[]};
 
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
 function payloadOnly(value:ContentProject):ContentProjectPayload{const {version:_version,status:_status,...payload}=value;return payload;}
+function blankResearchPack():ContentResearchPack{return {question:'',storyAngle:'',entities:[],timeline:[],audienceSignals:[],visualLeads:[]};}
 function blankProject(channel:ManagedChannel,episode:ChannelEpisode):ContentProjectPayload{
   const now=new Date().toISOString();
   return {
@@ -36,7 +37,7 @@ function blankProject(channel:ManagedChannel,episode:ChannelEpisode):ContentProj
       previousEpisodeConnection:'',
       arcConnection:''
     },
-    research:{notes:'',sources:[],factChecks:[]},
+    research:{notes:'',sources:[],factChecks:[],pack:blankResearchPack()},
     approval:{status:'draft',notes:''},
     createdAt:now,
     updatedAt:now
@@ -69,7 +70,26 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
   const [sourceTitle,setSourceTitle]=useState('');
   const [sourceUrl,setSourceUrl]=useState('');
   const [sourceType,setSourceType]=useState<ContentResearchSource['sourceType']>('primary');
+  const [sourceOrigin,setSourceOrigin]=useState<NonNullable<ContentResearchSource['origin']>>('institutional');
+  const [sourceRole,setSourceRole]=useState<NonNullable<ContentResearchSource['role']>>('evidence');
   const [sourceClaim,setSourceClaim]=useState('');
+  const [timelineDate,setTimelineDate]=useState('');
+  const [timelineEvent,setTimelineEvent]=useState('');
+  const [timelineSourceIds,setTimelineSourceIds]=useState<string[]>([]);
+  const [audienceKind,setAudienceKind]=useState<ContentResearchPack['audienceSignals'][number]['kind']>('question');
+  const [audienceSourceId,setAudienceSourceId]=useState('');
+  const [audienceSignal,setAudienceSignal]=useState('');
+  const [audienceNotes,setAudienceNotes]=useState('');
+  const [visualTitle,setVisualTitle]=useState('');
+  const [visualUrl,setVisualUrl]=useState('');
+  const [visualProvider,setVisualProvider]=useState('archive');
+  const [visualMediaType,setVisualMediaType]=useState<ContentResearchPack['visualLeads'][number]['mediaType']>('image');
+  const [visualPeriod,setVisualPeriod]=useState('');
+  const [visualLocation,setVisualLocation]=useState('');
+  const [visualRights,setVisualRights]=useState<ContentResearchPack['visualLeads'][number]['rightsStatus']>('unknown');
+  const [visualLicense,setVisualLicense]=useState('');
+  const [visualAttribution,setVisualAttribution]=useState('');
+  const [visualNotes,setVisualNotes]=useState('');
   const [factClaim,setFactClaim]=useState('');
   const [factStatus,setFactStatus]=useState<ContentFactCheck['status']>('unverified');
   const [factNotes,setFactNotes]=useState('');
@@ -110,6 +130,7 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
   const selectedEpisode=useMemo(()=>draft?bundle.episodes.find(item=>item.id===draft.episodeId)??null:null,[draft,bundle.episodes]);
   const readiness=useMemo(()=>draft&&selectedEpisode?contentProjectReadiness(draft,selectedEpisode,bundle.concepts,brain):null,[draft,selectedEpisode,bundle.concepts,brain]);
   const dirty=useMemo(()=>draft&&current?JSON.stringify(draft)!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
+  const researchPack=draft?.research.pack??blankResearchPack();
 
   async function postProject(project:ContentProjectPayload,expectedVersion:number|null){
     const res=await fetch('/api/content-os',{
@@ -203,11 +224,33 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
     setDraft(prev=>prev?{...prev,brief:{...prev.brief,[key]:value}}:prev);
   }
 
+  function setResearchPack(next:ContentResearchPack){
+    setDraft(prev=>prev?{...prev,research:{...prev.research,pack:next}}:prev);
+  }
+
   function addSource(){
     if(!draft||!sourceTitle.trim()||!sourceUrl.trim())return;
-    const source:ContentResearchSource={id:crypto.randomUUID(),title:sourceTitle.trim(),url:sourceUrl.trim(),sourceType,claim:sourceClaim.trim(),checkedAt:new Date().toISOString()};
+    const source:ContentResearchSource={id:crypto.randomUUID(),title:sourceTitle.trim(),url:sourceUrl.trim(),sourceType,origin:sourceOrigin,role:sourceRole,claim:sourceClaim.trim(),checkedAt:new Date().toISOString()};
     setDraft({...draft,research:{...draft.research,sources:[...draft.research.sources,source]}});
     setSourceTitle('');setSourceUrl('');setSourceClaim('');
+  }
+
+  function addTimelineItem(){
+    if(!timelineEvent.trim())return;
+    setResearchPack({...researchPack,timeline:[...researchPack.timeline,{id:crypto.randomUUID(),dateLabel:timelineDate.trim(),event:timelineEvent.trim(),sourceIds:timelineSourceIds}]});
+    setTimelineDate('');setTimelineEvent('');setTimelineSourceIds([]);
+  }
+
+  function addAudienceSignal(){
+    if(!audienceSourceId||!audienceSignal.trim())return;
+    setResearchPack({...researchPack,audienceSignals:[...researchPack.audienceSignals,{id:crypto.randomUUID(),sourceId:audienceSourceId,kind:audienceKind,signal:audienceSignal.trim(),notes:audienceNotes.trim()}]});
+    setAudienceSignal('');setAudienceNotes('');
+  }
+
+  function addVisualLead(){
+    if(!visualTitle.trim()||!visualUrl.trim())return;
+    setResearchPack({...researchPack,visualLeads:[...researchPack.visualLeads,{id:crypto.randomUUID(),title:visualTitle.trim(),pageUrl:visualUrl.trim(),provider:visualProvider.trim()||'other',mediaType:visualMediaType,period:visualPeriod.trim(),location:visualLocation.trim(),rightsStatus:visualRights,licenseLabel:visualLicense.trim(),attribution:visualAttribution.trim(),notes:visualNotes.trim()}]});
+    setVisualTitle('');setVisualUrl('');setVisualPeriod('');setVisualLocation('');setVisualLicense('');setVisualAttribution('');setVisualNotes('');setVisualRights('unknown');
   }
 
   function addFactCheck(){
@@ -242,11 +285,15 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
         <div><strong>{readiness?.unresolvedFactChecks.length??0}</strong><small>fact-checks não resolvidos</small></div>
         <div><strong>{readiness?.contradictedFactChecks.length??0}</strong><small>claims contraditórios</small></div>
         <div><strong>{readiness?.narrative.missingConcepts.length??0}</strong><small>pré-requisitos narrativos faltando</small></div>
+        <div><strong>{readiness?.researchPackSourceErrors.length??0}</strong><small>referências quebradas no Research Pack</small></div>
+        <div><strong>{readiness?.weakFactCheckEvidence.length??0}</strong><small>fact-checks sem evidência forte</small></div>
+        <div><strong>{readiness?.unknownVisualRights.length??0}</strong><small>leads visuais com direitos desconhecidos</small></div>
       </section>
 
       <nav className="content-os-tabs">{([
         ['brief','Brief',Workflow],
         ['research','Pesquisa & Fontes',Search],
+        ['pack','Research Pack',Users],
         ['factcheck','Fact-check',FileCheck2],
         ['approval','Aprovação',BookOpenCheck],
         ['history','Versões',History]
@@ -276,11 +323,64 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
             <Field label="Título"><input value={sourceTitle} onChange={e=>setSourceTitle(e.target.value)}/></Field>
             <Field label="URL"><input value={sourceUrl} onChange={e=>setSourceUrl(e.target.value)} placeholder="https://…"/></Field>
             <Field label="Tipo"><select value={sourceType} onChange={e=>setSourceType(e.target.value as ContentResearchSource['sourceType'])}><option value="primary">Primária</option><option value="secondary">Secundária</option><option value="reference">Referência</option></select></Field>
+            <Field label="Origem"><select value={sourceOrigin} onChange={e=>setSourceOrigin(e.target.value as NonNullable<ContentResearchSource['origin']>)}><option value="institutional">Institucional</option><option value="academic">Acadêmica</option><option value="archive">Arquivo</option><option value="wikipedia">Wikipedia</option><option value="reddit">Reddit</option><option value="news">Notícia</option><option value="reference">Referência</option><option value="other">Outra</option></select></Field>
+            <Field label="Papel"><select value={sourceRole} onChange={e=>setSourceRole(e.target.value as NonNullable<ContentResearchSource['role']>)}><option value="evidence">Evidência</option><option value="discovery">Descoberta</option><option value="context">Contexto</option><option value="anecdotal">Anedótica</option><option value="visual">Visual</option></select></Field>
             <Field label="Claim / uso"><input value={sourceClaim} onChange={e=>setSourceClaim(e.target.value)} placeholder="O que esta fonte sustenta?"/></Field>
           </div>
           <button className="button subtle" onClick={addSource}><Plus size={15}/>Adicionar fonte</button>
         </section>
-        <div className="content-os-source-list">{draft.research.sources.map(source=><article key={source.id}><div><span>{source.sourceType}</span><strong>{source.title}</strong><p>{source.claim||'Uso não descrito.'}</p><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a></div><button className="icon-button" onClick={()=>setDraft({...draft,research:{...draft.research,sources:draft.research.sources.filter(item=>item.id!==source.id)}})}><Trash2 size={15}/></button></article>)}</div>
+        <div className="content-os-source-list">{draft.research.sources.map(source=><article key={source.id}><div><span>{source.sourceType} · {source.origin??'legacy'} · {source.role??'context'}</span><strong>{source.title}</strong><p>{source.claim||'Uso não descrito.'}</p><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a></div><button className="icon-button" onClick={()=>setDraft({...draft,research:{...draft.research,sources:draft.research.sources.filter(item=>item.id!==source.id)}})}><Trash2 size={15}/></button></article>)}</div>
+      </div>}
+
+      {tab==='pack'&&<div className="content-os-content">
+        <section className="content-os-source-form">
+          <div className="content-os-section-head"><div><span>SOURCE INTELLIGENCE</span><h3>Research Pack do episódio.</h3><p>Wikipedia/arquivos ajudam a mapear fatos; Reddit e comunidade entram como sinais humanos, nunca como prova factual isolada.</p></div><Users size={20}/></div>
+          <TextField label="PERGUNTA DE PESQUISA" value={researchPack.question} onChange={v=>setResearchPack({...researchPack,question:v})} rows={4}/>
+          <TextField label="ÂNGULO NARRATIVO / STORY ANGLE" value={researchPack.storyAngle} onChange={v=>setResearchPack({...researchPack,storyAngle:v})} rows={4}/>
+          <TextField label="ENTIDADES-CHAVE · UMA POR LINHA" value={researchPack.entities.join('\n')} onChange={v=>setResearchPack({...researchPack,entities:v.split('\n').map(item=>item.trim()).filter(Boolean)})} rows={6}/>
+          {researchPack.provenance&&<p className="credential-note">Proveniência: {researchPack.provenance.generatedBy}{researchPack.provenance.model?' · '+researchPack.provenance.model:''}{researchPack.provenance.observedAt?' · '+when(researchPack.provenance.observedAt):''}</p>}
+        </section>
+
+        <section className="content-os-source-form">
+          <div className="content-os-section-head"><div><span>CRONOLOGIA</span><h3>O que mudou e quando.</h3></div><History size={20}/></div>
+          <div className="content-os-grid two">
+            <Field label="Data / período"><input value={timelineDate} onChange={e=>setTimelineDate(e.target.value)} placeholder="1947 · 1980s · 2026"/></Field>
+            <Field label="Evento / transformação"><input value={timelineEvent} onChange={e=>setTimelineEvent(e.target.value)} placeholder="O que aconteceu neste ponto da história?"/></Field>
+          </div>
+          <div className="content-os-source-checks"><span>FONTES DA CRONOLOGIA</span>{draft.research.sources.map(source=><label key={source.id}><input type="checkbox" checked={timelineSourceIds.includes(source.id)} onChange={e=>setTimelineSourceIds(prev=>e.target.checked?[...prev,source.id]:prev.filter(id=>id!==source.id))}/>{source.title}</label>)}</div>
+          <button className="button subtle" onClick={addTimelineItem}><Plus size={15}/>Adicionar marco</button>
+        </section>
+        <div className="content-os-source-list">{researchPack.timeline.map(item=><article key={item.id}><div><span>{item.dateLabel||'sem data'}</span><strong>{item.event}</strong><p>{item.sourceIds.length} fonte(s) vinculada(s)</p></div><button className="icon-button" onClick={()=>setResearchPack({...researchPack,timeline:researchPack.timeline.filter(x=>x.id!==item.id)})}><Trash2 size={15}/></button></article>)}</div>
+
+        <section className="content-os-source-form">
+          <div className="content-os-section-head"><div><span>AUDIENCE SIGNALS</span><h3>Memórias, perguntas e linguagem real.</h3><p>Use principalmente Reddit/comunidades. Estes sinais são anedóticos até que um claim seja fact-checked.</p></div><Users size={20}/></div>
+          <div className="content-os-grid two">
+            <Field label="Fonte"><select value={audienceSourceId} onChange={e=>setAudienceSourceId(e.target.value)}><option value="">Selecione…</option>{draft.research.sources.map(source=><option key={source.id} value={source.id}>{source.title}</option>)}</select></Field>
+            <Field label="Tipo de sinal"><select value={audienceKind} onChange={e=>setAudienceKind(e.target.value as ContentResearchPack['audienceSignals'][number]['kind'])}><option value="question">Pergunta</option><option value="memory">Memória</option><option value="language">Linguagem</option><option value="story">História</option><option value="sentiment">Sentimento</option></select></Field>
+          </div>
+          <TextField label="SINAL OBSERVADO" value={audienceSignal} onChange={setAudienceSignal} rows={3}/>
+          <TextField label="NOTAS / COMO USAR" value={audienceNotes} onChange={setAudienceNotes} rows={3}/>
+          <button className="button subtle" disabled={!audienceSourceId||!audienceSignal.trim()} onClick={addAudienceSignal}><Plus size={15}/>Adicionar sinal</button>
+        </section>
+        <div className="content-os-source-list">{researchPack.audienceSignals.map(item=>{const source=draft.research.sources.find(x=>x.id===item.sourceId);return <article key={item.id}><div><span>{item.kind} · ANEDÓTICO</span><strong>{item.signal}</strong><p>{item.notes||'Sem notas.'}</p><small>{source?.title??'Fonte ausente'}</small></div><button className="icon-button" onClick={()=>setResearchPack({...researchPack,audienceSignals:researchPack.audienceSignals.filter(x=>x.id!==item.id)})}><Trash2 size={15}/></button></article>;})}</div>
+
+        <section className="content-os-source-form">
+          <div className="content-os-section-head"><div><span>VISUAL SOURCE INTELLIGENCE</span><h3>Leads visuais + direitos.</h3><p>Este é o inventário de candidatos. O Scene/Asset pipeline continuará responsável pelo asset final usado na produção.</p></div><ImageIcon size={20}/></div>
+          <div className="content-os-grid two">
+            <Field label="Título / asset"><input value={visualTitle} onChange={e=>setVisualTitle(e.target.value)}/></Field>
+            <Field label="Página de origem"><input value={visualUrl} onChange={e=>setVisualUrl(e.target.value)} placeholder="https://…"/></Field>
+            <Field label="Provider / arquivo"><input value={visualProvider} onChange={e=>setVisualProvider(e.target.value)} placeholder="NYPL · LOC · Wikimedia · Pexels"/></Field>
+            <Field label="Mídia"><select value={visualMediaType} onChange={e=>setVisualMediaType(e.target.value as ContentResearchPack['visualLeads'][number]['mediaType'])}><option value="image">Imagem</option><option value="video">Vídeo</option></select></Field>
+            <Field label="Período"><input value={visualPeriod} onChange={e=>setVisualPeriod(e.target.value)} placeholder="1950s · 2026"/></Field>
+            <Field label="Local"><input value={visualLocation} onChange={e=>setVisualLocation(e.target.value)} placeholder="Times Square, New York"/></Field>
+            <Field label="Direitos"><select value={visualRights} onChange={e=>setVisualRights(e.target.value as ContentResearchPack['visualLeads'][number]['rightsStatus'])}><option value="public-domain">Public domain</option><option value="creative-commons">Creative Commons</option><option value="licensed">Licenciado</option><option value="owned">Próprio</option><option value="hotlink-only">Hotlink only</option><option value="unknown">Desconhecido</option></select></Field>
+            <Field label="Licença"><input value={visualLicense} onChange={e=>setVisualLicense(e.target.value)} placeholder="CC BY 4.0 · Public Domain · Pexels License"/></Field>
+          </div>
+          <TextField label="ATRIBUIÇÃO" value={visualAttribution} onChange={setVisualAttribution} rows={2}/>
+          <TextField label="NOTAS VISUAIS" value={visualNotes} onChange={setVisualNotes} rows={3}/>
+          <button className="button subtle" disabled={!visualTitle.trim()||!visualUrl.trim()} onClick={addVisualLead}><Plus size={15}/>Adicionar lead visual</button>
+        </section>
+        <div className="content-os-source-list">{researchPack.visualLeads.map(item=><article key={item.id}><div><span>{item.provider} · {item.mediaType} · {item.rightsStatus}</span><strong>{item.title}</strong><p>{[item.period,item.location,item.licenseLabel].filter(Boolean).join(' · ')||'Metadados ainda incompletos.'}</p><a href={item.pageUrl} target="_blank" rel="noreferrer">{item.pageUrl}</a></div><button className="icon-button" onClick={()=>setResearchPack({...researchPack,visualLeads:researchPack.visualLeads.filter(x=>x.id!==item.id)})}><Trash2 size={15}/></button></article>)}</div>
       </div>}
 
       {tab==='factcheck'&&<div className="content-os-content">

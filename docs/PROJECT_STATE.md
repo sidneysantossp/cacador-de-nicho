@@ -676,3 +676,50 @@ Validação:
 - suíte: 268/268 PASS;
 - Next.js production build: PASS;
 - git diff --check: PASS.
+
+## Source Intelligence + Research Pack — Content OS — 25/09/2026
+
+Objetivo:
+- transformar pesquisa assistida em um dossiê editorial estruturado antes do Script Engine;
+- diferenciar fato sustentado, descoberta, contexto, evidência anedótica e lead visual;
+- permitir Wikipedia, Reddit, arquivos, fontes institucionais e outras origens sem misturar seus papéis;
+- preservar direitos/proveniência dos visuais desde a pesquisa, antes de chegar ao Scene/Asset pipeline.
+
+Content OS:
+- ContentResearchSource passa a registrar opcionalmente origin e role;
+- origens suportadas: institucional, acadêmica, arquivo, Wikipedia, Reddit, notícia, referência e outra;
+- papéis suportados: evidência, descoberta, contexto, anedótica e visual;
+- novo Research Pack dentro do próprio Content Project, sem pipeline paralelo e sem migration destrutiva;
+- Research Pack guarda:
+  - pergunta de pesquisa;
+  - ângulo narrativo;
+  - entidades-chave;
+  - cronologia com referências explícitas às fontes;
+  - audience signals com fonte, tipo e notas;
+  - leads visuais com provider, mídia, período, local, direitos, licença, atribuição e notas;
+  - provenance opcional da pesquisa assistida.
+
+Gates:
+- referências quebradas entre Research Pack e fontes bloqueiam aprovação para roteiro;
+- direitos visuais unknown são visíveis como alerta, mas não bloqueiam o pre-script gate porque o asset ainda é apenas candidato;
+- Scene/Asset pipeline continua responsável pela aprovação do asset realmente usado;
+- Reddit/comunidade permanece evidência anedótica/editorial por padrão;
+- o Script Engine recebe Research Pack como contexto, mas continua autorizado a tratar como fato apenas claims sustentados pelo fact-check.
+
+UI:
+- Pesquisa & Fontes ganha classificação de origem e papel;
+- nova aba Research Pack no Content OS;
+- operador pode editar pergunta, ângulo, entidades, cronologia, sinais humanos e leads visuais;
+- contador de referências quebradas e direitos visuais desconhecidos aparece no readiness do projeto.
+
+Compatibilidade:
+- research.pack é opcional; Content Projects anteriores continuam válidos;
+- nenhum projeto é aprovado automaticamente;
+- nenhuma pesquisa, script, produção ou publicação é iniciada por esta mudança;
+- modo assisted-manual permanece intacto.
+
+Validação:
+- TypeScript: PASS;
+- suíte: 271/271 PASS;
+- Next.js production build: PASS (5,4 s compile);
+- sem alteração de schema SQL.

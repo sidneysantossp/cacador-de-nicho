@@ -707,8 +707,49 @@ export type ContentResearchSource = {
  title: string;
  url: string;
  sourceType: 'primary' | 'secondary' | 'reference';
+ origin?: 'institutional' | 'academic' | 'archive' | 'wikipedia' | 'reddit' | 'news' | 'reference' | 'other';
+ role?: 'evidence' | 'discovery' | 'context' | 'anecdotal' | 'visual';
  claim: string;
  checkedAt?: string;
+};
+export type ContentResearchTimelineItem = {
+ id: string;
+ dateLabel: string;
+ event: string;
+ sourceIds: string[];
+};
+export type ContentAudienceSignal = {
+ id: string;
+ sourceId: string;
+ kind: 'question' | 'memory' | 'language' | 'story' | 'sentiment';
+ signal: string;
+ notes: string;
+};
+export type ContentVisualLead = {
+ id: string;
+ title: string;
+ pageUrl: string;
+ provider: string;
+ mediaType: 'image' | 'video';
+ period: string;
+ location: string;
+ rightsStatus: 'public-domain' | 'creative-commons' | 'licensed' | 'owned' | 'hotlink-only' | 'unknown';
+ licenseLabel: string;
+ attribution: string;
+ notes: string;
+};
+export type ContentResearchPack = {
+ question: string;
+ storyAngle: string;
+ entities: string[];
+ timeline: ContentResearchTimelineItem[];
+ audienceSignals: ContentAudienceSignal[];
+ visualLeads: ContentVisualLead[];
+ provenance?: {
+  generatedBy: 'chatgpt' | 'operator' | 'platform' | 'external';
+  model?: string;
+  observedAt?: string;
+ };
 };
 export type ContentFactCheck = {
  id: string;
@@ -739,6 +780,7 @@ export type ContentProjectPayload = {
   notes: string;
   sources: ContentResearchSource[];
   factChecks: ContentFactCheck[];
+  pack?: ContentResearchPack;
  };
  approval: {
   status: 'draft' | 'ready' | 'approved' | 'blocked';

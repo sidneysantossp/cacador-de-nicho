@@ -96,8 +96,20 @@ function compactContext(input:OwnedScriptContext){
         title:source.title,
         url:source.url,
         sourceType:source.sourceType,
+        origin:source.origin??null,
+        role:source.role??null,
         claim:source.claim
       })),
+      researchPack:input.project.research.pack?{
+        question:input.project.research.pack.question,
+        storyAngle:input.project.research.pack.storyAngle,
+        entities:input.project.research.pack.entities,
+        timeline:input.project.research.pack.timeline,
+        audienceSignals:input.project.research.pack.audienceSignals.map(item=>({
+          ...item,
+          evidenceClass:'anecdotal-editorial-signal'
+        }))
+      }:null,
       supportedClaims
     },
     production:{
@@ -109,7 +121,7 @@ function compactContext(input:OwnedScriptContext){
   };
 }
 
-const instructions='You are the Script Engine for Caçadores de Nichos. Write the audience-facing script in ENGLISH unless the Production DNA explicitly defines another narration language. The output is narration only. Do not write storyboard directions, camera instructions, scene prompts, production notes, timestamps or markdown headings inside section content. Preserve the channel constitution, worldview, character knowledge, established metaphors, narrative continuity, open threads and do-not-repeat rules. Do not make a character know a concept before the supplied narrative state allows it. Use the approved Content Project as the editorial contract. Do not change its thesis, angle, promise or audience merely to make writing easier. Use factual claims only when supported by the supplied research/fact-check context. If a useful factual claim is not supported, either omit it or mark it explicitly with [VERIFY] and include a factCheckWarning. Do not invent sources, statistics, quotations, studies, previous episode events or audience feedback. Avoid generic filler and repeated explanations. Each section must have a clear narrative purpose. The final content should feel like one continuous narration even though it is stored in editable sections.';
+const instructions='You are the Script Engine for Caçadores de Nichos. Write the audience-facing script in ENGLISH unless the Production DNA explicitly defines another narration language. The output is narration only. Do not write storyboard directions, camera instructions, scene prompts, production notes, timestamps or markdown headings inside section content. Preserve the channel constitution, worldview, character knowledge, established metaphors, narrative continuity, open threads and do-not-repeat rules. Do not make a character know a concept before the supplied narrative state allows it. Use the approved Content Project as the editorial contract. Do not change its thesis, angle, promise or audience merely to make writing easier. Use factual claims only when supported by the supplied research/fact-check context. Research Pack timeline and audience signals are planning context, not independent factual proof; audience signals from Reddit/community remain anecdotal unless the same claim appears in supportedClaims. If a useful factual claim is not supported, either omit it or mark it explicitly with [VERIFY] and include a factCheckWarning. Do not invent sources, statistics, quotations, studies, previous episode events or audience feedback. Avoid generic filler and repeated explanations. Each section must have a clear narrative purpose. The final content should feel like one continuous narration even though it is stored in editable sections.';
 
 export async function generateOwnedChannelScript(input:OwnedScriptContext){
   const config=await settings();
