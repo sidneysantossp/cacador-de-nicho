@@ -13,7 +13,9 @@ import { loadVisualPromptSetByPlan } from './visual-prompt-engine';
 import { loadProductionDna } from './production-dna';
 import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
-import { assetIsStale, ownedSceneAssetTrim } from '@/lib/asset-factory-policy';
+import {
+  assetIsStale, ownedSceneAssetTrim, verifiedStockSceneAssetTrim
+} from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { bestVisualSegment } from './visual-intelligence';
 import {
@@ -159,10 +161,31 @@ async function selectedVisualRefs(
         sourceEndSeconds:owned.sourceEndSeconds
       }:undefined
     });
+    const verifiedStock=payload.verifiedStock&&typeof payload.verifiedStock==='object'
+      ?payload.verifiedStock as {
+        sourceStartSeconds?:number|null;
+        sourceEndSeconds?:number|null;
+      }
+      :undefined;
+    const verifiedStockTrim=verifiedStockSceneAssetTrim({
+      sourceType:row.source_type,
+      verifiedStock:verifiedStock?{
+        query:'',
+        provider:'pexels',
+        providerAssetId:'',
+        searchRelevance:0,
+        visualRelevance:0,
+        combinedScore:0,
+        sourceStartSeconds:Number(verifiedStock.sourceStartSeconds),
+        sourceEndSeconds:Number(verifiedStock.sourceEndSeconds),
+        verifiedAt:''
+      }:undefined
+    });
     if(row.source_type==='owned'&&row.asset_kind==='video'&&!ownedTrim){
       throw new HttpError('Um link OWNED selecionado perdeu o trim visual validado.',409);
     }
-    const match=row.asset_kind==='video'&&row.source_type!=='owned'&&query
+    const deterministicTrim=ownedTrim??verifiedStockTrim;
+    const match=row.asset_kind==='video'&&!deterministicTrim&&row.source_type!=='owned'&&query
       ?await bestVisualSegment({assetId:row.id,query,desiredDurationSeconds:duration})
       :null;
     return {
@@ -170,8 +193,8 @@ async function selectedVisualRefs(
       sceneId:row.scene_id,
       assetKind:row.asset_kind,
       durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds),
-      sourceStartSeconds:ownedTrim?.sourceStartSeconds??match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
-      sourceEndSeconds:ownedTrim?.sourceEndSeconds??match?.sourceEndSeconds??null
+      sourceStartSeconds:deterministicTrim?.sourceStartSeconds??match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
+      sourceEndSeconds:deterministicTrim?.sourceEndSeconds??match?.sourceEndSeconds??null
     };
   }));
 }
