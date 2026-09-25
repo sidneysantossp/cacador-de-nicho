@@ -9,7 +9,7 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDownloadHostAllowed, validStockQuery
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed, validStockQuery
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
 
@@ -449,8 +449,9 @@ export async function resolveVerifiedStockMediaForScene(input:{
   providers?:StockMediaProvider[];
   maxCandidatesPerProvider?:number;
 }){
-  const query=input.query.trim().slice(0,100);
-  if(!validStockQuery(query))throw new HttpError('A intenção visual stock precisa ter entre 1 e 100 caracteres.',400);
+  const editorialQuery=input.query.trim();
+  const query=stockDiscoveryQuery(editorialQuery);
+  if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
   const orientation=input.orientation??'landscape';
   const providerSeed:StockMediaProvider[]=input.providers?.length
     ?input.providers
@@ -552,6 +553,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
           return {
             status:'matched' as const,
             query,
+            editorialQuery,
             provider,
             assetId:asset.id,
             candidate:candidate.result,
@@ -591,6 +593,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
   return {
     status:'gap' as const,
     query,
+    editorialQuery,
     provider:null,
     assetId:null,
     candidate:null,
