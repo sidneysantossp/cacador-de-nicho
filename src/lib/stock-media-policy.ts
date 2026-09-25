@@ -31,7 +31,7 @@ export function stockFallbackEligible(value:string){
 
 export function stockDiscoveryQuery(value:string){
   return value
-    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action)\b/gi,' ')
+    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action|real|only)\b/gi,' ')
     .replace(/\b(?:wide[- ]angle|wide|medium|close[- ]up|aerial|street[- ]level)?\s*establishing shot\b/gi,' ')
     .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
     .replace(/[\/|]+/g,' ')
