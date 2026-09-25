@@ -9,6 +9,25 @@ import type { OwnedMediaAsset } from '@/lib/types';
 
 type Kind='all'|'video'|'image';
 type QueueItem={id:string;name:string;stage:string;progress?:number;error?:string};
+type TaxonomyOption={value:string;label:string};
+type TaxonomyCatalog={
+  version:number;
+  countries:TaxonomyOption[];
+  citiesByCountry:Record<string,TaxonomyOption[]>;
+  scenes:TaxonomyOption[];
+  timeOfDay:TaxonomyOption[];
+  weather:TaxonomyOption[];
+  seasons:TaxonomyOption[];
+  shotTypes:TaxonomyOption[];
+  cameraMotion:TaxonomyOption[];
+};
+type TaxonomyFilters={
+  country:string;city:string;scene:string;timeOfDay:string;
+  weather:string;season:string;shotType:string;cameraMotion:string;
+};
+const EMPTY_FILTERS:TaxonomyFilters={
+  country:'',city:'',scene:'',timeOfDay:'',weather:'',season:'',shotType:'',cameraMotion:''
+};
 
 function bytes(value:number){
   if(value<1024)return value+' B';
@@ -67,19 +86,23 @@ export default function OwnedMediaLibraryWorkspace(){
   const [queue,setQueue]=useState<QueueItem[]>([]);
   const [message,setMessage]=useState('');
   const [selected,setSelected]=useState<OwnedMediaAsset|null>(null);
+  const [taxonomy,setTaxonomy]=useState<TaxonomyCatalog|null>(null);
+  const [filters,setFilters]=useState<TaxonomyFilters>(EMPTY_FILTERS);
 
   const load=useCallback(async()=>{
     setLoading(true);
     try{
       const params=new URLSearchParams({page:'1',limit:'120',kind});
       if(query.trim())params.set('q',query.trim());
+      for(const [key,value] of Object.entries(filters))if(value)params.set(key,value);
       const res=await fetch('/api/owned-media?'+params.toString(),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar a Biblioteca de Mídia.');
       setItems(body.items??[]);
+      if(body.taxonomy)setTaxonomy(body.taxonomy);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar a Biblioteca de Mídia.');}
     finally{setLoading(false);}
-  },[kind,query]);
+  },[kind,query,filters]);
 
   useEffect(()=>{const t=setTimeout(()=>void load(),query?250:0);return()=>clearTimeout(t);},[load,query]);
 
@@ -165,6 +188,19 @@ export default function OwnedMediaLibraryWorkspace(){
   }
 
   const totalBytes=useMemo(()=>items.reduce((sum,item)=>sum+item.bytes,0),[items]);
+  const cityOptions=useMemo(()=>{
+    if(!taxonomy)return [];
+    if(filters.country)return taxonomy.citiesByCountry[filters.country]??[];
+    return Object.values(taxonomy.citiesByCountry).flat().sort((a,b)=>a.label.localeCompare(b.label));
+  },[taxonomy,filters.country]);
+  const hasTaxonomyFilters=Object.values(filters).some(Boolean);
+  function setFilter(key:keyof TaxonomyFilters,value:string){
+    setFilters(prev=>{
+      const next={...prev,[key]:value};
+      if(key==='country')next.city='';
+      return next;
+    });
+  }
 
   return <div className="owned-library">
     {message&&<div className="media-library-message"><CheckCircle2 size={15}/>{message}<button onClick={()=>setMessage('')}><X size={14}/></button></div>}
@@ -210,6 +246,21 @@ export default function OwnedMediaLibraryWorkspace(){
       </div>
     </section>
 
+    {taxonomy&&<section className="owned-taxonomy-filters">
+      <div className="owned-taxonomy-filter-title"><strong>Media Taxonomy v{taxonomy.version}</strong><span>Filtre o acervo pela mesma estrutura que usaremos nas pesquisas externas.</span></div>
+      <div className="owned-taxonomy-filter-grid">
+        <label><span>País</span><select value={filters.country} onChange={e=>setFilter('country',e.target.value)}><option value="">Todos</option>{taxonomy.countries.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Cidade</span><select value={filters.city} onChange={e=>setFilter('city',e.target.value)}><option value="">Todas</option>{cityOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Cenário</span><select value={filters.scene} onChange={e=>setFilter('scene',e.target.value)}><option value="">Todos</option>{taxonomy.scenes.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Horário</span><select value={filters.timeOfDay} onChange={e=>setFilter('timeOfDay',e.target.value)}><option value="">Todos</option>{taxonomy.timeOfDay.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Clima</span><select value={filters.weather} onChange={e=>setFilter('weather',e.target.value)}><option value="">Todos</option>{taxonomy.weather.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Estação</span><select value={filters.season} onChange={e=>setFilter('season',e.target.value)}><option value="">Todas</option>{taxonomy.seasons.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Plano</span><select value={filters.shotType} onChange={e=>setFilter('shotType',e.target.value)}><option value="">Todos</option>{taxonomy.shotTypes.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label><span>Câmera</span><select value={filters.cameraMotion} onChange={e=>setFilter('cameraMotion',e.target.value)}><option value="">Todos</option>{taxonomy.cameraMotion.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+      </div>
+      {hasTaxonomyFilters&&<button className="button subtle small" onClick={()=>setFilters(EMPTY_FILTERS)}>Limpar filtros</button>}
+    </section>}
+
     {loading?<div className="media-library-loading"><LoaderCircle className="spin" size={20}/>Carregando biblioteca…</div>:
     <section className="owned-library-grid">
       {items.map(item=><article key={item.id} className="owned-media-card">
@@ -248,9 +299,22 @@ export default function OwnedMediaLibraryWorkspace(){
         <section className="owned-detail-intel">
           <span>INTELIGÊNCIA DA NOMENCLATURA</span>
           <div>{selected.tags.map(tag=><em key={tag}>{tag}</em>)}</div>
-          {!!selected.semantic.locations.length&&<p><b>Locais:</b> {selected.semantic.locations.join(', ')}</p>}
-          {!!selected.semantic.shotTypes.length&&<p><b>Planos:</b> {selected.semantic.shotTypes.join(', ')}</p>}
-          <small>Esta é a indexação inicial. A Visual Intelligence pode enriquecer o asset por frames e trechos depois da ingestão.</small>
+          {!!selected.semantic.countries.length&&<p><b>País:</b> {selected.semantic.countries.join(', ')}</p>}
+          {!!selected.semantic.regions.length&&<p><b>Região/Estado:</b> {selected.semantic.regions.join(', ')}</p>}
+          {!!selected.semantic.cities.length&&<p><b>Cidade:</b> {selected.semantic.cities.join(', ')}</p>}
+          {!!selected.semantic.districts.length&&<p><b>Distrito/Bairro:</b> {selected.semantic.districts.join(', ')}</p>}
+          {!!selected.semantic.landmarks.length&&<p><b>Landmark:</b> {selected.semantic.landmarks.join(', ')}</p>}
+          {!!selected.semantic.scenes.length&&<p><b>Cenário:</b> {selected.semantic.scenes.join(', ')}</p>}
+          {!!selected.semantic.objects.length&&<p><b>Objetos:</b> {selected.semantic.objects.join(', ')}</p>}
+          {!!selected.semantic.activities.length&&<p><b>Atividades:</b> {selected.semantic.activities.join(', ')}</p>}
+          {!!selected.semantic.people.length&&<p><b>Pessoas:</b> {selected.semantic.people.join(', ')}</p>}
+          {!!selected.semantic.timeOfDay.length&&<p><b>Horário:</b> {selected.semantic.timeOfDay.join(', ')}</p>}
+          {!!selected.semantic.weather.length&&<p><b>Clima:</b> {selected.semantic.weather.join(', ')}</p>}
+          {!!selected.semantic.seasons.length&&<p><b>Estação:</b> {selected.semantic.seasons.join(', ')}</p>}
+          {!!selected.semantic.shotTypes.length&&<p><b>Plano:</b> {selected.semantic.shotTypes.join(', ')}</p>}
+          {!!selected.semantic.cameraMotion.length&&<p><b>Movimento:</b> {selected.semantic.cameraMotion.join(', ')}</p>}
+          {!!selected.semantic.moods.length&&<p><b>Mood:</b> {selected.semantic.moods.join(', ')}</p>}
+          <small>Taxonomia inicial baseada no nome do arquivo. A Visual Intelligence enriquecerá e corrigirá essas facetas por frames e segmentos.</small>
         </section>
         <button className="button danger" onClick={()=>void remove(selected)}><Trash2 size={15}/>Remover do acervo</button>
       </aside>
