@@ -723,3 +723,50 @@ Validação:
 - suíte: 271/271 PASS;
 - Next.js production build: PASS (5,4 s compile);
 - sem alteração de schema SQL.
+
+## Source Intelligence + Research Pack + Asset Vault semântico — 25/09/2026
+
+Objetivo:
+- transformar oportunidade aprovada em dossiê editorial estruturado antes do roteiro;
+- separar descoberta, contexto humano e evidência factual;
+- tornar a Media Library um Asset Vault reutilizável entre canais;
+- bloquear produção quando direitos/proveniência visual forem insuficientes ou a repetição for extrema.
+
+Content OS / Source Intelligence:
+- Content Project passa a aceitar research.pack estruturado;
+- fontes ganham origin e role;
+- origens suportadas: institutional, academic, archive, wikipedia, reddit, news, reference, other;
+- papéis suportados: evidence, discovery, context, anecdotal, visual;
+- Research Pack inclui pergunta de pesquisa, story angle, entidades, cronologia, audience signals, visual leads e provenance;
+- cronologia e audience signals preservam referências por source ID;
+- visual leads preservam provider, URL de origem, período, local, tipo de mídia, rights status, licença e atribuição;
+- Script Engine recebe Research Pack como contexto editorial;
+- audience signals entram explicitamente como sinais anedóticos, não como fatos;
+- claims supported não podem depender somente de Reddit/Wikipedia ou fontes marcadas como anecdotal/discovery/context;
+- pelo menos uma fonte de evidência forte deve sustentar um fact-check supported;
+- referências quebradas do Research Pack bloqueiam aprovação do Content Project;
+- direitos desconhecidos em visual leads são exibidos como risco pré-produção, mas não bloqueiam o roteiro.
+
+Asset Vault:
+- Media Library pode alternar entre Canal atual e Vault global;
+- Vault global pesquisa assets prontos de todos os canais;
+- cards preservam o canal de origem;
+- metadados semânticos estruturados adicionados: subjects, locations, periods, shotTypes e moods;
+- busca textual passa a consultar nome, canal, tags, prompt e todos os campos semânticos;
+- metadata continua retrocompatível: clientes antigos podem omitir semantic;
+- Supabase recebeu coluna radar_media_library_metadata.semantic jsonb;
+- schema oficial foi atualizado de forma idempotente;
+- radar_stock_searches foi atualizado para aceitar unsplash no ledger de buscas.
+
+Production Authenticity Gate:
+- cobertura visual continua blocker quando há buracos na Timeline;
+- integridade/proveniência continua blocker quando asset não existe, não está ready ou diverge da cena/storage;
+- novo check asset-rights bloqueia render com base de uso/licença ausente ou unknown;
+- reutilização moderada continua warning;
+- repetição extrema (>=8 clips e >=87,5% de duplicação) vira blocker;
+- o gate não afirma monetização nem conformidade automática com políticas externas; ele mede sinais controláveis da nossa produção.
+
+Arquitetura operacional:
+- trabalho desenvolvido em worktree isolado para não competir com auto-deploy;
+- nenhuma automação editorial/produção/publicação foi habilitada;
+- modo assisted-manual continua sendo o modelo operacional.

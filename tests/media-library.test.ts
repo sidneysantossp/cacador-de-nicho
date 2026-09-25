@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MediaLibraryItem } from '../src/lib/types';
 import {
-  mediaLibrarySearch, normalizeMediaTags, sceneLibraryItemIsStale,
+  mediaLibrarySearch, normalizeMediaSemantic, normalizeMediaTags, sceneLibraryItemIsStale,
   voiceLibraryItemIsStale
 } from '../src/lib/media-library-policy';
 
@@ -29,6 +29,7 @@ function item(overrides:Partial<MediaLibraryItem>={}):MediaLibraryItem{
     favorite:false,
     tags:['grug','rocks'],
     notes:'Good establishing shot',
+    semantic:{subjects:['grug'],locations:['cave'],periods:[],shotTypes:['establishing'],moods:['curious']},
     createdAt:'2026-09-23T20:00:00.000Z',
     updatedAt:'2026-09-23T20:00:00.000Z',
     ...overrides
@@ -91,4 +92,37 @@ test('Media Library search filters kind source favorites stale and searchable me
   assert.equal(mediaLibrarySearch(items,{staleOnly:true}).length,1);
   assert.equal(mediaLibrarySearch(items,{query:'elevenlabs'}).length,1);
   assert.equal(mediaLibrarySearch(items,{query:'rocks'}).length,1);
+});
+
+
+test('Media Library normalizes structured semantic metadata',()=>{
+  assert.deepEqual(normalizeMediaSemantic({
+    subjects:[' New York ','new york','Times Square'],
+    locations:[' Manhattan ','manhattan'],
+    periods:[' 1940s '],
+    shotTypes:[' Aerial '],
+    moods:[' Nostalgic ']
+  }),{
+    subjects:['new york','times square'],
+    locations:['manhattan'],
+    periods:['1940s'],
+    shotTypes:['aerial'],
+    moods:['nostalgic']
+  });
+});
+
+test('Media Library search includes semantic vault metadata and channel name',()=>{
+  const candidate=item({
+    channelName:'Then And Now',
+    semantic:{
+      subjects:['times square'],
+      locations:['new york'],
+      periods:['1947'],
+      shotTypes:['street-level'],
+      moods:['nostalgia']
+    }
+  });
+  assert.equal(mediaLibrarySearch([candidate],{query:'times square'}).length,1);
+  assert.equal(mediaLibrarySearch([candidate],{query:'1947'}).length,1);
+  assert.equal(mediaLibrarySearch([candidate],{query:'then and now'}).length,1);
 });

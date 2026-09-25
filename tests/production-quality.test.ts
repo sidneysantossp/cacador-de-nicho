@@ -123,12 +123,12 @@ function goodAssetFacts(){
     {
       assetId:'73111111-1111-4111-8111-111111111111',
       sceneId:'72111111-1111-4111-8111-111111111111',
-      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true
+      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true,sourceType:'uploaded',provider:'operator',licenseType:'owned',licenseLabel:'Owned'
     },
     {
       assetId:'83111111-1111-4111-8111-111111111111',
       sceneId:'82111111-1111-4111-8111-111111111111',
-      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true
+      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true,sourceType:'uploaded',provider:'operator',licenseType:'owned',licenseLabel:'Owned'
     }
   ];
 }
@@ -242,4 +242,35 @@ test('Release gate requires every manual review and never overrides blockers',()
     checks:report.checks.map((check,index)=>index===0?{...check,status:'blocker' as const}:check)
   };
   assert.ok(qualityApprovalIssues(blocked,manualCodes).includes('quality-blockers-present'));
+});
+
+
+test('Production Authenticity blocks assets with unknown rights',()=>{
+  const value=job();
+  const facts=goodAssetFacts().map((item,index)=>index===0?{...item,licenseType:'unknown',licenseLabel:'Unknown'}:item);
+  const checks=structuralQualityChecks({job:value,assetFacts:facts,characterFacts:[]});
+  assert.equal(checks.find(check=>check.code==='asset-rights')?.status,'blocker');
+});
+
+test('Production Authenticity blocks extreme single-asset repetition',()=>{
+  const value=job();
+  const first=value.payload.manifest.visualClips[0];
+  value.payload.manifest.visualClips=Array.from({length:8},(_,index)=>({
+    ...first,
+    clipId:crypto.randomUUID(),
+    sceneId:crypto.randomUUID(),
+    assetId:'73111111-1111-4111-8111-111111111111',
+    startSeconds:index,
+    endSeconds:index+1,
+    durationSeconds:1,
+    style:{...first.style,timelineClipId:crypto.randomUUID(),sceneId:crypto.randomUUID()}
+  }));
+  value.payload.manifest.durationSeconds=8;
+  const facts=value.payload.manifest.visualClips.map(clip=>({
+    assetId:clip.assetId,sceneId:clip.sceneId,exists:true,ready:true,
+    storagePathMatches:true,sceneMatches:true,promptAligned:true,
+    sourceType:'uploaded',provider:'operator',licenseType:'owned',licenseLabel:'Owned'
+  }));
+  const checks=structuralQualityChecks({job:value,assetFacts:facts,characterFacts:[]});
+  assert.equal(checks.find(check=>check.code==='asset-duplication')?.status,'blocker');
 });

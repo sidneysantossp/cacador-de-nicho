@@ -27,6 +27,10 @@ export type ProductionQualityAssetFact = {
   sceneMatches:boolean;
   promptAligned:boolean|null;
   promptReason?:string;
+  sourceType?:string;
+  provider?:string|null;
+  licenseType?:string|null;
+  licenseLabel?:string|null;
 };
 
 export type ProductionQualityCharacterFact = {
@@ -118,13 +122,16 @@ export function structuralQualityChecks(input:{
 
   const uniqueAssets=new Set(clips.map(item=>item.assetId)).size;
   const duplicateRatio=clips.length?1-(uniqueAssets/clips.length):0;
+  const extremeDuplication=clips.length>=8&&duplicateRatio>=.875;
   const excessiveDuplication=clips.length>=5&&duplicateRatio>.6;
   checks.push(check(
     'asset-duplication','visual','Repetição de assets',
-    excessiveDuplication?'warning':'pass',
-    excessiveDuplication
-      ?'A maior parte dos clips reutiliza assets já usados; revise monotonia visual.'
-      :'A repetição de assets está dentro do limite operacional.',
+    extremeDuplication?'blocker':excessiveDuplication?'warning':'pass',
+    extremeDuplication
+      ?'O render depende quase inteiramente do mesmo asset visual; aumente a diversidade antes da publicação.'
+      :excessiveDuplication
+        ?'A maior parte dos clips reutiliza assets já usados; revise monotonia visual.'
+        :'A repetição de assets está dentro do limite operacional.',
     [`${uniqueAssets} asset(s) único(s) em ${clips.length} clip(s)`],
     {uniqueAssets,clipCount:clips.length,duplicateRatio:Number(duplicateRatio.toFixed(4))}
   ));
@@ -150,6 +157,24 @@ export function structuralQualityChecks(input:{
 
     const promptUnknown=assetFacts.filter(f=>f.promptAligned===null);
     const promptBad=assetFacts.filter(f=>f.promptAligned===false);
+    const unknownRights=assetFacts.filter(f=>!f.licenseType||f.licenseType==='unknown');
+    checks.push(check(
+      'asset-rights','visual','Direitos e base de uso dos assets',
+      unknownRights.length?'blocker':'pass',
+      unknownRights.length
+        ?'Um ou mais assets não possuem uma base de uso/licença explicitamente registrada.'
+        :'Todos os assets usados no manifest possuem base de uso/licença registrada.',
+      unknownRights.length
+        ?unknownRights.map(f=>[
+          f.assetId.slice(0,8),
+          f.sourceType??'source-unknown',
+          f.provider??'provider-unknown',
+          f.licenseLabel??'license-unknown'
+        ].join(':'))
+        :[...new Set(assetFacts.map(f=>f.licenseType).filter(Boolean) as string[])],
+      {checked:assetFacts.length,unknownRights:unknownRights.length}
+    ));
+
     checks.push(check(
       'prompt-asset-alignment','visual','Prompt × asset',
       promptBad.length?'blocker':promptUnknown.length?'manual-review':'pass',
@@ -170,6 +195,11 @@ export function structuralQualityChecks(input:{
       'asset-provenance','visual','Proveniência dos assets','manual-review',
       'Não foi possível consultar os metadados atuais dos assets usados no render.',
       ['asset facts unavailable']
+    ));
+    checks.push(check(
+      'asset-rights','visual','Direitos e base de uso dos assets','manual-review',
+      'Os direitos/licenças dos assets precisam de revisão porque os fatos de proveniência não estão disponíveis.',
+      ['asset rights unavailable']
     ));
     checks.push(check(
       'prompt-asset-alignment','visual','Prompt × asset','manual-review',
