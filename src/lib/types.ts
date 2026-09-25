@@ -2115,6 +2115,42 @@ export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCo
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
 
 
+export type OwnedMediaVisualSegment = {
+ id:string;
+ assetId:string;
+ sequence:number;
+ startSeconds:number;
+ endSeconds:number;
+ durationSeconds:number;
+ title:string;
+ summary:string;
+ semantic:VisualSegmentSemantic;
+ confidence:number;
+ searchText:string;
+ keyframeSeconds:number;
+ createdAt:string;
+ updatedAt:string;
+};
+
+export type OwnedMediaIntelligenceResult = {
+ assetId:string;
+ status:'idle'|'processing'|'completed'|'failed';
+ provider:'googleai';
+ model:string;
+ assetTitle:string;
+ durationSeconds:number|null;
+ analyzedAt?:string;
+ error?:string;
+ segments:OwnedMediaVisualSegment[];
+};
+
+export type OwnedMediaVisualStatus = {
+ status:'idle'|'processing'|'completed'|'failed';
+ segmentCount:number;
+ analyzedAt?:string;
+ error?:string;
+};
+
 export type OwnedMediaAsset = {
  id:string;
  assetKind:'image'|'video';
@@ -2151,6 +2187,7 @@ export type OwnedMediaAsset = {
  };
  signedUrl:string|null;
  etag?:string;
+ visualIntelligence?:OwnedMediaVisualStatus;
  createdAt:string;
  updatedAt:string;
 };
