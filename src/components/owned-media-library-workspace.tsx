@@ -93,6 +93,7 @@ export default function OwnedMediaLibraryWorkspace(){
       const xhr=new XMLHttpRequest();
       xhr.open('PUT',url);
       xhr.setRequestHeader('Content-Type',mimeType);
+      xhr.setRequestHeader('X-Upload-Size',String(file.size));
       xhr.withCredentials=true;
       xhr.upload.onprogress=event=>{
         if(!event.lengthComputable)return;
