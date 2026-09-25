@@ -1,7 +1,7 @@
 import 'server-only';
 
 import {
-  DeleteObjectCommand, GetObjectCommand, PutObjectCommand
+  DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from './db';
@@ -110,4 +110,40 @@ export async function removeMedia(path:string){
   }
   const removal=await db().storage.from(SUPABASE_BUCKET).remove([path]);
   if(removal.error)throw new Error('supabase-storage-delete-failed');
+}
+
+
+export async function presignedR2Upload(
+  key:string,
+  contentType:string,
+  expiresSeconds=1800
+){
+  const target=await r2();
+  if(!target)throw new Error('r2-not-configured');
+  const uploadUrl=await getSignedUrl(
+    target.client,
+    new PutObjectCommand({
+      Bucket:target.config.bucket,
+      Key:key,
+      ContentType:contentType,
+      CacheControl:'31536000'
+    }),
+    {expiresIn:Math.max(60,Math.min(expiresSeconds,3600))}
+  );
+  return {uploadUrl,storagePath:R2_PREFIX+key};
+}
+
+export async function headMedia(path:string){
+  if(!isR2Path(path))throw new Error('head-media-r2-only');
+  const target=await r2();
+  if(!target)throw new Error('r2-not-configured');
+  const result=await target.client.send(new HeadObjectCommand({
+    Bucket:target.config.bucket,
+    Key:r2Key(path)
+  }));
+  return {
+    bytes:Number(result.ContentLength??0),
+    contentType:String(result.ContentType??''),
+    etag:String(result.ETag??'').replace(/^"|"$/g,'')
+  };
 }
