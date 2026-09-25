@@ -69,7 +69,8 @@ export async function POST(request:Request){
     if(!parsed.success)throw new HttpError('Revise os dados enviados para a Biblioteca.',400);
 
     if(parsed.data.action==='prepare'){
-      const result=await prepareOwnedMediaUpload(parsed.data);
+      const origin=request.headers.get('origin')?.trim()||new URL(request.url).origin;
+      const result=await prepareOwnedMediaUpload({...parsed.data,browserOrigin:origin});
       return Response.json({message:'Upload preparado para envio direto ao R2.',...result});
     }
     if(parsed.data.action==='finalize'){
