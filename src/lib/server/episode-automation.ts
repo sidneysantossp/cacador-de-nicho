@@ -24,7 +24,7 @@ import {
   generateGoogleImage, listSceneAssets, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
 import {
-  enqueueVerifiedStockJob, loadVerifiedStockJob
+  enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
 } from './verified-stock-jobs';
 import { loadProductionDna } from './production-dna';
 import { stockFallbackEligible } from '@/lib/stock-media-policy';
@@ -1045,11 +1045,9 @@ async function executeAutomationTransition(
         if(existingJob?.status==='completed'){
           const result=existingJob.result as {status?:string;provider?:string;combinedScore?:number};
           if(result.status==='matched'||result.status==='skipped'){
-            return 'Fallback stock verificado concluiu para '+target.timecodeLabel+
-              (result.provider?' · '+result.provider:'')+
-              (Number.isFinite(Number(result.combinedScore))
-                ?' · score '+Number(result.combinedScore).toFixed(3)
-                :'')+'.';
+            const reopened=await restartVerifiedStockJob(existingJob.id);
+            return 'Asset stock anterior não está mais selecionado; job reaberto para '+
+              target.timecodeLabel+' · '+reopened.id+'.';
           }
         }
 
