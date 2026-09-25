@@ -521,9 +521,19 @@ where status='running' and mode='autonomous' and worker_token is not null and le
 select count(*) into active_runs from public.radar_episode_automation_runs
 where status='running' and worker_token is not null and lease_until is not null and lease_until>now();
 if active_runs>=coalesce(max_runs,1) then return null;end if;
-select id into picked from public.radar_episode_automation_runs
-where mode='autonomous' and hold_step is null and (status='active' or (status='running' and worker_token is null))
-order by updated_at asc for update skip locked limit 1;
+select r.id into picked from public.radar_episode_automation_runs r
+where r.mode='autonomous'
+  and r.hold_step is null
+  and (r.status='active' or (r.status='running' and r.worker_token is null))
+  and not (
+    r.current_step='visual-assets'
+    and exists(
+      select 1 from public.radar_verified_stock_jobs j
+      where j.episode_id=r.episode_id
+        and j.status in ('queued','processing')
+    )
+  )
+order by r.updated_at asc for update skip locked limit 1;
 if picked is null then return null;end if;
 update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
 return picked;
