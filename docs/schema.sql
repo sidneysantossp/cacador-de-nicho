@@ -124,6 +124,21 @@ create table if not exists public.radar_owned_media_segments(
 );
 create index if not exists radar_owned_media_segments_asset_sequence on public.radar_owned_media_segments(asset_id,sequence);
 create index if not exists radar_owned_media_segments_search on public.radar_owned_media_segments using gin(to_tsvector('simple',search_text));
+
+create table if not exists public.radar_owned_media_analysis_jobs(
+  id uuid primary key,
+  asset_id uuid not null unique references public.radar_owned_media_assets(id) on delete cascade,
+  status text not null default 'queued' check(status in ('queued','processing','completed','failed')),
+  worker_token uuid,
+  lease_until timestamptz,
+  attempts int not null default 0,
+  last_error text,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists radar_owned_media_analysis_jobs_status_created on public.radar_owned_media_analysis_jobs(status,created_at);
+
 alter table public.radar_media_library_metadata add column if not exists semantic jsonb not null default '{}'::jsonb;
 create table if not exists public.radar_asset_visual_analysis(
   asset_id uuid primary key references public.radar_scene_assets(id) on delete cascade,
@@ -247,7 +262,7 @@ grant execute on function public.claim_radar_universe_queue(int) to service_role
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
@@ -990,3 +1005,32 @@ grant execute on function public.radar_set_secret(text,text) to service_role;
 grant execute on function public.radar_delete_secret(text) to service_role;
 grant execute on function public.radar_secret_status() to service_role;
 commit;
+
+
+create or replace function public.claim_owned_media_analysis_job(p_worker_token uuid,p_lease_seconds int default 3600) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;
+begin
+if p_lease_seconds<300 or p_lease_seconds>7200 then raise exception 'invalid owned media analysis lease';end if;
+update public.radar_owned_media_analysis_jobs
+set status='queued',worker_token=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+
+select id into picked
+from public.radar_owned_media_analysis_jobs
+where status='queued'
+order by created_at asc
+for update skip locked
+limit 1;
+
+if picked is null then return null;end if;
+
+update public.radar_owned_media_analysis_jobs
+set status='processing',worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),
+attempts=attempts+1,last_error=null,updated_at=now()
+where id=picked;
+
+return picked;
+end $$;
+revoke all on function public.claim_owned_media_analysis_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_owned_media_analysis_job(uuid,int) to service_role;
