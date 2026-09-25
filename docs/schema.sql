@@ -51,7 +51,7 @@ create table if not exists public.radar_scene_assets(id uuid primary key,channel
 create index if not exists radar_scene_assets_channel_updated on public.radar_scene_assets(channel_id,updated_at desc);
 create index if not exists radar_scene_assets_scene_variant on public.radar_scene_assets(visual_prompt_set_id,scene_id,variant desc);
 create unique index if not exists radar_scene_assets_one_selected on public.radar_scene_assets(visual_prompt_set_id,scene_id) where selected=true;
-create table if not exists public.radar_stock_searches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,provider text not null check(provider in ('pexels','pixabay','unsplash')),media_kind text not null check(media_kind in ('image','video')),query text not null,result_count int not null default 0 check(result_count>=0),payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
+create table if not exists public.radar_stock_searches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,scene_id uuid not null,provider text not null check(provider in ('pexels','pixabay','unsplash','vecteezy')),media_kind text not null check(media_kind in ('image','video')),query text not null,result_count int not null default 0 check(result_count>=0),payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now());
 create index if not exists radar_stock_searches_scene_created on public.radar_stock_searches(visual_prompt_set_id,scene_id,created_at desc);
 create table if not exists public.radar_external_import_batches(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,visual_prompt_set_id uuid references public.radar_visual_prompt_sets(id) on delete set null,status text not null default 'planned' check(status in ('planned','processing','partial','completed','failed')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_external_import_batches_channel_created on public.radar_external_import_batches(channel_id,created_at desc);
@@ -62,7 +62,7 @@ create index if not exists radar_media_library_metadata_channel_updated on publi
 create index if not exists radar_media_library_metadata_channel_favorite on public.radar_media_library_metadata(channel_id,favorite) where favorite=true;
 alter table public.radar_media_library_metadata add column if not exists semantic jsonb not null default '{}'::jsonb;
 alter table public.radar_stock_searches drop constraint if exists radar_stock_searches_provider_check;
-alter table public.radar_stock_searches add constraint radar_stock_searches_provider_check check(provider in ('pexels','pixabay','unsplash'));
+alter table public.radar_stock_searches add constraint radar_stock_searches_provider_check check(provider in ('pexels','pixabay','unsplash','vecteezy'));
 create table if not exists public.radar_timelines(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,scene_plan_id uuid not null unique references public.radar_scene_plans(id) on delete cascade,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,voice_asset_id uuid not null references public.radar_voice_assets(id) on delete cascade,visual_prompt_set_id uuid not null references public.radar_visual_prompt_sets(id) on delete cascade,version int not null default 1 check(version>=1),status text not null default 'draft' check(status in ('draft','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_timelines_channel_updated on public.radar_timelines(channel_id,updated_at desc);
 create table if not exists public.radar_timeline_versions(id bigint generated always as identity primary key,timeline_id uuid not null references public.radar_timelines(id) on delete cascade,version int not null check(version>=1),status text not null,payload jsonb not null,created_at timestamptz not null default now(),unique(timeline_id,version));
@@ -852,7 +852,7 @@ grant execute on function public.radar_allow_login(text) to service_role;
 create or replace function public.radar_get_secret(p_secret_name text) returns text
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','vecteezy_config','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
 return (select d.decrypted_secret from vault.decrypted_secrets d where d.name=p_secret_name limit 1);
 end $$;
 
@@ -860,7 +860,7 @@ create or replace function public.radar_set_secret(p_secret_name text,p_secret_v
 language plpgsql security definer set search_path='' as $$
 declare secret_id uuid;
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') or length(p_secret_value)<8 then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','vecteezy_config','cloudflare_r2_config') or length(p_secret_value)<8 then raise exception 'secret not allowed';end if;
 select d.id into secret_id from vault.decrypted_secrets d where d.name=p_secret_name limit 1;
 if secret_id is null then
  perform vault.create_secret(p_secret_value,p_secret_name,'Caçadores de Nichos provider credential');
@@ -872,13 +872,13 @@ end $$;
 create or replace function public.radar_delete_secret(p_secret_name text) returns void
 language plpgsql security definer set search_path='' as $$
 begin
-if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
+if p_secret_name not in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','vecteezy_config','cloudflare_r2_config') then raise exception 'secret not allowed';end if;
 delete from vault.secrets where name=p_secret_name;
 end $$;
 
 create or replace function public.radar_secret_status() returns table(secret_name text,last4 text,updated_at timestamptz)
 language sql security definer set search_path='' as $$
-select d.name::text, case when d.name='cloudflare_r2_config' then '' else right(d.decrypted_secret,4) end, d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','cloudflare_r2_config');
+select d.name::text, case when d.name in ('cloudflare_r2_config','vecteezy_config') then '' else right(d.decrypted_secret,4) end, d.updated_at from vault.decrypted_secrets d where d.name in ('openai_api_key','youtube_api_key','elevenlabs_api_key','google_ai_api_key','pexels_api_key','pixabay_api_key','unsplash_access_key','vecteezy_config','cloudflare_r2_config');
 $$;
 
 revoke all on function public.radar_get_secret(text) from public,anon,authenticated;

@@ -770,3 +770,39 @@ Arquitetura operacional:
 - trabalho desenvolvido em worktree isolado para não competir com auto-deploy;
 - nenhuma automação editorial/produção/publicação foi habilitada;
 - modo assisted-manual continua sendo o modelo operacional.
+
+## Vecteezy API — Stock Media não-IA — 25/09/2026
+
+Correção de provider:
+- a integração desejada é Vecteezy, não Videezy;
+- o card manual do Videezy foi removido de Configurações;
+- Vecteezy passa a ser provider real do Stock Media Engine.
+
+Credenciais:
+- Configurações recebe ID numérico da conta + Chave Secreta;
+- a API V2 usa o ID no path e a Chave Secreta como Bearer token;
+- a configuração é validada contra /v2/{account_id}/account/info antes de ser persistida;
+- ID + secret são serializados como vecteezy_config e cifrados no Supabase Vault;
+- o navegador nunca recebe a configuração de volta.
+
+Busca:
+- fotos e vídeos suportados;
+- busca usa /v2/{account_id}/resources;
+- ai_generated=false é enviado para priorizar exclusivamente conteúdo não gerado por IA;
+- license_type=commercial e family_friendly=true são enviados;
+- quota restante é lida do header X-QUOTA-REMAINING;
+- previews são usados somente como resultados temporários, não persistidos como URLs permanentes.
+
+Download e provenance:
+- asset só é baixado quando o operador escolhe Usar nesta cena;
+- o servidor reconsulta o resource ID e usa o endpoint oficial /download;
+- URL assinada é usada imediatamente e não persistida;
+- requires_attribution e required_attribution_url são registrados no metadata/licença;
+- o arquivo selecionado é copiado para o storage privado, preferindo Cloudflare R2;
+- o asset entra na cena com provider=vecteezy e source_type=stock.
+
+Política operacional:
+- Vecteezy não será usado para download em massa ou stockpiling;
+- downloads devem estar vinculados a episódio/cena/projeto real ou iminente;
+- Asset Vault preserva assets já usados em projetos, mas não serve para aspirar especulativamente a biblioteca Vecteezy;
+- nenhuma automação editorial, render ou publicação foi habilitada.

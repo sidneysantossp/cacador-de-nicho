@@ -29,3 +29,11 @@ test('Stock Media rejects non-HTTPS at download layer via host policy caller and
   assert.equal(validStockQuery('   '),false);
   assert.equal(validStockQuery('x'.repeat(101)),false);
 });
+
+
+test('Stock Media allows only expected Vecteezy media hosts',()=>{
+  assert.equal(stockDownloadHostAllowed('vecteezy','downloads.vecteezy.com'),true);
+  assert.equal(stockDownloadHostAllowed('vecteezy','static.vecteezy.com'),true);
+  assert.equal(stockDownloadHostAllowed('vecteezy','files.vecteezy.com'),true);
+  assert.equal(stockDownloadHostAllowed('vecteezy','downloads.vecteezy.com.attacker.test'),false);
+});

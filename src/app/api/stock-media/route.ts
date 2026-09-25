@@ -7,7 +7,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
 
-const provider=z.enum(['pexels','pixabay','unsplash']);
+const provider=z.enum(['pexels','pixabay','unsplash','vecteezy']);
 const kind=z.enum(['image','video']);
 
 export async function GET(request:Request){

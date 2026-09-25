@@ -5,9 +5,13 @@ import { HttpError } from './auth';
 import {
   parseR2Config, r2ConfigFromEnv, serializeR2Config, testR2Config, type R2Config
 } from './r2';
+import {
+  parseVecteezyConfig, serializeVecteezyConfig, testVecteezyConfig,
+  vecteezyConfigFromEnv, type VecteezyConfig
+} from './vecteezy';
 
 export type Provider=
-  'openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'r2';
+  'openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 
 const names:Record<Provider,string>={
   openai:'openai_api_key',
@@ -17,6 +21,7 @@ const names:Record<Provider,string>={
   pexels:'pexels_api_key',
   pixabay:'pixabay_api_key',
   unsplash:'unsplash_access_key',
+  vecteezy:'vecteezy_config',
   r2:'cloudflare_r2_config'
 };
 
@@ -28,6 +33,10 @@ function envValue(provider:Provider){
   if(provider==='pexels')return process.env.PEXELS_API_KEY;
   if(provider==='pixabay')return process.env.PIXABAY_API_KEY;
   if(provider==='unsplash')return process.env.UNSPLASH_ACCESS_KEY;
+  if(provider==='vecteezy'){
+    const config=vecteezyConfigFromEnv();
+    return config?serializeVecteezyConfig(config):undefined;
+  }
   const config=r2ConfigFromEnv();
   return config?serializeR2Config(config):undefined;
 }
@@ -40,12 +49,16 @@ function label(provider:Provider){
   if(provider==='pexels')return 'Pexels';
   if(provider==='pixabay')return 'Pixabay';
   if(provider==='unsplash')return 'Unsplash';
+  if(provider==='vecteezy')return 'Vecteezy';
   return 'Cloudflare R2';
 }
 
 function last4(provider:Provider,value:string){
   if(provider==='r2'){
     try{return parseR2Config(value).accessKeyId.slice(-4);}catch{return '';}
+  }
+  if(provider==='vecteezy'){
+    try{return parseVecteezyConfig(value).secretKey.slice(-4);}catch{return '';}
   }
   return value.slice(-4);
 }
@@ -74,6 +87,11 @@ export async function saveR2ProviderConfig(config:R2Config){
   await saveProviderSecret('r2',serializeR2Config(config));
 }
 
+export async function saveVecteezyProviderConfig(config:VecteezyConfig){
+  await testVecteezyConfig(config);
+  await saveProviderSecret('vecteezy',serializeVecteezyConfig(config));
+}
+
 export async function removeProviderSecret(provider:Provider){
   if(!dbConfigured())throw new HttpError('Configure o Supabase antes de alterar credenciais.',503);
   checked(await db().rpc('radar_delete_secret',{p_secret_name:names[provider]}));
@@ -82,6 +100,7 @@ export async function removeProviderSecret(provider:Provider){
 export async function providerStatuses(){
   const rows:Record<string,unknown>[]=[];
   let r2VaultLast4:string|null=null;
+  let vecteezyVaultLast4:string|null=null;
   if(dbConfigured()){
     const result=await db().rpc('radar_secret_status');
     if(result.error)throw new HttpError('O cofre de credenciais ainda não foi instalado. Aplique o schema atualizado.',503);
@@ -92,15 +111,25 @@ export async function providerStatuses(){
         try{r2VaultLast4=parseR2Config(secret.data).accessKeyId.slice(-4);}catch{}
       }
     }
+    if(rows.some(item=>item.secret_name===names.vecteezy)){
+      const secret=await db().rpc('radar_get_secret',{p_secret_name:names.vecteezy});
+      if(!secret.error&&typeof secret.data==='string'){
+        try{vecteezyVaultLast4=parseVecteezyConfig(secret.data).secretKey.slice(-4);}catch{}
+      }
+    }
   }
-  return (['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','r2'] as Provider[]).map(provider=>{
+  return (['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2'] as Provider[]).map(provider=>{
     const name=names[provider];
     const row=rows.find(item=>item.secret_name===name);
     const fallback=envValue(provider);
     if(row){
       return {
         provider,configured:true,source:'vault' as const,
-        last4:provider==='r2'?(r2VaultLast4??''):String(row.last4??'')
+        last4:provider==='r2'
+          ?(r2VaultLast4??'')
+          :provider==='vecteezy'
+            ?(vecteezyVaultLast4??'')
+            :String(row.last4??'')
       };
     }
     if(fallback)return {provider,configured:true,source:'environment' as const,last4:last4(provider,fallback)};
@@ -152,6 +181,10 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
       });
     }catch{throw new HttpError('Não foi possível alcançar a API do Unsplash.',502);}
     if(!response.ok)throw new HttpError('O Unsplash recusou a Access Key.',422);
+    return;
+  }
+  if(provider==='vecteezy'){
+    await testVecteezyConfig(parseVecteezyConfig(key));
     return;
   }
   if(provider==='r2'){

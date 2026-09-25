@@ -7,7 +7,7 @@ import {
 import { modelOptions as fallbackModels } from '@/lib/models';
 import { defaultSettings } from '@/lib/types';
 
-type Provider='openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'r2';
+type Provider='openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 type Status={provider:Provider;configured:boolean;source:'vault'|'environment'|null;last4:string|null};
 type Model={id:string;name:string;description:string};
 type Payload={providers:Status[];models:readonly Model[];selection:{analysisModel:string;scriptModel:string};message?:string};
@@ -22,7 +22,7 @@ export default function ProviderSettings({
   onMessage:(message:string)=>void;
 }){
  const [providers,setProviders]=useState<Status[]>(()=>
-   ['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','r2'].map(provider=>{
+   ['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2'].map(provider=>{
      const env=provider==='openai'?environmentProviders.openai:provider==='youtube'?environmentProviders.youtube:false;
      return {provider:provider as Provider,configured:env,source:env?'environment':null,last4:null};
    })
@@ -37,6 +37,8 @@ export default function ProviderSettings({
  const [pexelsKey,setPexelsKey]=useState('');
  const [pixabayKey,setPixabayKey]=useState('');
  const [unsplashKey,setUnsplashKey]=useState('');
+ const [vecteezyAccountId,setVecteezyAccountId]=useState('');
+ const [vecteezySecretKey,setVecteezySecretKey]=useState('');
  const [r2AccountId,setR2AccountId]=useState('');
  const [r2AccessKeyId,setR2AccessKeyId]=useState('');
  const [r2SecretAccessKey,setR2SecretAccessKey]=useState('');
@@ -80,7 +82,8 @@ export default function ProviderSettings({
  const ready=authenticated&&supabaseConfigured;
  const status=(provider:Provider)=>providers.find(x=>x.provider===provider)??{provider,configured:false,source:null,last4:null};
  const openai=status('openai'),youtube=status('youtube'),elevenlabs=status('elevenlabs'),googleai=status('googleai');
- const pexels=status('pexels'),pixabay=status('pixabay'),unsplash=status('unsplash'),r2=status('r2');
+ const pexels=status('pexels'),pixabay=status('pixabay'),unsplash=status('unsplash');
+ const vecteezy=status('vecteezy'),r2=status('r2');
 
  return <section className="provider-section">
   <div className="settings-section-head">
@@ -99,6 +102,22 @@ export default function ProviderSettings({
    <CredentialCard provider="pexels" title="Pexels" description="Fotos e vídeos para o Stock Media Engine." status={pexels} value={pexelsKey} onChange={setPexelsKey} disabled={!ready} busy={busy} icon={<Images size={20}/>} placeholder="Pexels API key" onSave={async()=>{if(await send({action:'saveSecret',provider:'pexels',key:pexelsKey},'pexels-save'))setPexelsKey('');}} onTest={()=>void send({action:'test',provider:'pexels'},'pexels-test')} onRemove={()=>void send({action:'removeSecret',provider:'pexels'},'pexels-remove')}/>
    <CredentialCard provider="pixabay" title="Pixabay" description="Imagens e vídeos alternativos para Stock Media." status={pixabay} value={pixabayKey} onChange={setPixabayKey} disabled={!ready} busy={busy} icon={<Film size={20}/>} placeholder="Pixabay API key" onSave={async()=>{if(await send({action:'saveSecret',provider:'pixabay',key:pixabayKey},'pixabay-save'))setPixabayKey('');}} onTest={()=>void send({action:'test',provider:'pixabay'},'pixabay-test')} onRemove={()=>void send({action:'removeSecret',provider:'pixabay'},'pixabay-remove')}/>
    <CredentialCard provider="unsplash" title="Unsplash" description="Fotografia editorial e stock em alta resolução. Imagens apenas." status={unsplash} value={unsplashKey} onChange={setUnsplashKey} disabled={!ready} busy={busy} icon={<ImageIcon size={20}/>} placeholder="Unsplash Access Key" minLength={8} onSave={async()=>{if(await send({action:'saveSecret',provider:'unsplash',key:unsplashKey},'unsplash-save'))setUnsplashKey('');}} onTest={()=>void send({action:'test',provider:'unsplash'},'unsplash-test')} onRemove={()=>void send({action:'removeSecret',provider:'unsplash'},'unsplash-remove')}/>
+
+   <VecteezyCard
+     status={vecteezy}
+     disabled={!ready}
+     busy={busy}
+     accountId={vecteezyAccountId}
+     secretKey={vecteezySecretKey}
+     onAccountId={setVecteezyAccountId}
+     onSecretKey={setVecteezySecretKey}
+     onSave={async()=>{
+       const ok=await send({action:'saveVecteezy',accountId:vecteezyAccountId,secretKey:vecteezySecretKey},'vecteezy-save');
+       if(ok){setVecteezyAccountId('');setVecteezySecretKey('');}
+     }}
+     onTest={()=>void send({action:'test',provider:'vecteezy'},'vecteezy-test')}
+     onRemove={()=>void send({action:'removeSecret',provider:'vecteezy'},'vecteezy-remove')}
+   />
 
    <R2Card
      status={r2}
@@ -129,11 +148,6 @@ export default function ProviderSettings({
      onRemove={()=>void send({action:'removeSecret',provider:'r2'},'r2-remove')}
    />
 
-   <article className="credential-card">
-    <div className="credential-head"><span className="integration-icon"><Film size={20}/></span><div><h3>Videezy</h3><p>Fonte complementar de stock. Importação manual com licença conferida por asset.</p></div><span className="tag">Manual</span></div>
-    <p className="credential-note">Não automatizamos scraping. Quando usado, o arquivo entra no Asset Vault com URL de origem, licença e atribuição exigida.</p>
-    <div className="credential-actions"><a className="button subtle small" href="https://www.videezy.com/" target="_blank" rel="noreferrer">Abrir Videezy <ExternalLink size={13}/></a></div>
-   </article>
   </div>
 
   <div className="model-panel">
@@ -157,6 +171,23 @@ function CredentialCard({
   <label>Chave privada<input type="password" autoComplete="new-password" spellCheck={false} placeholder={status.configured?'Cole uma nova chave para substituir':placeholder} value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}/></label>
   <p className="credential-note">{status.source==='vault'?'Cifrada no Supabase Vault. Use “Testar conexão” para validar acesso e quota.':status.source==='environment'?'Definida no ambiente de hospedagem. Use “Testar conexão” para validar acesso e quota.':'O valor nunca retorna para o navegador.'}</p>
   <div className="credential-actions"><button className="button primary small" disabled={disabled||value.trim().length<minLength||!!busy} onClick={onSave}>{busy===`${prefix}-save`?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy===`${prefix}-test`?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label={`Remover chave ${title}`} disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
+ </article>;
+}
+
+function VecteezyCard({
+ status,disabled,busy,accountId,secretKey,onAccountId,onSecretKey,onSave,onTest,onRemove
+}:{
+ status:Status;disabled:boolean;busy:string;accountId:string;secretKey:string;
+ onAccountId:(value:string)=>void;onSecretKey:(value:string)=>void;
+ onSave:()=>void;onTest:()=>void;onRemove:()=>void;
+}){
+ const complete=/^\d+$/.test(accountId.trim())&&secretKey.trim().length>=8;
+ return <article className="credential-card">
+  <div className="credential-head"><span className="integration-icon vecteezy"><Film size={20}/></span><div><h3>Vecteezy</h3><p>Fotos e vídeos não gerados por IA para o Stock Media Engine.</p></div><span className={`tag ${status.configured?'green':''}`}>{status.configured?(status.last4?`Conectado · ••••${status.last4}`:'Conectado'):'Pendente'}</span></div>
+  <label>ID da conta<input inputMode="numeric" autoComplete="off" value={accountId} disabled={disabled} onChange={e=>onAccountId(e.target.value.replace(/\D/g,''))} placeholder={status.configured?'Preencha os dois campos para substituir':'ID numérico da conta Vecteezy'}/></label>
+  <label>Chave Secreta<input type="password" autoComplete="new-password" spellCheck={false} value={secretKey} disabled={disabled} onChange={e=>onSecretKey(e.target.value)} placeholder="Vecteezy Secret Key"/></label>
+  <p className="credential-note">A busca usa a API V2 oficial com filtro para conteúdo não gerado por IA. Downloads preservam licença e atribuição no Asset Vault.</p>
+  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='vecteezy-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='vecteezy-test'?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label="Remover Vecteezy" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
  </article>;
 }
 

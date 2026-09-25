@@ -4,12 +4,14 @@ import type { StockMediaProvider, StockMediaResult } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { persistStockSceneAsset } from './asset-factory';
 import { stockDownloadHostAllowed, validStockQuery } from '@/lib/stock-media-policy';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
+const VECTEEZY_LICENSE='https://www.vecteezy.com/licensing-agreement';
 const IMAGE_MAX=25*1024*1024;
 const VIDEO_MAX=250*1024*1024;
 
@@ -118,6 +120,23 @@ function unsplashPhoto(item:Record<string,unknown>):StockMediaResult{
   };
 }
 
+function vecteezyResult(item:Record<string,unknown>,kind:'image'|'video'):StockMediaResult{
+  const dimensions=(item.dimensions??item.preview_dimensions??item.thumbnail_dimensions??{}) as Record<string,unknown>;
+  return {
+    provider:'vecteezy',
+    providerAssetId:String(item.id??''),
+    kind,
+    title:String(item.title??('Vecteezy '+kind+' '+String(item.id??''))),
+    previewUrl:String(item.preview_url??item.thumbnail_2x_url??item.thumbnail_url??''),
+    pageUrl:'https://www.vecteezy.com/',
+    creatorName:'Vecteezy contributor',
+    width:Number(dimensions.width)||null,
+    height:Number(dimensions.height)||null,
+    durationSeconds:null,
+    licenseLabel:'Vecteezy API',
+    attributionLabel:'Vecteezy asset — attribution is resolved at download time'
+  };
+}
 export async function searchStockMedia(input:{
   promptSetId:string;sceneId:string;provider:StockMediaProvider;kind:'image'|'video';query:string;
 }){
@@ -158,7 +177,7 @@ export async function searchStockMedia(input:{
     results=(body.hits??[]).map(item=>input.kind==='image'?pixabayImage(item):pixabayVideo(item)).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
     reset=response.headers.get('x-ratelimit-reset');
-  }else{
+  }else if(input.provider==='unsplash'){
     const key=await providerSecret('unsplash');
     const params=new URLSearchParams({
       query,orientation:'landscape',per_page:'24',page:'1',content_filter:'high'
@@ -176,6 +195,30 @@ export async function searchStockMedia(input:{
     const body=await response.json() as {results?:Record<string,unknown>[]};
     results=(body.results??[]).map(unsplashPhoto).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
+  }else{
+    const config=parseVecteezyConfig(await providerSecret('vecteezy'));
+    const params=new URLSearchParams({
+      term:query,
+      content_type:input.kind==='image'?'photo':'video',
+      page:'1',
+      per_page:'24',
+      license_type:'commercial',
+      family_friendly:'true',
+      ai_generated:'false'
+    });
+    if(input.kind==='image')params.set('orientation','horizontal');
+    let response:Response;
+    try{
+      response=await fetch('https://api.vecteezy.com/v2/'+encodeURIComponent(config.accountId)+'/resources?'+params,{
+        headers:vecteezyHeaders(config),signal:AbortSignal.timeout(20000),cache:'no-store'
+      });
+    }catch{throw new HttpError('Não foi possível pesquisar no Vecteezy.',502);}
+    if(response.status===402||response.status===429)throw new HttpError('O Vecteezy atingiu o limite de downloads ou chamadas da API.',429);
+    if(response.status===401||response.status===403)throw new HttpError('O Vecteezy recusou a credencial da conta.',422);
+    if(!response.ok)throw new HttpError('O Vecteezy recusou a pesquisa.',502);
+    const body=await response.json() as {resources?:Record<string,unknown>[]};
+    results=(body.resources??[]).map(item=>vecteezyResult(item,input.kind)).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
+    remaining=response.headers.get('x-quota-remaining');
   }
 
   checked(await db().from('radar_stock_searches').insert({
@@ -291,12 +334,54 @@ export async function importStockMedia(input:{
       downloadUrl=String(file.url);width=Number(file.width)||null;height=Number(file.height)||null;duration=Number(item.duration)||null;
       mimeType='video/mp4';attribution='Video by '+creatorName+' on Pixabay';
     }
-  }else{
+  }else if(input.provider==='unsplash'){
     throw new HttpError(
       'O Unsplash está disponível nesta fase para descoberta e preview. A API exige hotlink; cópia automática para o Asset Vault fica bloqueada até o resolver externo preservar hotlink e atribuição.',
       409
     );
-
+  }else{
+    const config=parseVecteezyConfig(await providerSecret('vecteezy'));
+    const id=encodeURIComponent(input.providerAssetId);
+    const base='https://api.vecteezy.com/v2/'+encodeURIComponent(config.accountId)+'/resources/'+id;
+    const resourceResponse=await fetch(base,{headers:vecteezyHeaders(config),signal:AbortSignal.timeout(20000),cache:'no-store'});
+    if(resourceResponse.status===401||resourceResponse.status===403)throw new HttpError('O Vecteezy recusou a credencial da conta.',422);
+    if(resourceResponse.status===402)throw new HttpError('O Vecteezy atingiu a quota da conta.',429);
+    if(!resourceResponse.ok)throw new HttpError('O Vecteezy não encontrou este asset.',404);
+    const resource=await resourceResponse.json() as Record<string,unknown>;
+    const contentType=String(resource.content_type??'');
+    if(input.kind==='image'&&contentType!=='photo')throw new HttpError('O asset Vecteezy selecionado não é uma foto.',409);
+    if(input.kind==='video'&&contentType!=='video')throw new HttpError('O asset Vecteezy selecionado não é um vídeo.',409);
+    const metadata=(resource.file_metadata??{}) as Record<string,unknown>;
+    const fileTypes=(metadata.available_file_types??[]) as Record<string,unknown>[];
+    const extensions=fileTypes.map(item=>String(item.extension??'').toLowerCase()).filter(Boolean);
+    const preferred=input.kind==='image'
+      ?extensions.find(value=>['jpg','jpeg','png'].includes(value))
+      :extensions.find(value=>value==='mp4');
+    const params=new URLSearchParams();
+    if(preferred)params.set('file_type',preferred);
+    let downloadResponse:Response;
+    try{
+      downloadResponse=await fetch(base+'/download'+(params.size?'?'+params:''),{
+        headers:vecteezyHeaders(config),signal:AbortSignal.timeout(30000),cache:'no-store'
+      });
+    }catch{throw new HttpError('Não foi possível preparar o download do Vecteezy.',502);}
+    if(downloadResponse.status===402||downloadResponse.status===429)throw new HttpError('O Vecteezy atingiu a quota de downloads.',429);
+    if(downloadResponse.status===401||downloadResponse.status===403)throw new HttpError('O Vecteezy recusou o download deste asset.',422);
+    if(!downloadResponse.ok)throw new HttpError('O Vecteezy não conseguiu preparar este download.',502);
+    const prepared=await downloadResponse.json() as Record<string,unknown>;
+    downloadUrl=String(prepared.url??'');
+    const requiresAttribution=Boolean(prepared.requires_attribution);
+    const attributionUrl=prepared.required_attribution_url?String(prepared.required_attribution_url):'';
+    pageUrl=attributionUrl||'https://www.vecteezy.com/';
+    creatorName='Vecteezy contributor';
+    const dimensions=(resource.dimensions??{}) as Record<string,unknown>;
+    width=Number(dimensions.width)||null;height=Number(dimensions.height)||null;
+    mimeType=input.kind==='image'?'image/jpeg':'video/mp4';
+    licenseLabel='Vecteezy '+String(resource.license_type??'License')+(requiresAttribution?' · attribution required':'');
+    licenseUrl=attributionUrl||VECTEEZY_LICENSE;
+    attribution=requiresAttribution
+      ?'Vecteezy attribution required: '+attributionUrl
+      :'Vecteezy API asset';
   }
 
   if(!downloadUrl)throw new HttpError('O provider não devolveu URL de download.',502);

@@ -6,7 +6,8 @@ const hosts:Record<StockMediaProvider,string[]>={
     'player.vimeo.com','vod-progressive.akamaized.net'
   ],
   pixabay:['cdn.pixabay.com','pixabay.com'],
-  unsplash:['images.unsplash.com','plus.unsplash.com','api.unsplash.com','unsplash.com']
+  unsplash:['images.unsplash.com','plus.unsplash.com','api.unsplash.com','unsplash.com'],
+  vecteezy:['downloads.vecteezy.com','static.vecteezy.com','files.vecteezy.com','img.vecteezy.com']
 };
 
 export function stockDownloadHostAllowed(provider:StockMediaProvider,host:string){
