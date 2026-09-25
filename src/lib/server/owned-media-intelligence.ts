@@ -10,7 +10,7 @@ import type {
 } from '@/lib/types';
 import { classifyMediaTaxonomy } from '@/lib/media-taxonomy';
 import { ownedMediaSearchText } from '@/lib/owned-media-policy';
-import { normalizeMediaTags, scoreVisualSegment, visualSegmentSearchText } from '@/lib/media-library-policy';
+import { normalizeMediaTags, scoreVisualIntent, visualSegmentSearchText, visualSemanticSearchText } from '@/lib/media-library-policy';
 import { HttpError } from './auth';
 import { checked, db } from './db';
 import { downloadMediaToFile } from './media-storage';
@@ -575,6 +575,7 @@ export async function matchOwnedMediaSegments(input:{
   city?:string;
   scene?:string;
   timeOfDay?:string;
+  orientation?:'landscape'|'portrait'|'any';
 }){
   const query=input.query.trim();
   if(query.length<3)throw new HttpError('Informe uma intenção visual mais específica.',400);
@@ -600,27 +601,61 @@ export async function matchOwnedMediaSegments(input:{
     .limit(10000);
   if(segmentRows.error)throw new HttpError('Falha ao consultar os segmentos visuais.',502);
 
+  const targetOrientation=input.orientation??'landscape';
   const ranked=(segmentRows.data??[]).flatMap(row=>{
     const asset=assets.get(String(row.asset_id));
     if(!asset)return [];
     const semantic=ownedSemantic(asset.semantic);
     if(!assetMatchesFilters(semantic,input))return [];
+
+    const width=asset.width===null?null:Number(asset.width);
+    const height=asset.height===null?null:Number(asset.height);
+    if(targetOrientation!=='any'&&width&&height){
+      const landscape=width>=height;
+      if(targetOrientation==='landscape'&&!landscape)return [];
+      if(targetOrientation==='portrait'&&landscape)return [];
+    }
+
     const item=segment(row as SegmentRow);
-    const relevance=scoreVisualSegment(query,item.searchText+' '+String(asset.search_text??''));
-    if(relevance<.08)return [];
-    const resolutionBonus=Number(asset.width??0)>=3840 ? .04 : Number(asset.width??0)>=1920 ? .02 : 0;
-    const score=Math.min(1,relevance*.86+item.confidence*.10+resolutionBonus);
+    const visualText=visualSemanticSearchText(item.semantic);
+    const contextText=[
+      ...semantic.countries,...semantic.regions,...semantic.cities,...semantic.districts
+    ].join(' ');
+    const intent=scoreVisualIntent(query,visualText,contextText);
+    const locationOnlyEvidence=
+      item.semantic.locations.length>0||
+      item.semantic.landmarks.length>0||
+      item.semantic.environments.length>0;
+
+    if(intent.hasVisualIntent&&intent.visualRelevance<.22)return [];
+    if(!intent.hasVisualIntent&&!locationOnlyEvidence)return [];
+
     const desired=Math.max(.25,input.desiredDurationSeconds);
+    const durationFit=Math.min(1,item.durationSeconds/desired);
+    const resolutionBonus=Number(width??0)>=3840 ? .04 : Number(width??0)>=1920 ? .02 : 0;
+    const visualRelevance=intent.hasVisualIntent?intent.visualRelevance:.30;
+    const relevance=Math.min(1,visualRelevance*.82+intent.contextRelevance*.18);
+    const score=Math.min(
+      1,
+      visualRelevance*.62+
+      intent.contextRelevance*.16+
+      item.confidence*.10+
+      durationFit*.06+
+      resolutionBonus
+    );
     const sourceStart=item.startSeconds;
     return [{
       assetId:String(asset.id),
       title:String(asset.title??asset.original_name),
       originalName:String(asset.original_name??''),
-      width:asset.width===null?null:Number(asset.width),
-      height:asset.height===null?null:Number(asset.height),
+      width,
+      height,
       assetDurationSeconds:asset.duration_seconds===null?null:Number(asset.duration_seconds),
       segment:item,
       relevance,
+      visualRelevance,
+      contextRelevance:intent.contextRelevance,
+      durationFit,
       score,
       sourceStartSeconds:sourceStart,
       sourceEndSeconds:Math.min(item.endSeconds,sourceStart+desired)
