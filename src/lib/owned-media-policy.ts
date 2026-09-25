@@ -46,6 +46,22 @@ function markerLocations(tokens:string[]){
   return unique(result,12);
 }
 
+export function normalizeOwnedMediaDuplicateName(fileName:string){
+  return fileName
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\.[a-z0-9]{2,8}$/i,'')
+    .replace(/\s*\(\d+\)\s*$/,'')
+    .replace(/(?:[-_ ]+copy(?:[-_ ]+\d+)?)$/i,'')
+    .replace(/[-_\s]+/g,' ')
+    .trim();
+}
+
+export function ownedMediaDuplicateNameKey(fileName:string,bytes:number){
+  return normalizeOwnedMediaDuplicateName(fileName)+'::'+Math.max(0,Math.round(bytes));
+}
+
 export function ownedMediaKind(mimeType:string){
   if(['video/mp4','video/webm','video/quicktime'].includes(mimeType))return 'video' as const;
   if(['image/jpeg','image/png','image/webp'].includes(mimeType))return 'image' as const;
