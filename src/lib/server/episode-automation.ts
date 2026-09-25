@@ -26,9 +26,11 @@ import {
 import { resolveVerifiedStockMediaForScene } from './stock-media';
 import { loadProductionDna } from './production-dna';
 import { stockFallbackEligible } from '@/lib/stock-media-policy';
-import { createTimelineFromPlan, loadTimeline, saveTimeline } from './timeline-engine';
 import {
-  createVideoEditFromTimeline, loadVideoEdit, saveVideoEdit
+  createTimelineFromPlan, loadTimeline, refreshTimelineFromPlan, saveTimeline
+} from './timeline-engine';
+import {
+  createVideoEditFromTimeline, loadVideoEdit, refreshVideoEditFromTimeline, saveVideoEdit
 } from './video-editor';
 import { createRenderJob } from './render-engine';
 import {
@@ -42,7 +44,10 @@ import {
 import { recordAutopilotIncident } from './autopilot-incidents';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
-  automationHttpErrorShouldHold, episodeAutomationLabels, inspectAutomationSteps
+  automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationPublishSnapshotIssues, automationQualitySnapshotIssues,
+  automationRenderSnapshotIssues, automationTimelineSnapshotIssues,
+  automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps
 } from '@/lib/episode-automation-policy';
 
 type RunRow={
@@ -301,11 +306,8 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
 
   const scenePayload=rowPayload<{scenes?:Array<{id?:string}>}>(scenePlan);
   const sceneIds=new Set((scenePayload.scenes??[]).map(item=>String(item.id??'')).filter(Boolean));
-  const selectedReady=new Set(
-    src.assets
-      .filter(item=>item.selected&&item.status==='ready')
-      .map(item=>String(item.scene_id))
-  );
+  const selectedReadyRows=src.assets.filter(item=>item.selected&&item.status==='ready');
+  const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
   if(!promptsUsable){
@@ -323,8 +325,26 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
 
   const assetsComplete=sceneIds.size>0&&missingAssets.length===0;
   const timeline=src.timeline;
+  const timelineSnapshotIssues=timeline&&scenePlan&&promptSet
+    ?automationTimelineSnapshotIssues({
+      payload:timeline.payload,
+      scenePlanVersion:Number(scenePlan.version),
+      visualPromptSetVersion:Number(promptSet.version),
+      selectedAssets:selectedReadyRows.map(item=>({
+        sceneId:String(item.scene_id),
+        assetId:String(item.id)
+      }))
+    })
+    :[];
+  const timelineCurrent=timelineSnapshotIssues.length===0;
   if(!sceneApproved||!assetsComplete){
     steps.push(step('timeline','pending',{reason:'Aguardando Scene Plan aprovado e cobertura visual completa.'}));
+  }else if(timeline&&!timelineCurrent){
+    steps.push(step('timeline','ready',{
+      entityId:String(timeline.id),entityVersion:Number(timeline.version),
+      reason:'Timeline desatualizada: '+timelineSnapshotIssues.join(' · ')+'. Reconstrução necessária.',
+      requiresOperator:!run.policy.autoBuildTimeline
+    }));
   }else if(timeline?.status==='approved'){
     steps.push(step('timeline','completed',{entityId:String(timeline.id),entityVersion:Number(timeline.version)}));
   }else if(timeline){
@@ -340,10 +360,26 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const timelineApproved=timeline?.status==='approved';
+  const timelineApproved=timeline?.status==='approved'&&timelineCurrent;
   const edit=src.videoEdit;
+  const editSnapshotIssues=edit&&timeline&&transcript
+    ?automationVideoEditSnapshotIssues({
+      payload:edit.payload,
+      timelineId:String(timeline.id),
+      timelineVersion:Number(timeline.version),
+      transcriptId:String(transcript.id),
+      transcriptVersion:Number(transcript.version)
+    })
+    :[];
+  const editCurrent=editSnapshotIssues.length===0;
   if(!timelineApproved){
-    steps.push(step('video-edit','pending',{reason:'Aguardando Timeline aprovada.'}));
+    steps.push(step('video-edit','pending',{reason:'Aguardando Timeline aprovada e atual.'}));
+  }else if(edit&&!editCurrent){
+    steps.push(step('video-edit','ready',{
+      entityId:String(edit.id),entityVersion:Number(edit.version),
+      reason:'Video Edit desatualizado: '+editSnapshotIssues.join(' · ')+'. Reconstrução necessária.',
+      requiresOperator:!run.policy.autoCreateVideoEdit
+    }));
   }else if(edit?.status==='approved'){
     steps.push(step('video-edit','completed',{entityId:String(edit.id),entityVersion:Number(edit.version)}));
   }else if(edit){
@@ -359,10 +395,27 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const editApproved=edit?.status==='approved';
+  const editApproved=edit?.status==='approved'&&editCurrent;
   const render=src.render;
+  const renderSnapshotIssues=render&&edit&&timeline&&transcript
+    ?automationRenderSnapshotIssues({
+      payload:render.payload,
+      videoEditId:String(edit.id),
+      videoEditVersion:Number(edit.version),
+      timelineId:String(timeline.id),
+      timelineVersion:Number(timeline.version),
+      transcriptId:String(transcript.id),
+      transcriptVersion:Number(transcript.version)
+    })
+    :[];
+  const renderCurrent=renderSnapshotIssues.length===0;
   if(!editApproved){
-    steps.push(step('render','pending',{reason:'Aguardando Video Edit aprovado.'}));
+    steps.push(step('render','pending',{reason:'Aguardando Video Edit aprovado e atual.'}));
+  }else if(render&&!renderCurrent){
+    steps.push(step('render','ready',{
+      reason:'Render anterior ficou desatualizado: '+renderSnapshotIssues.join(' · ')+'.',
+      requiresOperator:!run.policy.autoRender
+    }));
   }else if(render?.status==='completed'){
     steps.push(step('render','completed',{entityId:String(render.id)}));
   }else if(render?.status==='queued'||render?.status==='processing'){
@@ -381,10 +434,24 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const renderCompleted=render?.status==='completed';
+  const renderCompleted=render?.status==='completed'&&renderCurrent;
   const quality=src.quality;
+  const qualitySnapshotIssues=quality&&render&&edit
+    ?automationQualitySnapshotIssues({
+      payload:quality.payload,
+      renderJobId:String(render.id),
+      videoEditId:String(edit.id),
+      videoEditVersion:Number(edit.version)
+    })
+    :[];
+  const qualityCurrent=qualitySnapshotIssues.length===0;
   if(!renderCompleted){
-    steps.push(step('quality','pending',{reason:'Aguardando render concluído.'}));
+    steps.push(step('quality','pending',{reason:'Aguardando render concluído e atual.'}));
+  }else if(quality&&!qualityCurrent){
+    steps.push(step('quality','ready',{
+      reason:'Production QA anterior ficou desatualizado: '+qualitySnapshotIssues.join(' · ')+'.',
+      requiresOperator:!run.policy.autoRunQuality
+    }));
   }else if(quality?.status==='approved'){
     steps.push(step('quality','completed',{entityId:String(quality.id),entityVersion:Number(quality.version)}));
   }else if(quality?.status==='blocked'){
@@ -413,10 +480,24 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const qualityApproved=quality?.status==='approved';
+  const qualityApproved=quality?.status==='approved'&&qualityCurrent;
   const pkg=src.package;
+  const packageSnapshotIssues=pkg&&quality&&render
+    ?automationPackageSnapshotIssues({
+      payload:pkg.payload,
+      qualityReportId:String(quality.id),
+      qualityReportVersion:Number(quality.version),
+      renderJobId:String(render.id)
+    })
+    :[];
+  const packageCurrent=packageSnapshotIssues.length===0;
   if(!qualityApproved){
-    steps.push(step('packaging','pending',{reason:'Aguardando Production QA aprovado.'}));
+    steps.push(step('packaging','pending',{reason:'Aguardando Production QA aprovado e atual.'}));
+  }else if(pkg&&!packageCurrent){
+    steps.push(step('packaging','ready',{
+      reason:'Publication Package anterior ficou desatualizado: '+packageSnapshotIssues.join(' · ')+'.',
+      requiresOperator:!run.policy.autoCreatePackage
+    }));
   }else if(pkg?.status==='approved'){
     steps.push(step('packaging','completed',{entityId:String(pkg.id),entityVersion:Number(pkg.version)}));
   }else if(pkg){
@@ -432,10 +513,23 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const packageApproved=pkg?.status==='approved';
+  const packageApproved=pkg?.status==='approved'&&packageCurrent;
   const publish=src.publish;
+  const publishSnapshotIssues=publish&&pkg
+    ?automationPublishSnapshotIssues({
+      payload:publish.payload,
+      packageId:String(pkg.id),
+      packageVersion:Number(pkg.version)
+    })
+    :[];
+  const publishCurrent=publishSnapshotIssues.length===0;
   if(!packageApproved){
-    steps.push(step('publish','pending',{reason:'Aguardando Publication Package aprovado.'}));
+    steps.push(step('publish','pending',{reason:'Aguardando Publication Package aprovado e atual.'}));
+  }else if(publish&&!publishCurrent){
+    steps.push(step('publish','waiting',{
+      reason:'Job de publicação pertence a uma versão anterior do package.',
+      requiresOperator:true
+    }));
   }else if(publish?.status==='completed'){
     steps.push(step('publish','completed',{entityId:String(publish.id)}));
   }else if(publish?.status==='queued'||publish?.status==='processing'){
@@ -959,8 +1053,12 @@ async function executeAutomationTransition(
         if(!run.policy.autoBuildTimeline)throw new HttpError('Montagem automática de Timeline está desativada.',409);
         const scenePlanId=automationStep(run,'scenes')?.entityId;
         if(!scenePlanId)throw new HttpError('Scene Plan aprovado não identificado.',409);
-        const timeline=await createTimelineFromPlan(scenePlanId);
-        return 'Timeline criada como draft: '+timeline.id+'.';
+        const timeline=current.entityId
+          ?await refreshTimelineFromPlan(scenePlanId)
+          :await createTimelineFromPlan(scenePlanId);
+        return current.entityId
+          ?'Timeline reconstruída como draft: '+timeline.id+' · v'+timeline.version+'.'
+          :'Timeline criada como draft: '+timeline.id+'.';
       }
       if(current.status==='waiting'){
         if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Timeline está desativada.',409);
@@ -978,8 +1076,12 @@ async function executeAutomationTransition(
         if(!run.policy.autoCreateVideoEdit)throw new HttpError('Criação automática de Video Edit está desativada.',409);
         const timelineId=automationStep(run,'timeline')?.entityId;
         if(!timelineId)throw new HttpError('Timeline aprovada não identificada.',409);
-        const edit=await createVideoEditFromTimeline(timelineId);
-        return 'Video Edit criado como draft: '+edit.id+'.';
+        const edit=current.entityId
+          ?await refreshVideoEditFromTimeline(timelineId)
+          :await createVideoEditFromTimeline(timelineId);
+        return current.entityId
+          ?'Video Edit reconstruído como draft: '+edit.id+' · v'+edit.version+'.'
+          :'Video Edit criado como draft: '+edit.id+'.';
       }
       if(current.status==='waiting'){
         if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Video Edit está desativada.',409);
