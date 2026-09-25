@@ -5,6 +5,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'node:stream';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { db } from './db';
 import { providerSecret } from './providers';
 import { parseR2Config, r2Client } from './r2';
@@ -160,4 +162,25 @@ export async function headMedia(path:string){
     contentType:String(result.ContentType??''),
     etag:String(result.ETag??'').replace(/^"|"$/g,'')
   };
+}
+
+
+export async function downloadMediaToFile(storagePath:string,targetPath:string){
+  if(!storagePath)throw new Error('media-path-empty');
+  if(isR2Path(storagePath)){
+    const target=await r2();
+    if(!target)throw new Error('r2-not-configured');
+    const result=await target.client.send(new GetObjectCommand({
+      Bucket:target.config.bucket,
+      Key:r2Key(storagePath)
+    }));
+    if(!result.Body)throw new Error('r2-empty-body');
+    const web=result.Body.transformToWebStream();
+    await pipeline(Readable.fromWeb(web as never),createWriteStream(targetPath));
+    return targetPath;
+  }
+  const result=await db().storage.from(SUPABASE_BUCKET).download(storagePath);
+  if(result.error||!result.data)throw new Error('supabase-storage-download-failed');
+  await pipeline(Readable.fromWeb(result.data.stream() as never),createWriteStream(targetPath));
+  return targetPath;
 }

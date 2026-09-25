@@ -6,6 +6,7 @@ import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
+import { probeStoredVideo } from './media-probe';
 
 const MAX_BYTES=2*1024*1024*1024;
 
@@ -56,7 +57,7 @@ function normalizedSemantic(value:unknown):OwnedMediaAsset['semantic']{
   };
 }
 
-async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
+async function rowToAsset(row:Row,visualIntelligence?:OwnedMediaAsset['visualIntelligence']):Promise<OwnedMediaAsset>{
   return {
     id:String(row.id),
     assetKind:row.asset_kind,
@@ -74,6 +75,7 @@ async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
     semantic:normalizedSemantic(row.semantic),
     signedUrl:row.status==='ready'?await signedMediaUrl(row.storage_path,3600):null,
     etag:row.etag??undefined,
+    visualIntelligence,
     createdAt:String(row.created_at),
     updatedAt:String(row.updated_at)
   };
@@ -291,9 +293,27 @@ export async function finalizeOwnedMediaUpload(input:{
     }).eq('id',row.id);
     throw new HttpError('O tamanho recebido no R2 não corresponde ao arquivo original.',422);
   }
-  const width=input.width&&input.width>0?Math.round(input.width):null;
-  const height=input.height&&input.height>0?Math.round(input.height):null;
-  const duration=input.durationSeconds&&input.durationSeconds>0?input.durationSeconds:null;
+  let width=input.width&&input.width>0?Math.round(input.width):null;
+  let height=input.height&&input.height>0?Math.round(input.height):null;
+  let duration=input.durationSeconds&&input.durationSeconds>0?input.durationSeconds:null;
+  let technical:Record<string,unknown>|null=null;
+  let technicalProbeError:string|null=null;
+  if(row.asset_kind==='video'&&(!width||!height||!duration)){
+    try{
+      const probed=await probeStoredVideo(row.storage_path);
+      width=width??probed.width;
+      height=height??probed.height;
+      duration=duration??probed.durationSeconds;
+      technical={
+        fps:probed.fps,
+        codec:probed.codec,
+        bitrate:probed.bitrate,
+        probedAt:new Date().toISOString()
+      };
+    }catch(error){
+      technicalProbeError=error instanceof Error?error.message:'ffprobe-failed';
+    }
+  }
   checked(await db().from('radar_owned_media_assets').update({
     status:'ready',
     width,
@@ -301,6 +321,12 @@ export async function finalizeOwnedMediaUpload(input:{
     duration_seconds:duration,
     mime_type:remote.contentType||row.mime_type,
     etag:remote.etag||null,
+    payload:{
+      ...(row.payload as Record<string,unknown>??{}),
+      ...(technical?{technical}:{}),
+      ...(technicalProbeError?{technicalProbeError}:{}),
+      finalizedAt:new Date().toISOString()
+    },
     updated_at:new Date().toISOString()
   }).eq('id',row.id));
   const updated=checked(await db().from('radar_owned_media_assets')
@@ -345,7 +371,27 @@ export async function listOwnedMediaAssets(input:{
   const result=await query.range(start,start+limit-1);
   if(result.error)throw new HttpError('Falha ao carregar a Biblioteca de Mídia.',502);
   const rows=(result.data??[]) as Row[];
-  const items=await Promise.all(rows.map(rowToAsset));
+  const assetIds=rows.map(row=>String(row.id));
+  const intelligenceByAsset=new Map<string,OwnedMediaAsset['visualIntelligence']>();
+  if(assetIds.length){
+    const intelligence=await db().from('radar_owned_media_visual_analysis')
+      .select('asset_id,status,payload,error,analyzed_at')
+      .in('asset_id',assetIds);
+    if(!intelligence.error){
+      for(const row of intelligence.data??[]){
+        const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+        intelligenceByAsset.set(String(row.asset_id),{
+          status:(['processing','completed','failed'].includes(String(row.status))?String(row.status):'idle') as 'idle'|'processing'|'completed'|'failed',
+          segmentCount:Math.max(0,Number(payload.segmentCount??0)||0),
+          analyzedAt:row.analyzed_at?String(row.analyzed_at):undefined,
+          error:row.error?String(row.error):undefined
+        });
+      }
+    }
+  }
+  const items=await Promise.all(rows.map(row=>rowToAsset(row,intelligenceByAsset.get(String(row.id))??{
+    status:'idle',segmentCount:0
+  })));
   const total=Number(result.count??items.length);
   return {items,page,limit,total,hasMore:start+items.length<total};
 }
