@@ -1016,7 +1016,7 @@ export type VisualPromptSetVersion = {
  createdAt: string;
 };
 export type SceneAssetKind = 'image' | 'video' | 'graphic';
-export type SceneAssetSource = 'generated' | 'uploaded' | 'stock';
+export type SceneAssetSource = 'generated' | 'uploaded' | 'stock' | 'owned';
 export type SceneAssetStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'rejected';
 export type SceneAssetLicense = {
  type: 'provider-terms' | 'owned' | 'licensed' | 'unknown';
@@ -1079,6 +1079,14 @@ export type SceneAsset = {
   creatorName: string;
   creatorUrl?: string;
   attributionLabel: string;
+ };
+ owned?: {
+  assetId: string;
+  segmentId?: string;
+  sourceStartSeconds?: number | null;
+  sourceEndSeconds?: number | null;
+  matchScore?: number;
+  visualCoverage?: number;
  };
  costUsd: number | null;
  error?: string;
