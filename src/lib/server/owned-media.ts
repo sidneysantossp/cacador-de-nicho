@@ -329,6 +329,18 @@ export async function finalizeOwnedMediaUpload(input:{
     },
     updated_at:new Date().toISOString()
   }).eq('id',row.id));
+  if(row.asset_kind==='video'){
+    checked(await db().from('radar_owned_media_analysis_jobs').upsert({
+      id:crypto.randomUUID(),
+      asset_id:row.id,
+      status:'queued',
+      worker_token:null,
+      lease_until:null,
+      last_error:null,
+      completed_at:null,
+      updated_at:new Date().toISOString()
+    },{onConflict:'asset_id',ignoreDuplicates:true}));
+  }
   const updated=checked(await db().from('radar_owned_media_assets')
     .select('id,asset_kind,status,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,title,tags,semantic,search_text,etag,payload,created_at,updated_at')
     .eq('id',row.id).single()) as Row;

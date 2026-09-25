@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+PROJECT=cacador-de-nicho
+STATE_FILE="$BASE/state/$PROJECT.json"
+WORKER_STATE="$BASE/state/$PROJECT-owned-visual-worker.json"
+ENV_FILE="$BASE/env/$PROJECT.production.env"
+WORK_DIR="$BASE/work/$PROJECT-owned-visual"
+CONTAINER="$PROJECT-owned-visual-worker"
+
+readarray -t VALUES < <(python3 - "$STATE_FILE" <<'PY'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+s=json.loads(p.read_text())
+prod=s.get("production") or {}
+print(prod.get("sha",""))
+print(prod.get("image",""))
+PY
+)
+SHA="${VALUES[0]:-}"
+IMAGE="${VALUES[1]:-}"
+if [[ -z "$SHA" || -z "$IMAGE" ]]; then
+  echo "production state incomplete" >&2
+  exit 1
+fi
+
+CURRENT_SHA="$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "auditseo.owned-visual.sha"}}' 2>/dev/null || true)"
+RUNNING="$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)"
+
+if [[ "$CURRENT_SHA" == "$SHA" && "$RUNNING" == "true" ]]; then
+  exit 0
+fi
+
+mkdir -p "$WORK_DIR"
+chown 1001:1001 "$WORK_DIR"
+
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker run -d \
+  --name "$CONTAINER" \
+  --restart unless-stopped \
+  --env-file "$ENV_FILE" \
+  -e OWNED_VISUAL_WORKER_URL=http://127.0.0.1:3000/ \
+  --memory 4g \
+  --cpus 2 \
+  --pids-limit 512 \
+  -v "$WORK_DIR:/tmp" \
+  --label auditseo.role=owned-visual-worker \
+  --label "auditseo.owned-visual.sha=$SHA" \
+  "$IMAGE" node scripts/owned-media-intelligence-supervisor.mjs >/dev/null
+
+for i in $(seq 1 30); do
+  if [[ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
+    break
+  fi
+  sleep 0.5
+done
+
+if [[ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)" != "true" ]]; then
+  docker logs "$CONTAINER" --tail 100 || true
+  exit 1
+fi
+
+python3 - "$WORKER_STATE" "$SHA" "$IMAGE" <<'PY'
+from pathlib import Path
+import json,sys,datetime
+p=Path(sys.argv[1])
+p.write_text(json.dumps({
+  "sha":sys.argv[2],
+  "image":sys.argv[3],
+  "container":"cacador-de-nicho-owned-visual-worker",
+  "syncedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
+},indent=2)+"\n")
+PY
+
+echo "OWNED_VISUAL_WORKER_SYNCED sha=$SHA image=$IMAGE"
