@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   attachOwnedMediaToScene, deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
-  selectSceneAsset, startGoogleVideo, uploadSceneAsset
+  resolveOwnedMediaForPromptSet, resolveOwnedMediaForScene, selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
 
 export const runtime='nodejs';
@@ -25,6 +25,20 @@ const schema=z.discriminatedUnion('action',[
     modelId:z.enum(['veo-3.1-generate-preview','veo-3.1-fast-generate-preview','veo-3.1-lite-generate-preview']).optional(),
     resolution:z.enum(['720p','1080p','4k']).optional(),
     durationSeconds:z.union([z.literal(4),z.literal(6),z.literal(8)]).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('resolveOwnedScene'),
+    promptSetId:z.string().uuid(),
+    sceneId:z.string().uuid(),
+    query:z.string().trim().min(3).max(2000).optional(),
+    minimumScore:z.number().min(.30).max(.90).optional(),
+    force:z.boolean().optional()
+  }).strict(),
+  z.object({
+    action:z.literal('resolveOwnedPlan'),
+    promptSetId:z.string().uuid(),
+    minimumScore:z.number().min(.30).max(.90).optional(),
+    force:z.boolean().optional()
   }).strict(),
   z.object({
     action:z.literal('attachOwned'),
@@ -92,6 +106,24 @@ export async function POST(request:Request){
     if(body.action==='startVideo'){
       const asset=await startGoogleVideo(body);
       return Response.json({message:'Job Veo iniciado. Atualize o status até a variante ficar pronta.',asset,assets:await listSceneAssets(body.promptSetId)});
+    }
+    if(body.action==='resolveOwnedScene'){
+      const result=await resolveOwnedMediaForScene(body);
+      return Response.json({
+        message:result.status==='matched'
+          ?'Library First encontrou e selecionou um trecho OWNED.'
+          :result.status==='skipped'
+            ?'A cena já possui uma mídia selecionada e atual.'
+            :'Library First não encontrou match OWNED forte para esta cena.',
+        result
+      });
+    }
+    if(body.action==='resolveOwnedPlan'){
+      const result=await resolveOwnedMediaForPromptSet(body);
+      return Response.json({
+        message:'Library First concluído para o Visual Prompt Set.',
+        result
+      });
     }
     if(body.action==='attachOwned'){
       const asset=await attachOwnedMediaToScene(body);
