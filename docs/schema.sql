@@ -132,12 +132,13 @@ create table if not exists public.radar_owned_media_analysis_jobs(
   worker_token uuid,
   lease_until timestamptz,
   attempts int not null default 0,
+  available_at timestamptz not null default now(),
   last_error text,
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index if not exists radar_owned_media_analysis_jobs_status_created on public.radar_owned_media_analysis_jobs(status,created_at);
+create index if not exists radar_owned_media_analysis_jobs_status_created on public.radar_owned_media_analysis_jobs(status,available_at,created_at);
 
 alter table public.radar_media_library_metadata add column if not exists semantic jsonb not null default '{}'::jsonb;
 create table if not exists public.radar_asset_visual_analysis(
@@ -1018,8 +1019,8 @@ where status='processing' and lease_until is not null and lease_until<now();
 
 select id into picked
 from public.radar_owned_media_analysis_jobs
-where status='queued'
-order by created_at asc
+where status='queued' and available_at<=now()
+order by available_at asc,created_at asc
 for update skip locked
 limit 1;
 
