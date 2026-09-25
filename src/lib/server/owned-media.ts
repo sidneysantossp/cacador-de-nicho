@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { OwnedMediaAsset } from '@/lib/types';
 import { ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '@/lib/owned-media-policy';
+import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
@@ -38,12 +39,19 @@ function safeName(value:string){
   return base+ext;
 }
 
-function normalizedSemantic(value:unknown){
+function normalizedSemantic(value:unknown):OwnedMediaAsset['semantic']{
   const source=value&&typeof value==='object'?value as Record<string,unknown>:{};
   const list=(key:string)=>Array.isArray(source[key])
-    ?[...new Set((source[key] as unknown[]).map(item=>String(item??'').trim().toLowerCase()).filter(Boolean))].slice(0,50)
+    ?[...new Set((source[key] as unknown[]).map(item=>String(item??'').trim().toLowerCase()).filter(Boolean))].slice(0,80)
     :[];
-  return {subjects:list('subjects'),locations:list('locations'),periods:list('periods'),shotTypes:list('shotTypes'),moods:list('moods')};
+  return {
+    subjects:list('subjects'),locations:list('locations'),periods:list('periods'),
+    countries:list('countries'),regions:list('regions'),cities:list('cities'),
+    districts:list('districts'),landmarks:list('landmarks'),scenes:list('scenes'),
+    objects:list('objects'),activities:list('activities'),people:list('people'),
+    timeOfDay:list('timeOfDay'),weather:list('weather'),seasons:list('seasons'),
+    shotTypes:list('shotTypes'),cameraMotion:list('cameraMotion'),moods:list('moods')
+  };
 }
 
 async function rowToAsset(row:Row):Promise<OwnedMediaAsset>{
@@ -126,6 +134,7 @@ export async function prepareOwnedMediaUpload(input:{
     payload:{
       source:'operator-drag-drop',
       filenameIntelligence:parsed,
+      taxonomyVersion:MEDIA_TAXONOMY_VERSION,
       expectedBytes:Math.round(input.bytes)
     }
   }));
@@ -211,6 +220,14 @@ export async function finalizeOwnedMediaUpload(input:{
 export async function listOwnedMediaAssets(input:{
   query?:string;
   kind?:'all'|'image'|'video';
+  country?:string;
+  city?:string;
+  scene?:string;
+  timeOfDay?:string;
+  weather?:string;
+  season?:string;
+  shotType?:string;
+  cameraMotion?:string;
   page?:number;
   limit?:number;
 }={}){
@@ -221,6 +238,15 @@ export async function listOwnedMediaAssets(input:{
     .eq('status','ready')
     .order('created_at',{ascending:false});
   if(input.kind&&input.kind!=='all')query=query.eq('asset_kind',input.kind);
+  const facetFilters:Array<[keyof OwnedMediaAsset['semantic'],string|undefined]>= [
+    ['countries',input.country],['cities',input.city],['scenes',input.scene],
+    ['timeOfDay',input.timeOfDay],['weather',input.weather],['seasons',input.season],
+    ['shotTypes',input.shotType],['cameraMotion',input.cameraMotion]
+  ];
+  for(const [key,value] of facetFilters){
+    const normalized=(value??'').trim().toLowerCase();
+    if(normalized)query=query.contains('semantic',{[key]:[normalized]});
+  }
   const term=(input.query??'').trim();
   if(term)query=query.ilike('search_text','%'+term.replace(/[%_]/g,'')+'%');
   const start=(page-1)*limit;
@@ -247,6 +273,41 @@ export async function updateOwnedMediaMetadata(input:{
   checked(await db().from('radar_owned_media_assets').update({
     title,tags,semantic,search_text:searchText,updated_at:new Date().toISOString()
   }).eq('id',input.assetId));
+}
+
+export async function reclassifyOwnedMediaTaxonomy(){
+  const result=await db().from('radar_owned_media_assets')
+    .select('id,original_name,title,tags,semantic,payload')
+    .eq('status','ready')
+    .order('created_at',{ascending:true})
+    .limit(5000);
+  if(result.error)throw new HttpError('Falha ao carregar assets para reclassificação.',502);
+  let updated=0;
+  for(const row of result.data??[]){
+    const parsed=parseOwnedMediaFilename(String(row.original_name??''));
+    const existing=normalizedSemantic(row.semantic);
+    const semantic=normalizedSemantic(Object.fromEntries(
+      Object.keys(parsed.semantic).map(key=>[
+        key,
+        [...new Set([
+          ...((existing as Record<string,string[]>)[key]??[]),
+          ...((parsed.semantic as unknown as Record<string,string[]>)[key]??[])
+        ])]
+      ])
+    ));
+    const tags=[...new Set([...(row.tags??[]),...parsed.tags].map(value=>String(value).trim().toLowerCase()).filter(Boolean))].slice(0,50);
+    const title=String(row.title??parsed.title);
+    const searchText=ownedMediaSearchText({title,originalName:String(row.original_name??''),tags,semantic});
+    const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+    const update=await db().from('radar_owned_media_assets').update({
+      tags,semantic,search_text:searchText,
+      payload:{...payload,filenameIntelligence:parsed,taxonomyVersion:MEDIA_TAXONOMY_VERSION,taxonomyReclassifiedAt:new Date().toISOString()},
+      updated_at:new Date().toISOString()
+    }).eq('id',row.id);
+    if(update.error)throw new HttpError('Falha ao atualizar a taxonomia do acervo.',502);
+    updated++;
+  }
+  return {updated,taxonomyVersion:MEDIA_TAXONOMY_VERSION};
 }
 
 export async function deleteOwnedMediaAsset(assetId:string){
