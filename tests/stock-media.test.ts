@@ -51,7 +51,7 @@ test('Stock fallback only runs for real-world media instructions',()=>{
 
 test('Stock fallback ranks exact provider metadata above loose location matches',()=>{
   const ranked=rankStockMediaResults({
-    query:'Fremont Street Las Vegas',
+    query:'fremont street las vegas',
     desiredDurationSeconds:6,
     orientation:'landscape',
     results:[
@@ -119,6 +119,64 @@ test('Stock fallback requires both provider relevance and visual verification',(
 test('Stock discovery strips production-only words but preserves semantic location',()=>{
   assert.equal(
     stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
-    'Fremont Street Las Vegas'
+    'fremont street las vegas'
   );
+});
+
+
+test('Stock discovery prioritizes exact landmark geography',()=>{
+  assert.equal(
+    stockDiscoveryQuery('Bryant Park Midtown Manhattan urban park skyscrapers people'),
+    'bryant park new york city'
+  );
+});
+
+test('Stock discovery prioritizes exact district geography',()=>{
+  assert.equal(
+    stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
+    'fremont street las vegas'
+  );
+});
+
+
+test('Exact landmark stock search keeps top provider results eligible for visual verification',()=>{
+  const ranked=rankStockMediaResults({
+    query:'bryant park new york city',
+    desiredDurationSeconds:7,
+    orientation:'landscape',
+    results:[{
+      provider:'pexels',
+      providerAssetId:'5834294',
+      kind:'video',
+      title:'Panning shot of an elderly man using mobile while sitting on a bench',
+      previewUrl:'https://images.pexels.com/example.jpg',
+      pageUrl:'https://www.pexels.com/video/panning-shot-of-an-elderly-man-using-mobile-while-sitting-on-the-bench-at-the-park-5834294/',
+      creatorName:'Pexels contributor',
+      width:3840,height:2160,durationSeconds:12,
+      licenseLabel:'Pexels License',attributionLabel:'Pexels contributor'
+    }]
+  });
+  assert.equal(ranked.length,1);
+  assert.ok(ranked[0].metadataRelevance<.45);
+  assert.ok(ranked[0].relevance>=.45);
+});
+
+test('Generic stock search does not receive exact-location provider-rank boost',()=>{
+  const ranked=rankStockMediaResults({
+    query:'people walking busy city streets',
+    desiredDurationSeconds:7,
+    orientation:'landscape',
+    results:[{
+      provider:'pexels',
+      providerAssetId:'x',
+      kind:'video',
+      title:'Abstract lights',
+      previewUrl:'https://images.pexels.com/example.jpg',
+      pageUrl:'https://www.pexels.com/video/abstract-lights-x/',
+      creatorName:'Pexels contributor',
+      width:1920,height:1080,durationSeconds:10,
+      licenseLabel:'Pexels License',attributionLabel:'Pexels contributor'
+    }]
+  });
+  assert.equal(ranked[0].providerRankRelevance,0);
 });

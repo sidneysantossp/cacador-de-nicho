@@ -1049,9 +1049,25 @@ async function executeAutomationTransition(
             return 'Asset stock anterior não está mais selecionado; job reaberto para '+
               target.timecodeLabel+' · '+reopened.id+'.';
           }
+          if(result.status==='gap'){
+            throw new HttpError(
+              'Nenhum stock real passou pela validação visual para '+target.timecodeLabel+
+              '. A cena exige footage real e não pode cair em geração sintética.',
+              409
+            );
+          }
         }
 
-        if(!existingJob||existingJob.status!=='completed'&&existingJob.status!=='failed'){
+        if(existingJob?.status==='failed'){
+          throw new HttpError(
+            'O fallback stock falhou para '+target.timecodeLabel+
+            (existingJob.lastError?' · '+existingJob.lastError:'')+
+            '. A cena exige footage real.',
+            409
+          );
+        }
+
+        if(!existingJob||existingJob.status==='queued'||existingJob.status==='processing'){
           const queued=await enqueueVerifiedStockJob({
             promptSetId:promptSet.id,
             sceneId:target.sceneId,
@@ -1064,8 +1080,6 @@ async function executeAutomationTransition(
           return 'Fallback stock verificado enfileirado para '+target.timecodeLabel+
             ' · job '+queued.id+'.';
         }
-
-        // completed gap or permanent failure: continue to the generated fallback below.
       }
 
       const asset=await generateGoogleImage({
