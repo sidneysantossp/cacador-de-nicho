@@ -6,6 +6,7 @@ import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
+import { probeStoredVideo } from './media-probe';
 
 const MAX_BYTES=2*1024*1024*1024;
 
@@ -291,9 +292,27 @@ export async function finalizeOwnedMediaUpload(input:{
     }).eq('id',row.id);
     throw new HttpError('O tamanho recebido no R2 não corresponde ao arquivo original.',422);
   }
-  const width=input.width&&input.width>0?Math.round(input.width):null;
-  const height=input.height&&input.height>0?Math.round(input.height):null;
-  const duration=input.durationSeconds&&input.durationSeconds>0?input.durationSeconds:null;
+  let width=input.width&&input.width>0?Math.round(input.width):null;
+  let height=input.height&&input.height>0?Math.round(input.height):null;
+  let duration=input.durationSeconds&&input.durationSeconds>0?input.durationSeconds:null;
+  let technical:Record<string,unknown>|null=null;
+  let technicalProbeError:string|null=null;
+  if(row.asset_kind==='video'&&(!width||!height||!duration)){
+    try{
+      const probed=await probeStoredVideo(row.storage_path);
+      width=width??probed.width;
+      height=height??probed.height;
+      duration=duration??probed.durationSeconds;
+      technical={
+        fps:probed.fps,
+        codec:probed.codec,
+        bitrate:probed.bitrate,
+        probedAt:new Date().toISOString()
+      };
+    }catch(error){
+      technicalProbeError=error instanceof Error?error.message:'ffprobe-failed';
+    }
+  }
   checked(await db().from('radar_owned_media_assets').update({
     status:'ready',
     width,
@@ -301,6 +320,12 @@ export async function finalizeOwnedMediaUpload(input:{
     duration_seconds:duration,
     mime_type:remote.contentType||row.mime_type,
     etag:remote.etag||null,
+    payload:{
+      ...(row.payload as Record<string,unknown>??{}),
+      ...(technical?{technical}:{}),
+      ...(technicalProbeError?{technicalProbeError}:{}),
+      finalizedAt:new Date().toISOString()
+    },
     updated_at:new Date().toISOString()
   }).eq('id',row.id));
   const updated=checked(await db().from('radar_owned_media_assets')
