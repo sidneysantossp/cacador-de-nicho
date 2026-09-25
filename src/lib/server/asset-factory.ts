@@ -12,7 +12,7 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
 import {
-  assetIsStale, assetKindForMime, googleImageModels, googleVideoModels,
+  assetIsStale, assetKindForMime, googleImageModels, googleVideoModels, sceneAssetOwnsStorage,
   type GoogleImageModel, type GoogleVideoModel, validVideoGeneration
 } from '@/lib/asset-factory-policy';
 
@@ -601,7 +601,7 @@ export async function selectSceneAsset(assetId:string){
 export async function deleteSceneAsset(assetId:string){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset não encontrado.',404);
-  if(asset.storagePath&&asset.sourceType!=='owned'){
+  if(asset.storagePath&&sceneAssetOwnsStorage(asset)){
     try{await removeMedia(asset.storagePath);}
     catch{throw new HttpError('Falha ao remover o arquivo do storage.',502);}
   }
