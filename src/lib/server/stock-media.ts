@@ -12,6 +12,7 @@ import {
   rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed, validStockQuery
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
+import { downloadMedia } from './media-storage';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
@@ -440,6 +441,83 @@ async function existingStockSceneAsset(input:{
   })??null;
 }
 
+
+async function cachedStockProviderAsset(input:{
+  channelId:string;
+  provider:StockMediaProvider;
+  providerAssetId:string;
+}){
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('id,storage_path,mime_type,bytes,width,height,duration_seconds,payload')
+    .eq('channel_id',input.channelId)
+    .eq('source_type','stock')
+    .eq('provider',input.provider)
+    .eq('status','ready')
+    .order('updated_at',{ascending:false})
+    .limit(500));
+  return (rows??[]).find(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const stock=payload.stock&&typeof payload.stock==='object'
+      ?payload.stock as Record<string,unknown>
+      :{};
+    return String(stock.providerAssetId??'')===input.providerAssetId;
+  })??null;
+}
+
+async function cloneCachedStockToScene(input:{
+  cached:{
+    id:unknown;
+    storage_path:unknown;
+    mime_type:unknown;
+    bytes:unknown;
+    width:unknown;
+    height:unknown;
+    duration_seconds:unknown;
+    payload:unknown;
+  };
+  promptSetId:string;
+  sceneId:string;
+  provider:StockMediaProvider;
+  providerAssetId:string;
+}){
+  const payload=(input.cached.payload??{}) as Record<string,unknown>;
+  const stock=payload.stock&&typeof payload.stock==='object'
+    ?payload.stock as Record<string,unknown>
+    :{};
+  const license=payload.license&&typeof payload.license==='object'
+    ?payload.license as Record<string,unknown>
+    :{};
+  const declared=Number(input.cached.bytes??0);
+  if(Number.isFinite(declared)&&declared>VIDEO_MAX){
+    throw new HttpError('O vídeo stock em cache excede o limite desta mídia.',413);
+  }
+  const storagePath=String(input.cached.storage_path??'');
+  if(!storagePath)throw new HttpError('O vídeo stock em cache perdeu o arquivo de origem.',409);
+  const bytes=await downloadMedia(storagePath);
+  if(bytes.length>VIDEO_MAX)throw new HttpError('O vídeo stock em cache excede o limite desta mídia.',413);
+
+  return persistStockSceneAsset({
+    promptSetId:input.promptSetId,
+    sceneId:input.sceneId,
+    provider:input.provider,
+    providerAssetId:input.providerAssetId,
+    kind:'video',
+    bytes,
+    mimeType:String(input.cached.mime_type??'video/mp4')||'video/mp4',
+    width:input.cached.width===null||input.cached.width===undefined?null:Number(input.cached.width),
+    height:input.cached.height===null||input.cached.height===undefined?null:Number(input.cached.height),
+    durationSeconds:input.cached.duration_seconds===null||input.cached.duration_seconds===undefined
+      ?null:Number(input.cached.duration_seconds),
+    pageUrl:String(stock.pageUrl??''),
+    creatorName:String(stock.creatorName??(input.provider+' contributor')),
+    creatorUrl:stock.creatorUrl?String(stock.creatorUrl):undefined,
+    attributionLabel:String(stock.attributionLabel??''),
+    licenseLabel:String(license.label??'Licensed stock'),
+    licenseUrl:String(license.sourceUrl??''),
+    selectIfNone:false
+  });
+}
+
 export async function resolveVerifiedStockMediaForScene(input:{
   promptSetId:string;
   sceneId:string;
@@ -451,6 +529,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
 }){
   const editorialQuery=input.query.trim();
   const query=stockDiscoveryQuery(editorialQuery);
+  const {set}=await sceneContext(input.promptSetId,input.sceneId);
   if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
   const orientation=input.orientation??'landscape';
   const providerSeed:StockMediaProvider[]=input.providers?.length
@@ -497,9 +576,61 @@ export async function resolveVerifiedStockMediaForScene(input:{
           provider,
           providerAssetId:candidate.result.providerAssetId
         });
-        const asset=existing
-          ?{id:String(existing.id)}
-          :await importStockMedia({
+        const cached=existing?null:await cachedStockProviderAsset({
+          channelId:set.channelId,
+          provider,
+          providerAssetId:candidate.result.providerAssetId
+        });
+
+        const verificationAssetId=existing
+          ?String(existing.id)
+          :cached
+            ?String(cached.id)
+            :'';
+
+        let match:Awaited<ReturnType<typeof bestVisualSegment>>=null;
+        let visualRelevance=0;
+        let combinedScore=0;
+
+        if(verificationAssetId){
+          const currentAnalysis=await loadVisualIntelligence(verificationAssetId);
+          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
+            await analyzeVisualAsset(verificationAssetId);
+          }
+          match=await bestVisualSegment({
+            assetId:verificationAssetId,
+            query,
+            desiredDurationSeconds:input.desiredDurationSeconds
+          });
+          visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
+          combinedScore=candidate.score*.55+visualRelevance*.45;
+        }
+
+        let asset=existing?{id:String(existing.id)}:null;
+        if(cached&&match&&stockCandidateAccepted({
+          searchScore:candidate.relevance,
+          visualRelevance,
+          combinedScore
+        })){
+          asset=await cloneCachedStockToScene({
+            cached,
+            promptSetId:input.promptSetId,
+            sceneId:input.sceneId,
+            provider,
+            providerAssetId:candidate.result.providerAssetId
+          });
+          createdCandidate=true;
+          attempts.push({
+            provider,
+            providerAssetId:candidate.result.providerAssetId,
+            stage:'cache-reuse',
+            cachedAssetId:String(cached.id),
+            accepted:true
+          });
+        }
+
+        if(!asset){
+          asset=await importStockMedia({
             promptSetId:input.promptSetId,
             sceneId:input.sceneId,
             provider,
@@ -507,21 +638,30 @@ export async function resolveVerifiedStockMediaForScene(input:{
             providerAssetId:candidate.result.providerAssetId,
             selectIfNone:false
           });
+          createdCandidate=true;
+          if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
+          match=null;
+          visualRelevance=0;
+          combinedScore=0;
+        }
+
         if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
         assetId=asset.id;
-        createdCandidate=!existing;
 
-        const currentAnalysis=await loadVisualIntelligence(asset.id);
-        if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
-          await analyzeVisualAsset(asset.id);
+        if(!match||verificationAssetId!==asset.id&&!(cached&&createdCandidate)){
+          const currentAnalysis=await loadVisualIntelligence(asset.id);
+          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
+            await analyzeVisualAsset(asset.id);
+          }
+          match=await bestVisualSegment({
+            assetId:asset.id,
+            query,
+            desiredDurationSeconds:input.desiredDurationSeconds
+          });
+          visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
+          combinedScore=candidate.score*.55+visualRelevance*.45;
         }
-        const match=await bestVisualSegment({
-          assetId:asset.id,
-          query,
-          desiredDurationSeconds:input.desiredDurationSeconds
-        });
-        const visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
-        const combinedScore=candidate.score*.55+visualRelevance*.45;
+
         if(match&&stockCandidateAccepted({
           searchScore:candidate.relevance,
           visualRelevance,
@@ -545,7 +685,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
                 combinedScore,
                 sourceStartSeconds:match.sourceStartSeconds,
                 sourceEndSeconds:match.sourceEndSeconds,
-                verifiedAt:new Date().toISOString()
+                verifiedAt:new Date().toISOString(),
+                cachedFromAssetId:cached?String(cached.id):undefined
               }
             },
             updated_at:new Date().toISOString()
@@ -561,6 +702,9 @@ export async function resolveVerifiedStockMediaForScene(input:{
             visualRelevance,
             combinedScore,
             match,
+            cacheReuse:cached?{
+              sourceAssetId:String(cached.id)
+            }:null,
             attempts
           };
         }
