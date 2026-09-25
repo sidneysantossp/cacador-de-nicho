@@ -13,7 +13,7 @@ import { loadVisualPromptSetByPlan } from './visual-prompt-engine';
 import { loadProductionDna } from './production-dna';
 import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
-import { assetIsStale } from '@/lib/asset-factory-policy';
+import { assetIsStale, ownedSceneAssetTrim } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { bestVisualSegment } from './visual-intelligence';
 import {
@@ -29,9 +29,9 @@ type Row={
 };
 
 type SceneAssetRow={
-  id:string;scene_id:string;asset_kind:'image'|'video'|'graphic';status:string;selected:boolean;
-  storage_path:string;mime_type:string;duration_seconds:number|string|null;payload:unknown;
-  original_name:string|null;
+  id:string;scene_id:string;asset_kind:'image'|'video'|'graphic';source_type:'generated'|'uploaded'|'stock'|'owned';
+  status:string;selected:boolean;storage_path:string;mime_type:string;
+  duration_seconds:number|string|null;payload:unknown;original_name:string|null;
 };
 
 function hash(value:string){
@@ -97,7 +97,7 @@ export async function loadTimelineHistory(timelineId:string,limit=20):Promise<Ti
 
 async function selectedSceneAssetRows(promptSetId:string){
   const rows=checked(await db().from('radar_scene_assets')
-    .select('id,scene_id,asset_kind,status,selected,storage_path,mime_type,duration_seconds,payload,original_name')
+    .select('id,scene_id,asset_kind,source_type,status,selected,storage_path,mime_type,duration_seconds,payload,original_name')
     .eq('visual_prompt_set_id',promptSetId)
     .eq('selected',true)
     .limit(5000));
@@ -144,7 +144,25 @@ async function selectedVisualRefs(
       prompt?.prompt??''
     ].filter(Boolean).join(' ');
     const duration=scene?.durationSeconds??0;
-    const match=row.asset_kind==='video'&&query
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const owned=payload.owned&&typeof payload.owned==='object'
+      ?payload.owned as {
+        sourceStartSeconds?:number|null;
+        sourceEndSeconds?:number|null;
+      }
+      :undefined;
+    const ownedTrim=ownedSceneAssetTrim({
+      sourceType:row.source_type,
+      owned:owned?{
+        assetId:'',
+        sourceStartSeconds:owned.sourceStartSeconds,
+        sourceEndSeconds:owned.sourceEndSeconds
+      }:undefined
+    });
+    if(row.source_type==='owned'&&row.asset_kind==='video'&&!ownedTrim){
+      throw new HttpError('Um link OWNED selecionado perdeu o trim visual validado.',409);
+    }
+    const match=row.asset_kind==='video'&&row.source_type!=='owned'&&query
       ?await bestVisualSegment({assetId:row.id,query,desiredDurationSeconds:duration})
       :null;
     return {
@@ -152,8 +170,8 @@ async function selectedVisualRefs(
       sceneId:row.scene_id,
       assetKind:row.asset_kind,
       durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds),
-      sourceStartSeconds:match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
-      sourceEndSeconds:match?.sourceEndSeconds??null
+      sourceStartSeconds:ownedTrim?.sourceStartSeconds??match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
+      sourceEndSeconds:ownedTrim?.sourceEndSeconds??match?.sourceEndSeconds??null
     };
   }));
 }
