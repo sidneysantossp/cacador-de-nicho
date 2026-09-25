@@ -1,5 +1,6 @@
 import type { StockMediaProvider, StockMediaResult } from '@/lib/types';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
+import { classifyMediaTaxonomy } from '@/lib/media-taxonomy';
 
 const hosts:Record<StockMediaProvider,string[]>={
   pexels:[
@@ -30,7 +31,7 @@ export function stockFallbackEligible(value:string){
 }
 
 export function stockDiscoveryQuery(value:string){
-  return value
+  const cleaned=value
     .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action|real|only)\b/gi,' ')
     .replace(/\b(?:wide[- ]angle|wide|medium|close[- ]up|aerial|street[- ]level)?\s*establishing shot\b/gi,' ')
     .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
@@ -38,8 +39,16 @@ export function stockDiscoveryQuery(value:string){
     .replace(/\s+/g,' ')
     .replace(/\s+([,.;:])/g,'$1')
     .replace(/\s*[,;:.]+\s*$/,'')
-    .trim()
-    .slice(0,100);
+    .trim();
+
+  const taxonomy=classifyMediaTaxonomy(cleaned);
+  if(taxonomy.landmarks.length){
+    return [taxonomy.landmarks[0],taxonomy.cities[0]].filter(Boolean).join(' ').slice(0,100);
+  }
+  if(taxonomy.districts.length&&taxonomy.cities.length){
+    return [taxonomy.districts[0],taxonomy.cities[0]].filter(Boolean).join(' ').slice(0,100);
+  }
+  return cleaned.slice(0,100);
 }
 
 export function rankStockMediaResults(input:{
