@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, FileVideo2, Film, Image as ImageIcon, Library, LoaderCircle,
-  Search, Trash2, UploadCloud, X, XCircle
+  Search, Sparkles, Trash2, UploadCloud, X, XCircle
 } from 'lucide-react';
-import type { OwnedMediaAsset } from '@/lib/types';
+import type { OwnedMediaAsset, OwnedMediaIntelligenceResult } from '@/lib/types';
 
 type Kind='all'|'video'|'image';
 type QueueItem={id:string;name:string;stage:string;progress?:number;error?:string;duplicate?:boolean};
@@ -138,6 +138,8 @@ export default function OwnedMediaLibraryWorkspace(){
   const [selected,setSelected]=useState<OwnedMediaAsset|null>(null);
   const [taxonomy,setTaxonomy]=useState<TaxonomyCatalog|null>(null);
   const [filters,setFilters]=useState<TaxonomyFilters>(EMPTY_FILTERS);
+  const [analysis,setAnalysis]=useState<OwnedMediaIntelligenceResult|null>(null);
+  const [analysisLoading,setAnalysisLoading]=useState(false);
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -334,6 +336,46 @@ export default function OwnedMediaLibraryWorkspace(){
     );
   }
 
+  async function loadAnalysis(assetId:string){
+    setAnalysisLoading(true);
+    try{
+      const res=await fetch('/api/owned-media/intelligence?assetId='+encodeURIComponent(assetId),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar a análise visual.');
+      setAnalysis(body.analysis??null);
+    }catch(error){
+      setMessage(error instanceof Error?error.message:'Falha ao carregar a análise visual.');
+    }finally{setAnalysisLoading(false);}
+  }
+
+  async function analyzeSelected(item:OwnedMediaAsset){
+    setAnalysisLoading(true);
+    setMessage('Analisando frames e segmentos de '+item.originalName+'…');
+    try{
+      const res=await fetch('/api/owned-media/intelligence',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'analyze',assetId:item.id})
+      });
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha na Visual Intelligence.');
+      setAnalysis(body.analysis??null);
+      setMessage('Visual Intelligence concluída: '+String(body.analysis?.segments?.length??0)+' segmento(s) indexado(s).');
+      await load();
+      setSelected(current=>current?.id===item.id?{
+        ...current,
+        visualIntelligence:{
+          status:'completed',
+          segmentCount:Number(body.analysis?.segments?.length??0),
+          analyzedAt:body.analysis?.analyzedAt
+        }
+      }:current);
+    }catch(error){
+      setMessage(error instanceof Error?error.message:'Falha na Visual Intelligence.');
+      await load();
+    }finally{setAnalysisLoading(false);}
+  }
+
   async function remove(item:OwnedMediaAsset){
     if(!confirm('Remover este asset da Biblioteca e do R2?'))return;
     const res=await fetch('/api/owned-media',{
@@ -422,7 +464,7 @@ export default function OwnedMediaLibraryWorkspace(){
     {loading?<div className="media-library-loading"><LoaderCircle className="spin" size={20}/>Carregando biblioteca…</div>:
     <section className="owned-library-grid">
       {items.map(item=><article key={item.id} className="owned-media-card">
-        <button className="owned-media-preview" onClick={()=>setSelected(item)}
+        <button className="owned-media-preview" onClick={()=>{setSelected(item);setAnalysis(null);if(item.assetKind==='video')void loadAnalysis(item.id);}}
           onMouseEnter={e=>{const v=e.currentTarget.querySelector('video');if(v)void v.play().catch(()=>{});}}
           onMouseLeave={e=>{const v=e.currentTarget.querySelector('video');if(v){v.pause();v.currentTime=0;}}}>
           {item.assetKind==='video'&&item.signedUrl?<video src={item.signedUrl} muted playsInline preload="metadata"/>:
@@ -433,6 +475,16 @@ export default function OwnedMediaLibraryWorkspace(){
         <div className="owned-media-card-body">
           <strong title={item.title}>{item.title}</strong>
           <small>{bytes(item.bytes)}{item.durationSeconds!==null?' · '+duration(item.durationSeconds):''}{item.width&&item.height?' · '+item.width+'×'+item.height:''}</small>
+          {item.assetKind==='video'&&<small className={'owned-visual-status '+(item.visualIntelligence?.status??'idle')}>
+            <Sparkles size={10}/>
+            {item.visualIntelligence?.status==='completed'
+              ?'Visual AI · '+item.visualIntelligence.segmentCount+' segmento(s)'
+              :item.visualIntelligence?.status==='processing'
+                ?'Visual AI · processando'
+                :item.visualIntelligence?.status==='failed'
+                  ?'Visual AI · falhou'
+                  :'Visual AI · não analisado'}
+          </small>}
           <div>{item.tags.slice(0,5).map(tag=><span key={tag}>{tag}</span>)}</div>
         </div>
       </article>)}
@@ -472,8 +524,34 @@ export default function OwnedMediaLibraryWorkspace(){
           {!!selected.semantic.shotTypes.length&&<p><b>Plano:</b> {selected.semantic.shotTypes.join(', ')}</p>}
           {!!selected.semantic.cameraMotion.length&&<p><b>Movimento:</b> {selected.semantic.cameraMotion.join(', ')}</p>}
           {!!selected.semantic.moods.length&&<p><b>Mood:</b> {selected.semantic.moods.join(', ')}</p>}
-          <small>Taxonomia inicial baseada no nome do arquivo. A Visual Intelligence enriquecerá e corrigirá essas facetas por frames e segmentos.</small>
+          <small>Taxonomia inicial baseada no nome do arquivo. A Visual Intelligence enriquece e corrige essas facetas por frames e segmentos.</small>
         </section>
+        {selected.assetKind==='video'&&<section className="owned-detail-visual-ai">
+          <header><div><Sparkles size={15}/><strong>Visual Intelligence</strong></div>
+            <span>{analysisLoading?'Processando…':analysis?.status==='completed'?analysis.segments.length+' segmento(s)':analysis?.status==='failed'?'Falhou':'Não analisado'}</span>
+          </header>
+          {analysis?.status==='completed'&&<div className="owned-visual-segments">
+            {analysis.segments.map(segment=><article key={segment.id}>
+              <b>{segment.startSeconds.toFixed(1)}s–{segment.endSeconds.toFixed(1)}s</b>
+              <strong>{segment.title}</strong>
+              <p>{segment.summary}</p>
+              <small>{[
+                ...segment.semantic.locations,
+                ...segment.semantic.landmarks,
+                ...segment.semantic.activities,
+                ...segment.semantic.objects,
+                ...segment.semantic.environments,
+                ...segment.semantic.timeOfDay,
+                ...segment.semantic.shotTypes
+              ].slice(0,8).join(' · ')}</small>
+            </article>)}
+          </div>}
+          {analysis?.status==='failed'&&<p className="error">{analysis.error??'A análise visual falhou.'}</p>}
+          <button className="button" disabled={analysisLoading} onClick={()=>void analyzeSelected(selected)}>
+            {analysisLoading?<LoaderCircle className="spin" size={15}/>:<Sparkles size={15}/>}
+            {analysis?.status==='completed'?'Reanalisar vídeo':'Analisar vídeo por frames'}
+          </button>
+        </section>}
         <button className="button danger" onClick={()=>void remove(selected)}><Trash2 size={15}/>Remover do acervo</button>
       </aside>
     </div>}
