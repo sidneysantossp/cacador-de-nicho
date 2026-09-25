@@ -14,7 +14,7 @@ export async function PUT(request:Request){
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(assetId)){
       throw new HttpError('Identificador de upload inválido.',400);
     }
-    const bytes=Number(request.headers.get('content-length')??0);
+    const bytes=Number(request.headers.get('content-length')??request.headers.get('x-upload-size')??0);
     if(!Number.isSafeInteger(bytes)||bytes<=0)throw new HttpError('O navegador não informou o tamanho do arquivo.',411);
     if(bytes>2*1024*1024*1024)throw new HttpError('Arquivo maior que 2 GB.',413);
     const mimeType=(request.headers.get('content-type')??'').split(';')[0].trim().toLowerCase();
