@@ -51,6 +51,21 @@ export function ownedSceneAssetTrim(asset:Pick<SceneAsset,'sourceType'|'owned'>)
   return {sourceStartSeconds,sourceEndSeconds};
 }
 
+export function verifiedStockSceneAssetTrim(
+  asset:Pick<SceneAsset,'sourceType'|'verifiedStock'>
+){
+  if(asset.sourceType!=='stock'||!asset.verifiedStock)return null;
+  const sourceStartSeconds=Number(asset.verifiedStock.sourceStartSeconds);
+  const sourceEndSeconds=Number(asset.verifiedStock.sourceEndSeconds);
+  if(
+    !Number.isFinite(sourceStartSeconds)||
+    !Number.isFinite(sourceEndSeconds)||
+    sourceStartSeconds<0||
+    sourceEndSeconds-sourceStartSeconds<.20
+  )return null;
+  return {sourceStartSeconds,sourceEndSeconds};
+}
+
 export function sceneAssetOwnsStorage(asset:Pick<SceneAsset,'sourceType'>){
   return asset.sourceType!=='owned';
 }
