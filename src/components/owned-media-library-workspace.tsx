@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, FileVideo2, Film, Image as ImageIcon, Library, LoaderCircle,
-  Search, Trash2, UploadCloud, X
+  Search, Trash2, UploadCloud, X, XCircle
 } from 'lucide-react';
 import type { OwnedMediaAsset } from '@/lib/types';
 
 type Kind='all'|'video'|'image';
-type QueueItem={id:string;name:string;stage:string;progress?:number;error?:string};
+type QueueItem={id:string;name:string;stage:string;progress?:number;error?:string;duplicate?:boolean};
 type TaxonomyOption={value:string;label:string};
 type TaxonomyCatalog={
   version:number;
@@ -51,6 +51,56 @@ function inferMime(file:File){
   if(lower.endsWith('.webp'))return 'image/webp';
   return 'application/octet-stream';
 }
+
+function normalizeDuplicateName(fileName:string){
+  return fileName
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\.[a-z0-9]{2,8}$/i,'')
+    .replace(/\s*\(\d+\)\s*$/,'')
+    .replace(/(?:[-_ ]+copy(?:[-_ ]+\d+)?)$/i,'')
+    .replace(/[-_\s]+/g,' ')
+    .trim();
+}
+
+async function sampledContentFingerprint(file:File){
+  const chunkSize=256*1024;
+  const rawOffsets=[
+    0,
+    Math.max(0,Math.floor(file.size*.25)-Math.floor(chunkSize/2)),
+    Math.max(0,Math.floor(file.size*.5)-Math.floor(chunkSize/2)),
+    Math.max(0,Math.floor(file.size*.75)-Math.floor(chunkSize/2)),
+    Math.max(0,file.size-chunkSize)
+  ];
+  const offsets=[...new Set(rawOffsets.map(value=>Math.min(Math.max(0,value),Math.max(0,file.size-1))))];
+  const chunks=await Promise.all(offsets.map(async offset=>
+    new Uint8Array(await file.slice(offset,Math.min(file.size,offset+chunkSize)).arrayBuffer())
+  ));
+  const header=new TextEncoder().encode('sample-sha256-v1|'+file.size+'|'+offsets.join(',')+'|');
+  const total=header.byteLength+chunks.reduce((sum,item)=>sum+item.byteLength,0);
+  const merged=new Uint8Array(total);
+  let cursor=0;
+  merged.set(header,cursor);cursor+=header.byteLength;
+  for(const chunk of chunks){merged.set(chunk,cursor);cursor+=chunk.byteLength;}
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',merged));
+  return 'sample-sha256-v1:'+Array.from(digest,byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
+async function withConcurrency<T,R>(items:T[],limit:number,worker:(item:T)=>Promise<R>){
+  const output=new Array<R>(items.length);
+  let cursor=0;
+  async function run(){
+    while(true){
+      const index=cursor++;
+      if(index>=items.length)return;
+      output[index]=await worker(items[index]);
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},()=>run()));
+  return output;
+}
+
 async function browserMetadata(file:File){
   const url=URL.createObjectURL(file);
   try{
@@ -135,18 +185,24 @@ export default function OwnedMediaLibraryWorkspace(){
     });
   }
 
-  async function uploadOne(qid:string,file:File){
+  async function uploadOne(qid:string,file:File,contentFingerprint?:string){
     try{
-      patchQueue(qid,{stage:'Lendo metadados…',progress:0,error:undefined});
+      patchQueue(qid,{stage:'Lendo metadados…',progress:0,error:undefined,duplicate:false});
       const mimeType=inferMime(file);
       const meta=await browserMetadata(file);
       patchQueue(qid,{stage:'Preparando ingestão…',progress:0});
       const prepare=await fetch('/api/owned-media',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'prepare',fileName:file.name,mimeType,bytes:file.size})
+        body:JSON.stringify({action:'prepare',fileName:file.name,mimeType,bytes:file.size,contentFingerprint})
       });
       const prepared=await prepare.json().catch(()=>({}));
-      if(!prepare.ok)throw new Error(prepared.message??'Falha ao preparar o upload.');
+      if(!prepare.ok){
+        if(prepare.status===409){
+          patchQueue(qid,{stage:'Arquivo duplicado',progress:undefined,error:undefined,duplicate:true});
+          return 'duplicate' as const;
+        }
+        throw new Error(prepared.message??'Falha ao preparar o upload.');
+      }
 
       patchQueue(qid,{stage:'Enviando para o R2… 0%',progress:0});
       await streamUpload(prepared.uploadUrl,file,mimeType,qid);
@@ -163,10 +219,10 @@ export default function OwnedMediaLibraryWorkspace(){
       if(!finalize.ok)throw new Error(finished.message??'Falha ao finalizar o cadastro.');
       patchQueue(qid,{stage:'Concluído',progress:100});
       await load();
-      return true;
+      return 'completed' as const;
     }catch(error){
-      patchQueue(qid,{stage:'Falhou',error:error instanceof Error?error.message:'Falha no upload.'});
-      return false;
+      patchQueue(qid,{stage:'Falhou',error:error instanceof Error?error.message:'Falha no upload.',duplicate:false});
+      return 'failed' as const;
     }
   }
 
@@ -176,7 +232,9 @@ export default function OwnedMediaLibraryWorkspace(){
     const batch=files.map(file=>({
       id:crypto.randomUUID(),
       file,
-      supported:supportedMime.test(inferMime(file))
+      supported:supportedMime.test(inferMime(file)),
+      fingerprint:'',
+      duplicate:false
     }));
 
     setQueue(prev=>[
@@ -184,7 +242,7 @@ export default function OwnedMediaLibraryWorkspace(){
       ...batch.map(({id,file,supported})=>({
         id,
         name:file.name,
-        stage:supported?'Na fila':'Falhou',
+        stage:supported?'Verificando duplicidade…':'Falhou',
         progress:supported?0:undefined,
         error:supported?undefined:'Formato não suportado. Use MP4, MOV, WebM, JPG, PNG ou WebP.'
       }))
@@ -198,18 +256,80 @@ export default function OwnedMediaLibraryWorkspace(){
     }
 
     setMessage(
-      processable.length+' arquivo(s) adicionado(s) à fila'+
+      processable.length+' arquivo(s) adicionado(s) à fila · verificando duplicidade'+
       (rejected?' · '+rejected+' formato(s) não suportado(s).':'.')
     );
 
+    await withConcurrency(processable,4,async item=>{
+      try{item.fingerprint=await sampledContentFingerprint(item.file);}
+      catch{item.fingerprint='';}
+      return item;
+    });
+
+    const seenNames=new Map<string,{id:string;fingerprint:string}>();
+    const seenFingerprints=new Set<string>();
+    for(const item of processable){
+      const nameKey=normalizeDuplicateName(item.file.name)+'::'+item.file.size;
+      const fingerprintKey=item.fingerprint?item.fingerprint+'::'+item.file.size:'';
+      const priorName=seenNames.get(nameKey);
+      const duplicateByFingerprint=!!fingerprintKey&&seenFingerprints.has(fingerprintKey);
+      const duplicateByName=!!priorName&&(!item.fingerprint||!priorName.fingerprint||item.fingerprint===priorName.fingerprint);
+      if(duplicateByFingerprint||duplicateByName){
+        item.duplicate=true;
+        patchQueue(item.id,{stage:'Arquivo duplicado',progress:undefined,error:undefined,duplicate:true});
+        continue;
+      }
+      if(!priorName)seenNames.set(nameKey,{id:item.id,fingerprint:item.fingerprint});
+      if(fingerprintKey)seenFingerprints.add(fingerprintKey);
+    }
+
+    const candidates=processable.filter(item=>!item.duplicate);
+    for(let offset=0;offset<candidates.length;offset+=100){
+      const chunk=candidates.slice(offset,offset+100);
+      const response=await fetch('/api/owned-media',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          action:'preflight',
+          files:chunk.map(item=>({
+            clientId:item.id,
+            fileName:item.file.name,
+            bytes:item.file.size,
+            contentFingerprint:item.fingerprint||undefined
+          }))
+        })
+      });
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok){
+        for(const item of chunk)patchQueue(item.id,{stage:'Na fila',progress:0});
+        setMessage(body.message??'Não foi possível concluir a verificação de duplicidade; a proteção do servidor continuará ativa no upload.');
+        continue;
+      }
+      const byId=new Map<string,{duplicate?:boolean}>();
+      for(const result of body.results??[])byId.set(String(result.clientId),result);
+      for(const item of chunk){
+        if(byId.get(item.id)?.duplicate){
+          item.duplicate=true;
+          patchQueue(item.id,{stage:'Arquivo duplicado',progress:undefined,error:undefined,duplicate:true});
+        }else{
+          patchQueue(item.id,{stage:'Na fila',progress:0,error:undefined,duplicate:false});
+        }
+      }
+    }
+
     let completed=0;
     let failed=0;
+    let duplicates=processable.filter(item=>item.duplicate).length;
     for(const item of processable){
-      const ok=await uploadOne(item.id,item.file);
-      if(ok)completed++;else failed++;
+      if(item.duplicate)continue;
+      const outcome=await uploadOne(item.id,item.file,item.fingerprint||undefined);
+      if(outcome==='completed')completed++;
+      else if(outcome==='duplicate')duplicates++;
+      else failed++;
     }
     setMessage(
       completed+' upload(s) concluído(s)'+
+      (duplicates?' · '+duplicates+' duplicado(s) ignorado(s)':'')+
       (failed?' · '+failed+' falhou/falharam.':'.')
     );
   }
@@ -268,10 +388,10 @@ export default function OwnedMediaLibraryWorkspace(){
 
     {!!queue.length&&<section className="owned-upload-queue">
       <header><strong>Fila de ingestão</strong><span>{queue.length} item(ns)</span></header>
-      {queue.map(item=><article key={item.id}>
+      {queue.map(item=><article key={item.id} className={item.duplicate?'duplicate':''}>
         <FileVideo2 size={17}/>
-        <div><strong>{item.name}</strong><span className={item.error?'error':''}>{item.error??item.stage}</span>{typeof item.progress==='number'&&!item.error&&item.stage!=='Concluído'&&<progress max="100" value={item.progress}/>}</div>
-        {item.stage!=='Concluído'&&item.stage!=='Falhou'?<LoaderCircle className="spin" size={17}/>:item.stage==='Concluído'?<CheckCircle2 size={17}/>:null}
+        <div><strong>{item.name}</strong><span className={item.duplicate?'duplicate':item.error?'error':''}>{item.duplicate?'Arquivo duplicado':item.error??item.stage}</span>{typeof item.progress==='number'&&!item.error&&!item.duplicate&&item.stage!=='Concluído'&&<progress max="100" value={item.progress}/>}</div>
+        {item.duplicate?<XCircle className="owned-upload-duplicate-icon" size={18}/>:item.stage!=='Concluído'&&item.stage!=='Falhou'?<LoaderCircle className="spin" size={17}/>:item.stage==='Concluído'?<CheckCircle2 size={17}/>:null}
       </article>)}
     </section>}
 
