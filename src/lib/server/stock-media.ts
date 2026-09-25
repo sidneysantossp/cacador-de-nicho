@@ -11,6 +11,7 @@ import { analyzeVisualAsset, bestVisualSegment } from './visual-intelligence';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDownloadHostAllowed, validStockQuery
 } from '@/lib/stock-media-policy';
+import { scoreVisualSegment } from '@/lib/media-library-policy';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
@@ -427,8 +428,10 @@ export async function resolveVerifiedStockMediaForScene(input:{
   const query=input.query.trim().slice(0,100);
   if(!validStockQuery(query))throw new HttpError('A intenção visual stock precisa ter entre 1 e 100 caracteres.',400);
   const orientation=input.orientation??'landscape';
-  const providers=(input.providers?.length?input.providers:['pexels','pixabay'])
-    .filter((provider,index,list)=>list.indexOf(provider)===index);
+  const providerSeed:StockMediaProvider[]=input.providers?.length
+    ?input.providers
+    :['pexels','pixabay'];
+  const providers=providerSeed.filter((provider,index,list)=>list.indexOf(provider)===index);
   const maxCandidates=Math.max(1,Math.min(3,input.maxCandidatesPerProvider??2));
   const attempts:Array<Record<string,unknown>>=[];
 
@@ -479,7 +482,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
           query,
           desiredDurationSeconds:input.desiredDurationSeconds
         });
-        const visualRelevance=match?.relevance??0;
+        const visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
         const combinedScore=candidate.score*.55+visualRelevance*.45;
         if(match&&stockCandidateAccepted({
           searchScore:candidate.relevance,
