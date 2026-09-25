@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDownloadHostAllowed,
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockFallbackEligible, validStockQuery
 } from '../src/lib/stock-media-policy';
 
@@ -113,4 +113,12 @@ test('Stock fallback requires both provider relevance and visual verification',(
   assert.equal(stockCandidateAccepted({
     searchScore:.85,visualRelevance:.10,combinedScore:.51
   }),false);
+});
+
+
+test('Stock discovery strips production-only words but preserves semantic location',()=>{
+  assert.equal(
+    stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
+    'Fremont Street Las Vegas only'
+  );
 });
