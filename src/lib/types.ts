@@ -2113,3 +2113,31 @@ export type Settings = { queries: string[]; languages: string[]; minViews: numbe
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
 export type RadarData = { mode: 'demo' | 'live'; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
+
+
+export type OwnedMediaAsset = {
+ id:string;
+ assetKind:'image'|'video';
+ status:'uploading'|'ready'|'failed';
+ sourceType:'owned';
+ storagePath:string;
+ mimeType:string;
+ originalName:string;
+ bytes:number;
+ width:number|null;
+ height:number|null;
+ durationSeconds:number|null;
+ title:string;
+ tags:string[];
+ semantic:{
+  subjects:string[];
+  locations:string[];
+  periods:string[];
+  shotTypes:string[];
+  moods:string[];
+ };
+ signedUrl:string|null;
+ etag?:string;
+ createdAt:string;
+ updatedAt:string;
+};
