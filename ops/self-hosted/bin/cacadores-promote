@@ -22,9 +22,13 @@ FULL_SHA="$(git rev-parse "$SHA^{commit}")"
 SHORT="${FULL_SHA:0:7}"
 IMAGE="auditseo/$PROJECT:$SHORT"
 
+# The deployment checkout is disposable and must always mirror the exact
+# promoted commit. Discard tracked local edits left by diagnostics/benchmarks
+# before reading versioned wrappers or building the image.
+git checkout -f --detach "$FULL_SHA"
+git reset --hard "$FULL_SHA"
+
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  git checkout --detach "$FULL_SHA"
-  git reset --hard "$FULL_SHA"
   docker build --pull=false -t "$IMAGE" .
 fi
 
