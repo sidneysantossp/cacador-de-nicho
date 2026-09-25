@@ -210,6 +210,8 @@ export const contentProjectPayloadSchema=z.object({
    title:z.string().trim().min(1).max(500),
    url:z.string().trim().url().max(3000),
    sourceType:z.enum(['primary','secondary','reference']),
+   origin:z.enum(['institutional','academic','archive','wikipedia','reddit','news','reference','other']).optional(),
+   role:z.enum(['evidence','discovery','context','anecdotal','visual']).optional(),
    claim:z.string().trim().max(3000),
    checkedAt:z.string().datetime().optional()
   }).strict()).max(200),
@@ -219,7 +221,43 @@ export const contentProjectPayloadSchema=z.object({
    status:z.enum(['unverified','supported','contradicted','needs-review']),
    sourceIds:z.array(z.string().uuid()).max(50),
    notes:z.string().trim().max(4000)
-  }).strict()).max(200)
+  }).strict()).max(200),
+  pack:z.object({
+   question:z.string().trim().max(5000),
+   storyAngle:z.string().trim().max(5000),
+   entities:shortList(200,500),
+   timeline:z.array(z.object({
+    id:z.string().uuid(),
+    dateLabel:z.string().trim().max(120),
+    event:z.string().trim().min(1).max(3000),
+    sourceIds:z.array(z.string().uuid()).max(50)
+   }).strict()).max(300),
+   audienceSignals:z.array(z.object({
+    id:z.string().uuid(),
+    sourceId:z.string().uuid(),
+    kind:z.enum(['question','memory','language','story','sentiment']),
+    signal:z.string().trim().min(1).max(3000),
+    notes:z.string().trim().max(3000)
+   }).strict()).max(300),
+   visualLeads:z.array(z.object({
+    id:z.string().uuid(),
+    title:z.string().trim().min(1).max(500),
+    pageUrl:z.string().trim().url().max(3000),
+    provider:z.string().trim().min(1).max(120),
+    mediaType:z.enum(['image','video']),
+    period:z.string().trim().max(120),
+    location:z.string().trim().max(500),
+    rightsStatus:z.enum(['public-domain','creative-commons','licensed','owned','hotlink-only','unknown']),
+    licenseLabel:z.string().trim().max(500),
+    attribution:z.string().trim().max(1000),
+    notes:z.string().trim().max(3000)
+   }).strict()).max(500),
+   provenance:z.object({
+    generatedBy:z.enum(['chatgpt','operator','platform','external']),
+    model:z.string().trim().max(120).optional(),
+    observedAt:z.string().datetime().optional()
+   }).strict().optional()
+  }).strict().optional()
  }).strict(),
  approval:z.object({
   status:z.enum(['draft','ready','approved','blocked']),
