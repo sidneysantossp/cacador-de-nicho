@@ -10,13 +10,13 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadProductionQualityReport, listProductionQualityReports } from './production-quality';
 import { loadRenderJob, listRenderJobs } from './render-engine';
 import {
   initialPublicationPackage, normalizePublicationTags, publicationPackageIssues
 } from '@/lib/publication-package-policy';
 
-const BUCKET='cacadores-media';
 const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
 const MAX_THUMBNAIL_BYTES=50*1024*1024;
 
@@ -37,8 +37,7 @@ const selection='id,channel_id,episode_id,quality_report_id,render_job_id,versio
 
 async function signed(storagePath:string|null|undefined){
   if(!storagePath)return null;
-  const result=await db().storage.from(BUCKET).createSignedUrl(storagePath,3600);
-  return result.error?null:result.data.signedUrl;
+  return signedMediaUrl(storagePath,3600);
 }
 
 async function normalizeRow(row:Row):Promise<PublicationPackage>{
@@ -328,17 +327,16 @@ export async function uploadPublicationThumbnail(input:{
     'publication',current.id,'thumbnails',crypto.randomUUID()+'.'+ext
   ].join('/');
 
-  const upload=await db().storage.from(BUCKET).upload(storagePath,bytes,{
-    contentType:mime,upsert:false,cacheControl:'3600'
-  });
-  if(upload.error)throw new HttpError('Falha ao armazenar thumbnail.',502);
+  let persistedPath:string;
+  try{persistedPath=await putMedia(storagePath,bytes,mime,{cacheControl:'3600'});}
+  catch{throw new HttpError('Falha ao armazenar thumbnail.',502);}
 
   const payload:PublicationPackagePayload=cleanPayload({
     ...current,
     thumbnail:{
       ...current.thumbnail,
       source:'uploaded',
-      storagePath,
+      storagePath:persistedPath,
       mimeType:mime,
       originalName:input.file.name,
       bytes:bytes.length,
@@ -352,7 +350,7 @@ export async function uploadPublicationThumbnail(input:{
   try{
     return await savePackage(clean,'draft',current.version);
   }catch(error){
-    await db().storage.from(BUCKET).remove([storagePath]).catch(()=>{});
+    await removeMedia(persistedPath).catch(()=>{});
     throw error;
   }
 }

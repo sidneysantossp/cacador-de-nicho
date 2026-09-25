@@ -114,24 +114,24 @@ export default function StockMediaWorkspace({channel}:{channel:ManagedChannel}){
       <div className="stock-search-row">
         <label><span>PROMPT SET</span><select value={setId} onChange={e=>void openSet(e.target.value)}>{sets.map(item=><option key={item.id} value={item.id}>{item.scenePrompts.length} cenas · v{item.version}</option>)}</select></label>
         <label><span>CENA</span><select value={sceneId} onChange={e=>chooseScene(e.target.value)}>{promptSet?.scenePrompts.map(scene=><option key={scene.sceneId} value={scene.sceneId}>{scene.timecodeLabel} · Scene {scene.sequence}</option>)}</select></label>
-        <label><span>PROVIDER</span><select value={provider} onChange={e=>{setProvider(e.target.value as StockMediaProvider);setResults([]);}}><option value="pexels">Pexels</option><option value="pixabay">Pixabay</option></select></label>
-        <label><span>TIPO</span><select value={kind} onChange={e=>{setKind(e.target.value as 'image'|'video');setResults([]);}}><option value="image">Imagem</option><option value="video">Vídeo</option></select></label>
+        <label><span>PROVIDER</span><select value={provider} onChange={e=>{const next=e.target.value as StockMediaProvider;setProvider(next);if(next==='unsplash')setKind('image');setResults([]);}}><option value="pexels">Pexels</option><option value="pixabay">Pixabay</option><option value="unsplash">Unsplash</option></select></label>
+        <label><span>TIPO</span><select value={kind} onChange={e=>{setKind(e.target.value as 'image'|'video');setResults([]);}}><option value="image">Imagem</option><option value="video" disabled={provider==='unsplash'}>Vídeo</option></select></label>
       </div>
       <div className="stock-query"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value.slice(0,100))} onKeyDown={e=>{if(e.key==='Enter')void search();}} placeholder="Ex.: prehistoric cave, counting stones"/><button className="button primary" disabled={!query.trim()||!!busy} onClick={()=>void search()}>{busy==='search'?'Buscando…':'Buscar'}</button></div>
       {selectedScene&&<details><summary>Direção da cena</summary><p>{selectedScene.direction}</p></details>}
     </section>
 
     {results.length>0&&<section className="stock-results">
-      <div className="stock-results-head"><div><strong>{results.length} resultados</strong><small>{provider==='pexels'?'Media provided by Pexels':'Media provided by Pixabay'}</small></div>{rate?.remaining&&<span>API remaining: {rate.remaining}</span>}</div>
+      <div className="stock-results-head"><div><strong>{results.length} resultados</strong><small>{provider==='pexels'?'Media provided by Pexels':provider==='pixabay'?'Media provided by Pixabay':'Photos provided by Unsplash'}</small></div>{rate?.remaining&&<span>API remaining: {rate.remaining}</span>}</div>
       <div className="stock-results-grid">{results.map(result=><article key={result.provider+'-'+result.providerAssetId}>
         <div className="stock-preview">
           <img src={result.previewUrl} alt={result.title}/>
           <span>{result.kind==='image'?<ImageIcon size={14}/>:<Film size={14}/>} {result.kind}</span>
         </div>
         <div className="stock-result-copy"><h3>{result.title}</h3><p>{result.attributionLabel}</p><div>{result.width&&result.height&&<span>{result.width}×{result.height}</span>}{result.durationSeconds!==null&&<span>{result.durationSeconds}s</span>}<span>{result.licenseLabel}</span></div></div>
-        <footer><a href={result.pageUrl} target="_blank" rel="noreferrer">Fonte <ExternalLink size={12}/></a><button className="button primary small" disabled={!!busy} onClick={()=>void use(result)}>{busy==='import:'+result.providerAssetId?'Importando…':'Usar nesta cena'}</button></footer>
+        <footer><a href={result.pageUrl} target="_blank" rel="noreferrer">Fonte <ExternalLink size={12}/></a>{result.provider==='unsplash'?<span className="tag">Preview / hotlink</span>:<button className="button primary small" disabled={!!busy} onClick={()=>void use(result)}>{busy==='import:'+result.providerAssetId?'Importando…':'Usar nesta cena'}</button>}</footer>
       </article>)}</div>
-      <div className="stock-attribution"><a href={provider==='pexels'?'https://www.pexels.com':'https://pixabay.com'} target="_blank" rel="noreferrer">{provider==='pexels'?'Photos and videos provided by Pexels':'Images and videos provided by Pixabay'} <ExternalLink size={12}/></a></div>
+      <div className="stock-attribution"><a href={provider==='pexels'?'https://www.pexels.com':provider==='pixabay'?'https://pixabay.com':'https://unsplash.com'} target="_blank" rel="noreferrer">{provider==='pexels'?'Photos and videos provided by Pexels':provider==='pixabay'?'Images and videos provided by Pixabay':'Photos provided by Unsplash'} <ExternalLink size={12}/></a>{provider==='unsplash'&&<small> Nesta fase o Unsplash funciona como descoberta visual com hotlink e atribuição; cópia para o Asset Vault permanece bloqueada.</small>}</div>
     </section>}
 
     {!results.length&&<div className="stock-empty"><Search size={28}/><h3>Escolha a cena e pesquise.</h3><p>A direção visual já é usada como sugestão inicial de busca, mas pode ser simplificada antes da pesquisa.</p></div>}

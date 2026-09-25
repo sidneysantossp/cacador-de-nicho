@@ -17,6 +17,13 @@ test('Stock Media allows only expected Pixabay media hosts',()=>{
   assert.equal(stockDownloadHostAllowed('pixabay','pixabay.com.attacker.test'),false);
 });
 
+
+test('Stock Media allows only expected Unsplash image hosts',()=>{
+  assert.equal(stockDownloadHostAllowed('unsplash','images.unsplash.com'),true);
+  assert.equal(stockDownloadHostAllowed('unsplash','plus.unsplash.com'),true);
+  assert.equal(stockDownloadHostAllowed('unsplash','images.unsplash.com.attacker.test'),false);
+});
+
 test('Stock Media rejects non-HTTPS at download layer via host policy caller and invalid search lengths',()=>{
   assert.equal(validStockQuery('prehistoric cave'),true);
   assert.equal(validStockQuery('   '),false);

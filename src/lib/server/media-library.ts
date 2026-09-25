@@ -7,11 +7,11 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { signedMediaUrl } from './media-storage';
 import {
   normalizeMediaTags, sceneLibraryItemIsStale, voiceLibraryItemIsStale
 } from '@/lib/media-library-policy';
 
-const BUCKET='cacadores-media';
 
 type MetaRow={
   media_key:string;channel_id:string;resource_type:'scene_asset'|'voice_asset';resource_id:string;
@@ -46,8 +46,7 @@ function metadataMap(rows:MetaRow[]){
 
 async function signedUrl(path:string){
   if(!path)return null;
-  const result=await db().storage.from(BUCKET).createSignedUrl(path,3600);
-  return result.error?null:result.data.signedUrl;
+  return signedMediaUrl(path,3600);
 }
 
 export async function listMediaLibrary(

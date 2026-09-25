@@ -5,11 +5,11 @@ import type { EpisodeScript, VoiceAlignment, VoiceAsset } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { downloadMedia, putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadEpisodeScript } from './episode-script';
 import { loadProductionDna } from './production-dna';
 import { voiceAssetIsStale, voiceModelCharacterLimits } from '@/lib/voice-policy';
 
-const BUCKET='cacadores-media';
 const MAX_AUDIO_BYTES=100*1024*1024;
 
 type ElevenAlignment={
@@ -160,13 +160,10 @@ async function persistAudio(
     'take-'+String(reservation.take).padStart(3,'0')+'-'+reservation.id+'.'+ext
   ].join('/');
 
-  const upload=await db().storage.from(BUCKET).upload(storagePath,bytes,{
-    contentType:mimeType,
-    upsert:false,
-    cacheControl:'3600'
-  });
-
-  if(upload.error){
+  let persistedPath:string;
+  try{
+    persistedPath=await putMedia(storagePath,bytes,mimeType,{cacheControl:'3600'});
+  }catch{
     await db().from('radar_voice_assets').update({
       status:'failed',
       selected:false,
@@ -178,7 +175,7 @@ async function persistAudio(
 
   const row=checked(await db().from('radar_voice_assets').update({
     status:'ready',
-    storage_path:storagePath,
+    storage_path:persistedPath,
     mime_type:mimeType,
     bytes:bytes.length,
     payload:metadata,
@@ -212,9 +209,11 @@ export async function downloadVoiceAsset(assetId:string){
   const asset=await loadVoiceAsset(assetId);
   if(!asset)throw new HttpError('Take de voz não encontrado.',404);
   if(asset.status!=='ready'||!asset.storagePath)throw new HttpError('O take de voz ainda não está pronto.',409);
-  const result=await db().storage.from(BUCKET).download(asset.storagePath);
-  if(result.error||!result.data)throw new HttpError('Falha ao ler o áudio do storage privado.',502);
-  return {asset,bytes:Buffer.from(await result.data.arrayBuffer())};
+  try{
+    return {asset,bytes:await downloadMedia(asset.storagePath)};
+  }catch{
+    throw new HttpError('Falha ao ler o áudio do storage privado.',502);
+  }
 }
 
 export async function listVoiceAssets(scriptId:string){
@@ -229,8 +228,7 @@ export async function listVoiceAssets(scriptId:string){
   return Promise.all(assets.map(async asset=>{
     let signedUrl:string|null=null;
     if(asset.status==='ready'&&asset.storagePath){
-      const signed=await db().storage.from(BUCKET).createSignedUrl(asset.storagePath,3600);
-      if(!signed.error)signedUrl=signed.data.signedUrl;
+      signedUrl=await signedMediaUrl(asset.storagePath,3600);
     }
     return {
       ...asset,
@@ -368,8 +366,8 @@ export async function deleteVoiceAsset(scriptId:string,assetId:string){
   if(!row)throw new HttpError('Take de voz não encontrado.',404);
 
   if(row.storage_path){
-    const removal=await db().storage.from(BUCKET).remove([String(row.storage_path)]);
-    if(removal.error)throw new HttpError('Falha ao remover o arquivo de áudio do storage.',502);
+    try{await removeMedia(String(row.storage_path));}
+    catch{throw new HttpError('Falha ao remover o arquivo de áudio do storage.',502);}
   }
 
   checked(await db().from('radar_voice_assets').delete().eq('id',assetId).eq('script_id',scriptId));

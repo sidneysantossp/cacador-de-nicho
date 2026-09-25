@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, open, readFile, rm, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
@@ -31,6 +32,7 @@ if(!CLIENT_ID||!CLIENT_SECRET||ENCRYPTION_SECRET.length<32){
 
 const authHeaders={apikey:SERVICE_KEY,Authorization:'Bearer '+SERVICE_KEY};
 const cryptoKey=createHash('sha256').update(ENCRYPTION_SECRET,'utf8').digest();
+let r2StorageCache=null;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 function safeError(error){return String(error instanceof Error?error.message:error).slice(0,4000);}
@@ -137,7 +139,39 @@ async function updateConnection(connectionId,fields){
   });
 }
 
+async function r2Storage(){
+  if(r2StorageCache)return r2StorageCache;
+  const secret=await rpc('radar_get_secret',{p_secret_name:'cloudflare_r2_config'});
+  if(typeof secret!=='string'||!secret)throw new Error('Cloudflare R2 is not configured in the provider vault.');
+  let config;
+  try{config=JSON.parse(secret);}catch{throw new Error('Cloudflare R2 vault config is invalid.');}
+  if(!config.accountId||!config.accessKeyId||!config.secretAccessKey||!config.bucket){
+    throw new Error('Cloudflare R2 vault config is incomplete.');
+  }
+  const client=new S3Client({
+    region:'auto',
+    endpoint:'https://'+config.accountId+'.r2.cloudflarestorage.com',
+    credentials:{accessKeyId:config.accessKeyId,secretAccessKey:config.secretAccessKey}
+  });
+  r2StorageCache={client,bucket:config.bucket};
+  return r2StorageCache;
+}
+
 async function downloadStorage(storagePath,destination){
+  if(String(storagePath).startsWith('r2:')){
+    const target=await r2Storage();
+    const key=String(storagePath).slice(3);
+    const result=await target.client.send(new GetObjectCommand({Bucket:target.bucket,Key:key}));
+    if(!result.Body)throw new Error('R2 object has no response body: '+storagePath);
+    await pipeline(result.Body,createWriteStream(destination));
+    const info=await stat(destination);
+    if(!info.size)throw new Error('R2 object is empty: '+storagePath);
+    return {
+      bytes:info.size,
+      mimeType:result.ContentType||'application/octet-stream'
+    };
+  }
+
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
     {headers:authHeaders}

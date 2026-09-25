@@ -5,7 +5,8 @@ const hosts:Record<StockMediaProvider,string[]>={
     'images.pexels.com','videos.pexels.com','static-videos.pexels.com',
     'player.vimeo.com','vod-progressive.akamaized.net'
   ],
-  pixabay:['cdn.pixabay.com','pixabay.com']
+  pixabay:['cdn.pixabay.com','pixabay.com'],
+  unsplash:['images.unsplash.com','plus.unsplash.com','api.unsplash.com','unsplash.com']
 };
 
 export function stockDownloadHostAllowed(provider:StockMediaProvider,host:string){

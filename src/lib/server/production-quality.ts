@@ -7,6 +7,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { signedMediaUrl } from './media-storage';
 import { listRenderJobs, loadRenderJob } from './render-engine';
 import { loadVideoEdit, loadVideoEditWorkspace } from './video-editor';
 import { loadVisualPromptSet } from './visual-prompt-engine';
@@ -17,7 +18,6 @@ import {
   type ProductionQualityAssetFact, type ProductionQualityCharacterFact
 } from '@/lib/production-quality-policy';
 
-const BUCKET='cacadores-media';
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
 const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
 const MAX_CAPTURE=256000;
@@ -178,9 +178,9 @@ function clampRatio(value:number,duration:number|null){
 
 async function outputSignedUrl(job:RenderJob){
   if(!job.outputPath)throw new HttpError('O render concluído não possui output.',409);
-  const signed=await db().storage.from(BUCKET).createSignedUrl(job.outputPath,900);
-  if(signed.error||!signed.data?.signedUrl)throw new HttpError('Não foi possível abrir o MP4 privado para QA.',502);
-  return signed.data.signedUrl;
+  const signed=await signedMediaUrl(job.outputPath,900);
+  if(!signed)throw new HttpError('Não foi possível abrir o MP4 privado para QA.',502);
+  return signed;
 }
 
 async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{

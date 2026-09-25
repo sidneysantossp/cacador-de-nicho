@@ -8,8 +8,8 @@ import type { AudioLibraryAsset, SceneAssetLicense } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { normalizeMediaTags } from '@/lib/media-library-policy';
+import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
 
-const BUCKET='cacadores-media';
 const MAX_AUDIO_BYTES=100*1024*1024;
 const MIME_EXT:Record<string,string>={
   'audio/mpeg':'mp3',
@@ -77,8 +77,7 @@ function normalizeRow(row:Row,signedUrl:string|null):AudioLibraryAsset{
 }
 
 async function signedUrl(storagePath:string){
-  const signed=await db().storage.from(BUCKET).createSignedUrl(storagePath,3600);
-  return signed.error?null:signed.data.signedUrl;
+  return signedMediaUrl(storagePath,3600);
 }
 
 async function ensureChannel(channelId:string){
@@ -154,10 +153,9 @@ export async function uploadAudioAsset(input:{
   const storagePath=[
     'channels',input.channelId,'audio-library',input.kind,id+'.'+ext
   ].join('/');
-  const upload=await db().storage.from(BUCKET).upload(storagePath,bytes,{
-    contentType:mimeType,upsert:false,cacheControl:'3600'
-  });
-  if(upload.error)throw new HttpError('Falha ao armazenar o áudio na biblioteca privada.',502);
+  let persistedPath:string;
+  try{persistedPath=await putMedia(storagePath,bytes,mimeType,{cacheControl:'3600'});}
+  catch{throw new HttpError('Falha ao armazenar o áudio na biblioteca privada.',502);}
 
   const license:SceneAssetLicense={type:'owned',label:'Owned / operator supplied'};
   const inserted=await db().from('radar_audio_assets').insert({
@@ -167,7 +165,7 @@ export async function uploadAudioAsset(input:{
     source_type:'uploaded',
     provider:'external',
     status:'ready',
-    storage_path:storagePath,
+    storage_path:persistedPath,
     mime_type:mimeType,
     original_name:input.file.name,
     bytes:bytes.length,
@@ -179,10 +177,10 @@ export async function uploadAudioAsset(input:{
   }).select('id,channel_id,kind,source_type,provider,status,storage_path,mime_type,original_name,bytes,duration_seconds,bpm,favorite,tags,notes,license,created_at,updated_at').single();
 
   if(inserted.error){
-    await db().storage.from(BUCKET).remove([storagePath]).catch(()=>{});
+    await removeMedia(persistedPath).catch(()=>{});
     throw new HttpError('Falha ao registrar o áudio na biblioteca.',502);
   }
-  return normalizeRow(inserted.data as Row,await signedUrl(storagePath));
+  return normalizeRow(inserted.data as Row,await signedUrl(persistedPath));
 }
 
 export async function saveAudioAssetMetadata(input:{

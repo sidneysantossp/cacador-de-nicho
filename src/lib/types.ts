@@ -982,7 +982,7 @@ export type SceneAssetLicense = {
  sourceUrl?: string;
  notes?: string;
 };
-export type StockMediaProvider = 'pexels' | 'pixabay';
+export type StockMediaProvider = 'pexels' | 'pixabay' | 'unsplash';
 export type StockMediaResult = {
  provider: StockMediaProvider;
  providerAssetId: string;
