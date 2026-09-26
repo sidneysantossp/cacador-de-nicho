@@ -98,6 +98,7 @@ export async function indexOwnedMediaEmbeddings(input:{
     'RETRIEVAL_DOCUMENT'
   );
   const now=new Date().toISOString();
+  checked(await db().from('radar_owned_media_embeddings').delete().eq('asset_id',input.assetId));
   checked(await db().from('radar_owned_media_embeddings').upsert(
     documents.map((item,index)=>({
       resource_type:item.resourceType,
