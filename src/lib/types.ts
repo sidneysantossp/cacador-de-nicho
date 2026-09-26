@@ -1073,6 +1073,7 @@ export type StockMediaResult = {
  width: number | null;
  height: number | null;
  durationSeconds: number | null;
+ sourceDate?: string;
  licenseLabel: string;
  attributionLabel: string;
 };
@@ -1115,6 +1116,7 @@ export type SceneAsset = {
   creatorName: string;
   creatorUrl?: string;
   attributionLabel: string;
+  sourceDate?: string;
  };
  verifiedStock?: {
   query: string;
