@@ -6,6 +6,7 @@ import {
   Sparkles, Trash2, Upload, Volume2, WandSparkles
 } from 'lucide-react';
 import type { EpisodeScript, ManagedChannel, VoiceAssetListItem } from '@/lib/types';
+import { splitVoiceText } from '@/lib/voice-policy';
 
 type VoiceAssetView=VoiceAssetListItem;
 type ElevenVoice={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
@@ -38,6 +39,10 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
 
   const selectedScript=useMemo(()=>scripts.find(item=>item.id===scriptId)??null,[scripts,scriptId]);
   const selectedAsset=useMemo(()=>assets.find(item=>item.selected)??null,[assets]);
+  const generationPlan=useMemo(()=>
+    selectedScript?splitVoiceText(selectedScript.content,modelId):[],
+    [selectedScript,modelId]
+  );
 
   async function loadAssets(id:string){
     if(!id){setAssets([]);return;}
@@ -170,7 +175,8 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
           {voicesError&&<div className="voice-inline-warning"><CircleAlert size={15}/>{voicesError}</div>}
           {voices.length>0?<label>Voz<select value={voiceId} onChange={e=>{const v=voices.find(item=>item.voiceId===e.target.value);setVoiceId(e.target.value);setVoiceName(v?.name??'');}}><option value="">Selecione</option>{voices.map(voice=><option key={voice.voiceId} value={voice.voiceId}>{voice.name}{voice.category?' · '+voice.category:''}</option>)}</select></label>:<label>Voice ID<input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Cole o Voice ID ou carregue suas vozes"/></label>}
           {voiceName&&<div className="voice-selected-name"><Volume2 size={14}/>{voiceName}</div>}
-          <button className="button primary" disabled={!voiceId.trim()||!!busy} onClick={()=>void generate()}><Sparkles size={15}/>{busy==='generate'?'Gerando narração…':'Gerar novo take'}</button>
+          {selectedScript&&generationPlan.length>0&&<div className="voice-selected-name"><Sparkles size={14}/>{generationPlan.length===1?'1 geração direta':generationPlan.length+' chunks long-form · stitching automático'}</div>}
+          <button className="button primary" disabled={!voiceId.trim()||!!busy} onClick={()=>void generate()}><Sparkles size={15}/>{busy==='generate'?'Gerando narração long-form…':'Gerar novo take'}</button>
         </section>
 
         <section className="voice-upload">
