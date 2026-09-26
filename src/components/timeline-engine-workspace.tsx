@@ -233,7 +233,12 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   if(loading)return <div className="timeline-loading"><Sparkles className="spin" size={20}/>Carregando Timeline Engine…</div>;
 
   if(draft&&scenePlan){
-    const canvasWidth=Math.max(1000,Math.min(6000,draft.durationSeconds*18));
+    const chapterStart=activeChapter?.startSeconds??0;
+    const chapterEnd=activeChapter?.endSeconds??draft.durationSeconds;
+    const chapterDuration=Math.max(.01,chapterEnd-chapterStart);
+    const chapterSceneIds=new Set(activeChapter?.sceneIds??[]);
+    const activeHealth=health?.chapters.find(item=>item.chapterId===activeChapter?.id)??null;
+    const canvasWidth=Math.max(1000,Math.min(6000,chapterDuration*18));
     return <div className="timeline-editor">
       <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');setActiveChapterId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
@@ -249,6 +254,34 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
         <button className={tab==='review'?'active':''} onClick={()=>setTab('review')}><CheckCircle2 size={15}/>Review</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
+
+      <section className="timeline-chapters">
+        <div className="timeline-section-head">
+          <div><span>LONG-FORM CHAPTERS</span><h3>{chapters.length} capítulo(s) · apenas o capítulo ativo carrega mídia.</h3></div>
+          {activeChapter&&<div className="timeline-chapter-actions">
+            <button className="button subtle small" disabled={!!busy||dirty} onClick={()=>void refreshChapter()}>
+              {busy==='refresh-chapter'?'Reprocessando…':'Reprocessar capítulo'}
+            </button>
+            <button className="button subtle small" onClick={()=>updateChapterStatus('review')}>Em revisão</button>
+            <button className="button subtle small" onClick={()=>updateChapterStatus('approved')}><CheckCircle2 size={14}/>Aprovar capítulo</button>
+          </div>}
+        </div>
+        <div className="timeline-chapter-list">{chapters.map(chapter=>{
+          const metric=health?.chapters.find(item=>item.chapterId===chapter.id);
+          return <button key={chapter.id} className={chapter.id===activeChapter?.id?'active':''} disabled={busy==='chapter:'+chapter.id} onClick={()=>void openChapter(chapter.id)}>
+            <span>{String(chapter.sequence).padStart(2,'0')}</span>
+            <strong>{chapter.label}</strong>
+            <small>{time(chapter.startSeconds)}–{time(chapter.endSeconds)} · {metric?.clipCount??chapter.sceneIds.length} clips</small>
+            <em>{chapter.status}</em>
+          </button>;
+        })}</div>
+        {health&&<div className="timeline-density-map" aria-label="Mapa global de densidade visual">
+          {health.chapters.map(metric=><div key={metric.chapterId} title={'Capítulo '+metric.sequence+' · '+metric.cutsPerMinute.toFixed(1)+' cortes/min'}>
+            <span style={{height:Math.max(8,Math.min(100,metric.cutsPerMinute*5))+'%'}}/>
+            <small>{metric.cutsPerMinute.toFixed(1)}</small>
+          </div>)}
+        </div>}
+      </section>
 
       {tab==='timeline'&&<div className="timeline-content">
         <section className="timeline-stage">
@@ -273,22 +306,33 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
 
         <section className="timeline-scroll">
           <div className="timeline-canvas" style={{width:canvasWidth}}>
-            <div className="timeline-ruler">{Array.from({length:Math.ceil(draft.durationSeconds/10)+1},(_,i)=><span key={i} style={{left:(i*10/draft.durationSeconds*100)+'%'}}>{time(i*10)}</span>)}</div>
-            {draft.tracks.filter(track=>track.type==='visual'||track.type==='voice').map(track=><div className={'timeline-track '+track.type} key={track.id}>
-              <div className="timeline-track-label">{track.type==='visual'?<ImageIcon size={15}/>:<Volume2 size={15}/>}<span>{track.name}</span>{track.locked&&<small>LOCKED</small>}</div>
-              <div className="timeline-track-lane">{track.clips.map(clip=>{
-                const left=clip.startSeconds/draft.durationSeconds*100;
-                const width=Math.max(.2,clip.durationSeconds/draft.durationSeconds*100);
-                const source=clip.assetId?sourceMap.get(clip.assetId):null;
-                return <button key={clip.id} style={{left:left+'%',width:width+'%'}} className={'timeline-clip '+clip.clipKind+(selectedClipId===clip.id?' selected':'')} onClick={()=>setSelectedClipId(clip.id)}>
-                  {clip.clipKind==='image'&&source?.signedUrl?<img src={source.signedUrl} alt=""/>:
-                   clip.clipKind==='video'&&source?.signedUrl?<video src={source.signedUrl} muted preload="metadata"/>:
-                   clip.clipKind==='audio'?<Volume2 size={14}/>:
-                   <AlertTriangle size={14}/>}
-                  <span>{clip.label}</span>
-                </button>;
-              })}</div>
-            </div>)}
+            <div className="timeline-ruler">{Array.from({length:Math.ceil(chapterDuration/10)+1},(_,i)=>{
+              const offset=Math.min(chapterDuration,i*10);
+              return <span key={i} style={{left:(offset/chapterDuration*100)+'%'}}>{time(chapterStart+offset)}</span>;
+            })}</div>
+            {draft.tracks.filter(track=>track.type==='visual'||track.type==='voice').map(track=>{
+              const visibleClips=track.clips.filter(clip=>
+                track.type==='voice'
+                  ?clip.endSeconds>chapterStart&&clip.startSeconds<chapterEnd
+                  :Boolean(clip.sceneId&&chapterSceneIds.has(clip.sceneId))
+              );
+              return <div className={'timeline-track '+track.type} key={track.id}>
+                <div className="timeline-track-label">{track.type==='visual'?<ImageIcon size={15}/>:<Volume2 size={15}/>}<span>{track.name}</span>{track.locked&&<small>LOCKED</small>}</div>
+                <div className="timeline-track-lane">{visibleClips.map(clip=>{
+                  const visibleStart=Math.max(chapterStart,clip.startSeconds);
+                  const visibleEnd=Math.min(chapterEnd,clip.endSeconds);
+                  const left=(visibleStart-chapterStart)/chapterDuration*100;
+                  const width=Math.max(.2,(visibleEnd-visibleStart)/chapterDuration*100);
+                  return <button key={clip.id} style={{left:left+'%',width:width+'%'}} className={'timeline-clip '+clip.clipKind+(selectedClipId===clip.id?' selected':'')} onClick={()=>setSelectedClipId(clip.id)}>
+                    {clip.clipKind==='image'?<ImageIcon size={14}/>:
+                     clip.clipKind==='video'?<Video size={14}/>:
+                     clip.clipKind==='audio'?<Volume2 size={14}/>:
+                     <AlertTriangle size={14}/>}
+                    <span>{clip.label}</span>
+                  </button>;
+                })}</div>
+              </div>;
+            })}
           </div>
         </section>
       </div>}
@@ -299,7 +343,16 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
           <div><span>TIMELINE GATE</span><h3>{structuralIssues.length?'A estrutura ainda tem bloqueios.':'Estrutura temporal consistente.'}</h3><p>A aprovação final também valida se os assets continuam selecionados, ready e não-stale.</p></div>
         </section>
         {structuralIssues.length>0&&<div className="timeline-issues">{structuralIssues.map(issue=><span key={issue}>{issue}</span>)}</div>}
-        <label className="timeline-notes"><span>NOTAS DE REVIEW</span><textarea rows={5} value={draft.review.notes} onChange={e=>setDraft({...draft,review:{notes:e.target.value}})}/></label>
+        {health&&<section className="timeline-health-grid">
+          <div><strong>{(health.coverageRatio*100).toFixed(1)}%</strong><small>cobertura visual</small></div>
+          <div><strong>{health.cutsPerMinute.toFixed(1)}</strong><small>cortes/min</small></div>
+          <div><strong>{(health.uniqueAssetRatio*100).toFixed(0)}%</strong><small>origens únicas</small></div>
+          <div><strong>{health.repeatedAssetCount}</strong><small>repetições</small></div>
+          <div><strong>{health.longStaticImageCount}</strong><small>imagens &gt;15s</small></div>
+          <div><strong>{health.excessiveCutCount}</strong><small>cortes &lt;1,5s</small></div>
+        </section>}
+        {activeChapter&&<label className="timeline-notes"><span>REVIEW DO CAPÍTULO {activeChapter.sequence}</span><textarea rows={3} value={activeChapter.reviewNotes} onChange={e=>setDraft(prev=>prev?normalizeTimeline({...prev,chapters:timelineChapters(prev).map(chapter=>chapter.id===activeChapter.id?{...chapter,reviewNotes:e.target.value,updatedAt:new Date().toISOString()}:chapter)}):prev)}/></label>}
+        <label className="timeline-notes"><span>NOTAS DE REVIEW MASTER</span><textarea rows={5} value={draft.review.notes} onChange={e=>setDraft({...draft,review:{notes:e.target.value}})}/></label>
         <div className="timeline-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={structuralIssues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar Timeline</button></div>
       </div>}
 
