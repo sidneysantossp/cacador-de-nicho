@@ -9,7 +9,8 @@ const hosts:Record<StockMediaProvider,string[]>={
   ],
   pixabay:['cdn.pixabay.com','pixabay.com'],
   unsplash:['images.unsplash.com','plus.unsplash.com','api.unsplash.com','unsplash.com'],
-  vecteezy:['downloads.vecteezy.com','static.vecteezy.com','files.vecteezy.com','img.vecteezy.com']
+  vecteezy:['downloads.vecteezy.com','static.vecteezy.com','files.vecteezy.com','img.vecteezy.com'],
+  wikimedia:['upload.wikimedia.org','commons.wikimedia.org']
 };
 
 export function stockDownloadHostAllowed(provider:StockMediaProvider,host:string){

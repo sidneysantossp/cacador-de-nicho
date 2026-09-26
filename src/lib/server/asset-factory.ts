@@ -525,7 +525,7 @@ export async function uploadSceneAsset(input:{
 export async function persistStockSceneAsset(input:{
   promptSetId:string;
   sceneId:string;
-  provider:'pexels'|'pixabay'|'unsplash'|'vecteezy';
+  provider:'pexels'|'pixabay'|'unsplash'|'vecteezy'|'wikimedia';
   providerAssetId:string;
   kind:'image'|'video';
   bytes:Buffer;

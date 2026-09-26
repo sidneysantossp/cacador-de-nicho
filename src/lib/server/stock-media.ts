@@ -18,6 +18,7 @@ import { downloadMedia } from './media-storage';
 const PEXELS_LICENSE='https://www.pexels.com/license/';
 const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
 const VECTEEZY_LICENSE='https://www.vecteezy.com/licensing-agreement';
+const WIKIMEDIA_REUSE='https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia';
 const IMAGE_MAX=25*1024*1024;
 const VIDEO_MAX=250*1024*1024;
 
@@ -126,6 +127,84 @@ function unsplashPhoto(item:Record<string,unknown>):StockMediaResult{
   };
 }
 
+type WikimediaMetaValue={value?:unknown};
+type WikimediaImageInfo={
+  url?:string;thumburl?:string;width?:number;height?:number;mime?:string;thumbmime?:string;
+  extmetadata?:Record<string,WikimediaMetaValue>;
+};
+type WikimediaPage={pageid?:number;title?:string;imageinfo?:WikimediaImageInfo[]};
+
+function plainMetadata(value:unknown){
+  return String(value??'')
+    .replace(/<[^>]*>/g,' ')
+    .replace(/&nbsp;/gi,' ')
+    .replace(/&amp;/gi,'&')
+    .replace(/&#39;/g,"'")
+    .replace(/&quot;/gi,'"')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function wikimediaField(info:WikimediaImageInfo,key:string){
+  return plainMetadata(info.extmetadata?.[key]?.value);
+}
+
+function wikimediaReusable(info:WikimediaImageInfo){
+  const nonFree=wikimediaField(info,'NonFree').toLowerCase()==='true';
+  if(nonFree)return false;
+  const copyrighted=wikimediaField(info,'Copyrighted').toLowerCase();
+  if(copyrighted==='false')return true;
+  const license=wikimediaField(info,'LicenseShortName').toLowerCase();
+  return license.includes('public domain')||license.includes('cc0')||
+    license.includes('cc by')||license.includes('pdm');
+}
+
+function wikimediaResult(page:WikimediaPage):StockMediaResult|null{
+  const info=page.imageinfo?.[0];
+  if(!page.pageid||!info||!wikimediaReusable(info))return null;
+  const preview=String(info.thumburl??info.url??'');
+  if(!preview)return null;
+  const creator=wikimediaField(info,'Attribution')||wikimediaField(info,'Artist')||'Wikimedia Commons contributor';
+  const license=wikimediaField(info,'LicenseShortName')||'Wikimedia Commons reusable media';
+  const title=plainMetadata(wikimediaField(info,'ImageDescription'))||
+    String(page.title??'Wikimedia Commons image').replace(/^File:/i,'');
+  return {
+    provider:'wikimedia',
+    providerAssetId:String(page.pageid),
+    kind:'image',
+    title,
+    previewUrl:preview,
+    pageUrl:'https://commons.wikimedia.org/?curid='+String(page.pageid),
+    creatorName:creator,
+    width:Number(info.width)||null,
+    height:Number(info.height)||null,
+    durationSeconds:null,
+    licenseLabel:license,
+    attributionLabel:creator+' · '+license+' · Wikimedia Commons'
+  };
+}
+
+async function wikimediaPages(params:URLSearchParams){
+  params.set('action','query');
+  params.set('format','json');
+  params.set('formatversion','2');
+  params.set('prop','imageinfo');
+  params.set('iiprop','url|size|mime|thumbmime|extmetadata');
+  params.set('iiextmetadatafilter','LicenseShortName|LicenseUrl|UsageTerms|Artist|Attribution|AttributionRequired|Copyrighted|NonFree|ImageDescription');
+  let response:Response;
+  try{
+    response=await fetch('https://commons.wikimedia.org/w/api.php?'+params,{
+      headers:{'User-Agent':'CacadoresDeNichos/1.0 (read-only media sourcing)'},
+      signal:AbortSignal.timeout(20000),
+      cache:'no-store'
+    });
+  }catch{throw new HttpError('Não foi possível pesquisar no Wikimedia Commons.',502);}
+  if(response.status===429)throw new HttpError('O Wikimedia Commons pediu redução temporária de chamadas.',429);
+  if(!response.ok)throw new HttpError('O Wikimedia Commons recusou a pesquisa.',502);
+  const body=await response.json() as {query?:{pages?:WikimediaPage[]}};
+  return body.query?.pages??[];
+}
+
 function vecteezyResult(item:Record<string,unknown>,kind:'image'|'video'):StockMediaResult{
   const dimensions=(item.dimensions??item.preview_dimensions??item.thumbnail_dimensions??{}) as Record<string,unknown>;
   return {
@@ -150,7 +229,11 @@ export async function searchStockMedia(input:{
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   const query=input.query.trim();
   if(!validStockQuery(query))throw new HttpError('A busca deve ter entre 1 e 100 caracteres.',400);
-  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
+  if((input.provider==='unsplash'||input.provider==='wikimedia')&&input.kind==='video'){
+    throw new HttpError(input.provider==='wikimedia'
+      ?'O Wikimedia Commons está habilitado nesta fase para imagens documentais.'
+      :'O Unsplash está disponível apenas para imagens.',400);
+  }
 
   let results:StockMediaResult[]=[];
   let remaining:string|null=null;
@@ -206,6 +289,19 @@ export async function searchStockMedia(input:{
     const body=await response.json() as {results?:Record<string,unknown>[]};
     results=(body.results??[]).map(unsplashPhoto).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
+  }else if(input.provider==='wikimedia'){
+    const params=new URLSearchParams({
+      generator:'search',
+      gsrsearch:query,
+      gsrnamespace:'6',
+      gsrlimit:'24',
+      iiurlwidth:'1280'
+    });
+    const pages=await wikimediaPages(params);
+    results=pages.flatMap(page=>{
+      const item=wikimediaResult(page);
+      return item?[item]:[];
+    });
   }else{
     const config=parseVecteezyConfig(await providerSecret('vecteezy'));
     const params=new URLSearchParams({
@@ -296,7 +392,11 @@ export async function importStockMedia(input:{
   selectIfNone?:boolean;
 }){
   await sceneContext(input.promptSetId,input.sceneId);
-  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
+  if((input.provider==='unsplash'||input.provider==='wikimedia')&&input.kind==='video'){
+    throw new HttpError(input.provider==='wikimedia'
+      ?'O Wikimedia Commons está habilitado nesta fase para imagens documentais.'
+      :'O Unsplash está disponível apenas para imagens.',400);
+  }
 
   let pageUrl='',creatorName='',creatorUrl:string|undefined,downloadUrl='',mimeType='',width:number|null=null,height:number|null=null,duration:number|null=null,attribution='',licenseLabel='',licenseUrl='';
 
@@ -353,6 +453,29 @@ export async function importStockMedia(input:{
       'O Unsplash está disponível nesta fase para descoberta e preview. A API exige hotlink; cópia automática para o Asset Vault fica bloqueada até o resolver externo preservar hotlink e atribuição.',
       409
     );
+  }else if(input.provider==='wikimedia'){
+    const pages=await wikimediaPages(new URLSearchParams({
+      pageids:input.providerAssetId,
+      iiurlwidth:'2048'
+    }));
+    const page=pages[0];
+    const info=page?.imageinfo?.[0];
+    if(!page?.pageid||!info)throw new HttpError('O Wikimedia Commons não encontrou este arquivo.',404);
+    if(!wikimediaReusable(info))throw new HttpError('O arquivo do Wikimedia Commons não possui licença reutilizável aceita pelo Source Router.',409);
+    downloadUrl=String(info.thumburl??info.url??'');
+    if(!downloadUrl)throw new HttpError('O Wikimedia Commons não devolveu uma imagem utilizável.',502);
+    const detectedMime=String(info.thumbmime??info.mime??'');
+    if(!['image/jpeg','image/png','image/webp'].includes(detectedMime)){
+      throw new HttpError('O Wikimedia Commons devolveu um formato de imagem ainda não suportado.',415);
+    }
+    mimeType=detectedMime;
+    width=Number(info.width)||null;
+    height=Number(info.height)||null;
+    pageUrl='https://commons.wikimedia.org/?curid='+String(page.pageid);
+    creatorName=wikimediaField(info,'Attribution')||wikimediaField(info,'Artist')||'Wikimedia Commons contributor';
+    licenseLabel=wikimediaField(info,'LicenseShortName')||'Wikimedia Commons reusable media';
+    licenseUrl=wikimediaField(info,'LicenseUrl')||WIKIMEDIA_REUSE;
+    attribution=creatorName+' · '+licenseLabel+' · Wikimedia Commons';
   }else{
     const config=parseVecteezyConfig(await providerSecret('vecteezy'));
     const id=encodeURIComponent(input.providerAssetId);
