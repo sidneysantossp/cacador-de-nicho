@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   cancelRenderJob, createRenderJob, loadRenderJob,
-  renderEngineChannelState, retryRenderJob
+  renderEngineChannelState, retryRenderChapter, retryRenderJob
 } from '@/lib/server/render-engine';
 
 export const runtime='nodejs';
@@ -18,7 +18,12 @@ const schema=z.discriminatedUnion('action',[
     audioBitrateKbps:z.number().int().min(96).max(320).optional()
   }).strict(),
   z.object({action:z.literal('cancel'),jobId:z.string().uuid()}).strict(),
-  z.object({action:z.literal('retry'),jobId:z.string().uuid()}).strict()
+  z.object({action:z.literal('retry'),jobId:z.string().uuid()}).strict(),
+  z.object({
+    action:z.literal('retry-chapter'),
+    jobId:z.string().uuid(),
+    chapterId:z.string().uuid()
+  }).strict()
 ]);
 
 export async function GET(request:Request){
@@ -58,8 +63,18 @@ export async function POST(request:Request){
       const job=await cancelRenderJob(body.jobId);
       return Response.json({message:'Render cancelado.',job});
     }
+    if(body.action==='retry-chapter'){
+      const job=await retryRenderChapter(body.jobId,body.chapterId);
+      return Response.json({
+        message:'Novo master enfileirado. Capítulos concluídos serão reutilizados e apenas o capítulo pendente será renderizado novamente.',
+        job
+      });
+    }
 
     const job=await retryRenderJob(body.jobId);
-    return Response.json({message:'Render reenfileirado.',job});
+    return Response.json({
+      message:'Render reenfileirado com reaproveitamento automático dos capítulos concluídos.',
+      job
+    });
   }catch(e){return errorResponse(e);}
 }
