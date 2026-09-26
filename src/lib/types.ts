@@ -819,6 +819,22 @@ export type EpisodeScriptSection = {
  content: string;
  claimIds?: string[];
 };
+export type EpisodeScriptSectionPlan = {
+ id: string;
+ label: string;
+ purpose: string;
+ targetWords: number;
+ claimIds?: string[];
+};
+export type EpisodeScriptGeneration = {
+ stage: 'sections' | 'complete';
+ targetWords: number;
+ completedSections: number;
+ totalSections: number;
+ sectionPlans: EpisodeScriptSectionPlan[];
+ sectionSummaries: string[];
+ updatedAt: string;
+};
 export type EpisodeScriptPayload = {
  kind: 'episode-script';
  id: string;
@@ -833,6 +849,7 @@ export type EpisodeScriptPayload = {
  estimatedMinutes: number | null;
  continuityNotes: string[];
  factCheckWarnings: string[];
+ generation?: EpisodeScriptGeneration;
  provenance: {
   generatedBy: 'platform' | 'chatgpt' | 'codex' | 'external' | 'operator';
   model?: string;
