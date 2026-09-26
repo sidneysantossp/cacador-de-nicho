@@ -957,7 +957,11 @@ async function processJob(jobId,token){
     const job=await assertActive(jobId,token);
     const payload=job.payload;
     const manifest=payload?.manifest;
-    if(!manifest||!['render-v1','render-v2','render-v3'].includes(payload.compilerVersion))throw new Error('Unsupported render manifest.');
+    if(!manifest||!['render-v1','render-v2','render-v3','render-v4'].includes(payload.compilerVersion))throw new Error('Unsupported render manifest.');
+    if(payload.compilerVersion==='render-v4'){
+      await processJobV4(jobId,token,root,job,payload,manifest);
+      return;
+    }
 
     await heartbeat(jobId,token,3,'downloading-sources');
     const inputDir=path.join(root,'inputs');
