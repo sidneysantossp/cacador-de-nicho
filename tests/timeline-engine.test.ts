@@ -4,8 +4,9 @@ import type {
   ProductionDNA, ScenePlan, TimelinePayload, VisualPromptSet, VoiceAsset
 } from '../src/lib/types';
 import {
-  buildInitialTimeline, fitVideoSourceWindow, normalizeTimeline, timelineApprovalIssues,
-  timelineAssetIssues, timelineStructuralIssues
+  buildInitialTimeline, buildTimelineChapters, fitVideoSourceWindow, normalizeTimeline,
+  rebuildTimelineChapterPayload, timelineApprovalIssues, timelineAssetIssues,
+  timelineChapters, timelineHealth, timelineStructuralIssues
 } from '../src/lib/timeline-policy';
 
 const now='2026-09-23T21:00:00.000Z';
@@ -239,4 +240,126 @@ test('Timeline preserves documentary still dimensions and focus metadata',()=>{
   assert.equal(clip.sourceHeight,1600);
   assert.equal(clip.focusX,.22);
   assert.equal(clip.focusY,.38);
+});
+
+
+function longScenePlan(minutes:number):ScenePlan{
+  const duration=minutes*60;
+  const sceneDuration=6;
+  const count=Math.ceil(duration/sceneDuration);
+  const scenes=Array.from({length:count},(_,index)=>{
+    const start=index*sceneDuration;
+    const end=Math.min(duration,(index+1)*sceneDuration);
+    const suffix=String(index+1).padStart(12,'0');
+    return {
+      id:'20000000-0000-4000-8000-'+suffix,
+      sequence:index+1,
+      startSeconds:start,
+      endSeconds:end,
+      durationSeconds:end-start,
+      narration:'Scene '+String(index+1),
+      transcriptSegmentIds:[],
+      transcriptWordIds:[],
+      visualIntent:'documentary visual',
+      shotType:'',
+      characterIds:[],
+      assetMode:'image' as const,
+      promptDirection:'',
+      notes:''
+    };
+  });
+  return {
+    ...scenePlan,
+    id:'21111111-1111-4111-8111-111111111111',
+    audioDurationSeconds:duration,
+    scenes
+  };
+}
+
+function longAssets(plan:ScenePlan){
+  return plan.scenes.map((scene,index)=>({
+    id:'30000000-0000-4000-8000-'+String(index+1).padStart(12,'0'),
+    sceneId:scene.id,
+    assetKind:'image' as const,
+    durationSeconds:null
+  }));
+}
+
+test('Long-form timeline partitions a 60-minute episode into bounded chapters',()=>{
+  const plan=longScenePlan(60);
+  const chapters=buildTimelineChapters(plan);
+  assert.equal(chapters.length,6);
+  assert.equal(chapters[0].startSeconds,0);
+  assert.equal(chapters.at(-1)?.endSeconds,3600);
+  assert.ok(chapters.every(chapter=>chapter.durationSeconds<=600+.02));
+  assert.equal(new Set(chapters.flatMap(chapter=>chapter.sceneIds)).size,plan.scenes.length);
+});
+
+test('Long-form timeline stores chapter state without breaking structural approval',()=>{
+  const plan=longScenePlan(12);
+  const value=buildInitialTimeline({
+    scenePlan:plan,
+    productionDna:dna,
+    visualPromptSet:promptSet,
+    visualAssets:longAssets(plan),
+    voiceAsset:{...voice,durationSeconds:720} as VoiceAsset
+  });
+  assert.equal(timelineChapters(value).length,2);
+  assert.equal(timelineStructuralIssues(value,plan).length,0);
+  assert.ok(value.chapters?.every(chapter=>chapter.status==='draft'));
+});
+
+test('Timeline health detects long stills short cuts and repeated assets',()=>{
+  const value=timeline();
+  value.durationSeconds=20;
+  value.chapters=undefined;
+  const visual=value.tracks.find(track=>track.type==='visual')!;
+  visual.clips=[
+    {...visual.clips[0],startSeconds:0,endSeconds:16,durationSeconds:16,assetId:assets[0].id,clipKind:'image'},
+    {...visual.clips[1],startSeconds:16,endSeconds:16.8,durationSeconds:.8,assetId:assets[1].id,clipKind:'video'},
+    {...visual.clips[0],id:'31111111-1111-4111-8111-111111111111',sceneId:'32222222-2222-4222-8222-222222222222',startSeconds:16.8,endSeconds:20,durationSeconds:3.2,assetId:assets[0].id,clipKind:'image'}
+  ];
+  const voiceTrack=value.tracks.find(track=>track.type==='voice')!;
+  voiceTrack.clips[0]={...voiceTrack.clips[0],endSeconds:20,durationSeconds:20,sourceEndSeconds:20};
+  const health=timelineHealth(value);
+  assert.equal(health.coverageRatio,1);
+  assert.equal(health.longStaticImageCount,1);
+  assert.equal(health.excessiveCutCount,1);
+  assert.equal(health.repeatedAssetCount,1);
+});
+
+test('Chapter refresh replaces only media inside the requested chapter',()=>{
+  const plan=longScenePlan(12);
+  const baseAssets=longAssets(plan);
+  const current=buildInitialTimeline({
+    scenePlan:plan,productionDna:dna,visualPromptSet:promptSet,
+    visualAssets:baseAssets,voiceAsset:{...voice,durationSeconds:720} as VoiceAsset
+  });
+  const chapters=timelineChapters(current);
+  assert.equal(chapters.length,2);
+  const firstScene=chapters[0].sceneIds[0];
+  const secondChapterScene=chapters[1].sceneIds[0];
+  const freshAssets=baseAssets.map(asset=>{
+    if(asset.sceneId===firstScene)return {...asset,id:'33333333-0000-4000-8000-000000000001'};
+    if(asset.sceneId===secondChapterScene)return {...asset,id:'33333333-0000-4000-8000-000000000002'};
+    return asset;
+  });
+  const fresh=buildInitialTimeline({
+    scenePlan:plan,productionDna:dna,visualPromptSet:promptSet,
+    visualAssets:freshAssets,voiceAsset:{...voice,durationSeconds:720} as VoiceAsset
+  });
+  const rebuilt=rebuildTimelineChapterPayload(current,fresh,chapters[0].id);
+  const visual=rebuilt.tracks.find(track=>track.type==='visual')!;
+  assert.equal(
+    visual.clips.find(clip=>clip.sceneId===firstScene)?.assetId,
+    '33333333-0000-4000-8000-000000000001'
+  );
+  assert.equal(
+    visual.clips.find(clip=>clip.sceneId===secondChapterScene)?.assetId,
+    baseAssets.find(asset=>asset.sceneId===secondChapterScene)?.id
+  );
+  assert.equal(
+    timelineChapters(rebuilt).find(chapter=>chapter.id===chapters[0].id)?.status,
+    'draft'
+  );
 });
