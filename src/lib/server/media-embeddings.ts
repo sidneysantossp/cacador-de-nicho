@@ -15,10 +15,6 @@ function hash(value:string){
   return createHash('sha256').update(value).digest('hex');
 }
 
-function vectorLiteral(values:number[]){
-  return '['+values.map(value=>Number(value).toFixed(8)).join(',')+']';
-}
-
 function normalize(values:number[]){
   const clean=values.slice(0,DIMENSIONS).map(value=>Number.isFinite(Number(value))?Number(value):0);
   if(clean.length!==DIMENSIONS)throw new HttpError('O embedding não retornou 768 dimensões.',502);
@@ -107,7 +103,7 @@ export async function indexOwnedMediaEmbeddings(input:{
       model:MODEL,
       dimensions:DIMENSIONS,
       content_hash:hash(item.text),
-      embedding:vectorLiteral(embeddings[index]),
+      embedding:embeddings[index],
       updated_at:now
     })),
     {onConflict:'resource_type,resource_id'}
@@ -125,7 +121,7 @@ export async function searchOwnedMediaEmbeddings(
   }>;
   const [embedding]=await batchEmbed([{text}], 'RETRIEVAL_QUERY');
   const result=await db().rpc('match_owned_media_embeddings',{
-    p_query_embedding:vectorLiteral(embedding),
+    p_query_embedding:embedding,
     p_match_count:Math.max(1,Math.min(limit,200)),
     p_resource_type:'segment'
   });
