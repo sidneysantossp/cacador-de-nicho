@@ -395,9 +395,15 @@ export async function listOwnedMediaAssets(input:{
     if(!intelligence.error){
       for(const row of intelligence.data??[]){
         const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+        const embedding=payload.embedding&&typeof payload.embedding==='object'
+          ?payload.embedding as Record<string,unknown>
+          :{};
         intelligenceByAsset.set(String(row.asset_id),{
           status:(['processing','completed','failed'].includes(String(row.status))?String(row.status):'idle') as 'idle'|'processing'|'completed'|'failed',
           segmentCount:Math.max(0,Number(payload.segmentCount??0)||0),
+          usableSegmentCount:Math.max(0,Number(payload.usableSegmentCount??0)||0),
+          meanQuality:Math.max(0,Math.min(1,Number(payload.meanQuality??0)||0)),
+          embeddingStatus:(['completed','failed'].includes(String(embedding.status))?String(embedding.status):'idle') as 'idle'|'completed'|'failed',
           analyzedAt:row.analyzed_at?String(row.analyzed_at):undefined,
           error:row.error?String(row.error):undefined
         });
