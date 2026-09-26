@@ -64,8 +64,17 @@ export function motionPresetValues(preset:VideoEditMotionPreset){
   return {scaleStart:1,scaleEnd:1,xStart:0,xEnd:0,yStart:0,yEnd:0};
 }
 
-function clipStyle(clip:TimelineClip):VideoEditClipStyle{
-  return {
+function clamp(value:number,min:number,max:number){
+  return Math.max(min,Math.min(max,value));
+}
+
+export function documentaryClipStyle(
+  clip:TimelineClip,
+  index:number,
+  total:number,
+  enabled:boolean
+):VideoEditClipStyle{
+  const base:VideoEditClipStyle={
     timelineClipId:clip.id,
     sceneId:clip.sceneId!,
     motionPreset:'none',
@@ -73,6 +82,49 @@ function clipStyle(clip:TimelineClip):VideoEditClipStyle{
     transitionIn:'none',
     transitionOut:'none',
     transitionSeconds:0
+  };
+  if(!enabled||clip.clipKind!=='image')return base;
+
+  const focusX=typeof clip.focusX==='number'?clamp(clip.focusX,0,1):null;
+  const focusY=typeof clip.focusY==='number'?clamp(clip.focusY,0,1):null;
+  const hasFocus=focusX!==null&&focusY!==null;
+  const sourceRatio=clip.sourceWidth&&clip.sourceHeight
+    ?clip.sourceWidth/clip.sourceHeight
+    :null;
+
+  let motion:Pick<VideoEditClipStyle,
+    'motionPreset'|'scaleStart'|'scaleEnd'|'xStart'|'xEnd'|'yStart'|'yEnd'>;
+
+  if(hasFocus){
+    const x=clamp((focusX-.5)*1.5,-.7,.7);
+    const y=clamp((focusY-.5)*1.5,-.7,.7);
+    const offCenter=Math.abs(x)>.12||Math.abs(y)>.12;
+    motion=offCenter
+      ?{
+        motionPreset:'custom',
+        scaleStart:1.02,scaleEnd:1.10,
+        xStart:0,xEnd:x,yStart:0,yEnd:y
+      }
+      :(index%2===0
+        ?{motionPreset:'zoom-in',...motionPresetValues('zoom-in')}
+        :{motionPreset:'zoom-out',...motionPresetValues('zoom-out')});
+  }else if(sourceRatio!==null&&sourceRatio>=1.55){
+    motion=index%2===0
+      ?{motionPreset:'pan-right',...motionPresetValues('pan-right')}
+      :{motionPreset:'pan-left',...motionPresetValues('pan-left')};
+  }else{
+    motion=index%2===0
+      ?{motionPreset:'zoom-in',...motionPresetValues('zoom-in')}
+      :{motionPreset:'zoom-out',...motionPresetValues('zoom-out')};
+  }
+
+  return {
+    timelineClipId:clip.id,
+    sceneId:clip.sceneId!,
+    ...motion,
+    transitionIn:index>0?'cross-dissolve':'none',
+    transitionOut:index<total-1?'cross-dissolve':'none',
+    transitionSeconds:total>1?.35:0
   };
 }
 
@@ -245,6 +297,7 @@ export function buildInitialVideoEdit(
 ):VideoEditPayload{
   const now=new Date().toISOString();
   const visual=timeline.tracks.find(track=>track.type==='visual');
+  const visualClips=(visual?.clips??[]).filter(clip=>clip.sceneId);
   const style=defaultCaptionStyle(dna);
   const cues=buildCaptionCues(transcript,timeline.durationSeconds,{
     maxWordsPerCaption:dna?.captions.maxWordsPerCaption??12,
@@ -262,7 +315,9 @@ export function buildInitialVideoEdit(
     transcriptVersion:transcript.version,
     format:{...timeline.format},
     durationSeconds:timeline.durationSeconds,
-    clipStyles:(visual?.clips??[]).filter(clip=>clip.sceneId).map(clipStyle),
+    clipStyles:visualClips.map((clip,index)=>
+      documentaryClipStyle(clip,index,visualClips.length,Boolean(dna?.editing.kenBurns))
+    ),
     captions:{
       enabled:dna?.captions.enabled??(cues.length>0),
       position:captionPosition(dna?.captions.position),
