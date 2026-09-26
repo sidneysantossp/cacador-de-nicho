@@ -109,8 +109,9 @@ function step(
   };
 }
 
-function rowPayload<T=Record<string,unknown>>(row:{payload?:unknown}|null|undefined){
-  return (row?.payload??{}) as T;
+function rowPayload<T=Record<string,unknown>>(row:unknown){
+  if(!row||typeof row!=='object'||!('payload' in row))return {} as T;
+  return (((row as {payload?:unknown}).payload)??{}) as T;
 }
 
 function latest<T extends {updated_at?:string;created_at?:string}>(rows:T[]|null|undefined){
