@@ -20,14 +20,8 @@ import {
   createVisualPromptSet, generateVisualPromptDrafts,
   loadVisualPromptSet, saveVisualPromptSet
 } from './visual-prompt-engine';
-import {
-  generateGoogleImage, listSceneAssets, resolveOwnedMediaForScene, selectSceneAsset
-} from './asset-factory';
-import {
-  enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
-} from './verified-stock-jobs';
-import { loadProductionDna } from './production-dna';
-import { stockFallbackEligible } from '@/lib/stock-media-policy';
+import { listSceneAssets } from './asset-factory';
+import { resolveSourceForScene } from './source-router';
 import {
   createTimelineFromPlan, loadTimeline, refreshTimelineFromPlan, saveTimeline
 } from './timeline-engine';
@@ -1056,6 +1050,7 @@ async function executeAutomationTransition(
       ]);
       if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
       if(promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
+
       const selectedReady=new Set(
         assets.filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
           .map(asset=>asset.sceneId)
@@ -1063,82 +1058,28 @@ async function executeAutomationTransition(
       const target=promptSet.scenePrompts.find(item=>!selectedReady.has(item.sceneId));
       if(!target)return 'Todos os assets visuais já estão cobertos.';
 
-      const libraryFirst=await resolveOwnedMediaForScene({
+      const routed=await resolveSourceForScene({
         promptSetId:promptSet.id,
         sceneId:target.sceneId
       });
-      if(libraryFirst.status==='matched'){
-        return 'Library First selecionou mídia OWNED para '+target.timecodeLabel+
-          ' · score '+libraryFirst.match.score.toFixed(3)+
-          ' · trim '+libraryFirst.match.sourceStartSeconds.toFixed(2)+
-          '–'+libraryFirst.match.sourceEndSeconds.toFixed(2)+'s.';
+      if(routed.status==='matched'){
+        return 'Source Router cobriu '+target.timecodeLabel+
+          ' · estratégia '+String(routed.action)+
+          ' · preferência '+String(routed.route.preference)+'.';
       }
-      if(libraryFirst.status==='skipped'){
-        return 'A cena '+target.timecodeLabel+' já possui mídia selecionada e atual.';
+      if(routed.status==='operator-source-required'){
+        throw new HttpError(
+          'Source Router pausou '+target.timecodeLabel+
+          ': '+routed.reason+
+          ' A geração sintética permanece bloqueada para este beat factual.',
+          409
+        );
       }
-
-      const stockInstruction=[target.direction,target.prompt].filter(Boolean).join(' ');
-      if(stockFallbackEligible(stockInstruction)){
-        const dna=await loadProductionDna(promptSet.channelId);
-        const orientation=!dna||dna.format.width===dna.format.height
-          ?'any'
-          :dna.format.width>dna.format.height?'landscape':'portrait';
-        const query=libraryFirst.query||target.direction||target.prompt;
-        const existingJob=await loadVerifiedStockJob(promptSet.id,target.sceneId);
-
-        if(existingJob&&(existingJob.status==='queued'||existingJob.status==='processing')){
-          return 'Fallback stock verificado já está em fila/processamento para '+target.timecodeLabel+'.';
-        }
-
-        if(existingJob?.status==='completed'){
-          const result=existingJob.result as {status?:string;provider?:string;combinedScore?:number};
-          if(result.status==='matched'||result.status==='skipped'){
-            const reopened=await restartVerifiedStockJob(existingJob.id);
-            return 'Asset stock anterior não está mais selecionado; job reaberto para '+
-              target.timecodeLabel+' · '+reopened.id+'.';
-          }
-          if(result.status==='gap'){
-            throw new HttpError(
-              'Nenhum stock real passou pela validação visual para '+target.timecodeLabel+
-              '. A cena exige footage real e não pode cair em geração sintética.',
-              409
-            );
-          }
-        }
-
-        if(existingJob?.status==='failed'){
-          throw new HttpError(
-            'O fallback stock falhou para '+target.timecodeLabel+
-            (existingJob.lastError?' · '+existingJob.lastError:'')+
-            '. A cena exige footage real.',
-            409
-          );
-        }
-
-        if(!existingJob||existingJob.status==='queued'||existingJob.status==='processing'){
-          const queued=await enqueueVerifiedStockJob({
-            promptSetId:promptSet.id,
-            sceneId:target.sceneId,
-            query,
-            desiredDurationSeconds:Math.max(.25,target.endSeconds-target.startSeconds),
-            orientation,
-            providers:['pexels','pixabay'],
-            maxCandidatesPerProvider:2
-          });
-          return 'Fallback stock verificado enfileirado para '+target.timecodeLabel+
-            ' · job '+queued.id+'.';
-        }
-      }
-
-      const asset=await generateGoogleImage({
-        promptSetId:promptSet.id,
-        sceneId:target.sceneId,
-        imageSize:'2K'
-      });
-      if(!asset)throw new HttpError('A geração visual não retornou asset persistido.',502);
-      await selectSceneAsset(asset.id);
-      return 'Library First sem match forte ('+libraryFirst.reason+'). '+
-        'Fallback gerou e selecionou asset visual para '+target.timecodeLabel+'.';
+      throw new HttpError(
+        'Source Router não encontrou fonte aprovada para '+target.timecodeLabel+
+        ': '+routed.reason,
+        409
+      );
     }
 
     case 'timeline':{
