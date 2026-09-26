@@ -91,6 +91,7 @@ export function scriptApprovalIssues(
   documentary?:{claims:ContentFactCheck[];documentaryMode:boolean}
 ){
   const issues:string[]=[];
+  if(payload.generation&&payload.generation.stage!=='complete')issues.push('script-generation-incomplete');
   if(!payload.sections.length)issues.push('no-sections');
   if(!payload.content.trim())issues.push('empty-content');
   if(payload.factCheckWarnings.length)issues.push('fact-check-warnings');
