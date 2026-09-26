@@ -249,6 +249,7 @@ export async function savePublicationPackage(input:{
     ...input.payload,
     qualityReportVersion:current.qualityReportVersion,
     renderOutputPath:current.renderOutputPath,
+    renderOutputBytes:current.renderOutputBytes,
     createdAt:current.createdAt
   });
   const context=await packageContext(payload);

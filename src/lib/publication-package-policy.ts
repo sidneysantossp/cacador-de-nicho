@@ -90,6 +90,7 @@ export function initialPublicationPackage(input:{
     qualityReportVersion:input.qualityReport.version,
     renderJobId:input.renderJob.id,
     renderOutputPath:input.renderJob.outputPath??'',
+    renderOutputBytes:input.renderJob.outputBytes,
     metadata:{
       title:(input.title??'').trim().slice(0,100),
       description:(input.description??'').trim().slice(0,5000),
@@ -139,7 +140,15 @@ export function publicationPackageIssues(
 
   if(!render||render.status!=='completed'||!render.outputPath){
     add('render-not-completed','blocker','O render vinculado não está concluído com output persistido.');
-  }else if(render.outputPath!==pkg.renderOutputPath||render.id!==pkg.renderJobId){
+  }else if(
+    render.outputPath!==pkg.renderOutputPath||
+    render.id!==pkg.renderJobId||
+    (
+      pkg.renderOutputBytes!==undefined&&
+      render.outputBytes!==undefined&&
+      render.outputBytes!==pkg.renderOutputBytes
+    )
+  ){
     add('render-output-mismatch','blocker','O output do render não corresponde ao snapshot deste package.');
   }
 

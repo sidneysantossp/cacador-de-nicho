@@ -1795,6 +1795,7 @@ export type PublicationPackagePayload = {
  qualityReportVersion: number;
  renderJobId: string;
  renderOutputPath: string;
+ renderOutputBytes?: number;
  metadata: {
   title: string;
   description: string;
@@ -1852,6 +1853,7 @@ export type YouTubePublishPayload = {
  connectionId: string;
  youtubeChannelId: string;
  renderOutputPath: string;
+ renderOutputBytes?: number;
  thumbnailStoragePath: string;
  video: {
   title: string;

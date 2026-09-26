@@ -38,6 +38,7 @@ export function buildYouTubePublishPayload(
     connectionId:connection.id,
     youtubeChannelId:connection.youtubeChannelId,
     renderOutputPath:pkg.renderOutputPath,
+    renderOutputBytes:pkg.renderOutputBytes,
     thumbnailStoragePath:pkg.thumbnail.storagePath!,
     video:{
       title:pkg.metadata.title.trim(),

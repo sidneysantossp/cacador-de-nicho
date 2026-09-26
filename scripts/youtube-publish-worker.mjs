@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { createWriteStream } from 'node:fs';
+import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { createWriteStream, statfsSync } from 'node:fs';
 import { mkdtemp, open, readFile, rm, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -20,6 +20,10 @@ const POLL_MS=Math.max(2000,Number(process.env.YOUTUBE_PUBLISH_WORKER_POLL_MS||5
 const LEASE_SECONDS=1800;
 const CHUNK_BYTES=8*1024*1024;
 const MAX_RETRIES=5;
+const UPLOAD_REQUEST_TIMEOUT_MS=Math.max(30000,Number(process.env.YOUTUBE_UPLOAD_REQUEST_TIMEOUT_MS||300000));
+const DOWNLOAD_HEARTBEAT_MS=Math.max(60000,Number(process.env.YOUTUBE_DOWNLOAD_HEARTBEAT_MS||300000));
+const MIN_FREE_DISK_BYTES=Math.max(2,Number(process.env.YOUTUBE_PUBLISH_MIN_FREE_DISK_GB||10))*1024*1024*1024;
+const DISK_MARGIN_BYTES=Math.max(1,Number(process.env.YOUTUBE_PUBLISH_DISK_MARGIN_GB||2))*1024*1024*1024;
 
 if(!SUPABASE_URL||!SERVICE_KEY){
   console.error('YouTube publish worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
@@ -35,6 +39,19 @@ const cryptoKey=createHash('sha256').update(ENCRYPTION_SECRET,'utf8').digest();
 let r2StorageCache=null;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+async function withLeaseHeartbeat(jobId,token,stage,task){
+  let leaseError=null;
+  const timer=setInterval(()=>{
+    void heartbeat(jobId,token,3,stage).catch(error=>{leaseError=error;});
+  },DOWNLOAD_HEARTBEAT_MS);
+  try{
+    const result=await task();
+    if(leaseError)throw leaseError;
+    return result;
+  }finally{
+    clearInterval(timer);
+  }
+}
 function safeError(error){return String(error instanceof Error?error.message:error).slice(0,4000);}
 function pathUrl(value){return value.split('/').map(encodeURIComponent).join('/');}
 function b64(value){return value.toString('base64url');}
@@ -155,6 +172,41 @@ async function r2Storage(){
   });
   r2StorageCache={client,bucket:config.bucket};
   return r2StorageCache;
+}
+
+function publishDiskReady(expectedBytes=0){
+  try{
+    const fs=statfsSync(os.tmpdir());
+    const freeBytes=Number(fs.bavail)*Number(fs.bsize);
+    const requiredBytes=Math.max(
+      MIN_FREE_DISK_BYTES,
+      Math.max(0,Number(expectedBytes)||0)+DISK_MARGIN_BYTES
+    );
+    return {ready:freeBytes>=requiredBytes,freeBytes,requiredBytes};
+  }catch(error){
+    return {ready:false,freeBytes:0,requiredBytes:MIN_FREE_DISK_BYTES,error:safeError(error)};
+  }
+}
+
+async function storageObjectInfo(storagePath){
+  if(String(storagePath).startsWith('r2:')){
+    const target=await r2Storage();
+    const key=String(storagePath).slice(3);
+    const result=await target.client.send(new HeadObjectCommand({Bucket:target.bucket,Key:key}));
+    return {
+      bytes:Number(result.ContentLength||0),
+      mimeType:result.ContentType||'application/octet-stream'
+    };
+  }
+  const response=await fetch(
+    SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
+    {method:'HEAD',headers:authHeaders}
+  );
+  if(!response.ok)return null;
+  return {
+    bytes:Number(response.headers.get('content-length')||0),
+    mimeType:response.headers.get('content-type')||'application/octet-stream'
+  };
 }
 
 async function downloadStorage(storagePath,destination){
@@ -301,6 +353,7 @@ async function uploadChunk(sessionUri,accessToken,buffer,start,totalBytes){
   const end=start+buffer.length-1;
   return fetch(sessionUri,{
     method:'PUT',
+    signal:AbortSignal.timeout(UPLOAD_REQUEST_TIMEOUT_MS),
     headers:{
       Authorization:'Bearer '+accessToken,
       'Content-Type':'video/mp4',
@@ -521,9 +574,30 @@ async function processJob(jobId,token){
     let videoId=job.youtube_video_id?String(job.youtube_video_id):'';
     if(!videoId){
       const videoPath=path.join(tempDir,'video.mp4');
+      let expectedBytes=Math.max(0,Number(job.payload.renderOutputBytes||0));
+      if(!expectedBytes){
+        const remote=await storageObjectInfo(job.payload.renderOutputPath).catch(()=>null);
+        expectedBytes=Math.max(0,Number(remote?.bytes||0));
+      }
+      const disk=publishDiskReady(expectedBytes);
+      if(!disk.ready){
+        const error=new Error(
+          'Insufficient disk for YouTube publication. Free '+
+          Math.ceil(disk.requiredBytes/1024/1024/1024)+' GB required; '+
+          Math.floor(disk.freeBytes/1024/1024/1024)+' GB available.'
+        );
+        error.code='LOW_DISK';
+        throw error;
+      }
       await heartbeat(job.id,token,3,'downloading-video');
-      const video=await downloadStorage(job.payload.renderOutputPath,videoPath);
+      const video=await withLeaseHeartbeat(
+        job.id,token,'downloading-video',
+        ()=>downloadStorage(job.payload.renderOutputPath,videoPath)
+      );
       if(video.bytes<=0)throw new Error('Render output is empty.');
+      if(expectedBytes>0&&video.bytes!==expectedBytes){
+        throw new Error('Downloaded render size mismatch. Expected '+expectedBytes+' bytes, got '+video.bytes+'.');
+      }
       job=await assertActive(job.id,token);
       try{
         videoId=await uploadVideo(job,token,accessToken,videoPath,video.bytes);
@@ -589,7 +663,7 @@ async function failOwned(jobId,token,error){
       headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
       body:JSON.stringify({
         status:'failed',
-        stage:error?.code==='AUTH_REQUIRED'?'auth-required':'failed',
+        stage:error?.code==='AUTH_REQUIRED'?'auth-required':error?.code==='LOW_DISK'?'waiting-for-disk':'failed',
         worker_token:null,
         lease_until:null,
         error:message,
@@ -620,6 +694,10 @@ console.log(JSON.stringify({
   event:'youtube-publish-worker-started',
   pollMs:POLL_MS,
   chunkBytes:CHUNK_BYTES,
+  minFreeDiskGb:Math.round(MIN_FREE_DISK_BYTES/1024/1024/1024*100)/100,
+  diskMarginGb:Math.round(DISK_MARGIN_BYTES/1024/1024/1024*100)/100,
+  uploadRequestTimeoutMs:UPLOAD_REQUEST_TIMEOUT_MS,
+  downloadHeartbeatMs:DOWNLOAD_HEARTBEAT_MS,
   tokenEndpoint:new URL(TOKEN_ENDPOINT).origin,
   apiEndpoint:new URL(API_BASE).origin,
   uploadEndpoint:new URL(UPLOAD_BASE).origin
