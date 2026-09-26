@@ -1060,7 +1060,7 @@ export type SceneAssetLicense = {
  sourceUrl?: string;
  notes?: string;
 };
-export type StockMediaProvider = 'pexels' | 'pixabay' | 'unsplash' | 'vecteezy';
+export type StockMediaProvider = 'pexels' | 'pixabay' | 'unsplash' | 'vecteezy' | 'wikimedia';
 export type StockMediaResult = {
  provider: StockMediaProvider;
  providerAssetId: string;
