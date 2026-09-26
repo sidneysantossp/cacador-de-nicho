@@ -2,8 +2,9 @@ import 'server-only';
 
 import { spawn } from 'node:child_process';
 import type {
-  ProductionQualityCheckCode, ProductionQualityReport, ProductionQualityReportPayload,
-  ProductionQualityReportVersion, ProductionQualityTechnical, RenderJob
+  ProductionQualityChapterTechnical, ProductionQualityCheckCode, ProductionQualityReport,
+  ProductionQualityReportPayload, ProductionQualityReportVersion, ProductionQualityTechnical,
+  RenderJob
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -186,7 +187,36 @@ async function outputSignedUrl(job:RenderJob){
   return signed;
 }
 
-async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{
+type QualityChapterCacheRow={
+  id:string;
+  render_job_id:string;
+  chapter_id:string;
+  sequence:number;
+  label:string;
+  content_hash:string;
+  start_seconds:number|string;
+  end_seconds:number|string;
+  duration_seconds:number|string;
+  status:'completed'|'failed';
+  cache_hit:boolean;
+  technical:unknown;
+  analysis_seconds:number|string|null;
+  error:string|null;
+  created_at:string;
+  completed_at:string|null;
+  updated_at:string;
+};
+
+function emptyTechnical():ProductionQualityTechnical{
+  return {
+    durationSeconds:null,width:null,height:null,fps:null,videoCodec:null,
+    audioCodec:null,sampleRate:null,audioChannels:null,maxVolumeDb:null,
+    silenceSeconds:null,silenceRatio:null,blackSeconds:null,blackRatio:null,
+    decodeOk:false
+  };
+}
+
+async function masterProbeAndAudio(job:RenderJob){
   const url=await outputSignedUrl(job);
   const probe=await runCapture(FFPROBE,[
     '-v','error',
@@ -194,31 +224,72 @@ async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{
     '-of','json',
     url
   ],60000);
-  if(probe.code!==0){
-    return {
-      durationSeconds:null,width:null,height:null,fps:null,videoCodec:null,
-      audioCodec:null,sampleRate:null,audioChannels:null,maxVolumeDb:null,
-      silenceSeconds:null,silenceRatio:null,blackSeconds:null,blackRatio:null,
-      decodeOk:false
-    };
-  }
+  if(probe.code!==0)return {url,technical:emptyTechnical()};
 
   let parsed:{format?:{duration?:string};streams?:Array<Record<string,unknown>>};
   try{parsed=JSON.parse(probe.stdout) as typeof parsed;}
-  catch{
-    return {
-      durationSeconds:null,width:null,height:null,fps:null,videoCodec:null,
-      audioCodec:null,sampleRate:null,audioChannels:null,maxVolumeDb:null,
-      silenceSeconds:null,silenceRatio:null,blackSeconds:null,blackRatio:null,
-      decodeOk:false
-    };
-  }
+  catch{return {url,technical:emptyTechnical()};}
 
   const streams=parsed.streams??[];
   const video=streams.find(stream=>stream.codec_type==='video');
   const audio=streams.find(stream=>stream.codec_type==='audio');
   const duration=numeric(parsed.format?.duration);
+  let silenceSeconds:number|null=audio?0:null;
+  let maxVolumeDb:number|null=null;
+  let audioOk=true;
 
+  if(audio){
+    const analysis=await runCapture(FFMPEG,[
+      '-hide_banner','-nostats','-i',url,
+      '-vn','-map','0:a:0',
+      '-af','silencedetect=noise=-45dB:d=0.4,volumedetect',
+      '-f','null','-'
+    ],180000);
+    audioOk=analysis.code===0;
+    silenceSeconds=sumMatches(analysis.stderr,/silence_duration:\\s*([0-9.]+)/g);
+    const maxMatch=analysis.stderr.match(/max_volume:\\s*(-?[0-9.]+)\\s*dB/i);
+    maxVolumeDb=maxMatch?numeric(maxMatch[1]):null;
+  }
+
+  return {
+    url,
+    technical:{
+      durationSeconds:duration,
+      width:numeric(video?.width),
+      height:numeric(video?.height),
+      fps:rational(video?.r_frame_rate),
+      videoCodec:video?.codec_name?String(video.codec_name):null,
+      audioCodec:audio?.codec_name?String(audio.codec_name):null,
+      sampleRate:numeric(audio?.sample_rate),
+      audioChannels:numeric(audio?.channels),
+      maxVolumeDb,
+      silenceSeconds,
+      silenceRatio:audio&&silenceSeconds!==null?clampRatio(silenceSeconds,duration):null,
+      blackSeconds:null,
+      blackRatio:null,
+      decodeOk:probe.code===0&&audioOk
+    } satisfies ProductionQualityTechnical
+  };
+}
+
+async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechnical>{
+  const {url}=await masterProbeAndAudio(job);
+  const probe=await runCapture(FFPROBE,[
+    '-v','error',
+    '-show_entries','format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels',
+    '-of','json',
+    url
+  ],60000);
+  if(probe.code!==0)return emptyTechnical();
+
+  let parsed:{format?:{duration?:string};streams?:Array<Record<string,unknown>>};
+  try{parsed=JSON.parse(probe.stdout) as typeof parsed;}
+  catch{return emptyTechnical();}
+
+  const streams=parsed.streams??[];
+  const video=streams.find(stream=>stream.codec_type==='video');
+  const audio=streams.find(stream=>stream.codec_type==='audio');
+  const duration=numeric(parsed.format?.duration);
   const analysisArgs=[
     '-hide_banner','-nostats','-i',url,
     '-map','0:v:0',
@@ -235,8 +306,8 @@ async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{
   const analysis=await runCapture(FFMPEG,analysisArgs,180000);
   const diagnostics=analysis.stderr;
   const blackSeconds=sumMatches(diagnostics,/black_duration:([0-9.]+)/g);
-  const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\s*([0-9.]+)/g):0;
-  const maxMatch=diagnostics.match(/max_volume:\s*(-?[0-9.]+)\s*dB/i);
+  const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\\s*([0-9.]+)/g):0;
+  const maxMatch=diagnostics.match(/max_volume:\\s*(-?[0-9.]+)\\s*dB/i);
   const maxVolumeDb=maxMatch?numeric(maxMatch[1]):null;
 
   return {
@@ -254,6 +325,215 @@ async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{
     blackSeconds,
     blackRatio:clampRatio(blackSeconds,duration),
     decodeOk:analysis.code===0
+  };
+}
+
+function chapterTechnicalFromRow(
+  row:QualityChapterCacheRow,
+  input:{
+    chapterId:string;
+    sequence:number;
+    label:string;
+    contentHash:string;
+    startSeconds:number;
+    endSeconds:number;
+    durationSeconds:number;
+    cacheHit:boolean;
+  }
+):ProductionQualityChapterTechnical{
+  const technical=row.technical&&typeof row.technical==='object'
+    ?row.technical as Record<string,unknown>
+    :{};
+  return {
+    ...input,
+    decodeOk:Boolean(technical.decodeOk),
+    width:numeric(technical.width),
+    height:numeric(technical.height),
+    fps:numeric(technical.fps),
+    videoCodec:technical.videoCodec?String(technical.videoCodec):null,
+    blackSeconds:numeric(technical.blackSeconds),
+    blackRatio:numeric(technical.blackRatio),
+    analysisSeconds:row.analysis_seconds===null?null:Number(row.analysis_seconds),
+    error:row.error??undefined
+  };
+}
+
+async function reusableChapterQa(hashes:string[]){
+  if(!hashes.length)return new Map<string,QualityChapterCacheRow>();
+  const rows=checked(await db().from('radar_production_quality_chapters')
+    .select('id,render_job_id,chapter_id,sequence,label,content_hash,start_seconds,end_seconds,duration_seconds,status,cache_hit,technical,analysis_seconds,error,created_at,completed_at,updated_at')
+    .in('content_hash',hashes)
+    .eq('status','completed')
+    .order('completed_at',{ascending:false})
+    .limit(1000)) as QualityChapterCacheRow[];
+  const result=new Map<string,QualityChapterCacheRow>();
+  for(const row of rows??[])if(!result.has(row.content_hash))result.set(row.content_hash,row);
+  return result;
+}
+
+async function inspectChapterVideo(input:{
+  outputPath:string;
+  chapterId:string;
+  sequence:number;
+  label:string;
+  contentHash:string;
+  startSeconds:number;
+  endSeconds:number;
+  durationSeconds:number;
+}):Promise<ProductionQualityChapterTechnical>{
+  const started=Date.now();
+  const url=await signedMediaUrl(input.outputPath,900);
+  if(!url){
+    return {
+      ...input,cacheHit:false,decodeOk:false,width:null,height:null,fps:null,videoCodec:null,
+      blackSeconds:null,blackRatio:null,analysisSeconds:(Date.now()-started)/1000,
+      error:'chapter-output-unavailable'
+    };
+  }
+  const probe=await runCapture(FFPROBE,[
+    '-v','error',
+    '-show_entries','format=duration:stream=codec_name,codec_type,width,height,r_frame_rate',
+    '-of','json',
+    url
+  ],60000);
+  let parsed:{format?:{duration?:string};streams?:Array<Record<string,unknown>>}={};
+  try{parsed=probe.code===0?JSON.parse(probe.stdout) as typeof parsed:{};}catch{}
+  const streams=parsed.streams??[];
+  const video=streams.find(stream=>stream.codec_type==='video');
+
+  const analysis=probe.code===0
+    ?await runCapture(FFMPEG,[
+      '-hide_banner','-nostats','-i',url,
+      '-map','0:v:0','-an',
+      '-vf','blackdetect=d=0.15:pix_th=0.10',
+      '-f','null','-'
+    ],180000)
+    :{code:-1,stdout:'',stderr:''};
+  const blackSeconds=analysis.code===0
+    ?sumMatches(analysis.stderr,/black_duration:([0-9.]+)/g)
+    :null;
+  const duration=numeric(parsed.format?.duration)??input.durationSeconds;
+  return {
+    ...input,
+    cacheHit:false,
+    decodeOk:probe.code===0&&analysis.code===0,
+    width:numeric(video?.width),
+    height:numeric(video?.height),
+    fps:rational(video?.r_frame_rate),
+    videoCodec:video?.codec_name?String(video.codec_name):null,
+    blackSeconds,
+    blackRatio:blackSeconds===null?null:clampRatio(blackSeconds,duration),
+    analysisSeconds:(Date.now()-started)/1000,
+    error:probe.code===0&&analysis.code===0?undefined:'chapter-decode-failed'
+  };
+}
+
+async function saveChapterQa(
+  jobId:string,
+  chapter:ProductionQualityChapterTechnical
+){
+  const technical={
+    decodeOk:chapter.decodeOk,
+    width:chapter.width,
+    height:chapter.height,
+    fps:chapter.fps,
+    videoCodec:chapter.videoCodec,
+    blackSeconds:chapter.blackSeconds,
+    blackRatio:chapter.blackRatio
+  };
+  const result=await db().from('radar_production_quality_chapters').upsert({
+    id:crypto.randomUUID(),
+    render_job_id:jobId,
+    chapter_id:chapter.chapterId,
+    sequence:chapter.sequence,
+    label:chapter.label,
+    content_hash:chapter.contentHash,
+    start_seconds:chapter.startSeconds,
+    end_seconds:chapter.endSeconds,
+    duration_seconds:chapter.durationSeconds,
+    status:chapter.decodeOk?'completed':'failed',
+    cache_hit:chapter.cacheHit,
+    technical,
+    analysis_seconds:chapter.analysisSeconds,
+    error:chapter.error??null,
+    completed_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  },{onConflict:'render_job_id,chapter_id'});
+  if(result.error)throw new HttpError('Falha ao persistir QA técnico do capítulo.',502);
+}
+
+async function inspectChapterAwareOutput(job:RenderJob):Promise<{
+  technical:ProductionQualityTechnical;
+  chapterTechnical:ProductionQualityChapterTechnical[];
+}>{
+  const chapters=(job.chapters??[])
+    .filter(chapter=>chapter.status==='completed'&&chapter.outputPath)
+    .sort((a,b)=>a.sequence-b.sequence);
+  if(!chapters.length){
+    return {technical:await inspectOutputLegacy(job),chapterTechnical:[]};
+  }
+
+  const {url:masterUrl,technical:master}=await masterProbeAndAudio(job);
+  const cache=await reusableChapterQa(chapters.map(chapter=>chapter.contentHash));
+  const results:ProductionQualityChapterTechnical[]=[];
+
+  for(const chapter of chapters){
+    const input={
+      chapterId:chapter.id,
+      sequence:chapter.sequence,
+      label:chapter.label,
+      contentHash:chapter.contentHash,
+      startSeconds:chapter.startSeconds,
+      endSeconds:chapter.endSeconds,
+      durationSeconds:chapter.durationSeconds
+    };
+    const cached=cache.get(chapter.contentHash);
+    const technical=cached
+      ?chapterTechnicalFromRow(cached,{...input,cacheHit:true})
+      :await inspectChapterVideo({...input,outputPath:chapter.outputPath!});
+    results.push(technical);
+    await saveChapterQa(job.id,technical);
+  }
+
+  let boundariesOk=true;
+  for(const chapter of chapters.slice(0,-1)){
+    const start=Math.max(0,chapter.endSeconds-.5);
+    const boundary=await runCapture(FFMPEG,[
+      '-hide_banner','-loglevel','error','-ss',String(start),
+      '-i',masterUrl,'-t','1.0','-map','0:v:0','-an','-f','null','-'
+    ],30000);
+    if(boundary.code!==0)boundariesOk=false;
+  }
+
+  const blackValues=results.map(item=>item.blackSeconds);
+  const blackSeconds=blackValues.every((value):value is number=>value!==null)
+    ?blackValues.reduce((sum,value)=>sum+value,0)
+    :null;
+  const decodeOk=master.decodeOk&&boundariesOk&&results.every(item=>item.decodeOk);
+  return {
+    technical:{
+      ...master,
+      blackSeconds,
+      blackRatio:blackSeconds===null?null:clampRatio(blackSeconds,master.durationSeconds),
+      decodeOk
+    },
+    chapterTechnical:results
+  };
+}
+
+async function inspectOutput(job:RenderJob):Promise<{
+  technical:ProductionQualityTechnical;
+  chapterTechnical:ProductionQualityChapterTechnical[];
+  technicalMode:'master-v1'|'chapter-v2';
+}>{
+  if(job.payload.compilerVersion==='render-v4'&&(job.chapters?.length??0)>0){
+    const result=await inspectChapterAwareOutput(job);
+    return {...result,technicalMode:'chapter-v2'};
+  }
+  return {
+    technical:await inspectOutputLegacy(job),
+    chapterTechnical:[],
+    technicalMode:'master-v1'
   };
 }
 
@@ -533,13 +813,13 @@ export async function runProductionQuality(renderJobId:string):Promise<Productio
   if(job.status!=='completed'||!job.outputPath)throw new HttpError('Conclua o render antes de executar Production QA.',409);
 
   const existing=await loadProductionQualityByRender(job.id);
-  const [technical,facts]=await Promise.all([
+  const [inspection,facts]=await Promise.all([
     inspectOutput(job),
     projectFacts(job)
   ]);
   const checks=[
     ...structuralQualityChecks({job,...facts}),
-    ...technicalQualityChecks(job,technical)
+    ...technicalQualityChecks(job,inspection.technical)
   ];
   const now=new Date().toISOString();
   const id=existing?.id??crypto.randomUUID();
@@ -555,7 +835,9 @@ export async function runProductionQuality(renderJobId:string):Promise<Productio
     checkedAt:now,
     checks,
     summary:qualitySummary(checks),
-    technical,
+    technical:inspection.technical,
+    chapterTechnical:inspection.chapterTechnical,
+    technicalMode:inspection.technicalMode,
     review:{
       notes:existing?.review.notes??'',
       overrides:[]
