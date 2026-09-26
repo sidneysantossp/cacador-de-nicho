@@ -286,7 +286,7 @@ export async function attachOwnedMediaToScene(input:{
     .maybeSingle());
   if(!owned)throw new HttpError('Asset OWNED não encontrado.',404);
   if(owned.status!=='ready'||!owned.storage_path)throw new HttpError('O asset OWNED ainda não está pronto.',409);
-  if(owned.asset_kind!=='video')throw new HttpError('Este fluxo exige um vídeo OWNED analisado.',409);
+  if(owned.asset_kind!=='video'&&owned.asset_kind!=='image')throw new HttpError('Tipo OWNED não suportado no Library First.',409);
 
   const segment=checked(await db().from('radar_owned_media_segments')
     .select('id,asset_id,start_seconds,end_seconds,duration_seconds')
@@ -297,9 +297,10 @@ export async function attachOwnedMediaToScene(input:{
 
   const segmentStart=Number(segment.start_seconds);
   const segmentEnd=Number(segment.end_seconds);
-  const start=input.sourceStartSeconds===undefined?segmentStart:Number(input.sourceStartSeconds);
-  const end=input.sourceEndSeconds===undefined?segmentEnd:Number(input.sourceEndSeconds);
-  if(!Number.isFinite(start)||!Number.isFinite(end)||start<segmentStart-.05||end>segmentEnd+.05||end-start<.20){
+  const isImage=String(owned.asset_kind)==='image';
+  const start=isImage?0:(input.sourceStartSeconds===undefined?segmentStart:Number(input.sourceStartSeconds));
+  const end=isImage?1:(input.sourceEndSeconds===undefined?segmentEnd:Number(input.sourceEndSeconds));
+  if(!isImage&&(!Number.isFinite(start)||!Number.isFinite(end)||start<segmentStart-.05||end>segmentEnd+.05||end-start<.20)){
     throw new HttpError('O trim solicitado está fora do segmento visual validado.',422);
   }
 
@@ -343,7 +344,7 @@ export async function attachOwnedMediaToScene(input:{
   const reservation=await reserve({
     promptSet,
     sceneId:input.sceneId,
-    kind:'video',
+    kind:isImage?'image':'video',
     sourceType:'owned',
     provider:'owned-library',
     mimeType:String(owned.mime_type),
