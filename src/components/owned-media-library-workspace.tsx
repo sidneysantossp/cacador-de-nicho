@@ -350,7 +350,7 @@ export default function OwnedMediaLibraryWorkspace(){
 
   async function analyzeSelected(item:OwnedMediaAsset){
     setAnalysisLoading(true);
-    setMessage('Analisando frames e segmentos de '+item.originalName+'…');
+    setMessage('Analisando conteúdo visual de '+item.originalName+'…');
     try{
       const res=await fetch('/api/owned-media/intelligence',{
         method:'POST',
@@ -367,6 +367,10 @@ export default function OwnedMediaLibraryWorkspace(){
         visualIntelligence:{
           status:'completed',
           segmentCount:Number(body.analysis?.segments?.length??0),
+          usableSegmentCount:(body.analysis?.segments??[]).filter((segment:{usable?:boolean})=>segment.usable!==false).length,
+          meanQuality:(body.analysis?.segments??[]).length
+            ?(body.analysis.segments as Array<{qualityScore?:number}>).reduce((sum:number,segment)=>sum+Number(segment.qualityScore??.5),0)/body.analysis.segments.length
+            :0,
           analyzedAt:body.analysis?.analyzedAt
         }
       }:current);
@@ -464,7 +468,7 @@ export default function OwnedMediaLibraryWorkspace(){
     {loading?<div className="media-library-loading"><LoaderCircle className="spin" size={20}/>Carregando biblioteca…</div>:
     <section className="owned-library-grid">
       {items.map(item=><article key={item.id} className="owned-media-card">
-        <button className="owned-media-preview" onClick={()=>{setSelected(item);setAnalysis(null);if(item.assetKind==='video')void loadAnalysis(item.id);}}
+        <button className="owned-media-preview" onClick={()=>{setSelected(item);setAnalysis(null);void loadAnalysis(item.id);}}
           onMouseEnter={e=>{const v=e.currentTarget.querySelector('video');if(v)void v.play().catch(()=>{});}}
           onMouseLeave={e=>{const v=e.currentTarget.querySelector('video');if(v){v.pause();v.currentTime=0;}}}>
           {item.assetKind==='video'&&item.signedUrl?<video src={item.signedUrl} muted playsInline preload="metadata"/>:
@@ -475,16 +479,20 @@ export default function OwnedMediaLibraryWorkspace(){
         <div className="owned-media-card-body">
           <strong title={item.title}>{item.title}</strong>
           <small>{bytes(item.bytes)}{item.durationSeconds!==null?' · '+duration(item.durationSeconds):''}{item.width&&item.height?' · '+item.width+'×'+item.height:''}</small>
-          {item.assetKind==='video'&&<small className={'owned-visual-status '+(item.visualIntelligence?.status??'idle')}>
+          <small className={'owned-visual-status '+(item.visualIntelligence?.status??'idle')}>
             <Sparkles size={10}/>
             {item.visualIntelligence?.status==='completed'
-              ?'Visual AI · '+item.visualIntelligence.segmentCount+' segmento(s)'
+              ?[
+                'Visual AI · '+item.visualIntelligence.segmentCount+' segmento(s)',
+                item.visualIntelligence.meanQuality!==undefined?'Q '+Math.round(item.visualIntelligence.meanQuality*100)+'%':null,
+                item.visualIntelligence.embeddingStatus==='completed'?'Vector ✓':item.visualIntelligence.embeddingStatus==='failed'?'Vector !':null
+              ].filter(Boolean).join(' · ')
               :item.visualIntelligence?.status==='processing'
                 ?'Visual AI · processando'
                 :item.visualIntelligence?.status==='failed'
                   ?'Visual AI · falhou'
                   :'Visual AI · não analisado'}
-          </small>}
+          </small>
           <div>{item.tags.slice(0,5).map(tag=><span key={tag}>{tag}</span>)}</div>
         </div>
       </article>)}
@@ -526,15 +534,21 @@ export default function OwnedMediaLibraryWorkspace(){
           {!!selected.semantic.moods.length&&<p><b>Mood:</b> {selected.semantic.moods.join(', ')}</p>}
           <small>Taxonomia inicial baseada no nome do arquivo. A Visual Intelligence enriquece e corrige essas facetas por frames e segmentos.</small>
         </section>
-        {selected.assetKind==='video'&&<section className="owned-detail-visual-ai">
-          <header><div><Sparkles size={15}/><strong>Visual Intelligence</strong></div>
+        <section className="owned-detail-visual-ai">
+          <header><div><Sparkles size={15}/><strong>Visual Intelligence 2.0</strong></div>
             <span>{analysisLoading?'Processando…':analysis?.status==='completed'?analysis.segments.length+' segmento(s)':analysis?.status==='failed'?'Falhou':'Não analisado'}</span>
           </header>
+          {selected.visualIntelligence?.status==='completed'&&<p>
+            Qualidade média: {Math.round((selected.visualIntelligence.meanQuality??0)*100)}% ·
+            {' '}{selected.visualIntelligence.usableSegmentCount??selected.visualIntelligence.segmentCount} utilizável(is) ·
+            {' '}vetor {selected.visualIntelligence.embeddingStatus==='completed'?'indexado':selected.visualIntelligence.embeddingStatus==='failed'?'com falha':'pendente'}
+          </p>}
           {analysis?.status==='completed'&&<div className="owned-visual-segments">
             {analysis.segments.map(segment=><article key={segment.id}>
-              <b>{segment.startSeconds.toFixed(1)}s–{segment.endSeconds.toFixed(1)}s</b>
+              <b>{selected.assetKind==='image'?'Imagem':segment.startSeconds.toFixed(1)+'s–'+segment.endSeconds.toFixed(1)+'s'} · Q {Math.round(segment.qualityScore*100)}% {segment.usable?'· utilizável':'· rejeitado'}</b>
               <strong>{segment.title}</strong>
               <p>{segment.summary}</p>
+              {!!segment.qualityIssues.length&&<small>{segment.qualityIssues.join(' · ')}</small>}
               <small>{[
                 ...segment.semantic.locations,
                 ...segment.semantic.landmarks,
@@ -549,9 +563,9 @@ export default function OwnedMediaLibraryWorkspace(){
           {analysis?.status==='failed'&&<p className="error">{analysis.error??'A análise visual falhou.'}</p>}
           <button className="button" disabled={analysisLoading} onClick={()=>void analyzeSelected(selected)}>
             {analysisLoading?<LoaderCircle className="spin" size={15}/>:<Sparkles size={15}/>}
-            {analysis?.status==='completed'?'Reanalisar vídeo':'Analisar vídeo por frames'}
+            {analysis?.status==='completed'?'Reanalisar mídia':'Analisar mídia'}
           </button>
-        </section>}
+        </section>
         <button className="button danger" onClick={()=>void remove(selected)}><Trash2 size={15}/>Remover do acervo</button>
       </aside>
     </div>}
