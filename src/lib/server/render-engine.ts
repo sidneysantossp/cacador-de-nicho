@@ -38,7 +38,7 @@ type AssetRow={
 type ChapterRow={
   id:string;render_job_id:string;chapter_id:string;sequence:number;label:string;
   start_seconds:number|string;end_seconds:number|string;duration_seconds:number|string;
-  content_hash:string;status:RenderChapter['status'];progress:number;cache_hit:boolean;
+  scene_ids:string[]|null;content_hash:string;status:RenderChapter['status'];progress:number;cache_hit:boolean;
   output_path:string|null;output_bytes:number|string|null;render_seconds:number|string|null;
   error:string|null;created_at:string;started_at:string|null;completed_at:string|null;updated_at:string;
 };
@@ -51,7 +51,7 @@ function normalizeChapter(row:ChapterRow):RenderChapter{
     startSeconds:Number(row.start_seconds),
     endSeconds:Number(row.end_seconds),
     durationSeconds:Number(row.duration_seconds),
-    sceneIds:[],
+    sceneIds:(row.scene_ids??[]).map(String),
     contentHash:String(row.content_hash),
     renderJobId:row.render_job_id,
     status:row.status,
@@ -68,7 +68,7 @@ function normalizeChapter(row:ChapterRow):RenderChapter{
   };
 }
 
-const chapterSelection='id,render_job_id,chapter_id,sequence,label,start_seconds,end_seconds,duration_seconds,content_hash,status,progress,cache_hit,output_path,output_bytes,render_seconds,error,created_at,started_at,completed_at,updated_at';
+const chapterSelection='id,render_job_id,chapter_id,sequence,label,start_seconds,end_seconds,duration_seconds,scene_ids,content_hash,status,progress,cache_hit,output_path,output_bytes,render_seconds,error,created_at,started_at,completed_at,updated_at';
 
 async function renderChapters(jobId:string){
   const rows=checked(await db().from('radar_render_chapters')
@@ -469,6 +469,7 @@ export async function createRenderJob(input:{
       start_seconds:chapter.startSeconds,
       end_seconds:chapter.endSeconds,
       duration_seconds:chapter.durationSeconds,
+      scene_ids:chapter.sceneIds,
       content_hash:chapter.contentHash,
       status:reused?'completed':'queued',
       progress:reused?100:0,
