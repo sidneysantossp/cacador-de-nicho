@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { EpisodeScript, Transcript, TranscriptPayload, TranscriptVersion, VoiceAsset } from '@/lib/types';
+import type { EpisodeScript, Transcript, TranscriptPayload, TranscriptVersion, TranscriptVersionSummary, VoiceAsset } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadEpisodeScript } from './episode-script';
@@ -66,18 +66,35 @@ export async function loadTranscriptByVoiceAsset(voiceAssetId:string):Promise<Tr
   return row?normalizeRow(row as never):null;
 }
 
-export async function loadTranscriptHistory(transcriptId:string,limit=20):Promise<TranscriptVersion[]>{
+export async function loadTranscriptHistory(transcriptId:string,limit=20):Promise<TranscriptVersionSummary[]>{
   const rows=checked(await db().from('radar_transcript_versions')
-    .select('version,status,payload,created_at')
+    .select('version,status,created_at')
     .eq('transcript_id',transcriptId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as Transcript['status'],
-    payload:row.payload as TranscriptPayload,
     createdAt:String(row.created_at)
   }));
+}
+
+export async function loadTranscriptHistoryVersion(
+  transcriptId:string,
+  version:number
+):Promise<TranscriptVersion|null>{
+  const row=checked(await db().from('radar_transcript_versions')
+    .select('version,status,payload,created_at')
+    .eq('transcript_id',transcriptId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
+    version:Number(row.version),
+    status:row.status as Transcript['status'],
+    payload:row.payload as TranscriptPayload,
+    createdAt:String(row.created_at)
+  };
 }
 
 async function eligibleContext(voiceAssetId:string){
