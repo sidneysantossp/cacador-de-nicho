@@ -2220,6 +2220,9 @@ export type OwnedMediaIntelligenceResult = {
  model:string;
  assetTitle:string;
  durationSeconds:number|null;
+ usableSegmentCount:number;
+ meanQuality:number;
+ embeddingStatus:'idle'|'completed'|'failed';
  analyzedAt?:string;
  error?:string;
  segments:OwnedMediaVisualSegment[];
