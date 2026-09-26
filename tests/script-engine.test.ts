@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ContentFactCheck, EpisodeScriptPayload } from '../src/lib/types';
 import {
   combineScriptSections, countScriptWords, documentaryScriptClaimIssues, estimateScriptMinutes,
@@ -168,4 +169,64 @@ test('Episode script schema accepts section-level claim provenance',()=>{
   const value=documentaryScript('The archive records the event in 1925.',[historicalClaimId]);
   const parsed=episodeScriptPayloadSchema.parse(value);
   assert.deepEqual(parsed.sections[0].claimIds,[historicalClaimId]);
+});
+
+
+test('Script approval blocks incomplete resumable generation and releases only when complete',()=>{
+  const generation={
+    stage:'sections' as const,
+    targetWords:10800,
+    completedSections:1,
+    totalSections:16,
+    sectionPlans:[
+      {
+        id:'91111111-1111-4111-8111-111111111111',
+        label:'Opening',
+        purpose:'Open the story.',
+        targetWords:675,
+        claimIds:[]
+      }
+    ],
+    sectionSummaries:['Opening established.'],
+    updatedAt:now
+  };
+  const partial=normalizeScriptPayload({...payload,generation},150);
+  assert.ok(scriptApprovalIssues(partial).includes('script-generation-incomplete'));
+  const complete=normalizeScriptPayload({
+    ...payload,
+    generation:{...generation,stage:'complete' as const,completedSections:16}
+  },150);
+  assert.equal(scriptApprovalIssues(complete).includes('script-generation-incomplete'),false);
+});
+
+test('Episode script schema accepts resumable generation state',()=>{
+  const value=normalizeScriptPayload({
+    ...payload,
+    generation:{
+      stage:'sections',
+      targetWords:10800,
+      completedSections:1,
+      totalSections:3,
+      sectionPlans:[
+        {id:'92111111-1111-4111-8111-111111111111',label:'One',purpose:'Start',targetWords:3600,claimIds:[]},
+        {id:'92222222-2222-4222-8222-222222222222',label:'Two',purpose:'Develop',targetWords:3600,claimIds:[]},
+        {id:'93333333-3333-4333-8333-333333333333',label:'Three',purpose:'Finish',targetWords:3600,claimIds:[]}
+      ],
+      sectionSummaries:['Opening established.'],
+      updatedAt:now
+    }
+  },150);
+  const parsed=episodeScriptPayloadSchema.parse(value);
+  assert.equal(parsed.generation?.completedSections,1);
+  assert.equal(parsed.generation?.totalSections,3);
+});
+
+test('Long-form Script AI uses bounded outline and section calls instead of one huge response',()=>{
+  const source=readFileSync('src/lib/server/script-ai.ts','utf8');
+  assert.match(source,/planOwnedChannelScript/);
+  assert.match(source,/generateOwnedPlannedSection/);
+  assert.match(source,/max_output_tokens:4000/);
+  assert.match(source,/Math\.max\(1800,Math\.min\(6500/);
+  assert.match(source,/previous\.content\.slice\(-6000\)/);
+  assert.match(source,/sections:z\.array\(outlineSectionSchema\)\.min\(3\)\.max\(24\)/);
 });
