@@ -356,7 +356,7 @@ export async function selectVoiceAsset(scriptId:string,assetId:string){
       .eq('selected',true)
       .maybeSingle(),
     db().from('radar_voice_assets')
-      .select('id,status')
+      .select('id,status,episode_id')
       .eq('script_id',scriptId)
       .eq('id',assetId)
       .maybeSingle()
@@ -374,6 +374,20 @@ export async function selectVoiceAsset(scriptId:string,assetId:string){
     if(message.includes('voice asset not ready'))throw new HttpError('Este take ainda não está pronto para uso.',409);
     throw new HttpError('Falha ao selecionar o take de voz.',502);
   }
+  if(changed){
+    const reopened=await db().from('radar_episode_automation_runs').update({
+      status:'active',
+      worker_token:null,
+      lease_until:null,
+      hold_step:null,
+      hold_reason:null,
+      hold_created_at:null,
+      last_error:null,
+      updated_at:new Date().toISOString()
+    }).eq('episode_id',String(target.data.episode_id)).neq('status','cancelled');
+    if(reopened.error)throw new HttpError('Take ativado, mas não foi possível reabrir a automação do episódio.',502);
+  }
+
   return {
     changed,
     previousAssetId,
