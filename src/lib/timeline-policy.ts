@@ -65,6 +65,10 @@ export type TimelineVisualAssetRef={
   durationSeconds:number|null;
   sourceStartSeconds?:number|null;
   sourceEndSeconds?:number|null;
+  sourceWidth?:number|null;
+  sourceHeight?:number|null;
+  focusX?:number|null;
+  focusY?:number|null;
 };
 
 export function buildInitialTimeline(input:{
@@ -133,6 +137,10 @@ export function buildInitialTimeline(input:{
         durationSeconds:scene.durationSeconds,
         sourceStartSeconds:sourceStart,
         sourceEndSeconds:sourceEnd,
+        sourceWidth:asset.sourceWidth??null,
+        sourceHeight:asset.sourceHeight??null,
+        focusX:asset.focusX??null,
+        focusY:asset.focusY??null,
         fit:'cover',
         playback,
         volume:1,
