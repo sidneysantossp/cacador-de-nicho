@@ -26,6 +26,9 @@ type ImageVerification={
   summary:string;
   matchedEvidence:string[];
   mismatchReason:string;
+  focusX:number;
+  focusY:number;
+  focusLabel:string;
 };
 
 async function imageAsset(assetId:string){
@@ -51,9 +54,12 @@ async function verifyStillImage(assetId:string,query:string):Promise<ImageVerifi
       relevance:{type:'NUMBER'},
       summary:{type:'STRING'},
       matchedEvidence:{type:'ARRAY',items:{type:'STRING'}},
-      mismatchReason:{type:'STRING'}
+      mismatchReason:{type:'STRING'},
+      focusX:{type:'NUMBER'},
+      focusY:{type:'NUMBER'},
+      focusLabel:{type:'STRING'}
     },
-    required:['relevance','summary','matchedEvidence','mismatchReason']
+    required:['relevance','summary','matchedEvidence','mismatchReason','focusX','focusY','focusLabel']
   };
   let response:Response;
   try{
@@ -68,6 +74,8 @@ async function verifyStillImage(assetId:string,query:string):Promise<ImageVerifi
               'Validate this candidate image against the editorial visual intent below.',
               'Judge only what is visibly supported. Do not infer an exact person, place, event or date unless visual evidence supports it.',
               'relevance is 0..1. Use high scores only when the image clearly satisfies the requested subject/context.',
+              'focusX and focusY are normalized 0..1 coordinates for the center of the primary visible subject relevant to the editorial intent.',
+              'Use 0.5,0.5 when the relevant subject is centered or no safer focal point is visible. focusLabel names the visible subject used as focus.',
               'EDITORIAL INTENT: '+query
             ].join('\n')},
             {inline_data:{mime_type:String(asset.mime_type||'image/jpeg'),data:bytes.toString('base64')}}
@@ -93,7 +101,10 @@ async function verifyStillImage(assetId:string,query:string):Promise<ImageVerifi
       matchedEvidence:Array.isArray(parsed.matchedEvidence)
         ?parsed.matchedEvidence.map(String).map(value=>value.trim()).filter(Boolean).slice(0,20)
         :[],
-      mismatchReason:String(parsed.mismatchReason??'').trim().slice(0,1200)
+      mismatchReason:String(parsed.mismatchReason??'').trim().slice(0,1200),
+      focusX:Math.max(0,Math.min(1,Number(parsed.focusX??.5))),
+      focusY:Math.max(0,Math.min(1,Number(parsed.focusY??.5))),
+      focusLabel:String(parsed.focusLabel??'').trim().slice(0,240)
     };
   }catch{throw new HttpError('A validação visual retornou JSON inválido.',502);}
 }
@@ -110,6 +121,9 @@ async function persistImageVerification(assetId:string,query:string,verification
         summary:verification.summary,
         matchedEvidence:verification.matchedEvidence,
         mismatchReason:verification.mismatchReason,
+        focusX:verification.focusX,
+        focusY:verification.focusY,
+        focusLabel:verification.focusLabel,
         verifiedAt:new Date().toISOString()
       }
     },
