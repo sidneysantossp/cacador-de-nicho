@@ -1767,6 +1767,46 @@ export type RenderJob = {
  completedAt?: string;
  updatedAt: string;
 };
+export type RenderChapterListItem = {
+ id: string;
+ sequence: number;
+ label: string;
+ durationSeconds: number;
+ status: RenderChapterStatus;
+ progress: number;
+ cacheHit: boolean;
+ outputBytes?: number;
+ renderSeconds?: number;
+ error?: string;
+};
+export type RenderJobListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ videoEditId: string;
+ videoEditVersion: number;
+ status: RenderJobStatus;
+ progress: number;
+ stage: string;
+ attempts: number;
+ outputBytes?: number;
+ hasOutput: boolean;
+ error?: string;
+ compilerVersion: RenderJobPayload['compilerVersion'];
+ preset: RenderPreset;
+ crf: number;
+ audioBitrateKbps: number;
+ outputWidth: number;
+ outputHeight: number;
+ outputFps: number;
+ durationSeconds: number;
+ metrics?: RenderJobPayload['metrics'];
+ chapters: RenderChapterListItem[];
+ createdAt: string;
+ startedAt?: string;
+ completedAt?: string;
+ updatedAt: string;
+};
 export type ProductionQualityCheckStatus = 'pass' | 'warning' | 'blocker' | 'manual-review';
 export type ProductionQualityCategory =
   | 'render'
