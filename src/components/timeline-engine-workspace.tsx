@@ -61,7 +61,13 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   );
   const health=useMemo(()=>draft?timelineHealth(draft):null,[draft]);
   const structuralIssues=useMemo(()=>draft&&scenePlan?timelineStructuralIssues(normalizeTimeline(draft),scenePlan):[],[draft,scenePlan]);
-  const dirty=useMemo(()=>draft&&current?JSON.stringify(normalizeTimeline(draft))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
+  const dirty=useMemo(()=>{
+    if(!draft)return false;
+    if(!current)return true;
+    const left=normalizeTimeline(draft);
+    const right=normalizeTimeline(payloadOnly(current));
+    return JSON.stringify({...left,updatedAt:''})!==JSON.stringify({...right,updatedAt:''});
+  },[draft,current]);
   const selectedClip=useMemo(()=>{
     if(!draft)return null;
     for(const track of draft.tracks){
