@@ -80,21 +80,18 @@ export async function loadEpisodeScriptByProject(projectId:string):Promise<Episo
 }
 
 export async function loadEpisodeScriptHistory(scriptId:string,limit=20):Promise<EpisodeScriptVersionSummary[]>{
-  const rows=checked(await db().from('radar_episode_script_versions')
-    .select('version,status,payload,created_at')
+  const rows=checked(await db().from('radar_episode_script_version_list')
+    .select('version,status,word_count,section_count,created_at')
     .eq('script_id',scriptId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
-  return (rows??[]).map(row=>{
-    const payload=row.payload as EpisodeScriptPayload;
-    return {
-      version:Number(row.version),
-      status:row.status as EpisodeScript['status'],
-      wordCount:Number(payload.wordCount??0),
-      sectionCount:Array.isArray(payload.sections)?payload.sections.length:0,
-      createdAt:String(row.created_at)
-    };
-  });
+  return (rows??[]).map(row=>({
+    version:Number(row.version),
+    status:row.status as EpisodeScript['status'],
+    wordCount:Number(row.word_count),
+    sectionCount:Number(row.section_count),
+    createdAt:String(row.created_at)
+  }));
 }
 
 export async function loadEpisodeScriptHistoryVersion(
