@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery
@@ -211,4 +214,19 @@ test('Sunset intent accepts golden-hour visual evidence',()=>{
   });
   assert.equal(result.ok,true);
   assert.equal(result.expected,'sunset');
+});
+
+
+test('Verified Stock worker remains valid Node ESM syntax',()=>{
+  execFileSync(process.execPath,['--check','scripts/verified-stock-worker.mjs'],{stdio:'pipe'});
+});
+
+test('Verified Stock worker drains backlog quickly but keeps normal idle/error polling',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
+  assert.match(source,/VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS/);
+  assert.match(source,/DRAIN_YIELD_MS/);
+  assert.match(source,/if\(!claimed\)\{await sleep\(POLL_MS\);continue;\}/);
+  assert.match(source,/await sleep\(executionFailed\?POLL_MS:DRAIN_YIELD_MS\);/);
+  assert.match(source,/await sleep\(Math\.max\(POLL_MS,5000\)\);/);
+  assert.match(source,/drainYieldMs:DRAIN_YIELD_MS/);
 });
