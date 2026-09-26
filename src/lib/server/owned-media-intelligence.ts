@@ -700,8 +700,13 @@ export async function matchOwnedMediaSegments(input:{
   const ids=(analysisRows.data??[]).map(row=>String(row.asset_id));
   if(!ids.length)return [];
 
+  const semanticMatches=await searchOwnedMediaEmbeddings(query,120).catch(()=>[]);
+  const semanticScores=new Map(
+    semanticMatches.map(item=>[item.resourceId,item.similarity])
+  );
+
   const assetRows=await db().from('radar_owned_media_assets')
-    .select('id,title,original_name,width,height,duration_seconds,search_text,semantic,storage_path')
+    .select('id,asset_kind,title,original_name,width,height,duration_seconds,search_text,semantic,storage_path')
     .in('id',ids)
     .eq('status','ready')
     .limit(5000);
@@ -732,42 +737,64 @@ export async function matchOwnedMediaSegments(input:{
     }
 
     const item=segment(row as SegmentRow);
+    if(!item.usable)return [];
     if(requestedLandmarks.length){
       const observedLandmarks=mergeUnique(item.semantic.landmarks,semantic.landmarks);
       if(!requestedLandmarks.every(landmark=>observedLandmarks.includes(landmark)))return [];
     }
+
     const visualText=visualSemanticSearchText(item.semantic);
     const contextText=[
       ...semantic.countries,...semantic.regions,...semantic.cities,...semantic.districts
     ].join(' ');
     const intent=scoreVisualIntent(query,visualText,contextText);
+    const semanticSimilarity=semanticScores.get(item.id)??0;
+    const semanticStrong=semanticSimilarity>=.58;
     const locationOnlyEvidence=
       item.semantic.locations.length>0||
       item.semantic.landmarks.length>0||
       item.semantic.environments.length>0;
 
-    if(intent.hasVisualIntent){
+    if(intent.hasVisualIntent&&!semanticStrong){
       const minimumCoverage=intent.intentTokenCount>=3?.40:intent.intentTokenCount===2?.50:1;
       if(intent.visualRelevance<.22||intent.visualCoverage<minimumCoverage)return [];
     }
-    if(!intent.hasVisualIntent&&!locationOnlyEvidence)return [];
+    if(!intent.hasVisualIntent&&!locationOnlyEvidence&&!semanticStrong)return [];
 
     const desired=Math.max(.25,input.desiredDurationSeconds);
-    const durationFit=Math.min(1,item.durationSeconds/desired);
+    const assetKind=String(asset.asset_kind)==='image'?'image':'video';
+    const durationFit=assetKind==='image'?1:Math.min(1,item.durationSeconds/desired);
     const resolutionBonus=Number(width??0)>=3840 ? .04 : Number(width??0)>=1920 ? .02 : 0;
     const visualRelevance=intent.hasVisualIntent?intent.visualRelevance:.30;
-    const relevance=Math.min(1,visualRelevance*.82+intent.contextRelevance*.18);
-    const score=Math.min(
-      1,
-      visualRelevance*.62+
-      intent.contextRelevance*.16+
-      item.confidence*.10+
-      durationFit*.06+
-      resolutionBonus
-    );
-    const sourceStart=item.startSeconds;
+    const lexicalRelevance=Math.min(1,visualRelevance*.82+intent.contextRelevance*.18);
+    const relevance=semanticSimilarity>0
+      ?Math.min(1,semanticSimilarity*.65+lexicalRelevance*.35)
+      :lexicalRelevance;
+    const score=semanticSimilarity>0
+      ?Math.min(
+        1,
+        semanticSimilarity*.50+
+        visualRelevance*.20+
+        intent.contextRelevance*.08+
+        item.qualityScore*.10+
+        item.confidence*.05+
+        durationFit*.05+
+        resolutionBonus
+      )
+      :Math.min(
+        1,
+        visualRelevance*.57+
+        intent.contextRelevance*.15+
+        item.qualityScore*.10+
+        item.confidence*.08+
+        durationFit*.06+
+        resolutionBonus
+      );
+    const sourceStart=assetKind==='image'?0:item.startSeconds;
+    const sourceEnd=assetKind==='image'?1:Math.min(item.endSeconds,sourceStart+desired);
     return [{
       assetId:String(asset.id),
+      assetKind,
       title:String(asset.title??asset.original_name),
       originalName:String(asset.original_name??''),
       width,
@@ -775,16 +802,18 @@ export async function matchOwnedMediaSegments(input:{
       assetDurationSeconds:asset.duration_seconds===null?null:Number(asset.duration_seconds),
       segment:item,
       relevance,
+      semanticSimilarity,
       visualRelevance,
       visualCoverage:intent.visualCoverage,
       matchedIntentTokens:intent.matchedIntentTokens,
       intentTokenCount:intent.intentTokenCount,
       contextRelevance:intent.contextRelevance,
       durationFit,
+      qualityScore:item.qualityScore,
       requestedLandmarks,
       score,
       sourceStartSeconds:sourceStart,
-      sourceEndSeconds:Math.min(item.endSeconds,sourceStart+desired)
+      sourceEndSeconds:sourceEnd
     }];
   }).sort((a,b)=>b.score-a.score);
 
