@@ -356,6 +356,7 @@ create table if not exists public.radar_render_chapters(
   start_seconds numeric not null check(start_seconds>=0),
   end_seconds numeric not null check(end_seconds>start_seconds),
   duration_seconds numeric not null check(duration_seconds>0),
+  scene_ids uuid[] not null default '{}',
   content_hash text not null,
   status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),
   progress int not null default 0 check(progress between 0 and 100),
