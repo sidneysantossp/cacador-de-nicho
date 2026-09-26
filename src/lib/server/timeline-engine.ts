@@ -33,7 +33,8 @@ type Row={
 type SceneAssetRow={
   id:string;scene_id:string;asset_kind:'image'|'video'|'graphic';source_type:'generated'|'uploaded'|'stock'|'owned';
   status:string;selected:boolean;storage_path:string;mime_type:string;
-  duration_seconds:number|string|null;payload:unknown;original_name:string|null;
+  width:number|string|null;height:number|string|null;duration_seconds:number|string|null;
+  payload:unknown;original_name:string|null;
 };
 
 function hash(value:string){
@@ -99,7 +100,7 @@ export async function loadTimelineHistory(timelineId:string,limit=20):Promise<Ti
 
 async function selectedSceneAssetRows(promptSetId:string){
   const rows=checked(await db().from('radar_scene_assets')
-    .select('id,scene_id,asset_kind,source_type,status,selected,storage_path,mime_type,duration_seconds,payload,original_name')
+    .select('id,scene_id,asset_kind,source_type,status,selected,storage_path,mime_type,width,height,duration_seconds,payload,original_name')
     .eq('visual_prompt_set_id',promptSetId)
     .eq('selected',true)
     .limit(5000));
@@ -168,6 +169,12 @@ async function selectedVisualRefs(
         sourceEndSeconds?:number|null;
       }
       :undefined;
+    const sourceRouterVerification=payload.sourceRouterVerification&&typeof payload.sourceRouterVerification==='object'
+      ?payload.sourceRouterVerification as {
+        focusX?:number|null;
+        focusY?:number|null;
+      }
+      :undefined;
     const verifiedStockTrim=verifiedStockSceneAssetTrim({
       sourceType:row.source_type,
       verifiedStock:verifiedStock?{
@@ -195,7 +202,15 @@ async function selectedVisualRefs(
       assetKind:row.asset_kind,
       durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds),
       sourceStartSeconds:deterministicTrim?.sourceStartSeconds??match?.sourceStartSeconds??(row.asset_kind==='video'?0:null),
-      sourceEndSeconds:deterministicTrim?.sourceEndSeconds??match?.sourceEndSeconds??null
+      sourceEndSeconds:deterministicTrim?.sourceEndSeconds??match?.sourceEndSeconds??null,
+      sourceWidth:row.width===null?null:Number(row.width),
+      sourceHeight:row.height===null?null:Number(row.height),
+      focusX:row.asset_kind==='image'&&typeof sourceRouterVerification?.focusX==='number'
+        ?Math.max(0,Math.min(1,sourceRouterVerification.focusX))
+        :null,
+      focusY:row.asset_kind==='image'&&typeof sourceRouterVerification?.focusY==='number'
+        ?Math.max(0,Math.min(1,sourceRouterVerification.focusY))
+        :null
     };
   }));
 }

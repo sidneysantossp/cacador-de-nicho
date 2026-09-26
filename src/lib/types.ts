@@ -1286,6 +1286,10 @@ export type TimelineClip = {
  durationSeconds: number;
  sourceStartSeconds: number | null;
  sourceEndSeconds: number | null;
+ sourceWidth?: number | null;
+ sourceHeight?: number | null;
+ focusX?: number | null;
+ focusY?: number | null;
  fit: 'cover' | 'contain' | 'stretch';
  playback: 'hold' | 'trim' | 'loop';
  volume: number;
@@ -1500,6 +1504,10 @@ export type RenderManifestVisualClip = {
  durationSeconds: number;
  sourceStartSeconds: number | null;
  sourceEndSeconds: number | null;
+ sourceWidth?: number | null;
+ sourceHeight?: number | null;
+ focusX?: number | null;
+ focusY?: number | null;
  playback: 'hold' | 'trim' | 'loop';
  fit: 'cover' | 'contain' | 'stretch';
  style: VideoEditClipStyle;

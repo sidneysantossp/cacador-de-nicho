@@ -166,6 +166,10 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
       durationSeconds:clip.durationSeconds,
       sourceStartSeconds:clip.sourceStartSeconds,
       sourceEndSeconds:clip.sourceEndSeconds,
+      sourceWidth:clip.sourceWidth??null,
+      sourceHeight:clip.sourceHeight??null,
+      focusX:clip.focusX??null,
+      focusY:clip.focusY??null,
       playback:clip.playback,
       fit:clip.fit,
       style

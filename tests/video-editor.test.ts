@@ -4,7 +4,7 @@ import type {
   AudioLibraryAsset, ProductionDNA, Timeline, Transcript, VideoEditPayload
 } from '../src/lib/types';
 import {
-  buildCaptionCues, buildInitialVideoEdit, defaultCaptionStyle, motionPresetValues,
+  buildCaptionCues, buildInitialVideoEdit, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
   normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
@@ -262,4 +262,48 @@ test('Video Editor approval combines structural upstream and audio blockers',()=
   const notApproved={...timeline,status:'review' as const};
   const issues=videoEditApprovalIssues(value,notApproved,transcript,[]);
   assert.deepEqual(issues,['timeline-not-approved']);
+});
+
+
+test('Documentary image motion uses composition focus and leaves video natural',()=>{
+  const focused=structuredClone(timeline);
+  const image=focused.tracks.find(track=>track.type==='visual')!.clips[0];
+  image.focusX=.2;
+  image.focusY=.35;
+  image.sourceWidth=2400;
+  image.sourceHeight=1600;
+  const documentaryDna={
+    ...dna,
+    editing:{...dna.editing,kenBurns:true}
+  } as ProductionDNA;
+  const value=buildInitialVideoEdit(focused,transcript,documentaryDna);
+  const still=value.clipStyles[0];
+  const video=value.clipStyles[1];
+  assert.equal(still.motionPreset,'custom');
+  assert.ok(still.scaleEnd>still.scaleStart);
+  assert.ok(still.xEnd<0);
+  assert.ok(still.yEnd<0);
+  assert.equal(still.transitionOut,'cross-dissolve');
+  assert.equal(video.motionPreset,'none');
+});
+
+test('Documentary image motion is opt-in through Production DNA',()=>{
+  const clip=timeline.tracks.find(track=>track.type==='visual')!.clips[0];
+  const off=documentaryClipStyle(clip,0,2,false);
+  const on=documentaryClipStyle({...clip,sourceWidth:2400,sourceHeight:1200},0,2,true);
+  assert.equal(off.motionPreset,'none');
+  assert.equal(off.transitionOut,'none');
+  assert.equal(on.motionPreset,'pan-right');
+  assert.equal(on.transitionOut,'cross-dissolve');
+  assert.ok(on.transitionSeconds<=.35);
+});
+
+test('Documentary transition duration is bounded for short beats',()=>{
+  const clip={
+    ...timeline.tracks.find(track=>track.type==='visual')!.clips[0],
+    durationSeconds:.3,
+    endSeconds:.3
+  };
+  const style=documentaryClipStyle(clip,0,2,true,.35);
+  assert.ok(style.transitionSeconds<=.1+1e-9);
 });
