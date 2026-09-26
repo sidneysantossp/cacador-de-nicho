@@ -1,5 +1,6 @@
 -- Setup reviewable for a dedicated Supabase project. Not executed automatically.
 begin;
+create extension if not exists vector with schema extensions;
 create table if not exists public.radar_channels(id text primary key,payload jsonb not null,updated_at timestamptz not null default now());
 create table if not exists public.radar_analyses(like public.radar_channels including all);
 create table if not exists public.radar_decisions(like public.radar_channels including all);
@@ -124,14 +125,56 @@ create table if not exists public.radar_owned_media_segments(
   summary text not null default '',
   semantic jsonb not null default '{}'::jsonb,
   confidence numeric not null default 0 check(confidence>=0 and confidence<=1),
+  quality_score numeric not null default 0.5 check(quality_score>=0 and quality_score<=1),
+  usable boolean not null default true,
+  quality_issues text[] not null default '{}',
   search_text text not null default '',
   keyframe_seconds numeric not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(asset_id,sequence)
 );
+alter table public.radar_owned_media_segments add column if not exists quality_score numeric not null default 0.5 check(quality_score>=0 and quality_score<=1);
+alter table public.radar_owned_media_segments add column if not exists usable boolean not null default true;
+alter table public.radar_owned_media_segments add column if not exists quality_issues text[] not null default '{}';
 create index if not exists radar_owned_media_segments_asset_sequence on public.radar_owned_media_segments(asset_id,sequence);
 create index if not exists radar_owned_media_segments_search on public.radar_owned_media_segments using gin(to_tsvector('simple',search_text));
+
+create table if not exists public.radar_owned_media_embeddings(
+  resource_type text not null check(resource_type in ('asset','segment')),
+  resource_id uuid not null,
+  asset_id uuid not null references public.radar_owned_media_assets(id) on delete cascade,
+  model text not null default 'gemini-embedding-001',
+  dimensions int not null default 768 check(dimensions=768),
+  content_hash text not null,
+  embedding extensions.vector(768) not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key(resource_type,resource_id)
+);
+create index if not exists radar_owned_media_embeddings_asset on public.radar_owned_media_embeddings(asset_id,resource_type);
+create or replace function public.match_owned_media_embeddings(
+  p_query_embedding extensions.vector(768),
+  p_match_count int default 50,
+  p_resource_type text default 'segment'
+) returns table(
+  resource_type text,
+  resource_id uuid,
+  asset_id uuid,
+  similarity double precision
+)
+language sql stable security invoker
+set search_path=public,extensions
+as $
+  select e.resource_type,e.resource_id,e.asset_id,
+    greatest(0::double precision,least(1::double precision,1-(e.embedding <=> p_query_embedding))) as similarity
+  from public.radar_owned_media_embeddings e
+  where e.resource_type=p_resource_type
+  order by e.embedding <=> p_query_embedding
+  limit greatest(1,least(p_match_count,200));
+$;
+revoke all on function public.match_owned_media_embeddings(extensions.vector,int,text) from public,anon,authenticated;
+grant execute on function public.match_owned_media_embeddings(extensions.vector,int,text) to service_role;
 
 create table if not exists public.radar_owned_media_analysis_jobs(
   id uuid primary key,
@@ -301,7 +344,7 @@ grant execute on function public.claim_radar_universe_queue(int) to service_role
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_embeddings','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
