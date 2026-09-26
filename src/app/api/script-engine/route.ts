@@ -6,6 +6,8 @@ import {
   loadEpisodeScripts, regenerateScriptSection, saveEpisodeScript
 } from '@/lib/server/episode-script';
 import { episodeScriptPayloadSchema } from '@/lib/server/validation';
+import { loadContentProject } from '@/lib/server/content-os';
+import { loadProductionDna } from '@/lib/server/production-dna';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -40,7 +42,11 @@ export async function GET(request:Request){
         loadEpisodeScriptHistory(scriptId,20)
       ]);
       if(!script)throw new HttpError('Roteiro não encontrado.',404);
-      return Response.json({script,history},{headers:{'Cache-Control':'no-store'}});
+      const [project,productionDna]=await Promise.all([
+        loadContentProject(script.contentProjectId),
+        loadProductionDna(script.channelId)
+      ]);
+      return Response.json({script,history,project,productionDna},{headers:{'Cache-Control':'no-store'}});
     }
 
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
@@ -62,11 +68,17 @@ export async function POST(request:Request){
     else if(body.action==='regenerateSection')script=await regenerateScriptSection(body.scriptId,body.sectionId);
     else script=await saveEpisodeScript(body.script,body.status,body.expectedVersion);
 
-    const history=await loadEpisodeScriptHistory(script.id,20);
+    const [history,project,productionDna]=await Promise.all([
+      loadEpisodeScriptHistory(script.id,20),
+      loadContentProject(script.contentProjectId),
+      loadProductionDna(script.channelId)
+    ]);
     return Response.json({
       message:body.action==='generate'?'Roteiro gerado e salvo como draft.':body.action==='regenerateSection'?'Trecho regenerado e salvo como nova versão.':body.status==='approved'?'Roteiro aprovado.':'Roteiro salvo.',
       script,
-      history
+      history,
+      project,
+      productionDna
     });
   }catch(e){return errorResponse(e);}
 }

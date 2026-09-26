@@ -1,9 +1,9 @@
 import 'server-only';
 
 import type {
-  EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
+  ContentProjectPayload, EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
   EpisodeAutomationRun, EpisodeAutomationRunPayload, EpisodeAutomationStatus,
-  EpisodeAutomationStep, EpisodeAutomationStepState
+  EpisodeAutomationStep, EpisodeAutomationStepState, EpisodeScriptPayload
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -38,6 +38,7 @@ import {
   assertAutopilotControlRunning, loadAutopilotControl
 } from './autopilot-control';
 import { recordAutopilotIncident } from './autopilot-incidents';
+import { documentaryScriptClaimIssues } from '@/lib/script-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -252,6 +253,23 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
 
   const script=src.script;
+  const projectDetail=rowPayload<ContentProjectPayload>(src.project);
+  const dnaDetail=rowPayload<{
+    voice?:{voiceId?:string};
+    research?:{documentaryMode?:boolean;requireClaimLedger?:boolean};
+  }>(src.productionDna);
+  const documentaryMode=Boolean(
+    dnaDetail.research?.documentaryMode||dnaDetail.research?.requireClaimLedger
+  );
+  const scriptPayload=script?rowPayload<EpisodeScriptPayload>(script):null;
+  const documentaryIssues=scriptPayload
+    ?documentaryScriptClaimIssues({
+      payload:scriptPayload,
+      claims:projectDetail.research?.factChecks??[],
+      documentaryMode
+    })
+    :[];
+
   if(!contentApproved){
     steps.push(step('script','pending',{reason:'Aguardando Content Project aprovado.'}));
   }else if(!script){
@@ -259,23 +277,24 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       reason:'Content Project aprovado; roteiro pode ser gerado.',
       requiresOperator:!run.policy.autoGenerateScript
     }));
-  }else if(script.status==='approved'){
+  }else if(script.status==='approved'&&!documentaryIssues.length){
     steps.push(step('script','completed',{entityId:String(script.id),entityVersion:Number(script.version)}));
   }else{
-    const payload=rowPayload<{factCheckWarnings?:string[]}>(script);
-    const warnings=Array.isArray(payload.factCheckWarnings)?payload.factCheckWarnings.length:0;
+    const warnings=Array.isArray(scriptPayload?.factCheckWarnings)?scriptPayload!.factCheckWarnings.length:0;
     steps.push(step('script','waiting',{
       entityId:String(script.id),entityVersion:Number(script.version),
-      reason:warnings
-        ?'Roteiro possui '+warnings+' alerta(s) de fact-check e precisa de revisão.'
-        :'Roteiro gerado; aguarda gate de aprovação.',
-      requiresOperator:warnings>0||!run.policy.autoApproveObjectiveGates
+      reason:documentaryIssues.length
+        ?'Roteiro documental falhou no Claim Ledger: '+documentaryIssues.join(' · ')+'.'
+        :warnings
+          ?'Roteiro possui '+warnings+' alerta(s) de fact-check e precisa de revisão.'
+          :'Roteiro gerado; aguarda gate de aprovação.',
+      requiresOperator:documentaryIssues.length>0||warnings>0||!run.policy.autoApproveObjectiveGates
     }));
   }
 
-  const scriptApproved=script?.status==='approved';
+  const scriptApproved=script?.status==='approved'&&!documentaryIssues.length;
   const voice=src.voice;
-  const dnaVoice=(rowPayload<{voice?:{voiceId?:string}}>(src.productionDna).voice?.voiceId??'').trim();
+  const dnaVoice=(dnaDetail.voice?.voiceId??'').trim();
   if(!scriptApproved){
     steps.push(step('voice','pending',{reason:'Aguardando roteiro aprovado.'}));
   }else if(voice?.status==='ready'){

@@ -187,6 +187,10 @@ export const productionDnaPayloadSchema=z.object({
   voice:shortList(30,160),
   stock:shortList(30,160)
  }).strict(),
+ research:z.object({
+  documentaryMode:z.boolean(),
+  requireClaimLedger:z.boolean()
+ }).strict().optional(),
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
@@ -224,6 +228,8 @@ export const contentProjectPayloadSchema=z.object({
    id:z.string().uuid(),
    claim:z.string().trim().min(1).max(3000),
    status:z.enum(['unverified','supported','contradicted','needs-review']),
+   claimType:z.enum(['fact','estimate','allegation','folklore']).optional(),
+   narrationRule:z.enum(['assert','qualify','attribute','exclude']).optional(),
    sourceIds:z.array(z.string().uuid()).max(50),
    notes:z.string().trim().max(4000)
   }).strict()).max(200),
@@ -285,7 +291,8 @@ export const episodeScriptPayloadSchema=z.object({
   id:z.string().uuid(),
   label:z.string().trim().min(1).max(120),
   purpose:z.string().trim().max(1000),
-  content:z.string().trim().min(1).max(40000)
+  content:z.string().trim().min(1).max(40000),
+  claimIds:z.array(z.string().uuid()).max(100).optional()
  }).strict()).min(1).max(80),
  content:z.string().trim().min(1).max(200000),
  wordCount:z.number().int().min(1).max(50000),

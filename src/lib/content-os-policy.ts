@@ -9,7 +9,8 @@ export function contentProjectReadiness(
   project:ContentProjectPayload,
   episode:ChannelEpisode,
   concepts:ChannelConcept[],
-  brain:ChannelBrain|null
+  brain:ChannelBrain|null,
+  researchPolicy:{documentaryMode?:boolean;requireClaimLedger?:boolean}={}
 ){
   const missingBrief=requiredBriefFields.filter(key=>!project.brief[key].trim());
   const sourceIds=new Set(project.research.sources.map(source=>source.id));
@@ -38,11 +39,33 @@ export function contentProjectReadiness(
     }))
     .map(check=>check.id);
   const unresolvedFactChecks=project.research.factChecks
+    .filter(check=>check.narrationRule!=='exclude')
     .filter(check=>check.status==='unverified'||check.status==='needs-review')
     .map(check=>check.id);
   const contradictedFactChecks=project.research.factChecks
+    .filter(check=>check.narrationRule!=='exclude')
     .filter(check=>check.status==='contradicted')
     .map(check=>check.id);
+
+  const documentaryMode=Boolean(researchPolicy.documentaryMode||researchPolicy.requireClaimLedger);
+  const claimLedgerEmpty=documentaryMode&&project.research.factChecks.length===0;
+  const missingClaimMetadata=documentaryMode
+    ?project.research.factChecks
+      .filter(check=>!check.claimType||!check.narrationRule)
+      .map(check=>check.id)
+    :[];
+  const invalidNarrationRules=documentaryMode
+    ?project.research.factChecks
+      .filter(check=>{
+        if(!check.claimType||!check.narrationRule)return false;
+        if(check.narrationRule==='exclude')return false;
+        if(check.claimType==='fact')return !['assert','qualify','attribute'].includes(check.narrationRule);
+        if(check.claimType==='estimate')return !['qualify','attribute'].includes(check.narrationRule);
+        if(check.claimType==='allegation')return check.narrationRule!=='attribute';
+        return !['qualify','attribute'].includes(check.narrationRule);
+      })
+      .map(check=>check.id)
+    :[];
   const narrative=episodeNarrativeReadiness(episode,concepts,brain);
 
   const blockers=[
@@ -52,6 +75,9 @@ export function contentProjectReadiness(
     ...weakFactCheckEvidence.map(id=>'fact-check-evidence:'+id),
     ...unresolvedFactChecks.map(id=>'fact-check-unresolved:'+id),
     ...contradictedFactChecks.map(id=>'fact-check-contradicted:'+id),
+    ...(claimLedgerEmpty?['claim-ledger-empty']:[]),
+    ...missingClaimMetadata.map(id=>'claim-ledger-metadata:'+id),
+    ...invalidNarrationRules.map(id=>'claim-ledger-narration:'+id),
     ...narrative.missingConcepts.map(key=>'narrative-missing:'+key),
     ...narrative.repetitionConflicts.map(key=>'repetition-conflict:'+key)
   ];
@@ -66,6 +92,10 @@ export function contentProjectReadiness(
     unknownVisualRights:(pack?.visualLeads??[]).filter(item=>item.rightsStatus==='unknown').map(item=>item.id),
     unresolvedFactChecks,
     contradictedFactChecks,
+    documentaryMode,
+    claimLedgerEmpty,
+    missingClaimMetadata,
+    invalidNarrationRules,
     narrative
   };
 }
