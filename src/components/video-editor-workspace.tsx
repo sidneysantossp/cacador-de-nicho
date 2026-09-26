@@ -11,7 +11,8 @@ import type {
 } from '@/lib/types';
 import {
   motionPresetValues, normalizeVideoEdit, suggestSfxEvents,
-  videoEditAudioAssetIssues, videoEditStructuralIssues
+  videoEditAudioAssetIssues, videoEditChapterCaptions, videoEditChapterClips,
+  videoEditorChapters, videoEditStructuralIssues
 } from '@/lib/video-editor-policy';
 
 type Source={
@@ -47,6 +48,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   const [history,setHistory]=useState<VideoEditVersion[]>([]);
   const [tab,setTab]=useState<Tab>('editor');
   const [selectedClipId,setSelectedClipId]=useState('');
+  const [activeChapterId,setActiveChapterId]=useState('');
   const [playhead,setPlayhead]=useState(0);
   const [playing,setPlaying]=useState(false);
   const [loading,setLoading]=useState(true);
@@ -58,7 +60,19 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   const sourceMap=useMemo(()=>new Map(sources.map(source=>[source.assetId,source])),[sources]);
   const musicAssets=useMemo(()=>audioAssets.filter(asset=>asset.kind==='music'&&asset.status==='ready'),[audioAssets]);
   const sfxAssets=useMemo(()=>audioAssets.filter(asset=>asset.kind==='sfx'&&asset.status==='ready'),[audioAssets]);
-  const visualClips=useMemo(()=>timeline?.tracks.find(track=>track.type==='visual')?.clips??[],[timeline]);
+  const chapters=useMemo(()=>timeline?videoEditorChapters(timeline):[],[timeline]);
+  const activeChapter=useMemo(()=>
+    chapters.find(chapter=>chapter.id===activeChapterId)??chapters[0]??null,
+    [chapters,activeChapterId]
+  );
+  const visualClips=useMemo(()=>
+    timeline?videoEditChapterClips(timeline,activeChapter?.id):[],
+    [timeline,activeChapter?.id]
+  );
+  const visibleCaptions=useMemo(()=>
+    draft&&timeline?videoEditChapterCaptions(draft,timeline,activeChapter?.id):[],
+    [draft,timeline,activeChapter?.id]
+  );
   const structuralIssues=useMemo(()=>draft&&timeline&&transcript?[...new Set([
     ...videoEditStructuralIssues(normalizeVideoEdit(draft),timeline,transcript),
     ...videoEditAudioAssetIssues(draft,audioAssets)
@@ -73,7 +87,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   },[timeline,visualClips,playhead]);
   const currentStyle=useMemo(()=>draft&&currentClip?draft.clipStyles.find(style=>style.timelineClipId===currentClip.id)??null:null,[draft,currentClip]);
   const selectedStyle=useMemo(()=>draft?draft.clipStyles.find(style=>style.timelineClipId===selectedClipId)??null:null,[draft,selectedClipId]);
-  const currentCue=useMemo(()=>draft?.captions.enabled?draft.captions.cues.find(cue=>playhead>=cue.startSeconds&&playhead<cue.endSeconds)??null:null,[draft,playhead]);
+  const currentCue=useMemo(()=>draft?.captions.enabled?visibleCaptions.find(cue=>playhead>=cue.startSeconds&&playhead<cue.endSeconds)??null:null,[draft?.captions.enabled,visibleCaptions,playhead]);
   const currentOverlays=useMemo(()=>draft?.overlays.filter(overlay=>playhead>=overlay.startSeconds&&playhead<overlay.endSeconds)??[],[draft,playhead]);
 
   useEffect(()=>{
@@ -102,10 +116,12 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
   useEffect(()=>{void load();},[channel.id]);
 
-  async function openEdit(id:string){
+  async function openEdit(id:string,chapterId?:string){
     setBusy('open');setMessage('');
     try{
-      const res=await fetch('/api/video-editor?videoEditId='+encodeURIComponent(id),{cache:'no-store'});
+      const query=new URLSearchParams({videoEditId:id});
+      if(chapterId)query.set('chapterId',chapterId);
+      const res=await fetch('/api/video-editor?'+query.toString(),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao abrir Video Edit.');
       setCurrent(body.videoEdit);
@@ -115,13 +131,39 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setSources(body.sources??[]);
       setAudioAssets(body.audioAssets??[]);
       setHistory(body.history??[]);
-      const first=body.videoEdit.clipStyles?.[0]?.timelineClipId??'';
+      const resolvedChapterId=String(body.activeChapterId??'');
+      setActiveChapterId(resolvedChapterId);
+      const scopedClips=body.timeline
+        ?videoEditChapterClips(body.timeline,resolvedChapterId)
+        :[];
+      const first=scopedClips[0]?.id??body.videoEdit.clipStyles?.[0]?.timelineClipId??'';
       setSelectedClipId(first);
-      const firstClip=body.timeline?.tracks?.find((track:Timeline['tracks'][number])=>track.type==='visual')?.clips?.find((clip:Timeline['tracks'][number]['clips'][number])=>clip.id===first);
+      const firstClip=scopedClips.find((clip:Timeline['tracks'][number]['clips'][number])=>clip.id===first);
       setPlayhead(firstClip?.startSeconds??0);
       setPlaying(false);
       setTab('editor');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir Video Edit.');}
+    finally{setBusy('');}
+  }
+
+  async function openChapter(chapterId:string){
+    if(!current||!timeline||chapterId===activeChapter?.id)return;
+    setBusy('chapter:'+chapterId);setMessage('');
+    try{
+      const query=new URLSearchParams({videoEditId:current.id,chapterId});
+      const res=await fetch('/api/video-editor?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar capítulo.');
+      const resolvedChapterId=String(body.activeChapterId??chapterId);
+      const scopedClips=videoEditChapterClips(timeline,resolvedChapterId);
+      setSources(body.sources??[]);
+      setAudioAssets(body.audioAssets??[]);
+      setActiveChapterId(resolvedChapterId);
+      setSelectedClipId(scopedClips[0]?.id??'');
+      const chapter=videoEditorChapters(timeline).find(item=>item.id===resolvedChapterId);
+      setPlayhead(scopedClips[0]?.startSeconds??chapter?.startSeconds??0);
+      setPlaying(false);
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar capítulo.');}
     finally{setBusy('');}
   }
 
@@ -148,7 +190,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       const normalized=normalizeVideoEdit(payload);
       const res=await fetch('/api/video-editor',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'save',expectedVersion:current?.version??0,status,videoEdit:normalized})
+        body:JSON.stringify({action:'save',expectedVersion:current?.version??0,status,chapterId:activeChapter?.id,videoEdit:normalized})
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Video Edit.');
@@ -159,6 +201,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setSources(body.sources??[]);
       setAudioAssets(body.audioAssets??[]);
       setHistory(body.history??[]);
+      setActiveChapterId(String(body.activeChapterId??activeChapter?.id??''));
       setEdits(prev=>[body.videoEdit,...prev.filter(item=>item.id!==body.videoEdit.id)]);
       setMessage(body.message??'Video Edit salvo.');
       return true;
@@ -269,7 +312,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   if(draft&&timeline&&transcript){
     const currentSource=currentClip?.assetId?sourceMap.get(currentClip.assetId):null;
     return <div className="video-editor">
-      <div className="video-editor-back"><button onClick={()=>{setDraft(null);setCurrent(null);setTimeline(null);setTranscript(null);setSources([]);setHistory([]);setPlaying(false);}}><ArrowLeft size={15}/>Projetos</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="video-editor-back"><button onClick={()=>{setDraft(null);setCurrent(null);setTimeline(null);setTranscript(null);setSources([]);setHistory([]);setActiveChapterId('');setSelectedClipId('');setPlaying(false);}}><ArrowLeft size={15}/>Projetos</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="video-editor-hero">
         <div><span>VIDEO EDITOR</span><h2>{time(draft.durationSeconds)} · {draft.format.width}×{draft.format.height}</h2><p>Timeline v{draft.timelineVersion} · Transcript v{draft.transcriptVersion}</p></div>
@@ -286,6 +329,24 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
         <button className={tab==='review'?'active':''} onClick={()=>setTab('review')}><CheckCircle2 size={15}/>Review</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
+
+      {chapters.length>0&&<section className="video-editor-chapters">
+        <div className="video-section-head">
+          <div><span>LONG-FORM CHAPTERS</span><h3>{chapters.length} capítulo(s) · clips, captions e mídia carregados por bloco.</h3></div>
+          {activeChapter&&<small>{time(activeChapter.startSeconds)}–{time(activeChapter.endSeconds)} · {visualClips.length} clips · {visibleCaptions.length} captions</small>}
+        </div>
+        <div className="video-editor-chapter-list">{chapters.map(chapter=><button
+          key={chapter.id}
+          className={chapter.id===activeChapter?.id?'active':''}
+          disabled={busy==='chapter:'+chapter.id}
+          onClick={()=>void openChapter(chapter.id)}
+        >
+          <span>{String(chapter.sequence).padStart(2,'0')}</span>
+          <strong>{chapter.label}</strong>
+          <small>{time(chapter.startSeconds)}–{time(chapter.endSeconds)}</small>
+          <em>{chapter.sceneIds.length} cenas</em>
+        </button>)}</div>
+      </section>}
 
       {tab==='editor'&&<div className="video-editor-content">
         <section className="video-preview-shell">
@@ -349,7 +410,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
       {tab==='captions'&&<div className="video-editor-content">
         <section className="video-settings-card">
-          <div className="video-section-head"><div><span>CAPTION SYSTEM</span><h3>Estilo do canal + word timing + destaque.</h3><p>{draft.captions.styleDescription||'Sem descrição de estilo no Production DNA.'}</p></div><label className="video-toggle"><input type="checkbox" checked={draft.captions.enabled} onChange={e=>setDraft({...draft,captions:{...draft.captions,enabled:e.target.checked}})}/><span>Ativas</span></label></div>
+          <div className="video-section-head"><div><span>CAPTION SYSTEM</span><h3>Estilo do canal + word timing + destaque.</h3><p>{draft.captions.styleDescription||'Sem descrição de estilo no Production DNA.'} · exibindo {visibleCaptions.length} de {draft.captions.cues.length} captions.</p></div><label className="video-toggle"><input type="checkbox" checked={draft.captions.enabled} onChange={e=>setDraft({...draft,captions:{...draft.captions,enabled:e.target.checked}})}/><span>Ativas</span></label></div>
           <div className="video-grid four">
             <label>Posição<select value={draft.captions.position} onChange={e=>setDraft({...draft,captions:{...draft.captions,position:e.target.value as VideoEditPayload['captions']['position']}})}><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
             <label>Font size<input type="number" min="10" max="160" value={draft.captions.fontSize} onChange={e=>setDraft({...draft,captions:{...draft.captions,fontSize:Number(e.target.value)}})}/></label>
@@ -370,7 +431,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
             <label className="video-check"><input type="checkbox" checked={draft.captions.style.uppercase} onChange={e=>updateCaptionStyle({uppercase:e.target.checked})}/><span>Uppercase</span></label>
           </div>
         </section>
-        <div className="video-caption-list">{draft.captions.cues.map(cue=><article key={cue.id}>
+        <div className="video-caption-list">{visibleCaptions.map(cue=><article key={cue.id}>
           <div><strong>{time(cue.startSeconds)} → {time(cue.endSeconds)}</strong><small>{cue.transcriptSegmentId.slice(0,8)}</small></div>
           <div className="video-caption-edit">
             <textarea rows={2} value={cue.text} onChange={e=>setDraft({...draft,captions:{...draft.captions,cues:draft.captions.cues.map(item=>item.id===cue.id?{...item,text:e.target.value}:item)}})}/>
