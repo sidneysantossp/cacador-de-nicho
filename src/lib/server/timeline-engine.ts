@@ -19,8 +19,8 @@ import {
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { bestVisualSegment } from './visual-intelligence';
 import {
-  buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
-  timelineAssetIssues, type TimelineVisualAssetRef
+  buildInitialTimeline, normalizeTimeline, rebuildTimelineChapterPayload,
+  timelineApprovalIssues, timelineAssetIssues, timelineChapters, type TimelineVisualAssetRef
 } from '@/lib/timeline-policy';
 
 
@@ -255,14 +255,17 @@ function currentAssetIssues(input:{
   });
 }
 
-async function buildTimelineFromCurrentSources(scenePlanId:string){
+async function buildTimelineFromCurrentSources(scenePlanId:string,sceneScope?:Set<string>){
   const context=await eligibleContext(scenePlanId);
+  const selectedAssets=context.selectedAssets.filter(asset=>
+    asset.status==='ready'&&(!sceneScope||sceneScope.has(asset.scene_id))
+  );
   const payload=buildInitialTimeline({
     scenePlan:context.scenePlan,
     productionDna:context.dna,
     visualPromptSet:context.visualPromptSet,
     visualAssets:await selectedVisualRefs(
-      context.selectedAssets.filter(asset=>asset.status==='ready'),
+      selectedAssets,
       context.scenePlan,
       context.visualPromptSet
     ),
@@ -287,6 +290,44 @@ export async function refreshTimelineFromPlan(scenePlanId:string):Promise<Timeli
     id:existing.id,
     review:existing.review,
     createdAt:existing.createdAt
+  },'draft',existing.version);
+}
+
+export async function refreshTimelineChapter(
+  timelineId:string,
+  chapterId:string
+):Promise<Timeline>{
+  const existing=await loadTimeline(timelineId);
+  if(!existing)throw new HttpError('Timeline não encontrada.',404);
+  const chapter=timelineChapters(existing).find(item=>item.id===chapterId);
+  if(!chapter)throw new HttpError('Capítulo da Timeline não encontrado.',404);
+  const {context,payload:fresh}=await buildTimelineFromCurrentSources(
+    existing.scenePlanId,
+    new Set(chapter.sceneIds)
+  );
+  if(
+    existing.scenePlanVersion!==context.scenePlan.version||
+    existing.visualPromptSetVersion!==context.visualPromptSet.version
+  ){
+    throw new HttpError(
+      'Os recursos upstream mudaram de versão. Faça refresh completo da Timeline antes de reprocessar um capítulo.',
+      409
+    );
+  }
+  let rebuilt:TimelinePayload;
+  try{
+    rebuilt=rebuildTimelineChapterPayload(existing,fresh,chapterId);
+  }catch(error){
+    if(error instanceof Error&&error.message==='timeline-chapter-not-found'){
+      throw new HttpError('Capítulo da Timeline não encontrado.',404);
+    }
+    throw error;
+  }
+  return saveTimeline({
+    ...rebuilt,
+    id:existing.id,
+    createdAt:existing.createdAt,
+    review:existing.review
   },'draft',existing.version);
 }
 
@@ -353,9 +394,15 @@ export async function saveTimeline(
   return {...normalized,version,status};
 }
 
-export async function loadTimelineSources(timeline:Timeline){
+export async function loadTimelineSources(timeline:Timeline,chapterId?:string){
   const visual=timeline.tracks.find(track=>track.type==='visual');
-  const sceneIds=(visual?.clips??[]).map(clip=>clip.assetId).filter((id):id is string=>!!id);
+  const chapters=timelineChapters(timeline);
+  const chapter=chapterId?chapters.find(item=>item.id===chapterId):null;
+  const sceneScope=chapter?new Set(chapter.sceneIds):null;
+  const sceneIds=(visual?.clips??[])
+    .filter(clip=>!sceneScope||Boolean(clip.sceneId&&sceneScope.has(clip.sceneId)))
+    .map(clip=>clip.assetId)
+    .filter((id):id is string=>!!id);
   const sceneRows=sceneIds.length
     ?checked(await db().from('radar_scene_assets')
       .select('id,storage_path,mime_type,original_name')

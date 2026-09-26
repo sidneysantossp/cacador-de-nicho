@@ -1,5 +1,5 @@
 import type {
-  ProductionDNA, ScenePlan, TimelineClip, TimelinePayload, TimelineTrack,
+  ProductionDNA, ScenePlan, TimelineChapter, TimelineClip, TimelinePayload, TimelineTrack,
   VisualPromptSet, VoiceAsset
 } from '@/lib/types';
 
@@ -70,6 +70,237 @@ export type TimelineVisualAssetRef={
   focusX?:number|null;
   focusY?:number|null;
 };
+
+const CHAPTER_MAX_SECONDS=600;
+const LONG_STATIC_IMAGE_SECONDS=15;
+const SHORT_CUT_SECONDS=1.5;
+
+function chapterSceneGroups(scenePlan:ScenePlan){
+  const scenes=[...scenePlan.scenes].sort((a,b)=>a.startSeconds-b.startSeconds);
+  if(!scenes.length)return [] as typeof scenes[];
+  const count=Math.max(1,Math.ceil(Math.max(0,scenePlan.audioDurationSeconds)/CHAPTER_MAX_SECONDS));
+  if(count===1)return [scenes];
+
+  const target=Math.max(1,scenePlan.audioDurationSeconds/count);
+  const groups:Array<typeof scenes>=[];
+  let cursor=0;
+  for(let chapterIndex=0;chapterIndex<count;chapterIndex++){
+    const remainingChapters=count-chapterIndex;
+    if(remainingChapters===1){
+      groups.push(scenes.slice(cursor));
+      break;
+    }
+    const desiredEnd=target*(chapterIndex+1);
+    const maxIndex=scenes.length-remainingChapters;
+    let bestIndex=cursor;
+    let bestDistance=Infinity;
+    for(let index=cursor;index<=maxIndex;index++){
+      const distance=Math.abs(scenes[index].endSeconds-desiredEnd);
+      if(distance<bestDistance){
+        bestDistance=distance;
+        bestIndex=index;
+      }
+    }
+    groups.push(scenes.slice(cursor,bestIndex+1));
+    cursor=bestIndex+1;
+  }
+  return groups.filter(group=>group.length);
+}
+
+export function buildTimelineChapters(scenePlan:ScenePlan):TimelineChapter[]{
+  const now=new Date().toISOString();
+  return chapterSceneGroups(scenePlan).map((scenes,index)=>{
+    const start=scenes[0]?.startSeconds??0;
+    const end=scenes.at(-1)?.endSeconds??start;
+    return {
+      id:crypto.randomUUID(),
+      sequence:index+1,
+      label:'Chapter '+String(index+1).padStart(2,'0'),
+      startSeconds:start,
+      endSeconds:end,
+      durationSeconds:Math.max(0,end-start),
+      sceneIds:scenes.map(scene=>scene.id),
+      status:'draft',
+      reviewNotes:'',
+      updatedAt:now
+    };
+  });
+}
+
+export function timelineChapters(payload:TimelinePayload):TimelineChapter[]{
+  if(payload.chapters?.length){
+    return [...payload.chapters].sort((a,b)=>a.sequence-b.sequence).map((chapter,index)=>({
+      ...chapter,
+      sequence:index+1,
+      startSeconds:Math.max(0,chapter.startSeconds),
+      endSeconds:Math.min(payload.durationSeconds,Math.max(chapter.startSeconds,chapter.endSeconds)),
+      durationSeconds:Math.max(0,Math.min(payload.durationSeconds,Math.max(chapter.startSeconds,chapter.endSeconds))-Math.max(0,chapter.startSeconds))
+    }));
+  }
+  const visual=[...(payload.tracks.find(track=>track.type==='visual')?.clips??[])]
+    .filter(clip=>clip.sceneId)
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+  if(!visual.length)return [];
+  const pseudo:ScenePlan={
+    kind:'scene-plan',
+    id:payload.scenePlanId,
+    channelId:payload.channelId,
+    episodeId:payload.episodeId,
+    scriptId:payload.scriptId,
+    voiceAssetId:payload.voiceAssetId,
+    transcriptId:crypto.randomUUID(),
+    transcriptVersion:1,
+    voiceTake:1,
+    audioDurationSeconds:payload.durationSeconds,
+    scenes:visual.map((clip,index)=>({
+      id:clip.sceneId!,
+      sequence:index+1,
+      startSeconds:clip.startSeconds,
+      endSeconds:clip.endSeconds,
+      durationSeconds:clip.durationSeconds,
+      narration:'',
+      transcriptSegmentIds:[],
+      transcriptWordIds:[],
+      visualIntent:'',
+      shotType:'',
+      characterIds:[],
+      assetMode:'mixed',
+      promptDirection:'',
+      notes:''
+    })),
+    review:{notes:'',durationWarningsAccepted:true},
+    createdAt:payload.createdAt,
+    updatedAt:payload.updatedAt,
+    version:1,
+    status:'approved'
+  };
+  return buildTimelineChapters(pseudo).map(chapter=>({
+    ...chapter,
+    id:chapter.sceneIds[0]??payload.id,
+    updatedAt:payload.updatedAt
+  }));
+}
+
+export function timelineChapterStructuralIssues(payload:TimelinePayload){
+  const chapters=timelineChapters(payload);
+  if(!chapters.length)return ['missing-timeline-chapters'];
+  const issues:string[]=[];
+  const visual=payload.tracks.find(track=>track.type==='visual');
+  const expectedSceneIds=new Set((visual?.clips??[]).flatMap(clip=>clip.sceneId?[clip.sceneId]:[]));
+  const seenSceneIds=new Set<string>();
+
+  chapters.forEach((chapter,index)=>{
+    if(chapter.endSeconds<=chapter.startSeconds)issues.push('invalid-chapter-duration');
+    const previous=chapters[index-1];
+    if(previous){
+      if(chapter.startSeconds<previous.endSeconds-EPSILON)issues.push('chapter-overlap');
+      if(chapter.startSeconds>previous.endSeconds+EPSILON)issues.push('chapter-gap');
+    }else if(chapter.startSeconds>EPSILON){
+      issues.push('chapter-gap-at-start');
+    }
+    for(const sceneId of chapter.sceneIds){
+      if(seenSceneIds.has(sceneId))issues.push('chapter-duplicate-scene');
+      seenSceneIds.add(sceneId);
+      if(!expectedSceneIds.has(sceneId))issues.push('chapter-unknown-scene');
+    }
+  });
+  if(chapters.at(-1)!.endSeconds<payload.durationSeconds-EPSILON)issues.push('chapter-gap-at-end');
+  for(const sceneId of expectedSceneIds)if(!seenSceneIds.has(sceneId))issues.push('chapter-missing-scene');
+  return [...new Set(issues)];
+}
+
+export function timelineHealth(payload:TimelinePayload){
+  const visual=[...(payload.tracks.find(track=>track.type==='visual')?.clips??[])]
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+  let gapSeconds=0;
+  let cursor=0;
+  for(const clip of visual){
+    if(clip.startSeconds>cursor)gapSeconds+=clip.startSeconds-cursor;
+    cursor=Math.max(cursor,clip.endSeconds);
+  }
+  if(cursor<payload.durationSeconds)gapSeconds+=payload.durationSeconds-cursor;
+
+  const mediaClips=visual.filter(clip=>clip.clipKind!=='placeholder'&&clip.assetId);
+  const uniqueAssets=new Set(mediaClips.map(clip=>clip.assetId)).size;
+  const longStaticImages=visual.filter(
+    clip=>clip.clipKind==='image'&&clip.durationSeconds>LONG_STATIC_IMAGE_SECONDS
+  );
+  const shortCuts=visual.filter(
+    clip=>clip.clipKind!=='placeholder'&&clip.durationSeconds<SHORT_CUT_SECONDS
+  );
+  const chapters=timelineChapters(payload);
+  const chapterMetrics=chapters.map(chapter=>{
+    const clips=visual.filter(clip=>
+      clip.endSeconds>chapter.startSeconds+EPSILON&&
+      clip.startSeconds<chapter.endSeconds-EPSILON
+    );
+    const chapterMedia=clips.filter(clip=>clip.clipKind!=='placeholder'&&clip.assetId);
+    return {
+      chapterId:chapter.id,
+      sequence:chapter.sequence,
+      durationSeconds:chapter.durationSeconds,
+      clipCount:clips.length,
+      cutsPerMinute:chapter.durationSeconds>0?clips.length/(chapter.durationSeconds/60):0,
+      imageCount:clips.filter(clip=>clip.clipKind==='image').length,
+      videoCount:clips.filter(clip=>clip.clipKind==='video').length,
+      placeholderCount:clips.filter(clip=>clip.clipKind==='placeholder').length,
+      uniqueAssetRatio:chapterMedia.length
+        ?new Set(chapterMedia.map(clip=>clip.assetId)).size/chapterMedia.length
+        :0
+    };
+  });
+  return {
+    coverageRatio:payload.durationSeconds>0
+      ?Math.max(0,Math.min(1,(payload.durationSeconds-gapSeconds)/payload.durationSeconds))
+      :1,
+    gapSeconds,
+    clipCount:visual.length,
+    cutsPerMinute:payload.durationSeconds>0?visual.length/(payload.durationSeconds/60):0,
+    uniqueAssetRatio:mediaClips.length?uniqueAssets/mediaClips.length:0,
+    repeatedAssetCount:Math.max(0,mediaClips.length-uniqueAssets),
+    longStaticImageCount:longStaticImages.length,
+    maxStaticImageSeconds:longStaticImages.length
+      ?Math.max(...longStaticImages.map(clip=>clip.durationSeconds))
+      :0,
+    excessiveCutCount:shortCuts.length,
+    chapters:chapterMetrics
+  };
+}
+
+export function rebuildTimelineChapterPayload(
+  currentInput:TimelinePayload,
+  freshInput:TimelinePayload,
+  chapterId:string
+){
+  const current=normalizeTimeline(currentInput);
+  const fresh=normalizeTimeline(freshInput);
+  const chapters=timelineChapters(current);
+  const chapter=chapters.find(item=>item.id===chapterId);
+  if(!chapter)throw new Error('timeline-chapter-not-found');
+  const sceneIds=new Set(chapter.sceneIds);
+  const currentVisual=current.tracks.find(track=>track.type==='visual');
+  const freshVisual=fresh.tracks.find(track=>track.type==='visual');
+  if(!currentVisual||!freshVisual)throw new Error('timeline-visual-track-missing');
+
+  const replacement=new Map(
+    freshVisual.clips.filter(clip=>clip.sceneId&&sceneIds.has(clip.sceneId))
+      .map(clip=>[clip.sceneId!,clip])
+  );
+  const visualClips=currentVisual.clips.map(clip=>
+    clip.sceneId&&sceneIds.has(clip.sceneId)
+      ?structuredClone(replacement.get(clip.sceneId)??clip)
+      :clip
+  );
+  const now=new Date().toISOString();
+  return normalizeTimeline({
+    ...current,
+    tracks:current.tracks.map(track=>track.id===currentVisual.id?{...track,clips:visualClips}:track),
+    chapters:chapters.map(item=>item.id===chapterId?{
+      ...item,status:'draft',updatedAt:now
+    }:item),
+    updatedAt:now
+  });
+}
 
 export function buildInitialTimeline(input:{
   scenePlan:ScenePlan;
@@ -191,6 +422,7 @@ export function buildInitialTimeline(input:{
     },
     durationSeconds:input.scenePlan.audioDurationSeconds,
     tracks:[visualTrack,voiceTrack],
+    chapters:buildTimelineChapters(input.scenePlan),
     review:{notes:''},
     createdAt:now,
     updatedAt:now
@@ -198,7 +430,7 @@ export function buildInitialTimeline(input:{
 }
 
 export function normalizeTimeline(payload:TimelinePayload):TimelinePayload{
-  return {
+  const base={
     ...payload,
     durationSeconds:Math.max(0,payload.durationSeconds),
     tracks:payload.tracks.map(track=>({
@@ -214,6 +446,10 @@ export function normalizeTimeline(payload:TimelinePayload):TimelinePayload{
     })),
     updatedAt:new Date().toISOString()
   };
+  return {
+    ...base,
+    chapters:timelineChapters(base)
+  };
 }
 
 export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:ScenePlan){
@@ -225,6 +461,7 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
   if(Math.abs(payload.durationSeconds-scenePlan.audioDurationSeconds)>EPSILON)issues.push('timeline-duration-mismatch');
   if(visualTracks.length!==1)issues.push('visual-track-count');
   if(voiceTracks.length!==1)issues.push('voice-track-count');
+  issues.push(...timelineChapterStructuralIssues(payload));
 
   const visual=visualTracks[0];
   if(visual){

@@ -1315,6 +1315,19 @@ export type TimelineTrack = {
  muted: boolean;
  clips: TimelineClip[];
 };
+export type TimelineChapterStatus = 'draft' | 'review' | 'approved';
+export type TimelineChapter = {
+ id: string;
+ sequence: number;
+ label: string;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ sceneIds: string[];
+ status: TimelineChapterStatus;
+ reviewNotes: string;
+ updatedAt: string;
+};
 export type TimelinePayload = {
  kind: 'timeline';
  id: string;
@@ -1334,6 +1347,7 @@ export type TimelinePayload = {
  };
  durationSeconds: number;
  tracks: TimelineTrack[];
+ chapters?: TimelineChapter[];
  review: {
   notes: string;
  };

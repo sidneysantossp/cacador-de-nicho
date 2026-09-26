@@ -6,11 +6,11 @@ import {
   Image as ImageIcon, Save, Sparkles, Video, Volume2
 } from 'lucide-react';
 import type {
-  ManagedChannel, ScenePlan, Timeline, TimelineClip, TimelinePayload,
+  ManagedChannel, ScenePlan, Timeline, TimelineChapterStatus, TimelineClip, TimelinePayload,
   TimelineVersion
 } from '@/lib/types';
 import {
-  normalizeTimeline, timelineStructuralIssues
+  normalizeTimeline, timelineChapters, timelineHealth, timelineStructuralIssues
 } from '@/lib/timeline-policy';
 
 type Source={
@@ -41,6 +41,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   const [sources,setSources]=useState<Source[]>([]);
   const [history,setHistory]=useState<TimelineVersion[]>([]);
   const [selectedClipId,setSelectedClipId]=useState('');
+  const [activeChapterId,setActiveChapterId]=useState('');
   const [tab,setTab]=useState<Tab>('timeline');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
@@ -53,8 +54,20 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     const voiceClip=draft?.tracks.find(track=>track.type==='voice')?.clips[0];
     return voiceClip?.assetId?sourceMap.get(voiceClip.assetId)??null:null;
   },[draft,sourceMap]);
+  const chapters=useMemo(()=>draft?timelineChapters(draft):[],[draft]);
+  const activeChapter=useMemo(
+    ()=>chapters.find(chapter=>chapter.id===activeChapterId)??chapters[0]??null,
+    [chapters,activeChapterId]
+  );
+  const health=useMemo(()=>draft?timelineHealth(draft):null,[draft]);
   const structuralIssues=useMemo(()=>draft&&scenePlan?timelineStructuralIssues(normalizeTimeline(draft),scenePlan):[],[draft,scenePlan]);
-  const dirty=useMemo(()=>draft&&current?JSON.stringify(normalizeTimeline(draft))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
+  const dirty=useMemo(()=>{
+    if(!draft)return false;
+    if(!current)return true;
+    const left=normalizeTimeline(draft);
+    const right=normalizeTimeline(payloadOnly(current));
+    return JSON.stringify({...left,updatedAt:''})!==JSON.stringify({...right,updatedAt:''});
+  },[draft,current]);
   const selectedClip=useMemo(()=>{
     if(!draft)return null;
     for(const track of draft.tracks){
@@ -89,7 +102,15 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       setScenePlan(body.scenePlan??null);
       setSources(body.sources??[]);
       setHistory(body.history??[]);
-      setSelectedClipId(body.timeline.tracks.find((track:Timeline['tracks'][number])=>track.type==='visual')?.clips[0]?.id??'');
+      const opened=body.timeline as Timeline;
+      const openedChapters=timelineChapters(opened);
+      const chapterId=String(body.activeChapterId??openedChapters[0]?.id??'');
+      setActiveChapterId(chapterId);
+      const chapter=openedChapters.find(item=>item.id===chapterId)??openedChapters[0];
+      const sceneIds=new Set(chapter?.sceneIds??[]);
+      setSelectedClipId(opened.tracks.find((track:Timeline['tracks'][number])=>track.type==='visual')?.clips.find(
+        (clip:TimelineClip)=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId))
+      )?.id??'');
       setTab('timeline');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir Timeline.');}
     finally{setBusy('');}
@@ -120,14 +141,19 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       const res=await fetch('/api/timeline-engine',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'save',expectedVersion:current?.version??0,status,timeline:normalized})
+        body:JSON.stringify({
+          action:'save',expectedVersion:current?.version??0,status,
+          chapterId:activeChapter?.id,
+          timeline:normalized
+        })
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Timeline.');
       setCurrent(body.timeline);
       setDraft(payloadOnly(body.timeline));
       setHistory(body.history??[]);
-      setSources(body.sources??[]);
+      setSources(body.sources??sources);
+      setActiveChapterId(String(body.activeChapterId??activeChapter?.id??''));
       setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
       setMessage(body.message??'Timeline salva.');
       return true;
@@ -145,12 +171,81 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     });
   }
 
+  function updateChapterStatus(status:TimelineChapterStatus){
+    if(!activeChapter)return;
+    setDraft(prev=>{
+      if(!prev)return prev;
+      const now=new Date().toISOString();
+      return normalizeTimeline({
+        ...prev,
+        chapters:timelineChapters(prev).map(chapter=>chapter.id===activeChapter.id
+          ?{...chapter,status,updatedAt:now}
+          :chapter)
+      });
+    });
+  }
+
+  async function openChapter(chapterId:string){
+    if(!current||chapterId===activeChapterId)return;
+    setBusy('chapter:'+chapterId);setMessage('');
+    try{
+      const res=await fetch(
+        '/api/timeline-engine?timelineId='+encodeURIComponent(current.id)+
+        '&chapterId='+encodeURIComponent(chapterId),
+        {cache:'no-store'}
+      );
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar capítulo.');
+      setSources(body.sources??[]);
+      setActiveChapterId(chapterId);
+      const chapter=timelineChapters(draft??current).find(item=>item.id===chapterId);
+      const sceneIds=new Set(chapter?.sceneIds??[]);
+      const visual=(draft??current).tracks.find(track=>track.type==='visual');
+      setSelectedClipId(visual?.clips.find(clip=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId)))?.id??'');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar capítulo.');}
+    finally{setBusy('');}
+  }
+
+  async function refreshChapter(){
+    if(!current||!activeChapter)return;
+    if(dirty){
+      setMessage('Salve a Timeline antes de reprocessar o capítulo.');
+      return;
+    }
+    setBusy('refresh-chapter');setMessage('');
+    try{
+      const res=await fetch('/api/timeline-engine',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          action:'refresh-chapter',
+          timelineId:current.id,
+          chapterId:activeChapter.id
+        })
+      });
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao reprocessar capítulo.');
+      setCurrent(body.timeline);
+      setDraft(payloadOnly(body.timeline));
+      setHistory(body.history??[]);
+      setSources(body.sources??[]);
+      setActiveChapterId(String(body.activeChapterId??activeChapter.id));
+      setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
+      setMessage(body.message??'Capítulo reprocessado.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao reprocessar capítulo.');}
+    finally{setBusy('');}
+  }
+
   if(loading)return <div className="timeline-loading"><Sparkles className="spin" size={20}/>Carregando Timeline Engine…</div>;
 
   if(draft&&scenePlan){
-    const canvasWidth=Math.max(1000,Math.min(6000,draft.durationSeconds*18));
+    const chapterStart=activeChapter?.startSeconds??0;
+    const chapterEnd=activeChapter?.endSeconds??draft.durationSeconds;
+    const chapterDuration=Math.max(.01,chapterEnd-chapterStart);
+    const chapterSceneIds=new Set(activeChapter?.sceneIds??[]);
+    const canvasWidth=Math.max(1000,Math.min(6000,chapterDuration*18));
     return <div className="timeline-editor">
-      <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');setActiveChapterId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="timeline-hero">
         <div><span>TIMELINE ENGINE</span><h2>{time(draft.durationSeconds)} · {draft.format.width}×{draft.format.height} · {draft.format.fps}fps</h2><p>Scene Plan v{draft.scenePlanVersion} · Visual Prompt v{draft.visualPromptSetVersion} · {voiceSource?.title??'Narração vinculada'}</p></div>
@@ -164,6 +259,34 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
         <button className={tab==='review'?'active':''} onClick={()=>setTab('review')}><CheckCircle2 size={15}/>Review</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
+
+      <section className="timeline-chapters">
+        <div className="timeline-section-head">
+          <div><span>LONG-FORM CHAPTERS</span><h3>{chapters.length} capítulo(s) · apenas o capítulo ativo carrega mídia.</h3></div>
+          {activeChapter&&<div className="timeline-chapter-actions">
+            <button className="button subtle small" disabled={!!busy||dirty} onClick={()=>void refreshChapter()}>
+              {busy==='refresh-chapter'?'Reprocessando…':'Reprocessar capítulo'}
+            </button>
+            <button className="button subtle small" onClick={()=>updateChapterStatus('review')}>Em revisão</button>
+            <button className="button subtle small" onClick={()=>updateChapterStatus('approved')}><CheckCircle2 size={14}/>Aprovar capítulo</button>
+          </div>}
+        </div>
+        <div className="timeline-chapter-list">{chapters.map(chapter=>{
+          const metric=health?.chapters.find(item=>item.chapterId===chapter.id);
+          return <button key={chapter.id} className={chapter.id===activeChapter?.id?'active':''} disabled={busy==='chapter:'+chapter.id} onClick={()=>void openChapter(chapter.id)}>
+            <span>{String(chapter.sequence).padStart(2,'0')}</span>
+            <strong>{chapter.label}</strong>
+            <small>{time(chapter.startSeconds)}–{time(chapter.endSeconds)} · {metric?.clipCount??chapter.sceneIds.length} clips</small>
+            <em>{chapter.status}</em>
+          </button>;
+        })}</div>
+        {health&&<div className="timeline-density-map" aria-label="Mapa global de densidade visual">
+          {health.chapters.map(metric=><div key={metric.chapterId} title={'Capítulo '+metric.sequence+' · '+metric.cutsPerMinute.toFixed(1)+' cortes/min'}>
+            <span style={{height:Math.max(8,Math.min(100,metric.cutsPerMinute*5))+'%'}}/>
+            <small>{metric.cutsPerMinute.toFixed(1)}</small>
+          </div>)}
+        </div>}
+      </section>
 
       {tab==='timeline'&&<div className="timeline-content">
         <section className="timeline-stage">
@@ -188,22 +311,33 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
 
         <section className="timeline-scroll">
           <div className="timeline-canvas" style={{width:canvasWidth}}>
-            <div className="timeline-ruler">{Array.from({length:Math.ceil(draft.durationSeconds/10)+1},(_,i)=><span key={i} style={{left:(i*10/draft.durationSeconds*100)+'%'}}>{time(i*10)}</span>)}</div>
-            {draft.tracks.filter(track=>track.type==='visual'||track.type==='voice').map(track=><div className={'timeline-track '+track.type} key={track.id}>
-              <div className="timeline-track-label">{track.type==='visual'?<ImageIcon size={15}/>:<Volume2 size={15}/>}<span>{track.name}</span>{track.locked&&<small>LOCKED</small>}</div>
-              <div className="timeline-track-lane">{track.clips.map(clip=>{
-                const left=clip.startSeconds/draft.durationSeconds*100;
-                const width=Math.max(.2,clip.durationSeconds/draft.durationSeconds*100);
-                const source=clip.assetId?sourceMap.get(clip.assetId):null;
-                return <button key={clip.id} style={{left:left+'%',width:width+'%'}} className={'timeline-clip '+clip.clipKind+(selectedClipId===clip.id?' selected':'')} onClick={()=>setSelectedClipId(clip.id)}>
-                  {clip.clipKind==='image'&&source?.signedUrl?<img src={source.signedUrl} alt=""/>:
-                   clip.clipKind==='video'&&source?.signedUrl?<video src={source.signedUrl} muted preload="metadata"/>:
-                   clip.clipKind==='audio'?<Volume2 size={14}/>:
-                   <AlertTriangle size={14}/>}
-                  <span>{clip.label}</span>
-                </button>;
-              })}</div>
-            </div>)}
+            <div className="timeline-ruler">{Array.from({length:Math.ceil(chapterDuration/10)+1},(_,i)=>{
+              const offset=Math.min(chapterDuration,i*10);
+              return <span key={i} style={{left:(offset/chapterDuration*100)+'%'}}>{time(chapterStart+offset)}</span>;
+            })}</div>
+            {draft.tracks.filter(track=>track.type==='visual'||track.type==='voice').map(track=>{
+              const visibleClips=track.clips.filter(clip=>
+                track.type==='voice'
+                  ?clip.endSeconds>chapterStart&&clip.startSeconds<chapterEnd
+                  :Boolean(clip.sceneId&&chapterSceneIds.has(clip.sceneId))
+              );
+              return <div className={'timeline-track '+track.type} key={track.id}>
+                <div className="timeline-track-label">{track.type==='visual'?<ImageIcon size={15}/>:<Volume2 size={15}/>}<span>{track.name}</span>{track.locked&&<small>LOCKED</small>}</div>
+                <div className="timeline-track-lane">{visibleClips.map(clip=>{
+                  const visibleStart=Math.max(chapterStart,clip.startSeconds);
+                  const visibleEnd=Math.min(chapterEnd,clip.endSeconds);
+                  const left=(visibleStart-chapterStart)/chapterDuration*100;
+                  const width=Math.max(.2,(visibleEnd-visibleStart)/chapterDuration*100);
+                  return <button key={clip.id} style={{left:left+'%',width:width+'%'}} className={'timeline-clip '+clip.clipKind+(selectedClipId===clip.id?' selected':'')} onClick={()=>setSelectedClipId(clip.id)}>
+                    {clip.clipKind==='image'?<ImageIcon size={14}/>:
+                     clip.clipKind==='video'?<Video size={14}/>:
+                     clip.clipKind==='audio'?<Volume2 size={14}/>:
+                     <AlertTriangle size={14}/>}
+                    <span>{clip.label}</span>
+                  </button>;
+                })}</div>
+              </div>;
+            })}
           </div>
         </section>
       </div>}
@@ -214,7 +348,16 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
           <div><span>TIMELINE GATE</span><h3>{structuralIssues.length?'A estrutura ainda tem bloqueios.':'Estrutura temporal consistente.'}</h3><p>A aprovação final também valida se os assets continuam selecionados, ready e não-stale.</p></div>
         </section>
         {structuralIssues.length>0&&<div className="timeline-issues">{structuralIssues.map(issue=><span key={issue}>{issue}</span>)}</div>}
-        <label className="timeline-notes"><span>NOTAS DE REVIEW</span><textarea rows={5} value={draft.review.notes} onChange={e=>setDraft({...draft,review:{notes:e.target.value}})}/></label>
+        {health&&<section className="timeline-health-grid">
+          <div><strong>{(health.coverageRatio*100).toFixed(1)}%</strong><small>cobertura visual</small></div>
+          <div><strong>{health.cutsPerMinute.toFixed(1)}</strong><small>cortes/min</small></div>
+          <div><strong>{(health.uniqueAssetRatio*100).toFixed(0)}%</strong><small>origens únicas</small></div>
+          <div><strong>{health.repeatedAssetCount}</strong><small>repetições</small></div>
+          <div><strong>{health.longStaticImageCount}</strong><small>imagens &gt;15s</small></div>
+          <div><strong>{health.excessiveCutCount}</strong><small>cortes &lt;1,5s</small></div>
+        </section>}
+        {activeChapter&&<label className="timeline-notes"><span>REVIEW DO CAPÍTULO {activeChapter.sequence}</span><textarea rows={3} value={activeChapter.reviewNotes} onChange={e=>setDraft(prev=>prev?normalizeTimeline({...prev,chapters:timelineChapters(prev).map(chapter=>chapter.id===activeChapter.id?{...chapter,reviewNotes:e.target.value,updatedAt:new Date().toISOString()}:chapter)}):prev)}/></label>}
+        <label className="timeline-notes"><span>NOTAS DE REVIEW MASTER</span><textarea rows={5} value={draft.review.notes} onChange={e=>setDraft({...draft,review:{notes:e.target.value}})}/></label>
         <div className="timeline-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={structuralIssues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar Timeline</button></div>
       </div>}
 
