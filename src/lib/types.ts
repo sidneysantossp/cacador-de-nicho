@@ -888,8 +888,9 @@ export type VoiceAsset = {
  createdAt: string;
  updatedAt: string;
 };
-export type VoiceAssetListItem = Omit<VoiceAsset,'alignment'> & {
+export type VoiceAssetListItem = Omit<VoiceAsset,'alignment'|'generationChunks'> & {
  hasAlignment: boolean;
+ generationChunkCount: number;
  signedUrl: string | null;
  stale: boolean;
 };
