@@ -215,6 +215,7 @@ const responseSchema={
   type:'OBJECT',
   properties:{segments:{type:'ARRAY',items:{type:'OBJECT',properties:{
     sequence:{type:'INTEGER'},title:{type:'STRING'},summary:{type:'STRING'},confidence:{type:'NUMBER'},
+    qualityScore:{type:'NUMBER'},usable:{type:'BOOLEAN'},qualityIssues:{type:'ARRAY',items:{type:'STRING'}},
     subjects:{type:'ARRAY',items:{type:'STRING'}},locations:{type:'ARRAY',items:{type:'STRING'}},
     landmarks:{type:'ARRAY',items:{type:'STRING'}},activities:{type:'ARRAY',items:{type:'STRING'}},
     objects:{type:'ARRAY',items:{type:'STRING'}},environments:{type:'ARRAY',items:{type:'STRING'}},
@@ -223,7 +224,8 @@ const responseSchema={
     moods:{type:'ARRAY',items:{type:'STRING'}},visualStyle:{type:'ARRAY',items:{type:'STRING'}},
     periods:{type:'ARRAY',items:{type:'STRING'}}
   },required:[
-    'sequence','title','summary','confidence','subjects','locations','landmarks','activities','objects',
+    'sequence','title','summary','confidence','qualityScore','usable','qualityIssues',
+    'subjects','locations','landmarks','activities','objects',
     'environments','timeOfDay','weather','shotTypes','cameraMotion','moods','visualStyle','periods'
   ]}}},
   required:['segments']
@@ -236,7 +238,7 @@ async function analyzeFrames(input:{
   sourceHint:string;
 }){
   const parts:Array<Record<string,unknown>>=[{text:[
-    'You are the visual indexing engine for a private professional stock-video library.',
+    'You are the visual indexing engine for a private professional image and video library.',
     'Analyze only what is visually supported by each supplied keyframe.',
     'Do not infer an exact city, district or landmark unless the visual evidence is recognizable.',
     'The filename/source hint is context only and must never override what the frame shows: '+input.sourceHint,
@@ -244,6 +246,8 @@ async function analyzeFrames(input:{
     'For people, prefer useful production terms such as pedestrians, commuters, tourists, workers or crowd only when visible.',
     'For environments, use labels such as skyline, street, avenue, bridge, park, library, waterfront, traffic, restaurant, office, mountains or desert when supported.',
     'For shotTypes and cameraMotion describe the actual framing/viewpoint and apparent movement conservatively.',
+    'Judge production usability from the supplied frame: sharpness, exposure, occlusion, compression, framing and whether the visual is genuinely useful as documentary B-roll.',
+    'qualityScore is 0..1. usable=false only for material with a serious production defect or no meaningful visual content. qualityIssues must be concise labels such as blur, underexposed, overexposed, compression, obstruction, black-frame or weak-composition.',
     'Confidence is 0..1 for the overall visual description.'
   ].join('\n')}];
   for(const item of input.items){
