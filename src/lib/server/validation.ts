@@ -162,7 +162,12 @@ export const productionDnaPayloadSchema=z.object({
   styleDescription:z.string().trim().max(3000),
   position:z.string().trim().max(120),
   maxWordsPerCaption:z.number().int().min(1).max(30).nullable(),
-  highlightKeywords:z.boolean()
+  highlightKeywords:z.boolean(),
+  longFormMode:z.boolean().optional(),
+  highlightMode:z.enum(['none','keywords','active-word']).optional(),
+  emphasizeFacts:z.boolean().optional(),
+  safeMarginPercent:z.number().min(0).max(25).optional(),
+  maxLines:z.number().int().min(1).max(6).optional()
  }).strict(),
  editing:z.object({
   transitions:shortList(50,160),
