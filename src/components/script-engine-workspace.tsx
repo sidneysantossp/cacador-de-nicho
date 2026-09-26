@@ -6,8 +6,8 @@ import {
   Save, Sparkles, Trash2, WandSparkles
 } from 'lucide-react';
 import type {
-  ContentProject, EpisodeScript, EpisodeScriptPayload, EpisodeScriptSection,
-  EpisodeScriptVersion, ManagedChannel, ProductionDNA
+  ContentProject, EpisodeScript, EpisodeScriptListItem, EpisodeScriptPayload, EpisodeScriptSection,
+  EpisodeScriptVersionSummary, ManagedChannel, ProductionDNA
 } from '@/lib/types';
 import { combineScriptSections, countScriptWords, scriptApprovalIssues } from '@/lib/script-policy';
 
@@ -15,6 +15,15 @@ type Tab='script'|'provenance'|'continuity'|'history';
 
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
 function payloadOnly(value:EpisodeScript):EpisodeScriptPayload{const {version:_version,status:_status,...payload}=value;return payload;}
+function scriptSummary(value:EpisodeScript):EpisodeScriptListItem{
+  return {
+    id:value.id,channelId:value.channelId,episodeId:value.episodeId,contentProjectId:value.contentProjectId,
+    version:value.version,status:value.status,title:value.title,language:value.language,wordCount:value.wordCount,
+    estimatedMinutes:value.estimatedMinutes,sectionCount:value.sections.length,
+    generatedBy:value.provenance.generatedBy,characterCount:value.content.length,
+    createdAt:value.createdAt,updatedAt:value.updatedAt
+  };
+}
 function syncPayload(value:EpisodeScriptPayload):EpisodeScriptPayload{
   const content=combineScriptSections(value.sections);
   return {...value,content,wordCount:Math.max(1,countScriptWords(content)),updatedAt:new Date().toISOString()};
@@ -22,12 +31,12 @@ function syncPayload(value:EpisodeScriptPayload):EpisodeScriptPayload{
 
 export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}){
   const [projects,setProjects]=useState<ContentProject[]>([]);
-  const [scripts,setScripts]=useState<EpisodeScript[]>([]);
+  const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [current,setCurrent]=useState<EpisodeScript|null>(null);
   const [draft,setDraft]=useState<EpisodeScriptPayload|null>(null);
   const [project,setProject]=useState<ContentProject|null>(null);
   const [productionDna,setProductionDna]=useState<ProductionDNA|null>(null);
-  const [history,setHistory]=useState<EpisodeScriptVersion[]>([]);
+  const [history,setHistory]=useState<EpisodeScriptVersionSummary[]>([]);
   const [tab,setTab]=useState<Tab>('script');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
@@ -81,6 +90,22 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
     finally{setBusy('');}
   }
 
+  async function loadHistoryVersion(version:number){
+    if(!current)return;
+    setBusy('history:'+version);setMessage('');
+    try{
+      const query=new URLSearchParams({scriptId:current.id,historyVersion:String(version)});
+      const res=await fetch('/api/script-engine?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar versão histórica.');
+      if(!body.historyVersion?.payload)throw new Error('Versão histórica sem payload.');
+      setDraft({...body.historyVersion.payload,updatedAt:new Date().toISOString()});
+      setTab('script');
+      setMessage('Versão '+version+' carregada no editor. Salve para criar uma nova versão.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar versão histórica.');}
+    finally{setBusy('');}
+  }
+
   async function generate(projectId:string){
     setBusy('generate:'+projectId);setMessage('');
     try{
@@ -92,7 +117,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao gerar roteiro.');
       setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??null);setProductionDna(body.productionDna??null);setHistory(body.history??[]);
-      setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);setTab('script');
+      setScripts(prev=>[scriptSummary(body.script),...prev.filter(item=>item.id!==body.script.id)]);setTab('script');
       setMessage(body.message??'Roteiro gerado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao gerar roteiro.');}
     finally{setBusy('');}
@@ -111,7 +136,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao salvar roteiro.');
       setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??project);setProductionDna(body.productionDna??productionDna);setHistory(body.history??[]);
-      setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);
+      setScripts(prev=>[scriptSummary(body.script),...prev.filter(item=>item.id!==body.script.id)]);
       setMessage(body.message??'Roteiro salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar roteiro.');return false;}
@@ -159,7 +184,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao regenerar trecho.');
       setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??project);setProductionDna(body.productionDna??productionDna);setHistory(body.history??[]);
-      setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);
+      setScripts(prev=>[scriptSummary(body.script),...prev.filter(item=>item.id!==body.script.id)]);
       setMessage(body.message??'Trecho regenerado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao regenerar trecho.');}
     finally{setBusy('');}
@@ -232,7 +257,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       </div>}
 
       {tab==='history'&&<div className="script-engine-content">
-        <div className="script-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.payload.wordCount} palavras · {item.payload.sections.length} seções</span><button className="button subtle small" onClick={()=>{setDraft({...item.payload,updatedAt:new Date().toISOString()});setTab('script');setMessage('Versão '+item.version+' carregada no editor.');}}>Carregar</button></article>)}</div>
+        <div className="script-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.wordCount} palavras · {item.sectionCount} seções · payload sob demanda</span><button className="button subtle small" disabled={busy==='history:'+item.version} onClick={()=>void loadHistoryVersion(item.version)}>{busy==='history:'+item.version?'Carregando…':'Carregar'}</button></article>)}</div>
       </div>}
     </div>;
   }
@@ -253,7 +278,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       <div><button className="button subtle" onClick={()=>{setManualProjectId('');setManualContent('');}}>Cancelar</button><button className="button primary" disabled={!manualContent.trim()||busy==='save'} onClick={()=>void createManual()}>Salvar como draft</button></div>
     </section>}
 
-    <section className="script-grid">{scripts.map(script=><article key={script.id}><div><span>{script.status}</span><em>v{script.version}</em></div><h3>{script.title}</h3><p>{script.wordCount} palavras{script.estimatedMinutes!==null?' · ~'+script.estimatedMinutes+' min':''}</p><small>{script.sections.length} seções · {script.provenance.generatedBy}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openScript(script.id)}>Abrir roteiro</button></article>)}</section>
+    <section className="script-grid">{scripts.map(script=><article key={script.id}><div><span>{script.status}</span><em>v{script.version}</em></div><h3>{script.title}</h3><p>{script.wordCount} palavras{script.estimatedMinutes!==null?' · ~'+script.estimatedMinutes+' min':''}</p><small>{script.sectionCount} seções · {script.generatedBy}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openScript(script.id)}>Abrir roteiro</button></article>)}</section>
 
     {!scripts.length&&!readyProjects.length&&<div className="script-engine-empty"><FileText size={28}/><h3>Nenhum projeto aprovado para roteiro.</h3><p>Finalize um Content Project primeiro. O Script Engine não pula o gate editorial.</p></div>}
   </div>;
