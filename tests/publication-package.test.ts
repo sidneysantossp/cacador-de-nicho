@@ -167,3 +167,16 @@ test('Metadata limits become blockers',()=>{
   assert.ok(issues.some(issue=>issue.code==='description-too-long'));
   assert.ok(issues.some(issue=>issue.code==='tags-too-long'));
 });
+
+
+test('Publication Package snapshots render output bytes for large-file safety',()=>{
+  const value=pkg();
+  assert.equal(value.renderOutputBytes,render.outputBytes);
+});
+
+test('Publication Package blocks a render byte-size mismatch when both snapshots are known',()=>{
+  const value=pkg();
+  value.renderOutputBytes=(render.outputBytes??0)+1;
+  const issues=publicationPackageIssues(value,{qualityReport:quality,renderJob:render});
+  assert.ok(issues.some(issue=>issue.code==='render-output-mismatch'));
+});
