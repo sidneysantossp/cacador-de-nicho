@@ -4,6 +4,59 @@ import type {
 } from '@/lib/types';
 
 const EPSILON=.02;
+const MAX_SAFE_SOURCE_EXPANSION_SECONDS=1.5;
+const MAX_SAFE_HOLD_SECONDS=.75;
+
+export function fitVideoSourceWindow(input:{
+  sourceStartSeconds:number;
+  sourceEndSeconds:number;
+  assetDurationSeconds:number|null;
+  desiredDurationSeconds:number;
+}){
+  let start=Math.max(0,Number(input.sourceStartSeconds)||0);
+  let end=Math.max(start,Number(input.sourceEndSeconds)||start);
+  const assetDuration=input.assetDurationSeconds===null
+    ?null
+    :Math.max(0,Number(input.assetDurationSeconds)||0);
+  const desired=Math.max(0,Number(input.desiredDurationSeconds)||0);
+  const originalWindow=Math.max(0,end-start);
+  const originalShortfall=Math.max(0,desired-originalWindow);
+
+  if(
+    originalShortfall>EPSILON&&
+    originalShortfall<=MAX_SAFE_SOURCE_EXPANSION_SECONDS+EPSILON&&
+    assetDuration!==null&&
+    assetDuration>0
+  ){
+    let remaining=originalShortfall;
+    const forward=Math.max(0,assetDuration-end);
+    const extendForward=Math.min(remaining,forward);
+    end+=extendForward;
+    remaining-=extendForward;
+
+    if(remaining>EPSILON){
+      const extendBackward=Math.min(remaining,start);
+      start-=extendBackward;
+      remaining-=extendBackward;
+    }
+  }
+
+  const windowSeconds=Math.max(0,end-start);
+  const shortfallSeconds=Math.max(0,desired-windowSeconds);
+  const playback=shortfallSeconds<=EPSILON
+    ?'trim' as const
+    :shortfallSeconds<=MAX_SAFE_HOLD_SECONDS+EPSILON
+      ?'hold' as const
+      :'loop' as const;
+
+  return {
+    sourceStartSeconds:start,
+    sourceEndSeconds:end,
+    windowSeconds,
+    shortfallSeconds,
+    playback
+  };
+}
 
 export type TimelineVisualAssetRef={
   id:string;
@@ -51,16 +104,23 @@ export function buildInitialTimeline(input:{
       }
 
       const isVideo=asset.assetKind==='video';
-      const sourceStart=isVideo?Math.max(0,asset.sourceStartSeconds??0):null;
-      const sourceEnd=isVideo
+      const rawSourceStart=isVideo?Math.max(0,asset.sourceStartSeconds??0):null;
+      const rawSourceEnd=isVideo
         ?asset.sourceEndSeconds!==undefined&&asset.sourceEndSeconds!==null
-          ?Math.max(sourceStart??0,asset.sourceEndSeconds)
+          ?Math.max(rawSourceStart??0,asset.sourceEndSeconds)
           :Math.min(asset.durationSeconds??scene.durationSeconds,scene.durationSeconds)
         :null;
-      const sourceWindow=isVideo&&sourceStart!==null&&sourceEnd!==null?sourceEnd-sourceStart:null;
-      const playback=isVideo
-        ?sourceWindow!==null&&sourceWindow+EPSILON<scene.durationSeconds?'loop':'trim'
-        :'hold';
+      const fitted=isVideo&&rawSourceStart!==null&&rawSourceEnd!==null
+        ?fitVideoSourceWindow({
+          sourceStartSeconds:rawSourceStart,
+          sourceEndSeconds:rawSourceEnd,
+          assetDurationSeconds:asset.durationSeconds,
+          desiredDurationSeconds:scene.durationSeconds
+        })
+        :null;
+      const sourceStart=fitted?.sourceStartSeconds??rawSourceStart;
+      const sourceEnd=fitted?.sourceEndSeconds??rawSourceEnd;
+      const playback=isVideo?(fitted?.playback??'trim'):'hold';
 
       return {
         id:crypto.randomUUID(),
@@ -192,6 +252,10 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
         clip.sourceEndSeconds!==null&&
         clip.sourceEndSeconds-clip.sourceStartSeconds+EPSILON<clip.durationSeconds
       )issues.push('video-source-too-short');
+      if(
+        clip.clipKind==='video'&&
+        clip.playback==='loop'
+      )issues.push('video-loop-too-long');
     });
 
     if(clips.length&&clips.at(-1)!.endSeconds<payload.durationSeconds-EPSILON)issues.push('visual-gap-at-end');
