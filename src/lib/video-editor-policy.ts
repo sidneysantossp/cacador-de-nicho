@@ -27,9 +27,39 @@ function normalizedWord(value:string){
   return value.toLowerCase().replace(/[^a-z0-9']/g,'');
 }
 
-function shouldHighlight(value:string){
+const MONTHS=new Set([
+  'january','february','march','april','may','june','july','august','september','october','november','december',
+  'jan','feb','mar','apr','jun','jul','aug','sep','sept','oct','nov','dec'
+]);
+const NAME_PREFIX_STOPWORDS=new Set([
+  'The','A','An','In','On','At','From','To','And','But','This','That','These','Those','It','Its',
+  'When','While','After','Before','During','By','For','With','As'
+]);
+
+function factLikeToken(value:string,index:number,tokens:string[]){
+  const clean=value.replace(/^[^A-Za-z0-9$€£]+|[^A-Za-z0-9%$€£.'’-]+$/g,'');
+  if(!clean)return false;
+  if(/[0-9]/.test(clean)||/^[€£$]/.test(clean)||/%$/.test(clean))return true;
+  if(MONTHS.has(normalizedWord(clean)))return true;
+  if(/^[A-Z]{2,8}$/.test(clean))return true;
+
+  const nameLike=/^[A-Z][a-z]+(?:[-’'][A-Z]?[a-z]+)?$/.test(clean);
+  if(!nameLike||NAME_PREFIX_STOPWORDS.has(clean))return false;
+  const previous=tokens[index-1]?.replace(/^[^A-Za-z]+|[^A-Za-z.'’-]+$/g,'')??'';
+  const next=tokens[index+1]?.replace(/^[^A-Za-z]+|[^A-Za-z.'’-]+$/g,'')??'';
+  const adjacentName=/^[A-Z][a-z]+(?:[-’'][A-Z]?[a-z]+)?$/.test(previous)||
+    /^[A-Z][a-z]+(?:[-’'][A-Z]?[a-z]+)?$/.test(next);
+  const sentenceStart=index===0||/[.!?]$/.test(tokens[index-1]??'');
+  return adjacentName||(!sentenceStart&&index>0);
+}
+
+function shouldHighlight(value:string,index:number,tokens:string[],options:{
+  highlightKeywords:boolean;
+  emphasizeFacts:boolean;
+}){
+  if(options.emphasizeFacts&&factLikeToken(value,index,tokens))return true;
   const word=normalizedWord(value);
-  return word.length>=5&&!STOPWORDS.has(word);
+  return options.highlightKeywords&&word.length>=5&&!STOPWORDS.has(word);
 }
 
 function captionPosition(value:string|undefined):'top'|'center'|'bottom'{
@@ -51,8 +81,9 @@ export function defaultCaptionStyle(dna:ProductionDNA|null|undefined):VideoEditC
     uppercase:false,
     maxWordsPerLine:Math.max(2,Math.min(12,Math.ceil((maxWords??12)/2))),
     smartBreaks:true,
-    highlightMode:dna?.captions.highlightKeywords?'keywords':'none',
-    safeMarginPercent:6
+    highlightMode:dna?.captions.highlightMode??
+      (dna?.captions.highlightKeywords||dna?.captions.emphasizeFacts?'keywords':'none'),
+    safeMarginPercent:Math.max(0,Math.min(25,dna?.captions.safeMarginPercent??6))
   };
 }
 
@@ -132,11 +163,20 @@ export function documentaryClipStyle(
   };
 }
 
+type CaptionBuildOptions={
+  maxWordsPerCaption?:number;
+  maxWordsPerLine?:number;
+  maxLines?:number;
+  highlightKeywords?:boolean;
+  emphasizeFacts?:boolean;
+  longFormMode?:boolean;
+};
+
 function fallbackWords(
   text:string,
   start:number,
   end:number,
-  highlight:boolean
+  options:CaptionBuildOptions
 ):VideoEditCaptionWord[]{
   const tokens=text.trim().split(/\s+/).filter(Boolean);
   if(!tokens.length)return [];
@@ -149,7 +189,10 @@ function fallbackWords(
       text:token,
       startSeconds:wordStart,
       endSeconds:wordEnd,
-      highlighted:highlight&&shouldHighlight(token)
+      highlighted:shouldHighlight(token,index,tokens,{
+        highlightKeywords:options.highlightKeywords??false,
+        emphasizeFacts:options.emphasizeFacts??false
+      })
     };
   });
 }
@@ -158,21 +201,41 @@ function segmentWords(
   transcript:Transcript,
   segment:Transcript['segments'][number],
   end:number,
-  highlight:boolean
+  options:CaptionBuildOptions
 ){
   const byId=new Map(transcript.words.filter(word=>word.type==='word').map(word=>[word.id,word]));
-  const words=segment.wordIds
+  const source=segment.wordIds
     .map(id=>byId.get(id))
     .filter((word):word is Transcript['words'][number]=>!!word)
-    .sort((a,b)=>a.startSeconds-b.startSeconds)
-    .map(word=>({
-      id:word.id,
-      text:word.text,
-      startSeconds:Math.max(segment.startSeconds,word.startSeconds),
-      endSeconds:Math.min(end,Math.max(word.startSeconds,word.endSeconds)),
-      highlighted:highlight&&shouldHighlight(word.text)
-    }));
-  return words.length?words:fallbackWords(segment.text,segment.startSeconds,end,highlight);
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+  const tokens=source.map(word=>word.text);
+  const words=source.map((word,index)=>({
+    id:word.id,
+    text:word.text,
+    startSeconds:Math.max(segment.startSeconds,word.startSeconds),
+    endSeconds:Math.min(end,Math.max(word.startSeconds,word.endSeconds)),
+    highlighted:shouldHighlight(word.text,index,tokens,{
+      highlightKeywords:options.highlightKeywords??false,
+      emphasizeFacts:options.emphasizeFacts??false
+    })
+  }));
+  return words.length?words:fallbackWords(segment.text,segment.startSeconds,end,options);
+}
+
+function adaptiveCaptionLimit(
+  words:VideoEditCaptionWord[],
+  configuredMax:number,
+  options:CaptionBuildOptions
+){
+  const lineCapacity=Math.max(2,(options.maxWordsPerLine??configuredMax)*(options.maxLines??2));
+  const hardMax=Math.max(2,Math.min(configuredMax,lineCapacity));
+  if(!options.longFormMode||words.length<2)return hardMax;
+  const start=words[0]?.startSeconds??0;
+  const end=words.at(-1)?.endSeconds??start;
+  const seconds=Math.max(.25,end-start);
+  const wordsPerSecond=words.length/seconds;
+  const target=Math.round(wordsPerSecond*2.35);
+  return Math.max(3,Math.min(hardMax,target));
 }
 
 function chunkWords(words:VideoEditCaptionWord[],maxWords:number){
@@ -195,17 +258,17 @@ function chunkWords(words:VideoEditCaptionWord[],maxWords:number){
 export function buildCaptionCues(
   transcript:Transcript,
   duration:number,
-  options:{maxWordsPerCaption?:number;highlightKeywords?:boolean}={}
+  options:CaptionBuildOptions={}
 ):VideoEditCaptionCue[]{
-  const maxWords=Math.max(2,Math.min(24,options.maxWordsPerCaption??12));
-  const highlight=options.highlightKeywords??false;
+  const configuredMax=Math.max(2,Math.min(24,options.maxWordsPerCaption??12));
   const segments=[...transcript.segments].sort((a,b)=>a.startSeconds-b.startSeconds);
   const cues:VideoEditCaptionCue[]=[];
 
   segments.forEach((segment,index)=>{
     const end=captionEnd(segment,segments[index+1],duration);
     if(!segment.text.trim()||end<=segment.startSeconds)return;
-    const words=segmentWords(transcript,segment,end,highlight);
+    const words=segmentWords(transcript,segment,end,options);
+    const maxWords=adaptiveCaptionLimit(words,configuredMax,options);
     const chunks=chunkWords(words,maxWords);
     if(!chunks.length){
       cues.push({
@@ -265,7 +328,7 @@ export function upgradeVideoEditPayload(
       enabled:captions.enabled??true,
       position:captions.position??captionPosition(dna?.captions.position),
       fontSize:Number(captions.fontSize??52),
-      maxLines:Number(captions.maxLines??2),
+      maxLines:Number(captions.maxLines??dna?.captions.maxLines??2),
       backgroundOpacity:Number(captions.backgroundOpacity??.35),
       styleDescription:String(captions.styleDescription??dna?.captions.styleDescription??''),
       style:{
@@ -308,7 +371,11 @@ export function buildInitialVideoEdit(
   const style=defaultCaptionStyle(dna);
   const cues=buildCaptionCues(transcript,timeline.durationSeconds,{
     maxWordsPerCaption:dna?.captions.maxWordsPerCaption??12,
-    highlightKeywords:dna?.captions.highlightKeywords??false
+    maxWordsPerLine:style.maxWordsPerLine,
+    maxLines:dna?.captions.maxLines??2,
+    highlightKeywords:dna?.captions.highlightKeywords??false,
+    emphasizeFacts:dna?.captions.emphasizeFacts??false,
+    longFormMode:dna?.captions.longFormMode??false
   });
 
   return {
@@ -331,7 +398,7 @@ export function buildInitialVideoEdit(
       enabled:dna?.captions.enabled??(cues.length>0),
       position:captionPosition(dna?.captions.position),
       fontSize:52,
-      maxLines:2,
+      maxLines:Math.max(1,Math.min(6,dna?.captions.maxLines??2)),
       backgroundOpacity:.35,
       styleDescription:dna?.captions.styleDescription??'',
       style,
