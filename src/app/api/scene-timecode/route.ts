@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
-import { dbConfigured } from '@/lib/server/db';
+import { checked, db, dbConfigured } from '@/lib/server/db';
 import {
   createScenePlanFromTranscript, listScenePlans, loadScenePlan,
   loadScenePlanHistory, saveScenePlan
@@ -45,13 +45,28 @@ export async function GET(request:Request){
     }
 
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
-    const [plans,transcripts]=await Promise.all([
+    const [plans,transcripts,voiceRows]=await Promise.all([
       listScenePlans(channelId),
-      listTranscriptsByChannel(channelId)
+      listTranscriptsByChannel(channelId),
+      db().from('radar_voice_assets')
+        .select('id,episode_id')
+        .eq('channel_id',channelId)
+        .eq('selected',true)
     ]);
+    const selectedVoiceByEpisode=new Map(
+      (checked(voiceRows)??[]).map(row=>[String(row.episode_id),String(row.id)])
+    );
+    const freshTranscript=(item:(typeof transcripts)[number])=>
+      selectedVoiceByEpisode.get(item.episodeId)===item.voiceAssetId;
     return Response.json({
-      plans,
-      transcripts:transcripts.filter(item=>item.status==='approved')
+      plans:plans.map(plan=>({
+        ...plan,
+        stale:selectedVoiceByEpisode.get(plan.episodeId)!==plan.voiceAssetId,
+        staleReason:selectedVoiceByEpisode.get(plan.episodeId)!==plan.voiceAssetId
+          ?'voice-take-changed'
+          :undefined
+      })),
+      transcripts:transcripts.filter(item=>item.status==='approved'&&freshTranscript(item))
     },{headers:{'Cache-Control':'no-store'}});
   }catch(e){return errorResponse(e);}
 }
