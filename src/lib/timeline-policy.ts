@@ -252,6 +252,10 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
         clip.sourceEndSeconds!==null&&
         clip.sourceEndSeconds-clip.sourceStartSeconds+EPSILON<clip.durationSeconds
       )issues.push('video-source-too-short');
+      if(
+        clip.clipKind==='video'&&
+        clip.playback==='loop'
+      )issues.push('video-loop-too-long');
     });
 
     if(clips.length&&clips.at(-1)!.endSeconds<payload.durationSeconds-EPSILON)issues.push('visual-gap-at-end');
