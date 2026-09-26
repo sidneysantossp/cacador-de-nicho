@@ -3,7 +3,7 @@ import 'server-only';
 import type {
   ContentProjectPayload, EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
   EpisodeAutomationRun, EpisodeAutomationRunPayload, EpisodeAutomationStatus,
-  EpisodeAutomationStep, EpisodeAutomationStepState, EpisodeScriptPayload
+  EpisodeAutomationStep, EpisodeAutomationStepState, EpisodeScriptPayload, VisualPromptSetPayload
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -66,6 +66,10 @@ const visualBudgetConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_BU
 const VISUAL_ASSET_BATCH_BUDGET_MS=Number.isFinite(visualBudgetConfigured)
   ?Math.max(30000,Math.min(240000,Math.floor(visualBudgetConfigured)))
   :210000;
+const visualPromptBatchConfigured=Number(process.env.AUTOMATION_VISUAL_PROMPT_BATCH_SIZE??40);
+const VISUAL_PROMPT_BATCH_SIZE=Number.isFinite(visualPromptBatchConfigured)
+  ?Math.max(1,Math.min(40,Math.floor(visualPromptBatchConfigured)))
+  :40;
 
 function normalizeRun(row:RunRow):EpisodeAutomationRun{
   const payload=row.payload as EpisodeAutomationRunPayload;
@@ -448,6 +452,12 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
 
   const sceneApproved=scenePlan?.status==='approved';
   const promptSet=src.promptSet;
+  const promptPayload=rowPayload<VisualPromptSetPayload>(promptSet);
+  const aiPlanningIncomplete=Boolean(
+    promptSet?.status!=='approved'&&
+    promptPayload.aiPlanning&&
+    promptPayload.aiPlanning.completedScenes<promptPayload.aiPlanning.totalScenes
+  );
   if(!sceneApproved){
     steps.push(step('visual-prompts','pending',{reason:'Aguardando Scene Plan aprovado.'}));
   }else if(!src.productionDna){
@@ -457,6 +467,14 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }else if(promptSet?.status==='approved'){
     steps.push(step('visual-prompts','completed',{entityId:String(promptSet.id),entityVersion:Number(promptSet.version)}));
+  }else if(promptSet&&aiPlanningIncomplete){
+    steps.push(step('visual-prompts','ready',{
+      entityId:String(promptSet.id),entityVersion:Number(promptSet.version),
+      reason:'Planejamento visual IA: '+
+        String(promptPayload.aiPlanning?.completedScenes??0)+'/'+
+        String(promptPayload.aiPlanning?.totalScenes??0)+' cenas concluídas.',
+      requiresOperator:!run.policy.autoGenerateVisualPrompts
+    }));
   }else if(promptSet){
     steps.push(step('visual-prompts','waiting',{
       entityId:String(promptSet.id),entityVersion:Number(promptSet.version),
@@ -1147,8 +1165,14 @@ async function executeAutomationTransition(
         const scenePlanId=automationStep(run,'scenes')?.entityId;
         if(!scenePlanId)throw new HttpError('Scene Plan aprovado não identificado.',409);
         const created=await createVisualPromptSet(scenePlanId);
-        const generated=await generateVisualPromptDrafts(created.id);
-        return 'Visual Prompt Set gerado como draft: '+generated.id+'.';
+        const generated=await generateVisualPromptDrafts(created.id,{
+          maxScenes:VISUAL_PROMPT_BATCH_SIZE
+        });
+        const progress=generated.aiPlanning;
+        return 'Visual Prompt AI avançou '+
+          String(progress?.completedScenes??generated.scenePrompts.length)+'/'+
+          String(progress?.totalScenes??generated.scenePrompts.length)+
+          ' cena(s) · batch '+VISUAL_PROMPT_BATCH_SIZE+'.';
       }
       if(current.status==='waiting'){
         if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de prompts visuais está desativada.',409);
