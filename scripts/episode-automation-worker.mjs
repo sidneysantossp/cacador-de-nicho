@@ -5,6 +5,10 @@ const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const WORKER_URL=(process.env.AUTOMATION_WORKER_URL||'').trim();
 const WORKER_SECRET=(process.env.AUTOMATION_WORKER_SECRET||'').trim();
 const POLL_MS=Math.max(2000,Number(process.env.AUTOMATION_WORKER_POLL_MS||5000));
+const backlogYieldConfigured=Number(process.env.AUTOMATION_WORKER_BACKLOG_YIELD_MS||250);
+const BACKLOG_YIELD_MS=Number.isFinite(backlogYieldConfigured)
+  ?Math.max(50,Math.min(2000,Math.floor(backlogYieldConfigured)))
+  :250;
 const LEASE_SECONDS=Math.max(60,Math.min(3600,Number(process.env.AUTOMATION_WORKER_LEASE_SECONDS||900)));
 
 if(!SUPABASE_URL||!SERVICE_KEY){
@@ -72,6 +76,7 @@ console.log(JSON.stringify({
   event:'episode-automation-worker-started',
   pollMs:POLL_MS,
   leaseSeconds:LEASE_SECONDS,
+  backlogYieldMs:BACKLOG_YIELD_MS,
   workerOrigin:new URL(WORKER_URL).origin
 }));
 
@@ -95,14 +100,15 @@ while(true){
         currentStep:result.currentStep,
         holdStep:result.holdStep??null
       }));
+      await sleep(BACKLOG_YIELD_MS);
     }catch(error){
       console.error(JSON.stringify({
         event:'episode-automation-step-error',
         runId:claimed.runId,
         error:safeError(error)
       }));
+      await sleep(Math.max(POLL_MS,5000));
     }
-    await sleep(POLL_MS);
   }catch(error){
     console.error(JSON.stringify({
       event:'episode-automation-worker-loop-error',
