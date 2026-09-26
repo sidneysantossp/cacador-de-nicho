@@ -165,14 +165,14 @@ create or replace function public.match_owned_media_embeddings(
 )
 language sql stable security invoker
 set search_path=public,extensions
-as $
+as $$
   select e.resource_type,e.resource_id,e.asset_id,
     greatest(0::double precision,least(1::double precision,1-(e.embedding <=> p_query_embedding))) as similarity
   from public.radar_owned_media_embeddings e
   where e.resource_type=p_resource_type
   order by e.embedding <=> p_query_embedding
   limit greatest(1,least(p_match_count,200));
-$;
+$$;
 revoke all on function public.match_owned_media_embeddings(extensions.vector,int,text) from public,anon,authenticated;
 grant execute on function public.match_owned_media_embeddings(extensions.vector,int,text) to service_role;
 
@@ -182,7 +182,7 @@ create or replace function public.owned_media_embedding_similarity(
 ) returns double precision
 language sql stable security invoker
 set search_path=public,extensions
-as $
+as $$
   select greatest(
     0::double precision,
     least(1::double precision,1-(left_embedding.embedding <=> right_embedding.embedding))
@@ -196,7 +196,7 @@ as $
     and left_embedding.model=right_embedding.model
     and left_embedding.dimensions=right_embedding.dimensions
   limit 1;
-$;
+$$;
 revoke all on function public.owned_media_embedding_similarity(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.owned_media_embedding_similarity(uuid,uuid) to service_role;
 
@@ -211,7 +211,7 @@ create or replace function public.owned_media_diversity_metrics(
 )
 language sql stable security invoker
 set search_path=public,extensions
-as $
+as $$
   with requested as (
     select segment_id,ordinality::int as ord
     from unnest(coalesce(p_segment_ids,'{}'::uuid[])) with ordinality as item(segment_id,ordinality)
@@ -241,25 +241,12 @@ as $
       else greatest(0::double precision,least(1::double precision,1-avg(similarity)))
     end
   from pairs;
-$;
+$$;
 revoke all on function public.owned_media_diversity_metrics(uuid[]) from public,anon,authenticated;
 grant execute on function public.owned_media_diversity_metrics(uuid[]) to service_role;
 
-create or replace function public.owned_media_embedding_similarity(
-  p_left_segment uuid,
-  p_right_segment uuid
-) returns double precision
-language sql stable security invoker
-set search_path=public,extensions
-as $
-  select greatest(0::double precision,least(1::double precision,1-(a.embedding <=> b.embedding)))
-  from public.radar_owned_media_embeddings a
-  join public.radar_owned_media_embeddings b on b.resource_type='segment' and b.resource_id=p_right_segment
-  where a.resource_type='segment' and a.resource_id=p_left_segment
-  limit 1;
-$;
-revoke all on function public.owned_media_embedding_similarity(uuid,uuid) from public,anon,authenticated;
-grant execute on function public.owned_media_embedding_similarity(uuid,uuid) to service_role;
+
+
 
 create table if not exists public.radar_owned_media_analysis_jobs(
   id uuid primary key,
