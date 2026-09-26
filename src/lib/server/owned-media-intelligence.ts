@@ -312,8 +312,10 @@ async function enrichOwnedAsset(
   metadata:Awaited<ReturnType<typeof probeVideoInput>>,
   assetTitle:string
 ){
-  const credible=segments.filter(item=>item.confidence>=.72);
-  const evidence=credible.length?credible:segments;
+  const credible=segments.filter(item=>item.usable&&item.confidence>=.60);
+  const evidence=credible.length?credible:segments.filter(item=>item.usable).length
+    ?segments.filter(item=>item.usable)
+    :segments;
   const all=(selector:(item:OwnedMediaVisualSegment)=>string[])=>mergeUnique(...evidence.map(selector));
   const visualText=evidence.map(item=>item.searchText).join(' ');
   const taxonomy=classifyMediaTaxonomy(visualText);
@@ -413,11 +415,19 @@ async function enrichOwnedAsset(
         reconciledAt:new Date().toISOString()
       },
       visualIntelligence:{
-        status:'completed',assetTitle:semanticTitle,segmentCount:segments.length,analyzedAt:new Date().toISOString()
+        status:'completed',
+        assetTitle:semanticTitle,
+        segmentCount:segments.length,
+        usableSegmentCount:segments.filter(item=>item.usable).length,
+        meanQuality:segments.length
+          ?Number((segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length).toFixed(4))
+          :0,
+        analyzedAt:new Date().toISOString()
       }
     },
     updated_at:new Date().toISOString()
   }).eq('id',source.id));
+  return {semanticTitle,searchText};
 }
 
 export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMediaIntelligenceResult>{
@@ -428,7 +438,7 @@ export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMe
     return {assetId,status:'idle',provider:'googleai',model:'',assetTitle:'',durationSeconds:null,segments:[]};
   }
   const rows=checked(await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
   return {
     assetId,status:analysis.status,provider:'googleai',model:String(analysis.model??''),
@@ -448,7 +458,7 @@ export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<Ow
   if(!analysis||analysis.status!=='completed')throw new HttpError('O asset ainda não possui análise visual concluída.',409);
 
   const rows=checked(await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
   const segments=(rows??[]).map(segment);
   if(!segments.length)throw new HttpError('A análise visual não possui segmentos para reconciliar.',409);
@@ -633,7 +643,7 @@ export async function matchOwnedMediaSegments(input:{
   const assets=new Map((assetRows.data??[]).map(row=>[String(row.id),row]));
 
   const segmentRows=await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .in('asset_id',ids)
     .limit(10000);
   if(segmentRows.error)throw new HttpError('Falha ao consultar os segmentos visuais.',502);
