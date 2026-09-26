@@ -2203,6 +2203,9 @@ export type OwnedMediaVisualSegment = {
  summary:string;
  semantic:VisualSegmentSemantic;
  confidence:number;
+ qualityScore:number;
+ usable:boolean;
+ qualityIssues:string[];
  searchText:string;
  keyframeSeconds:number;
  createdAt:string;
@@ -2224,6 +2227,9 @@ export type OwnedMediaIntelligenceResult = {
 export type OwnedMediaVisualStatus = {
  status:'idle'|'processing'|'completed'|'failed';
  segmentCount:number;
+ usableSegmentCount?:number;
+ meanQuality?:number;
+ embeddingStatus?:'idle'|'completed'|'failed';
  analyzedAt?:string;
  error?:string;
 };
