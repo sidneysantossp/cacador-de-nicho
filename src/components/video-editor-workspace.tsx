@@ -92,15 +92,16 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
   useEffect(()=>{
     if(!playing||!draft)return;
+    const playbackEnd=activeChapter?.endSeconds??draft.durationSeconds;
     const id=window.setInterval(()=>{
       setPlayhead(value=>{
         const next=value+.1;
-        if(next>=draft.durationSeconds){setPlaying(false);return draft.durationSeconds;}
+        if(next>=playbackEnd){setPlaying(false);return playbackEnd;}
         return next;
       });
     },100);
     return()=>window.clearInterval(id);
-  },[playing,draft?.durationSeconds]);
+  },[playing,draft?.durationSeconds,activeChapter?.endSeconds]);
 
   async function load(){
     setLoading(true);setMessage('');
@@ -375,10 +376,10 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
             }}>{overlay.text}</div>)}
           </div>
           <div className="video-transport">
-            <button onClick={()=>{if(playhead>=draft.durationSeconds)setPlayhead(0);setPlaying(v=>!v);}}>{playing?<Pause size={15}/>:<Play size={15}/>}</button>
+            <button onClick={()=>{const end=activeChapter?.endSeconds??draft.durationSeconds;const start=activeChapter?.startSeconds??0;if(playhead>=end)setPlayhead(start);setPlaying(v=>!v);}}>{playing?<Pause size={15}/>:<Play size={15}/>}</button>
             <strong>{time(playhead)}</strong>
-            <input type="range" min="0" max={draft.durationSeconds} step=".05" value={playhead} onChange={e=>{setPlaying(false);setPlayhead(Number(e.target.value));}}/>
-            <span>{time(draft.durationSeconds)}</span>
+            <input type="range" min={activeChapter?.startSeconds??0} max={activeChapter?.endSeconds??draft.durationSeconds} step=".05" value={playhead} onChange={e=>{setPlaying(false);setPlayhead(Number(e.target.value));}}/>
+            <span>{time(activeChapter?.endSeconds??draft.durationSeconds)}</span>
           </div>
         </section>
 
