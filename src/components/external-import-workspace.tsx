@@ -70,7 +70,7 @@ export default function ExternalImportWorkspace({channel}:{channel:ManagedChanne
       if(!visualRes.ok)throw new Error(visualBody.message??'Falha ao carregar Visual Prompt Sets.');
       if(!batchesRes.ok)throw new Error(batchesBody.message??'Falha ao carregar batches.');
 
-      const approvedScripts=(scriptsBody.scripts??[]).filter((item:EpisodeScript)=>item.status==='approved');
+      const approvedScripts=(scriptsBody.scripts??[]).filter((item:EpisodeScriptListItem)=>item.status==='approved');
       const approvedSets=(visualBody.promptSets??[]).filter((item:VisualPromptSet)=>item.status==='approved');
       setScripts(approvedScripts);
       setPromptSets(approvedSets);
