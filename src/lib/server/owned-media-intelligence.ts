@@ -710,8 +710,10 @@ export async function matchOwnedMediaSegments(input:{
   const ids=(analysisRows.data??[]).map(row=>String(row.asset_id));
   if(!ids.length)return [];
 
-  const semanticMatches=await searchOwnedMediaEmbeddings(query,120).catch(()=>[]);
-  const semanticScores=new Map(
+  const semanticMatches=await searchOwnedMediaEmbeddings(query,120).catch(
+    ()=>[] as Array<{resourceType:string;resourceId:string;assetId:string;similarity:number}>
+  );
+  const semanticScores=new Map<string,number>(
     semanticMatches.map(item=>[item.resourceId,item.similarity])
   );
 
