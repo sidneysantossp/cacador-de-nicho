@@ -127,7 +127,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
     finally{setBusy('');}
   }
 
-  async function act(action:'select'|'delete',assetId:string){
+  async function act(action:'select'|'delete'|'rebuild',assetId:string){
     if(!scriptId)return;
     setBusy(action+':'+assetId);setMessage('');
     try{
@@ -199,7 +199,11 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
             {asset.alignment?<div className="voice-alignment"><CheckCircle2 size={14}/>Alignment temporal disponível para a próxima etapa.</div>:<div className="voice-alignment pending"><CircleAlert size={14}/>Sem alignment. Transcrição será necessária.</div>}
             {asset.signedUrl&&<audio controls preload="metadata" src={asset.signedUrl}/>}
           </div>
-          <div className="voice-take-actions">{!asset.selected&&<button className="button subtle small" disabled={!!busy||asset.status!=='ready'} onClick={()=>void act('select',asset.id)}><CheckCircle2 size={14}/>Usar este take</button>}<button className="icon-button danger" disabled={!!busy} aria-label="Excluir take" onClick={()=>void act('delete',asset.id)}><Trash2 size={15}/></button></div>
+          <div className="voice-take-actions">
+            {!asset.selected&&<button className="button subtle small" disabled={!!busy||asset.status!=='ready'} onClick={()=>void act('select',asset.id)}><CheckCircle2 size={14}/>Usar este take</button>}
+            <button className="button primary small" disabled={!!busy||asset.status!=='ready'||asset.stale} onClick={()=>void act('rebuild',asset.id)}><RefreshCw size={14}/>{busy==='rebuild:'+asset.id?'Reconstruindo…':'Reconstruir a partir deste take'}</button>
+            <button className="icon-button danger" disabled={!!busy} aria-label="Excluir take" onClick={()=>void act('delete',asset.id)}><Trash2 size={15}/></button>
+          </div>
         </article>)}
       </section>
     </>}
