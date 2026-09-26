@@ -87,6 +87,7 @@ async function eligibleContext(transcriptId:string){
   ]);
 
   if(!asset||asset.status!=='ready')throw new HttpError('O take de voz não está pronto.',409);
+  if(!asset.selected)throw new HttpError('Este transcript pertence a um take que não está mais ativo. Reconstrua a partir do take selecionado.',409);
   if(!script||script.status!=='approved')throw new HttpError('O roteiro não está aprovado.',409);
 
   return {transcript,asset,script,dna};
