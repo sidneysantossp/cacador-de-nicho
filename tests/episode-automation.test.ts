@@ -253,3 +253,12 @@ test('Visual-assets automation snapshot stays lightweight across repeated batche
   assert.match(block,/videoEdit:null/);
   assert.match(block,/render:null/);
 });
+
+
+test('Automation advances Visual Prompt AI in bounded resumable batches',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/AUTOMATION_VISUAL_PROMPT_BATCH_SIZE/);
+  assert.match(source,/Math\.max\(1,Math\.min\(40/);
+  assert.match(source,/aiPlanningIncomplete/);
+  assert.match(source,/generateVisualPromptDrafts\(created\.id,\{[\s\S]*maxScenes:VISUAL_PROMPT_BATCH_SIZE/);
+});
