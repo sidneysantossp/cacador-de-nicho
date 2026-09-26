@@ -220,3 +220,13 @@ test('Visual asset batching reports waiting-only state without creating duplicat
   assert.deepEqual(result.waiting,['s2','s3']);
   assert.deepEqual(result.targets,[]);
 });
+
+
+test('Automation worker drains ready backlog without the idle poll delay',()=>{
+  const source=require('node:fs').readFileSync('scripts/episode-automation-worker.mjs','utf8');
+  assert.match(source,/AUTOMATION_WORKER_BACKLOG_YIELD_MS/);
+  assert.match(source,/Math\.max\(50,Math\.min\(2000/);
+  assert.match(source,/await sleep\(BACKLOG_YIELD_MS\)/);
+  assert.match(source,/if\(!claimed\)[\s\S]*await sleep\(POLL_MS\)/);
+  assert.match(source,/episode-automation-step-error[\s\S]*await sleep\(Math\.max\(POLL_MS,5000\)\)/);
+});
