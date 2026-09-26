@@ -91,6 +91,34 @@ export function renderManifestIssues(
   });
   if(visual.length&&visual.at(-1)!.endSeconds<manifest.durationSeconds-.03)issues.push('render-visual-gap-at-end');
 
+  if(manifest.chapters?.length){
+    const chapters=[...manifest.chapters].sort((a,b)=>a.sequence-b.sequence);
+    const seenScenes=new Set<string>();
+    chapters.forEach((chapter,index)=>{
+      if(chapter.endSeconds<=chapter.startSeconds||chapter.durationSeconds<=0){
+        issues.push('render-chapter-duration-invalid');
+      }
+      if(Math.abs((chapter.endSeconds-chapter.startSeconds)-chapter.durationSeconds)>.03){
+        issues.push('render-chapter-duration-mismatch');
+      }
+      const previous=chapters[index-1];
+      if(previous){
+        if(chapter.startSeconds>previous.endSeconds+.03)issues.push('render-chapter-gap');
+        if(chapter.startSeconds<previous.endSeconds-.03)issues.push('render-chapter-overlap');
+      }else if(chapter.startSeconds>.03){
+        issues.push('render-chapter-gap-at-start');
+      }
+      for(const sceneId of chapter.sceneIds){
+        if(seenScenes.has(sceneId))issues.push('render-chapter-duplicate-scene');
+        seenScenes.add(sceneId);
+      }
+    });
+    if(chapters.at(-1)!.endSeconds<manifest.durationSeconds-.03)issues.push('render-chapter-gap-at-end');
+    const visualScenes=new Set(visual.map(clip=>clip.sceneId));
+    for(const sceneId of visualScenes)if(!seenScenes.has(sceneId))issues.push('render-chapter-missing-scene');
+    for(const sceneId of seenScenes)if(!visualScenes.has(sceneId))issues.push('render-chapter-unknown-scene');
+  }
+
   if(!manifest.voice.assetId||!manifest.voice.storagePath)issues.push('render-voice-source-missing');
 
   const music=manifest.music??null;
