@@ -10,8 +10,11 @@ import {
   deleteSceneAsset, generateGoogleImage, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
 import {
-  importStockMedia, resolveVerifiedStockMediaForScene, searchStockMedia
+  importStockMedia, searchStockMedia
 } from './stock-media';
+import {
+  enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
+} from './verified-stock-jobs';
 import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
 import { sourceRouteForScene, type SourceRouteAction } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
@@ -233,7 +236,26 @@ export async function resolveSourceForScene(input:{
     }
 
     if(action==='stock-video'){
-      const result=await resolveVerifiedStockMediaForScene({
+      const existing=await loadVerifiedStockJob(input.promptSetId,input.sceneId);
+      if(existing?.status==='queued'||existing?.status==='processing'){
+        attempts.push({action,status:existing.status,jobId:existing.id});
+        return {status:'queued' as const,route,action,job:existing,attempts};
+      }
+      if(existing?.status==='completed'){
+        const completedStatus=String(existing.result?.status??'');
+        if(completedStatus==='gap'){
+          attempts.push({action,status:'gap',jobId:existing.id});
+          continue;
+        }
+        const restarted=await restartVerifiedStockJob(existing.id);
+        attempts.push({action,status:'queued',jobId:restarted.id,reason:'previous-selection-lost'});
+        return {status:'queued' as const,route,action,job:restarted,attempts};
+      }
+      if(existing?.status==='failed'){
+        attempts.push({action,status:'failed',jobId:existing.id,error:existing.lastError});
+        continue;
+      }
+      const queued=await enqueueVerifiedStockJob({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
         query:route.query,
@@ -242,9 +264,8 @@ export async function resolveSourceForScene(input:{
         providers:['pexels','pixabay'],
         maxCandidatesPerProvider:2
       });
-      attempts.push({action,status:result.status,details:result.attempts});
-      if(result.status==='matched')return {status:'matched' as const,route,action,result,attempts};
-      continue;
+      attempts.push({action,status:'queued',jobId:queued.id});
+      return {status:'queued' as const,route,action,job:queued,attempts};
     }
 
     if(action==='generated-image'){
@@ -266,15 +287,17 @@ export async function resolveSourceForScene(input:{
       continue;
     }
 
-    if(action==='manual-map'||action==='manual-document'){
+    if(action==='manual-archive'||action==='manual-map'||action==='manual-document'){
       attempts.push({action,status:'operator-source-required'});
       return {
         status:'operator-source-required' as const,
         route,
         action,
-        reason:action==='manual-map'
-          ?'Nenhum mapa real aprovado foi encontrado automaticamente.'
-          :'Nenhum documento/arquivo real aprovado foi encontrado automaticamente.',
+        reason:action==='manual-archive'
+          ?'Nenhuma imagem histórica autêntica e reutilizável foi encontrada automaticamente.'
+          :action==='manual-map'
+            ?'Nenhum mapa real aprovado foi encontrado automaticamente.'
+            :'Nenhum documento/arquivo real aprovado foi encontrado automaticamente.',
         attempts
       };
     }
