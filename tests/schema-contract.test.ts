@@ -51,3 +51,23 @@ test('Production QA chapter cache schema is isolated and reusable by content has
   assert.match(block,/cache_hit boolean not null default false/);
   assert.match(block,/radar_production_quality_chapters_cache/);
 });
+
+
+test('Long-form voice schema caches reusable chunks and exposes takes without alignment payloads',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const chunkStart=sql.indexOf('create table if not exists public.radar_voice_generation_chunks(');
+  const transcriptStart=sql.indexOf('create table if not exists public.radar_transcripts',chunkStart);
+  assert.ok(chunkStart>=0&&transcriptStart>chunkStart,'voice generation chunk cache missing');
+  const chunkBlock=sql.slice(chunkStart,transcriptStart);
+  assert.match(chunkBlock,/cache_key text not null unique/);
+  assert.match(chunkBlock,/alignment jsonb/);
+  assert.match(chunkBlock,/radar_voice_generation_chunks_cache/);
+
+  const viewStart=sql.indexOf('create or replace view public.radar_voice_asset_list');
+  const viewEnd=sql.indexOf('create table if not exists public.radar_transcripts',viewStart);
+  assert.ok(viewStart>=0&&viewEnd>viewStart,'voice asset list view missing');
+  const viewBlock=sql.slice(viewStart,viewEnd);
+  assert.match(viewBlock,/with \(security_invoker=true\)/);
+  assert.match(viewBlock,/has_alignment/);
+  assert.doesNotMatch(viewBlock,/select[\s\S]*\bpayload\s*(,|from)/i);
+});
