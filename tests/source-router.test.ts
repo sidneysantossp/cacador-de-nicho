@@ -37,7 +37,7 @@ function scene(v:VisualBeat):SceneTimecode{
 
 test('Source Router keeps archive beats on real-source routes',()=>{
   const route=sourceRouteForScene(scene(beat()));
-  assert.deepEqual(route.actions,['owned','wikimedia','stock-image']);
+  assert.deepEqual(route.actions,['owned','wikimedia','manual-archive']);
   assert.equal(route.syntheticAllowed,false);
   assert.match(route.query,/Church Hill Tunnel/i);
 });
@@ -74,4 +74,14 @@ test('Source Router allows generation only for editorially eligible still-image 
   })));
   assert.deepEqual(route.actions,['owned','stock-image','stock-video','generated-image']);
   assert.equal(route.syntheticAllowed,true);
+});
+
+
+test('Archive routes never fall back to modern stock or synthetic media',()=>{
+  const route=sourceRouteForScene(scene(beat()));
+  assert.equal(route.actions.includes('stock-image'),false);
+  assert.equal(route.actions.includes('stock-video'),false);
+  assert.equal(route.actions.includes('generated-image'),false);
+  assert.equal(route.syntheticAllowed,false);
+  assert.equal(route.actions.at(-1),'manual-archive');
 });
