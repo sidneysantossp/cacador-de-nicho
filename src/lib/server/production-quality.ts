@@ -260,6 +260,7 @@ async function inspectOutput(job:RenderJob):Promise<ProductionQualityTechnical>{
 async function projectFacts(job:RenderJob):Promise<{
   assetFacts:ProductionQualityAssetFact[];
   characterFacts?:ProductionQualityCharacterFact[];
+  mediaDiversity:ProductionQualityMediaDiversity;
 }>{
   const clips=job.payload.manifest.visualClips;
   const ids=[...new Set(clips.map(clip=>clip.assetId))];
