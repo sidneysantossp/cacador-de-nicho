@@ -87,6 +87,27 @@ export function automationHttpErrorShouldHold(status:number){
   return [400,409,422,429,503].includes(status);
 }
 
+export function visualAssetBatchPlan(input:{
+  sceneIds:string[];
+  selectedReadySceneIds:string[];
+  activeStockSceneIds:string[];
+  batchSize:number;
+}){
+  const selected=new Set(input.selectedReadySceneIds);
+  const active=new Set(input.activeStockSceneIds);
+  const ordered=[...new Set(input.sceneIds.filter(Boolean))];
+  const missing=ordered.filter(sceneId=>!selected.has(sceneId));
+  const waiting=missing.filter(sceneId=>active.has(sceneId));
+  const eligible=missing.filter(sceneId=>!active.has(sceneId));
+  const batchSize=Math.max(1,Math.min(20,Math.floor(input.batchSize)||1));
+  return {
+    missing,
+    waiting,
+    eligible,
+    targets:eligible.slice(0,batchSize)
+  };
+}
+
 
 function automationObject(value:unknown){
   return value&&typeof value==='object'?value as Record<string,unknown>:{};
