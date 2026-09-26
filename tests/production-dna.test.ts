@@ -102,3 +102,14 @@ test('Production DNA detects contradictory duration ranges',()=>{
     'scene-duration-preferred-above-max'
   ]);
 });
+
+
+test('Production DNA schema accepts documentary research policy',()=>{
+  const documentary:ProductionDnaPayload={
+    ...dna,
+    research:{documentaryMode:true,requireClaimLedger:true}
+  };
+  const parsed=productionDnaPayloadSchema.parse(documentary);
+  assert.equal(parsed.research?.documentaryMode,true);
+  assert.equal(parsed.research?.requireClaimLedger,true);
+});
