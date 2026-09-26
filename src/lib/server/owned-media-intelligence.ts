@@ -16,6 +16,7 @@ import { checked, db } from './db';
 import { downloadMediaToFile } from './media-storage';
 import { probeVideoInput } from './media-probe';
 import { providerSecret } from './providers';
+import { indexOwnedMediaEmbeddings, searchOwnedMediaEmbeddings } from './media-embeddings';
 
 const execFile=promisify(execFileCallback);
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
@@ -84,6 +85,9 @@ type SegmentRow={
   summary:string;
   semantic:unknown;
   confidence:number|string;
+  quality_score:number|string;
+  usable:boolean;
+  quality_issues:string[]|null;
   search_text:string;
   keyframe_seconds:number|string;
   created_at:string;
@@ -123,7 +127,11 @@ function segment(row:SegmentRow):OwnedMediaVisualSegment{
     id:String(row.id),assetId:String(row.asset_id),sequence:Number(row.sequence),
     startSeconds:Number(row.start_seconds),endSeconds:Number(row.end_seconds),durationSeconds:Number(row.duration_seconds),
     title:String(row.title??''),summary:String(row.summary??''),semantic:visualSemantic(row.semantic),
-    confidence:Math.max(0,Math.min(1,Number(row.confidence??0))),searchText:String(row.search_text??''),
+    confidence:Math.max(0,Math.min(1,Number(row.confidence??0))),
+    qualityScore:Math.max(0,Math.min(1,Number(row.quality_score??0.5))),
+    usable:Boolean(row.usable),
+    qualityIssues:list(row.quality_issues,20),
+    searchText:String(row.search_text??''),
     keyframeSeconds:Number(row.keyframe_seconds??0),createdAt:String(row.created_at),updatedAt:String(row.updated_at)
   };
 }
@@ -134,9 +142,8 @@ async function ownedAsset(assetId:string):Promise<AssetRow>{
     .eq('id',assetId).maybeSingle());
   if(!row)throw new HttpError('Asset OWNED não encontrado.',404);
   const item=row as AssetRow;
-  if(item.asset_kind!=='video')throw new HttpError('Visual Intelligence analisa vídeos. Selecione um vídeo.',409);
-  if(item.status!=='ready'||!item.storage_path)throw new HttpError('O vídeo precisa estar pronto na Biblioteca.',409);
-  if(Number(item.bytes)>MAX_VIDEO_BYTES)throw new HttpError('Vídeo acima do limite de análise de 2 GB.',413);
+  if(item.status!=='ready'||!item.storage_path)throw new HttpError('A mídia precisa estar pronta na Biblioteca.',409);
+  if(Number(item.bytes)>MAX_VIDEO_BYTES)throw new HttpError('Mídia acima do limite de análise de 2 GB.',413);
   return item;
 }
 
