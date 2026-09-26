@@ -6,8 +6,8 @@ import {
   Save, Sparkles, WandSparkles
 } from 'lucide-react';
 import type {
-  ManagedChannel, ProductionDNA, ScenePlan, VisualCharacterReference,
-  VisualPromptSet, VisualPromptSetPayload, VisualPromptSetVersionSummary, VisualScenePrompt
+  ManagedChannel, ProductionDNA, ScenePlan, ScenePlanListItem, VisualCharacterReference,
+  VisualPromptSet, VisualPromptSetListItem, VisualPromptSetPayload, VisualPromptSetVersionSummary, VisualScenePrompt
 } from '@/lib/types';
 import { compileScenePrompt, visualPromptIssues } from '@/lib/visual-prompt-policy';
 import {
@@ -20,8 +20,8 @@ function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateS
 function payloadOnly(value:VisualPromptSet):VisualPromptSetPayload{const {version:_version,status:_status,...payload}=value;return payload;}
 
 export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedChannel}){
-  const [sets,setSets]=useState<VisualPromptSet[]>([]);
-  const [plans,setPlans]=useState<ScenePlan[]>([]);
+  const [sets,setSets]=useState<VisualPromptSetListItem[]>([]);
+  const [plans,setPlans]=useState<ScenePlanListItem[]>([]);
   const [current,setCurrent]=useState<VisualPromptSet|null>(null);
   const [draft,setDraft]=useState<VisualPromptSetPayload|null>(null);
   const [plan,setPlan]=useState<ScenePlan|null>(null);
@@ -119,9 +119,9 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao criar Visual Prompt Set.');
-      setSets(prev=>[body.promptSet,...prev.filter(item=>item.id!==body.promptSet.id)]);
       setMessage(body.message??'Visual Prompt Set criado.');
       await openSet(body.promptSet.id);
+      void load();
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar Visual Prompt Set.');}
     finally{setBusy('');}
   }
@@ -138,7 +138,7 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao gerar direções visuais.');
       setCurrent(body.promptSet);setDraft(payloadOnly(body.promptSet));setHistory(body.history??[]);
-      setSets(prev=>[body.promptSet,...prev.filter(item=>item.id!==body.promptSet.id)]);
+      void load();
       setMessage(body.message??'Direções visuais atualizadas.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao gerar direções visuais.');}
     finally{setBusy('');}
@@ -156,7 +156,7 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Visual Prompt Set.');
       setCurrent(body.promptSet);setDraft(payloadOnly(body.promptSet));setHistory(body.history??[]);
-      setSets(prev=>[body.promptSet,...prev.filter(item=>item.id!==body.promptSet.id)]);
+      void load();
       setMessage(body.message??'Visual Prompt Set salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar Visual Prompt Set.');return false;}
@@ -259,10 +259,10 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
 
     {eligible.length>0&&<section className="visual-ready">
       <div className="visual-section-head"><div><span>READY FOR VISUAL</span><h3>Scene Plans aprovados esperando prompts.</h3></div><WandSparkles size={21}/></div>
-      {eligible.map(item=><article key={item.id}><div><strong>Take {item.voiceTake} · {item.scenes.length} cenas</strong><p>Scene Plan v{item.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Criar Visual Prompt Set'}</button></article>)}
+      {eligible.map(item=><article key={item.id}><div><strong>Take {item.voiceTake} · {item.sceneCount} cenas</strong><p>Scene Plan v{item.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Criar Visual Prompt Set'}</button></article>)}
     </section>}
 
-    <section className="visual-set-grid">{sets.map(item=><article key={item.id}><div><span>{item.status}</span><em>v{item.version}</em></div><h3>{item.scenePrompts.length} scene prompts</h3><p>{item.characterReferences.length} referências · {item.workflowStage}</p><small>Scene Plan v{item.scenePlanVersion} · DNA v{item.productionDnaVersion}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openSet(item.id)}>Abrir prompts</button></article>)}</section>
+    <section className="visual-set-grid">{sets.map(item=><article key={item.id}><div><span>{item.status}</span><em>v{item.version}</em></div><h3>{item.scenePromptCount} scene prompts</h3><p>{item.characterReferenceCount} referências · {item.workflowStage}</p><small>Scene Plan v{item.scenePlanVersion} · DNA v{item.productionDnaVersion}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openSet(item.id)}>Abrir prompts</button></article>)}</section>
 
     {!sets.length&&!eligible.length&&<div className="visual-prompt-empty"><ImageIcon size={28}/><h3>Nenhum Scene Plan aprovado para visual.</h3><p>O Visual Prompt Engine começa depois da aprovação da timeline.</p></div>}
   </div>;
