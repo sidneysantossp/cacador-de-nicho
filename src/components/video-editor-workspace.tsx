@@ -11,7 +11,7 @@ import type {
 } from '@/lib/types';
 import {
   motionPresetValues, normalizeVideoEdit, suggestSfxEvents,
-  videoEditAudioAssetIssues, videoEditChapterCaptions, videoEditChapterClips,
+  videoEditAudioAssetIssues, videoEditorChapterCaptions, videoEditorChapterClips,
   videoEditorChapters, videoEditStructuralIssues
 } from '@/lib/video-editor-policy';
 
@@ -66,11 +66,11 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
     [chapters,activeChapterId]
   );
   const visualClips=useMemo(()=>
-    timeline?videoEditChapterClips(timeline,activeChapter?.id):[],
+    timeline?videoEditorChapterClips(timeline,activeChapter?.id):[],
     [timeline,activeChapter?.id]
   );
   const visibleCaptions=useMemo(()=>
-    draft&&timeline?videoEditChapterCaptions(draft,timeline,activeChapter?.id):[],
+    draft&&timeline?videoEditorChapterCaptions(draft,timeline,activeChapter?.id):[],
     [draft,timeline,activeChapter?.id]
   );
   const structuralIssues=useMemo(()=>draft&&timeline&&transcript?[...new Set([
@@ -135,7 +135,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       const resolvedChapterId=String(body.activeChapterId??'');
       setActiveChapterId(resolvedChapterId);
       const scopedClips=body.timeline
-        ?videoEditChapterClips(body.timeline,resolvedChapterId)
+        ?videoEditorChapterClips(body.timeline,resolvedChapterId)
         :[];
       const first=scopedClips[0]?.id??body.videoEdit.clipStyles?.[0]?.timelineClipId??'';
       setSelectedClipId(first);
@@ -156,7 +156,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar capítulo.');
       const resolvedChapterId=String(body.activeChapterId??chapterId);
-      const scopedClips=videoEditChapterClips(timeline,resolvedChapterId);
+      const scopedClips=videoEditorChapterClips(timeline,resolvedChapterId);
       setSources(body.sources??[]);
       setAudioAssets(body.audioAssets??[]);
       setActiveChapterId(resolvedChapterId);
