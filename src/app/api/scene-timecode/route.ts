@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { checked, db, dbConfigured } from '@/lib/server/db';
 import {
@@ -75,7 +76,7 @@ export async function POST(request:Request){
   try{
     requireOperator(request);
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Scene Timecode Protocol.',503);
-    if(Number(request.headers.get('content-length')??0)>600000)throw new HttpError('Scene Plan muito extenso.',413);
+    if(Number(request.headers.get('content-length')??0)>longFormJsonLimit('scenePlan'))throw new HttpError('Scene Plan muito extenso.',413);
     const parsed=postSchema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os campos do Scene Timecode Protocol.',400);
     const body=parsed.data;
