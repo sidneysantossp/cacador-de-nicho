@@ -101,3 +101,60 @@ export function stockCandidateAccepted(input:{
     input.visualRelevance>=.18&&
     input.combinedScore>=.38;
 }
+
+
+function normalizedWords(value:string){
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ');
+}
+
+export function stockVisualValidationQuery(value:string){
+  return value
+    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action|real|only)\b/gi,' ')
+    .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
+    .replace(/[\/|]+/g,' ')
+    .replace(/\s+/g,' ')
+    .replace(/\s+([,.;:])/g,'$1')
+    .replace(/\s*[,;:.]+\s*$/,'')
+    .trim()
+    .slice(0,240);
+}
+
+export function stockVisualConstraintsSatisfied(input:{
+  query:string;
+  timeOfDay?:string[]|null;
+}){
+  const text=normalizedWords(input.query);
+  let expectedLabel:string|null=null;
+  let accepted:string[]=[];
+  if(/\bnight(?:time)?\b/.test(text)){
+    expectedLabel='night';
+    accepted=['night','nighttime'];
+  }else if(/\b(?:sunset|golden hour)\b/.test(text)){
+    expectedLabel='sunset';
+    accepted=['sunset','golden hour'];
+  }else if(/\b(?:sunrise|dawn)\b/.test(text)){
+    expectedLabel='sunrise';
+    accepted=['sunrise','dawn'];
+  }else if(/\b(?:dusk|twilight|evening)\b/.test(text)){
+    expectedLabel='evening';
+    accepted=['dusk','twilight','evening'];
+  }else if(/\b(?:daytime|daylight)\b/.test(text)){
+    expectedLabel='daytime';
+    accepted=['day','daytime','morning','afternoon'];
+  }
+
+  const observed=[...new Set((input.timeOfDay??[])
+    .map(item=>normalizedWords(String(item)).trim())
+    .filter(Boolean))];
+
+  if(!expectedLabel){
+    return {ok:true,expected:null,observed,reason:null};
+  }
+  const ok=observed.some(item=>accepted.includes(item));
+  return {
+    ok,
+    expected:expectedLabel,
+    observed,
+    reason:ok?null:'expected '+expectedLabel+' but observed '+(observed.join(', ')||'unknown time of day')
+  };
+}
