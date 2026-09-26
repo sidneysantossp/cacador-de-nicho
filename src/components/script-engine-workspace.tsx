@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, CheckCircle2, CircleAlert, FileText, History, Plus, RefreshCw,
+  ArrowLeft, CheckCircle2, CircleAlert, FileCheck2, FileText, History, Link2, Plus, RefreshCw,
   Save, Sparkles, Trash2, WandSparkles
 } from 'lucide-react';
 import type {
   ContentProject, EpisodeScript, EpisodeScriptPayload, EpisodeScriptSection,
-  EpisodeScriptVersion, ManagedChannel
+  EpisodeScriptVersion, ManagedChannel, ProductionDNA
 } from '@/lib/types';
 import { combineScriptSections, countScriptWords, scriptApprovalIssues } from '@/lib/script-policy';
 
-type Tab='script'|'continuity'|'history';
+type Tab='script'|'provenance'|'continuity'|'history';
 
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
 function payloadOnly(value:EpisodeScript):EpisodeScriptPayload{const {version:_version,status:_status,...payload}=value;return payload;}
@@ -25,6 +25,8 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
   const [scripts,setScripts]=useState<EpisodeScript[]>([]);
   const [current,setCurrent]=useState<EpisodeScript|null>(null);
   const [draft,setDraft]=useState<EpisodeScriptPayload|null>(null);
+  const [project,setProject]=useState<ContentProject|null>(null);
+  const [productionDna,setProductionDna]=useState<ProductionDNA|null>(null);
   const [history,setHistory]=useState<EpisodeScriptVersion[]>([]);
   const [tab,setTab]=useState<Tab>('script');
   const [loading,setLoading]=useState(true);
@@ -56,7 +58,17 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
   const scriptedProjectIds=useMemo(()=>new Set(scripts.map(script=>script.contentProjectId)),[scripts]);
   const readyProjects=useMemo(()=>projects.filter(project=>!scriptedProjectIds.has(project.id)),[projects,scriptedProjectIds]);
   const dirty=useMemo(()=>draft&&current?JSON.stringify(syncPayload(draft))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
-  const issues=useMemo(()=>draft?scriptApprovalIssues(syncPayload(draft)):[],[draft]);
+  const documentaryMode=Boolean(
+    productionDna?.research?.documentaryMode||
+    productionDna?.research?.requireClaimLedger
+  );
+  const issues=useMemo(()=>draft?scriptApprovalIssues(
+    syncPayload(draft),
+    project?{claims:project.research.factChecks,documentaryMode}:undefined
+  ):[],[draft,project,documentaryMode]);
+  const supportedClaims=useMemo(()=>project?.research.factChecks.filter(
+    claim=>claim.status==='supported'&&claim.narrationRule!=='exclude'
+  )??[],[project]);
 
   async function openScript(id:string){
     setBusy('open');setMessage('');
@@ -64,7 +76,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       const res=await fetch(`/api/script-engine?scriptId=${encodeURIComponent(id)}`,{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao abrir roteiro.');
-      setCurrent(body.script);setDraft(payloadOnly(body.script));setHistory(body.history??[]);setTab('script');
+      setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??null);setProductionDna(body.productionDna??null);setHistory(body.history??[]);setTab('script');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir roteiro.');}
     finally{setBusy('');}
   }
@@ -79,7 +91,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao gerar roteiro.');
-      setCurrent(body.script);setDraft(payloadOnly(body.script));setHistory(body.history??[]);
+      setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??null);setProductionDna(body.productionDna??null);setHistory(body.history??[]);
       setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);setTab('script');
       setMessage(body.message??'Roteiro gerado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao gerar roteiro.');}
@@ -98,7 +110,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao salvar roteiro.');
-      setCurrent(body.script);setDraft(payloadOnly(body.script));setHistory(body.history??[]);
+      setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??project);setProductionDna(body.productionDna??productionDna);setHistory(body.history??[]);
       setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);
       setMessage(body.message??'Roteiro salvo.');
       return true;
@@ -111,7 +123,8 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
     const content=manualContent.trim();
     if(!project||!content)return;
     const now=new Date().toISOString();
-    const section:EpisodeScriptSection={id:crypto.randomUUID(),label:'Narration',purpose:'Imported or manually written narration.',content};
+    const section:EpisodeScriptSection={id:crypto.randomUUID(),label:'Narration',purpose:'Imported or manually written narration.',content,claimIds:[]};
+    setProject(project);
     const payload:EpisodeScriptPayload=syncPayload({
       kind:'episode-script',
       id:crypto.randomUUID(),
@@ -145,7 +158,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao regenerar trecho.');
-      setCurrent(body.script);setDraft(payloadOnly(body.script));setHistory(body.history??[]);
+      setCurrent(body.script);setDraft(payloadOnly(body.script));setProject(body.project??project);setProductionDna(body.productionDna??productionDna);setHistory(body.history??[]);
       setScripts(prev=>[body.script,...prev.filter(item=>item.id!==body.script.id)]);
       setMessage(body.message??'Trecho regenerado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao regenerar trecho.');}
@@ -160,7 +173,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
 
   if(draft){
     return <div className="script-engine-editor">
-      <div className="script-engine-back"><button onClick={()=>{setDraft(null);setCurrent(null);setHistory([]);}}><ArrowLeft size={15}/>Todos os roteiros</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="script-engine-back"><button onClick={()=>{setDraft(null);setCurrent(null);setProject(null);setProductionDna(null);setHistory([]);}}><ArrowLeft size={15}/>Todos os roteiros</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="script-engine-hero">
         <div><span>SCRIPT ENGINE</span><h2>{draft.title}</h2><p>{draft.wordCount} palavras{draft.estimatedMinutes!==null?` · ~${draft.estimatedMinutes} min`:''} · {draft.language}</p></div>
@@ -172,6 +185,7 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
 
       <nav className="script-engine-tabs">
         <button className={tab==='script'?'active':''} onClick={()=>setTab('script')}><FileText size={15}/>Roteiro</button>
+        <button className={tab==='provenance'?'active':''} onClick={()=>setTab('provenance')}><FileCheck2 size={15}/>Claim Ledger</button>
         <button className={tab==='continuity'?'active':''} onClick={()=>setTab('continuity')}><Sparkles size={15}/>Continuidade</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
@@ -182,9 +196,33 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
           <header><div><span>{String(index+1).padStart(2,'0')}</span><input value={section.label} onChange={e=>updateSection(index,{...section,label:e.target.value})}/></div><div><button className="button subtle small" disabled={dirty||busy==='section:'+section.id} onClick={()=>void regenerate(section.id)}><RefreshCw size={14}/>{busy==='section:'+section.id?'Regenerando…':'Regenerar trecho'}</button><button className="icon-button" disabled={draft.sections.length<=1} onClick={()=>setDraft(syncPayload({...draft,sections:draft.sections.filter(item=>item.id!==section.id)}))}><Trash2 size={15}/></button></div></header>
           <label><span>PROPÓSITO</span><input value={section.purpose} onChange={e=>updateSection(index,{...section,purpose:e.target.value})}/></label>
           <textarea rows={Math.max(8,Math.min(24,Math.ceil(section.content.length/110)))} value={section.content} onChange={e=>updateSection(index,{...section,content:e.target.value})}/>
+          {documentaryMode&&<div className="content-os-source-checks">
+            <span>CLAIMS USADOS NESTA SEÇÃO</span>
+            {supportedClaims.length?supportedClaims.map(claim=><label key={claim.id}><input type="checkbox" checked={(section.claimIds??[]).includes(claim.id)} onChange={e=>updateSection(index,{...section,claimIds:e.target.checked?[...new Set([...(section.claimIds??[]),claim.id])]:(section.claimIds??[]).filter(id=>id!==claim.id)})}/>{claim.claim}</label>):<small>Nenhum claim sustentado disponível no Content OS.</small>}
+          </div>}
         </section>)}</div>
-        <button className="button subtle" onClick={()=>setDraft(syncPayload({...draft,sections:[...draft.sections,{id:crypto.randomUUID(),label:'New section',purpose:'',content:'Write this section.'}]}))}><Plus size={15}/>Adicionar seção</button>
+        <button className="button subtle" onClick={()=>setDraft(syncPayload({...draft,sections:[...draft.sections,{id:crypto.randomUUID(),label:'New section',purpose:'',content:'Write this section.',claimIds:[]}]}))}><Plus size={15}/>Adicionar seção</button>
         <div className="script-engine-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={issues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar roteiro</button></div>
+      </div>}
+
+      {tab==='provenance'&&<div className="script-engine-content">
+        <section className="script-continuity">
+          <span>DOCUMENTARY PROVENANCE</span>
+          <p>{documentaryMode?'Gate documental ativo para este canal.':'Canal sem gate documental obrigatório.'}</p>
+        </section>
+        {draft.sections.map((section,index)=><section key={section.id} className="script-continuity">
+          <span>SEÇÃO {String(index+1).padStart(2,'0')} · {section.label}</span>
+          {(section.claimIds??[]).length?(section.claimIds??[]).map(id=>{
+            const claim=project?.research.factChecks.find(item=>item.id===id);
+            if(!claim)return <p key={id}>Claim ausente: {id}</p>;
+            const sources=claim.sourceIds.map(sourceId=>project?.research.sources.find(source=>source.id===sourceId)).filter(Boolean);
+            return <article key={id} className="script-provenance-claim">
+              <strong>{claim.claim}</strong>
+              <p>{claim.status} · {claim.claimType??'legacy'} · {claim.narrationRule??'sem regra'}</p>
+              {sources.length?sources.map(source=><a key={source!.id} href={source!.url} target="_blank" rel="noreferrer"><Link2 size={13}/>{source!.title} · {source!.origin??source!.sourceType}</a>):<small>Sem fonte vinculada.</small>}
+            </article>;
+          }):<p>Nenhum claim vinculado a esta seção.</p>}
+        </section>)}
       </div>}
 
       {tab==='continuity'&&<div className="script-engine-content">
