@@ -174,7 +174,11 @@ export function timelineChapters(payload:TimelinePayload):TimelineChapter[]{
     version:1,
     status:'approved'
   };
-  return buildTimelineChapters(pseudo);
+  return buildTimelineChapters(pseudo).map(chapter=>({
+    ...chapter,
+    id:chapter.sceneIds[0]??payload.id,
+    updatedAt:payload.updatedAt
+  }));
 }
 
 export function timelineChapterStructuralIssues(payload:TimelinePayload){
