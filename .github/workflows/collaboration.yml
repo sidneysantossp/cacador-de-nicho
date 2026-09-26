@@ -1,0 +1,31 @@
+name: Collaboration
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collaboration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run test:collaboration
+      - name: Validate task catalog
+        run: node scripts/task-workflow.mjs check --catalog
+      - name: Require reservation, scope and completion on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          TASK_BASE: ${{ github.event.pull_request.base.sha }}
+          TASK_BRANCH: ${{ github.head_ref }}
+        run: node scripts/task-workflow.mjs check --ci
