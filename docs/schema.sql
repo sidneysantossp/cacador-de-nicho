@@ -408,6 +408,8 @@ with (security_invoker=true) as
 select
   e.id,e.channel_id,e.episode_id,e.timeline_id,e.transcript_id,e.version,e.status,
   coalesce(nullif(e.payload->>'durationSeconds','')::numeric,0) as duration_seconds,
+  coalesce(nullif(e.payload->'format'->>'width','')::int,0) as width,
+  coalesce(nullif(e.payload->'format'->>'height','')::int,0) as height,
   coalesce(jsonb_array_length(e.payload->'clipStyles'),0) as clip_style_count,
   coalesce(jsonb_array_length(e.payload->'captions'->'cues'),0) as caption_count,
   coalesce(jsonb_array_length(e.payload->'overlays'),0) as overlay_count,
