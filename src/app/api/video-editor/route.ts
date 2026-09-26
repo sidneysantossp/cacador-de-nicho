@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
@@ -49,7 +50,7 @@ export async function POST(request:Request){
   try{
     requireOperator(request);
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Video Editor.',503);
-    if(Number(request.headers.get('content-length')??0)>1800000)throw new HttpError('Projeto de edição muito extenso.',413);
+    if(Number(request.headers.get('content-length')??0)>longFormJsonLimit('videoEdit'))throw new HttpError('Projeto de edição muito extenso.',413);
     const parsed=postSchema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os campos do Video Editor.',400);
     const body=parsed.data;
