@@ -375,7 +375,7 @@ create index if not exists radar_render_chapters_job_sequence on public.radar_re
 create index if not exists radar_render_chapters_cache on public.radar_render_chapters(content_hash,completed_at desc)
   where status='completed' and output_path is not null;
 create table if not exists public.radar_production_quality_chapters(
-  id uuid primary key,
+  id uuid primary key default gen_random_uuid(),
   render_job_id uuid not null references public.radar_render_jobs(id) on delete cascade,
   chapter_id uuid not null,
   sequence int not null check(sequence>=1),
