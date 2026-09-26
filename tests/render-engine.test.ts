@@ -207,3 +207,42 @@ test('Render manifest validates normalized documentary focus coordinates',()=>{
   value.visualClips[0].focusX=1.2;
   assert.ok(renderManifestIssues(value,edit,timeline,transcript).includes('render-focus-x-invalid'));
 });
+
+
+test('Render-v4 chapter manifest covers every visual scene exactly once',()=>{
+  const value=manifest();
+  value.chapters=[
+    {
+      id:'15111111-1111-4111-8111-111111111111',sequence:1,label:'Chapter 01',
+      startSeconds:0,endSeconds:3,durationSeconds:3,
+      sceneIds:[value.visualClips[0].sceneId]
+    },
+    {
+      id:'16111111-1111-4111-8111-111111111111',sequence:2,label:'Chapter 02',
+      startSeconds:3,endSeconds:6,durationSeconds:3,
+      sceneIds:[value.visualClips[1].sceneId]
+    }
+  ];
+  assert.deepEqual(renderManifestIssues(value,edit,timeline,transcript),[]);
+  value.chapters[1].sceneIds=[];
+  assert.ok(renderManifestIssues(value,edit,timeline,transcript).includes('render-chapter-missing-scene'));
+});
+
+test('Render-v4 chapter manifest blocks temporal gaps and duplicate scene membership',()=>{
+  const value=manifest();
+  value.chapters=[
+    {
+      id:'17111111-1111-4111-8111-111111111111',sequence:1,label:'Chapter 01',
+      startSeconds:0,endSeconds:3,durationSeconds:3,
+      sceneIds:[value.visualClips[0].sceneId]
+    },
+    {
+      id:'18111111-1111-4111-8111-111111111111',sequence:2,label:'Chapter 02',
+      startSeconds:3.5,endSeconds:6,durationSeconds:2.5,
+      sceneIds:[value.visualClips[0].sceneId,value.visualClips[1].sceneId]
+    }
+  ];
+  const issues=renderManifestIssues(value,edit,timeline,transcript);
+  assert.ok(issues.includes('render-chapter-gap'));
+  assert.ok(issues.includes('render-chapter-duplicate-scene'));
+});
