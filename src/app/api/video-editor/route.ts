@@ -11,13 +11,15 @@ import { videoEditPayloadSchema } from '@/lib/server/validation';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
+const chapterId=z.string().uuid().optional();
 const postSchema=z.discriminatedUnion('action',[
-  z.object({action:z.literal('create'),timelineId:z.string().uuid()}).strict(),
-  z.object({action:z.literal('refresh'),timelineId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('create'),timelineId:z.string().uuid(),chapterId}).strict(),
+  z.object({action:z.literal('refresh'),timelineId:z.string().uuid(),chapterId}).strict(),
   z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
     status:z.enum(['draft','review','approved']),
+    chapterId,
     videoEdit:videoEditPayloadSchema
   }).strict()
 ]);
@@ -29,6 +31,7 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     const videoEditId=url.searchParams.get('videoEditId')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
+    const requestedChapterId=url.searchParams.get('chapterId')?.trim()||undefined;
 
     if(videoEditId){
       if(!z.string().uuid().safeParse(videoEditId).success)throw new HttpError('Video Edit inválido.',400);
@@ -36,7 +39,7 @@ export async function GET(request:Request){
       if(!videoEdit)throw new HttpError('Video Edit não encontrado.',404);
       const [history,workspace]=await Promise.all([
         loadVideoEditHistory(videoEditId,20),
-        loadVideoEditWorkspace(videoEdit)
+        loadVideoEditWorkspace(videoEdit,requestedChapterId)
       ]);
       return Response.json({videoEdit,history,...workspace},{headers:{'Cache-Control':'no-store'}});
     }
@@ -63,7 +66,7 @@ export async function POST(request:Request){
 
     const [history,workspace]=await Promise.all([
       loadVideoEditHistory(videoEdit.id,20),
-      loadVideoEditWorkspace(videoEdit)
+      loadVideoEditWorkspace(videoEdit,body.chapterId)
     ]);
 
     return Response.json({
