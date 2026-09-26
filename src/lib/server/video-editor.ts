@@ -11,7 +11,8 @@ import {
 import { loadScenePlan } from './scene-timecode';
 import { loadTranscript } from './transcription-engine';
 import {
-  buildInitialVideoEdit, normalizeVideoEdit, upgradeVideoEditPayload, videoEditApprovalIssues
+  buildInitialVideoEdit, normalizeVideoEdit, resolveVideoEditorChapter,
+  upgradeVideoEditPayload, videoEditApprovalIssues
 } from '@/lib/video-editor-policy';
 import { loadProductionDna } from './production-dna';
 import { listAudioAssets } from './audio-library';
@@ -208,10 +209,11 @@ export async function videoEditorChannelState(channelId:string){
   };
 }
 
-export async function loadVideoEditWorkspace(edit:VideoEdit){
+export async function loadVideoEditWorkspace(edit:VideoEdit,chapterId?:string){
   const context=await eligibleContext(edit.timelineId);
+  const activeChapter=resolveVideoEditorChapter(context.timeline,chapterId);
   const [sources,audioAssets,productionDna]=await Promise.all([
-    loadTimelineSources(context.timeline),
+    loadTimelineSources(context.timeline,activeChapter?.id),
     listAudioAssets(edit.channelId),
     loadProductionDna(edit.channelId)
   ]);
@@ -219,6 +221,7 @@ export async function loadVideoEditWorkspace(edit:VideoEdit){
     timeline:context.timeline,
     transcript:context.transcript,
     scenePlan:context.scenePlan,
+    activeChapterId:activeChapter?.id??null,
     sources,
     audioAssets,
     productionDna
