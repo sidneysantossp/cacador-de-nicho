@@ -694,6 +694,10 @@ console.log(JSON.stringify({
   event:'youtube-publish-worker-started',
   pollMs:POLL_MS,
   chunkBytes:CHUNK_BYTES,
+  minFreeDiskGb:Math.round(MIN_FREE_DISK_BYTES/1024/1024/1024*100)/100,
+  diskMarginGb:Math.round(DISK_MARGIN_BYTES/1024/1024/1024*100)/100,
+  uploadRequestTimeoutMs:UPLOAD_REQUEST_TIMEOUT_MS,
+  downloadHeartbeatMs:DOWNLOAD_HEARTBEAT_MS,
   tokenEndpoint:new URL(TOKEN_ENDPOINT).origin,
   apiEndpoint:new URL(API_BASE).origin,
   uploadEndpoint:new URL(UPLOAD_BASE).origin
