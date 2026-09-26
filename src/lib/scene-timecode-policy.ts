@@ -1,6 +1,7 @@
 import type {
   ProductionDNA, ScenePlanPayload, SceneTimecode, Transcript, TranscriptSegment
 } from '@/lib/types';
+import { buildVisualBeat } from '@/lib/visual-beat-policy';
 
 const EPSILON=0.02;
 
@@ -25,12 +26,14 @@ export function createInitialScenes(
     const start=index===0?0:segment.startSeconds;
     const rawEnd=next?next.startSeconds:total;
     const end=Math.max(segment.endSeconds!,rawEnd);
+    const sceneEnd=Math.min(total,end);
+    const beat=buildVisualBeat({segment,sequence:1});
     return {
       id:crypto.randomUUID(),
       sequence:index+1,
       startSeconds:start,
-      endSeconds:Math.min(total,end),
-      durationSeconds:Math.max(0,Math.min(total,end)-start),
+      endSeconds:sceneEnd,
+      durationSeconds:Math.max(0,sceneEnd-start),
       narration:segment.text,
       transcriptSegmentIds:[segment.id],
       transcriptWordIds:[...segment.wordIds],
@@ -39,7 +42,13 @@ export function createInitialScenes(
       characterIds:[],
       assetMode:'image',
       promptDirection:'',
-      notes:''
+      notes:'',
+      visualBeats:[{
+        ...beat,
+        startSeconds:start,
+        endSeconds:sceneEnd,
+        durationSeconds:Math.max(0,sceneEnd-start)
+      }]
     };
   });
 }
@@ -88,6 +97,15 @@ export function scenePlanStructuralIssues(
       coverage.set(id,(coverage.get(id)??0)+1);
       if(!expectedSegments.has(id))issues.push('unknown-transcript-segment');
     });
+
+    for(const beat of scene.visualBeats??[]){
+      if(beat.endSeconds<=beat.startSeconds)issues.push('invalid-visual-beat-duration');
+      if(beat.startSeconds<scene.startSeconds-EPSILON||beat.endSeconds>scene.endSeconds+EPSILON){
+        issues.push('visual-beat-outside-scene');
+      }
+      if(!beat.narration.trim())issues.push('empty-visual-beat-narration');
+      if(!beat.queries.length)issues.push('visual-beat-without-query');
+    }
   });
 
   if(scenes.length&&scenes.at(-1)!.endSeconds<payload.audioDurationSeconds-EPSILON){

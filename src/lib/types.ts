@@ -924,6 +924,41 @@ export type TranscriptVersion = {
  createdAt: string;
 };
 export type SceneAssetMode = 'image' | 'video' | 'stock' | 'mixed' | 'none';
+export type VisualBeatType = 'literal' | 'contextual' | 'atmosphere' | 'map' | 'document' | 'archive' | 'illustration' | 'generated';
+export type VisualBeatSourcePreference =
+ | 'owned'
+ | 'archive-image'
+ | 'stock-video'
+ | 'stock-image'
+ | 'map'
+ | 'document'
+ | 'generated'
+ | 'mixed';
+export type VisualBeatEntityKind =
+ | 'unknown'
+ | 'person'
+ | 'place'
+ | 'organization'
+ | 'event'
+ | 'date'
+ | 'number'
+ | 'object'
+ | 'concept';
+export type VisualBeat = {
+ id: string;
+ sequence: number;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ narration: string;
+ transcriptSegmentIds: string[];
+ transcriptWordIds: string[];
+ type: VisualBeatType;
+ sourcePreference: VisualBeatSourcePreference;
+ entities: Array<{kind:VisualBeatEntityKind;value:string}>;
+ queries: string[];
+ confidence: 'heuristic' | 'ai-reviewed';
+};
 export type SceneTimecode = {
  id: string;
  sequence: number;
@@ -939,6 +974,7 @@ export type SceneTimecode = {
  assetMode: SceneAssetMode;
  promptDirection: string;
  notes: string;
+ visualBeats?: VisualBeat[];
 };
 export type ScenePlanPayload = {
  kind: 'scene-plan';

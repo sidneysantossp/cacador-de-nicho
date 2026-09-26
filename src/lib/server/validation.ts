@@ -402,7 +402,25 @@ export const scenePlanPayloadSchema=z.object({
   characterIds:shortList(50,120),
   assetMode:z.enum(['image','video','stock','mixed','none']),
   promptDirection:z.string().trim().max(8000),
-  notes:z.string().trim().max(4000)
+  notes:z.string().trim().max(4000),
+  visualBeats:z.array(z.object({
+   id:z.string().uuid(),
+   sequence:z.number().int().min(1).max(100000),
+   startSeconds:z.number().min(0).max(86400),
+   endSeconds:z.number().min(0).max(86400),
+   durationSeconds:z.number().min(0).max(86400),
+   narration:z.string().trim().max(20000),
+   transcriptSegmentIds:z.array(z.string().uuid()).max(200),
+   transcriptWordIds:z.array(z.string().uuid()).max(2000),
+   type:z.enum(['literal','contextual','atmosphere','map','document','archive','illustration','generated']),
+   sourcePreference:z.enum(['owned','archive-image','stock-video','stock-image','map','document','generated','mixed']),
+   entities:z.array(z.object({
+    kind:z.enum(['unknown','person','place','organization','event','date','number','object','concept']),
+    value:z.string().trim().min(1).max(300)
+   }).strict()).max(50),
+   queries:z.array(z.string().trim().min(1).max(1000)).max(8),
+   confidence:z.enum(['heuristic','ai-reviewed'])
+  }).strict()).max(20).optional()
  }).strict()).min(1).max(5000),
  review:z.object({
   notes:z.string().trim().max(5000),

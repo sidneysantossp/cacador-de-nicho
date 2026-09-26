@@ -78,7 +78,8 @@ export function compileScenePrompt(
 
   const styleLock=dna.visual.basePrompt.trim();
   const negative=dna.visual.negativePrompt.trim();
-  const directionText=direction.trim()||scene.promptDirection.trim()||scene.visualIntent.trim()||scene.narration.trim();
+  const beatDirection=scene.visualBeats?.[0]?.queries?.[0]?.trim()??'';
+  const directionText=direction.trim()||scene.promptDirection.trim()||scene.visualIntent.trim()||beatDirection||scene.narration.trim();
 
   const pieces=[
     scene.shotType.trim(),
@@ -113,7 +114,7 @@ export function buildInitialVisualPromptSet(
     scene,
     dna,
     scene.characterIds,
-    scene.promptDirection||scene.visualIntent||scene.narration,
+    scene.promptDirection||scene.visualIntent||scene.visualBeats?.[0]?.queries?.[0]||scene.narration,
     recurring
   ));
   const references=recurring.flatMap(characterId=>{
