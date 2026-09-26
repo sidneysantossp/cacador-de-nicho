@@ -6,11 +6,11 @@ import {
   Image as ImageIcon, Save, Sparkles, Video, Volume2
 } from 'lucide-react';
 import type {
-  ManagedChannel, ScenePlan, Timeline, TimelineClip, TimelinePayload,
+  ManagedChannel, ScenePlan, Timeline, TimelineChapterStatus, TimelineClip, TimelinePayload,
   TimelineVersion
 } from '@/lib/types';
 import {
-  normalizeTimeline, timelineStructuralIssues
+  normalizeTimeline, timelineChapters, timelineHealth, timelineStructuralIssues
 } from '@/lib/timeline-policy';
 
 type Source={
@@ -41,6 +41,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   const [sources,setSources]=useState<Source[]>([]);
   const [history,setHistory]=useState<TimelineVersion[]>([]);
   const [selectedClipId,setSelectedClipId]=useState('');
+  const [activeChapterId,setActiveChapterId]=useState('');
   const [tab,setTab]=useState<Tab>('timeline');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
@@ -53,6 +54,12 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     const voiceClip=draft?.tracks.find(track=>track.type==='voice')?.clips[0];
     return voiceClip?.assetId?sourceMap.get(voiceClip.assetId)??null:null;
   },[draft,sourceMap]);
+  const chapters=useMemo(()=>draft?timelineChapters(draft):[],[draft]);
+  const activeChapter=useMemo(
+    ()=>chapters.find(chapter=>chapter.id===activeChapterId)??chapters[0]??null,
+    [chapters,activeChapterId]
+  );
+  const health=useMemo(()=>draft?timelineHealth(draft):null,[draft]);
   const structuralIssues=useMemo(()=>draft&&scenePlan?timelineStructuralIssues(normalizeTimeline(draft),scenePlan):[],[draft,scenePlan]);
   const dirty=useMemo(()=>draft&&current?JSON.stringify(normalizeTimeline(draft))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
   const selectedClip=useMemo(()=>{
