@@ -4,7 +4,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   createVisualPromptSet, generateVisualPromptDrafts, listVisualPromptSets,
-  loadVisualPromptSet, loadVisualPromptSetHistory, saveVisualPromptSet
+  loadVisualPromptSet, loadVisualPromptSetHistory, loadVisualPromptSetHistoryVersion, saveVisualPromptSet
 } from '@/lib/server/visual-prompt-engine';
 import { listScenePlans, loadScenePlan } from '@/lib/server/scene-timecode';
 import { loadProductionDna } from '@/lib/server/production-dna';
@@ -31,10 +31,20 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Visual Prompt Engine.',503);
     const url=new URL(request.url);
     const setId=url.searchParams.get('setId')?.trim();
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
 
     if(setId){
       if(!z.string().uuid().safeParse(setId).success)throw new HttpError('Visual Prompt Set inválido.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadVisualPromptSetHistoryVersion(setId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
       const [promptSet,history]=await Promise.all([
         loadVisualPromptSet(setId),
         loadVisualPromptSetHistory(setId,20)
