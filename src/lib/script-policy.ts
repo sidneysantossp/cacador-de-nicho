@@ -33,7 +33,11 @@ function claimQualificationSatisfied(content:string,claim:ContentFactCheck){
     return /\b(?:about|approximately|estimated|estimate|roughly|around|appears|likely|possibly|may have|believed|legend|tradition)\b/.test(text);
   }
   if(claim.narrationRule==='attribute'){
-    return /\b(?:according to|reported|reports|recorded|records|claimed|claims|alleged|said|wrote|described|tradition|legend)\b/.test(text);
+    return /\baccording to\b/.test(text)||
+      /\b(?:records|documents|reports)\s+(?:show|indicate|state|say|suggest|describe)\b/.test(text)||
+      /\b(?:was|were|is|are)\s+(?:reported|recorded|claimed|alleged|described)\b/.test(text)||
+      /\b(?:claimed|alleged|reported|recorded|described)\s+by\b/.test(text)||
+      /\b(?:archive|report|record|source|historian|newspaper|agency)\s+(?:says|states|reports|records|claims|describes)\b/.test(text);
   }
   return true;
 }
