@@ -237,7 +237,6 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     const chapterEnd=activeChapter?.endSeconds??draft.durationSeconds;
     const chapterDuration=Math.max(.01,chapterEnd-chapterStart);
     const chapterSceneIds=new Set(activeChapter?.sceneIds??[]);
-    const activeHealth=health?.chapters.find(item=>item.chapterId===activeChapter?.id)??null;
     const canvasWidth=Math.max(1000,Math.min(6000,chapterDuration*18));
     return <div className="timeline-editor">
       <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');setActiveChapterId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
