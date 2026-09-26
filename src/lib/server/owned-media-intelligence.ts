@@ -16,6 +16,7 @@ import { checked, db } from './db';
 import { downloadMediaToFile } from './media-storage';
 import { probeVideoInput } from './media-probe';
 import { providerSecret } from './providers';
+import { indexOwnedMediaEmbeddings, searchOwnedMediaEmbeddings } from './media-embeddings';
 
 const execFile=promisify(execFileCallback);
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
@@ -25,10 +26,10 @@ const MAX_VIDEO_BYTES=2*1024*1024*1024;
 
 const GIB=1024*1024*1024;
 
-async function ensureAnalysisDisk(sourceBytes:number){
+async function ensureAnalysisDisk(sourceBytes:number,minimumBytes=2*GIB){
   const stats=await statfs(os.tmpdir());
   const freeBytes=Math.max(0,Number(stats.bavail)*Number(stats.bsize));
-  const requiredBytes=Math.max(2*GIB,Math.ceil(Math.max(0,sourceBytes)*2.2));
+  const requiredBytes=Math.max(minimumBytes,Math.ceil(Math.max(0,sourceBytes)*2.2));
   if(freeBytes<requiredBytes){
     throw new HttpError(
       'Espaço temporário insuficiente para analisar este vídeo. '+
@@ -84,6 +85,9 @@ type SegmentRow={
   summary:string;
   semantic:unknown;
   confidence:number|string;
+  quality_score:number|string;
+  usable:boolean;
+  quality_issues:string[]|null;
   search_text:string;
   keyframe_seconds:number|string;
   created_at:string;
@@ -123,7 +127,11 @@ function segment(row:SegmentRow):OwnedMediaVisualSegment{
     id:String(row.id),assetId:String(row.asset_id),sequence:Number(row.sequence),
     startSeconds:Number(row.start_seconds),endSeconds:Number(row.end_seconds),durationSeconds:Number(row.duration_seconds),
     title:String(row.title??''),summary:String(row.summary??''),semantic:visualSemantic(row.semantic),
-    confidence:Math.max(0,Math.min(1,Number(row.confidence??0))),searchText:String(row.search_text??''),
+    confidence:Math.max(0,Math.min(1,Number(row.confidence??0))),
+    qualityScore:Math.max(0,Math.min(1,Number(row.quality_score??0.5))),
+    usable:Boolean(row.usable),
+    qualityIssues:list(row.quality_issues,20),
+    searchText:String(row.search_text??''),
     keyframeSeconds:Number(row.keyframe_seconds??0),createdAt:String(row.created_at),updatedAt:String(row.updated_at)
   };
 }
@@ -134,9 +142,8 @@ async function ownedAsset(assetId:string):Promise<AssetRow>{
     .eq('id',assetId).maybeSingle());
   if(!row)throw new HttpError('Asset OWNED não encontrado.',404);
   const item=row as AssetRow;
-  if(item.asset_kind!=='video')throw new HttpError('Visual Intelligence analisa vídeos. Selecione um vídeo.',409);
-  if(item.status!=='ready'||!item.storage_path)throw new HttpError('O vídeo precisa estar pronto na Biblioteca.',409);
-  if(Number(item.bytes)>MAX_VIDEO_BYTES)throw new HttpError('Vídeo acima do limite de análise de 2 GB.',413);
+  if(item.status!=='ready'||!item.storage_path)throw new HttpError('A mídia precisa estar pronta na Biblioteca.',409);
+  if(Number(item.bytes)>MAX_VIDEO_BYTES)throw new HttpError('Mídia acima do limite de análise de 2 GB.',413);
   return item;
 }
 
@@ -208,6 +215,7 @@ const responseSchema={
   type:'OBJECT',
   properties:{segments:{type:'ARRAY',items:{type:'OBJECT',properties:{
     sequence:{type:'INTEGER'},title:{type:'STRING'},summary:{type:'STRING'},confidence:{type:'NUMBER'},
+    qualityScore:{type:'NUMBER'},usable:{type:'BOOLEAN'},qualityIssues:{type:'ARRAY',items:{type:'STRING'}},
     subjects:{type:'ARRAY',items:{type:'STRING'}},locations:{type:'ARRAY',items:{type:'STRING'}},
     landmarks:{type:'ARRAY',items:{type:'STRING'}},activities:{type:'ARRAY',items:{type:'STRING'}},
     objects:{type:'ARRAY',items:{type:'STRING'}},environments:{type:'ARRAY',items:{type:'STRING'}},
@@ -216,7 +224,8 @@ const responseSchema={
     moods:{type:'ARRAY',items:{type:'STRING'}},visualStyle:{type:'ARRAY',items:{type:'STRING'}},
     periods:{type:'ARRAY',items:{type:'STRING'}}
   },required:[
-    'sequence','title','summary','confidence','subjects','locations','landmarks','activities','objects',
+    'sequence','title','summary','confidence','qualityScore','usable','qualityIssues',
+    'subjects','locations','landmarks','activities','objects',
     'environments','timeOfDay','weather','shotTypes','cameraMotion','moods','visualStyle','periods'
   ]}}},
   required:['segments']
@@ -229,7 +238,7 @@ async function analyzeFrames(input:{
   sourceHint:string;
 }){
   const parts:Array<Record<string,unknown>>=[{text:[
-    'You are the visual indexing engine for a private professional stock-video library.',
+    'You are the visual indexing engine for a private professional image and video library.',
     'Analyze only what is visually supported by each supplied keyframe.',
     'Do not infer an exact city, district or landmark unless the visual evidence is recognizable.',
     'The filename/source hint is context only and must never override what the frame shows: '+input.sourceHint,
@@ -237,6 +246,8 @@ async function analyzeFrames(input:{
     'For people, prefer useful production terms such as pedestrians, commuters, tourists, workers or crowd only when visible.',
     'For environments, use labels such as skyline, street, avenue, bridge, park, library, waterfront, traffic, restaurant, office, mountains or desert when supported.',
     'For shotTypes and cameraMotion describe the actual framing/viewpoint and apparent movement conservatively.',
+    'Judge production usability from the supplied frame: sharpness, exposure, occlusion, compression, framing and whether the visual is genuinely useful as documentary B-roll.',
+    'qualityScore is 0..1. usable=false only for material with a serious production defect or no meaningful visual content. qualityIssues must be concise labels such as blur, underexposed, overexposed, compression, obstruction, black-frame or weak-composition.',
     'Confidence is 0..1 for the overall visual description.'
   ].join('\n')}];
   for(const item of input.items){
@@ -301,8 +312,10 @@ async function enrichOwnedAsset(
   metadata:Awaited<ReturnType<typeof probeVideoInput>>,
   assetTitle:string
 ){
-  const credible=segments.filter(item=>item.confidence>=.72);
-  const evidence=credible.length?credible:segments;
+  const credible=segments.filter(item=>item.usable&&item.confidence>=.60);
+  const evidence=credible.length?credible:segments.filter(item=>item.usable).length
+    ?segments.filter(item=>item.usable)
+    :segments;
   const all=(selector:(item:OwnedMediaVisualSegment)=>string[])=>mergeUnique(...evidence.map(selector));
   const visualText=evidence.map(item=>item.searchText).join(' ');
   const taxonomy=classifyMediaTaxonomy(visualText);
@@ -397,16 +410,45 @@ async function enrichOwnedAsset(
       },
       visualAuthority:{
         mode:'visual-over-filename',
-        confidenceFloor:.72,
+        confidenceFloor:.60,
         contestedFilename:contested,
         reconciledAt:new Date().toISOString()
       },
       visualIntelligence:{
-        status:'completed',assetTitle:semanticTitle,segmentCount:segments.length,analyzedAt:new Date().toISOString()
+        status:'completed',
+        assetTitle:semanticTitle,
+        segmentCount:segments.length,
+        usableSegmentCount:segments.filter(item=>item.usable).length,
+        meanQuality:segments.length
+          ?Number((segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length).toFixed(4))
+          :0,
+        analyzedAt:new Date().toISOString()
       }
     },
     updated_at:new Date().toISOString()
   }).eq('id',source.id));
+  return {semanticTitle,searchText};
+}
+
+async function refreshEmbeddingIndex(
+  source:AssetRow,
+  enriched:{semanticTitle:string;searchText:string},
+  segments:OwnedMediaVisualSegment[]
+){
+  try{
+    const result=await indexOwnedMediaEmbeddings({
+      assetId:source.id,
+      assetTitle:enriched.semanticTitle,
+      assetText:enriched.searchText,
+      segments:segments.map(item=>({id:item.id,title:item.title,searchText:item.searchText}))
+    });
+    return {status:'completed' as const,...result};
+  }catch(error){
+    return {
+      status:'failed' as const,
+      error:(error instanceof Error?error.message:'embedding-index-failed').slice(0,500)
+    };
+  }
 }
 
 export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMediaIntelligenceResult>{
@@ -414,18 +456,35 @@ export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMe
     .select('asset_id,status,provider,model,asset_title,duration_seconds,payload,error,analyzed_at,created_at,updated_at')
     .eq('asset_id',assetId).maybeSingle()) as AnalysisRow|null;
   if(!analysis){
-    return {assetId,status:'idle',provider:'googleai',model:'',assetTitle:'',durationSeconds:null,segments:[]};
+    return {
+      assetId,status:'idle',provider:'googleai',model:'',assetTitle:'',durationSeconds:null,
+      usableSegmentCount:0,meanQuality:0,embeddingStatus:'idle',segments:[]
+    };
   }
   const rows=checked(await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
+  const payload=analysis.payload&&typeof analysis.payload==='object'
+    ?analysis.payload as Record<string,unknown>
+    :{};
+  const embedding=payload.embedding&&typeof payload.embedding==='object'
+    ?payload.embedding as Record<string,unknown>
+    :{};
+  const segments=(rows??[]).map(segment);
   return {
     assetId,status:analysis.status,provider:'googleai',model:String(analysis.model??''),
     assetTitle:String(analysis.asset_title??''),
     durationSeconds:analysis.duration_seconds===null?null:Number(analysis.duration_seconds),
+    usableSegmentCount:Math.max(0,Number(payload.usableSegmentCount??segments.filter(item=>item.usable).length)||0),
+    meanQuality:Math.max(0,Math.min(1,Number(
+      payload.meanQuality??(segments.length?segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length:0)
+    )||0)),
+    embeddingStatus:(['completed','failed'].includes(String(embedding.status))
+      ?String(embedding.status)
+      :'idle') as 'idle'|'completed'|'failed',
     analyzedAt:analysis.analyzed_at?String(analysis.analyzed_at):undefined,
     error:analysis.error?String(analysis.error):undefined,
-    segments:(rows??[]).map(segment)
+    segments
   };
 }
 
@@ -437,7 +496,7 @@ export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<Ow
   if(!analysis||analysis.status!=='completed')throw new HttpError('O asset ainda não possui análise visual concluída.',409);
 
   const rows=checked(await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
   const segments=(rows??[]).map(segment);
   if(!segments.length)throw new HttpError('A análise visual não possui segmentos para reconciliar.',409);
@@ -461,7 +520,25 @@ export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<Ow
   const assetTitle=String(analysis.asset_title??'').trim()||aggregateTitle(
     segments.map(item=>({title:item.title,semantic:item.semantic}))
   );
-  await enrichOwnedAsset(source,segments,metadata,assetTitle);
+  const enriched=await enrichOwnedAsset(source,segments,metadata,assetTitle);
+  const embedding=await refreshEmbeddingIndex(source,enriched,segments);
+  const analysisPayload=analysis.payload&&typeof analysis.payload==='object'
+    ?analysis.payload as Record<string,unknown>
+    :{};
+  const meanQuality=segments.length
+    ?Number((segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length).toFixed(4))
+    :0;
+  checked(await db().from('radar_owned_media_visual_analysis').update({
+    payload:{
+      ...analysisPayload,
+      stage:'completed',
+      segmentCount:segments.length,
+      usableSegmentCount:segments.filter(item=>item.usable).length,
+      meanQuality,
+      embedding
+    },
+    updated_at:new Date().toISOString()
+  }).eq('asset_id',assetId));
   return loadOwnedMediaIntelligence(assetId);
 }
 
@@ -470,16 +547,20 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
   const now=new Date().toISOString();
   checked(await db().from('radar_owned_media_visual_analysis').upsert({
     asset_id:source.id,status:'processing',provider:'googleai',model:'',asset_title:'',
-    duration_seconds:source.duration_seconds,payload:{stage:'starting'},error:null,updated_at:now
+    duration_seconds:source.duration_seconds,payload:{stage:'starting',assetKind:source.asset_kind},error:null,updated_at:now
   },{onConflict:'asset_id'}));
   let root:string|null=null;
   try{
-    const disk=await ensureAnalysisDisk(Number(source.bytes));
+    const disk=await ensureAnalysisDisk(
+      Number(source.bytes),
+      source.asset_kind==='image'?256*1024*1024:2*GIB
+    );
     root=await mkdtemp(path.join(os.tmpdir(),'cacadores-owned-vision-'));
-    const inputFile=path.join(root,'input'+(path.extname(source.original_name)||'.mp4'));
+    const fallbackExtension=source.asset_kind==='image'?'.jpg':'.mp4';
+    const inputFile=path.join(root,'input'+(path.extname(source.original_name)||fallbackExtension));
     checked(await db().from('radar_owned_media_visual_analysis').update({
       payload:{
-        stage:'downloading',
+        stage:'downloading',assetKind:source.asset_kind,
         bytes:Number(source.bytes),
         freeBytesBeforeDownload:disk.freeBytes,
         requiredBytes:disk.requiredBytes
@@ -487,16 +568,28 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
       updated_at:new Date().toISOString()
     }).eq('asset_id',source.id));
     await downloadMediaToFile(source.storage_path,inputFile);
-    const metadata=await probeVideoInput(inputFile);
-    if(!metadata.durationSeconds)throw new HttpError('Não foi possível determinar a duração do vídeo.',422);
-    const boundaries=await detectBoundaries(inputFile,metadata.durationSeconds);
-    const specs=boundaries.slice(0,-1)
-      .map((start,index)=>{
-        const end=boundaries[index+1];
-        return {sequence:index+1,start,end,mid:start+(end-start)/2};
-      })
-      .filter(item=>item.end-item.start>=.35);
-    if(!specs.length)throw new HttpError('Nenhum segmento visual utilizável foi detectado.',422);
+
+    const probed=await probeVideoInput(inputFile);
+    const metadata={
+      ...probed,
+      durationSeconds:source.asset_kind==='image'?null:probed.durationSeconds
+    };
+    if(source.asset_kind==='video'&&!metadata.durationSeconds){
+      throw new HttpError('Não foi possível determinar a duração do vídeo.',422);
+    }
+
+    const normalizedSpecs=source.asset_kind==='image'
+      ?[{sequence:1,start:0,end:1,mid:0}]
+      :await (async()=>{
+        const boundaries=await detectBoundaries(inputFile,metadata.durationSeconds!);
+        return boundaries.slice(0,-1)
+          .map((start,index)=>{
+            const end=boundaries[index+1];
+            return {sequence:index+1,start,end,mid:start+(end-start)/2};
+          })
+          .filter(item=>item.end-item.start>=.35);
+      })();
+    if(!normalizedSpecs.length)throw new HttpError('Nenhum segmento visual utilizável foi detectado.',422);
 
     const key=await providerSecret('googleai');
     const model=await resolveVisionModel(key);
@@ -504,18 +597,19 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
       model,
       duration_seconds:metadata.durationSeconds,
       payload:{
-        stage:'extracting',segmentCount:specs.length,width:metadata.width,height:metadata.height,
-        fps:metadata.fps,codec:metadata.codec
+        stage:'extracting',assetKind:source.asset_kind,segmentCount:normalizedSpecs.length,
+        width:metadata.width,height:metadata.height,fps:metadata.fps,codec:metadata.codec
       },
       updated_at:new Date().toISOString()
     }).eq('asset_id',source.id));
 
     const analyzed:Array<{
       sequence:number;start:number;end:number;mid:number;title:string;summary:string;
-      confidence:number;semantic:VisualSegmentSemantic;
+      confidence:number;qualityScore:number;usable:boolean;qualityIssues:string[];
+      semantic:VisualSegmentSemantic;
     }>=[];
-    for(let offset=0;offset<specs.length;offset+=MAX_BATCH){
-      const batch=specs.slice(offset,offset+MAX_BATCH);
+    for(let offset=0;offset<normalizedSpecs.length;offset+=MAX_BATCH){
+      const batch=normalizedSpecs.slice(offset,offset+MAX_BATCH);
       const frames:Array<{sequence:number;start:number;end:number;mid:number;bytes:Buffer}>=[];
       for(const spec of batch){
         const target=path.join(root,'frame-'+String(spec.sequence).padStart(3,'0')+'.jpg');
@@ -527,18 +621,30 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
       const map=new Map((result.segments??[]).map(item=>[Number(item.sequence),item]));
       for(const spec of batch){
         const item=map.get(spec.sequence)??{};
+        const confidence=Math.max(0,Math.min(1,Number(item.confidence??0)));
+        const rawQuality=Math.max(0,Math.min(1,Number(item.qualityScore??confidence??.5)));
+        const minDimension=Math.min(Number(metadata.width??0),Number(metadata.height??0));
+        const lowResolution=Boolean(minDimension&&minDimension<480);
+        const qualityScore=Math.max(0,Math.min(1,rawQuality-(lowResolution?.12:0)));
+        const qualityIssues=mergeUnique(
+          list(item.qualityIssues,20),
+          lowResolution?['low-resolution']:[]
+        );
         analyzed.push({
           ...spec,
           title:String(item.title??'Visual segment '+spec.sequence).trim().slice(0,220),
           summary:String(item.summary??'').trim().slice(0,1200),
-          confidence:Math.max(0,Math.min(1,Number(item.confidence??0))),
+          confidence,
+          qualityScore,
+          usable:item.usable!==false&&qualityScore>=.25&&confidence>=.25,
+          qualityIssues,
           semantic:visualSemantic(item)
         });
       }
       checked(await db().from('radar_owned_media_visual_analysis').update({
         payload:{
-          stage:'analyzing',segmentCount:specs.length,
-          completedSegments:Math.min(offset+batch.length,specs.length),
+          stage:'analyzing',assetKind:source.asset_kind,segmentCount:normalizedSpecs.length,
+          completedSegments:Math.min(offset+batch.length,normalizedSpecs.length),
           width:metadata.width,height:metadata.height
         },
         updated_at:new Date().toISOString()
@@ -550,6 +656,7 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
       id:crypto.randomUUID(),asset_id:source.id,sequence:item.sequence,
       start_seconds:item.start,end_seconds:item.end,duration_seconds:item.end-item.start,
       title:item.title,summary:item.summary,semantic:item.semantic,confidence:item.confidence,
+      quality_score:item.qualityScore,usable:item.usable,quality_issues:item.qualityIssues,
       search_text:visualSegmentSearchText({title:item.title,summary:item.summary,semantic:item.semantic}),
       keyframe_seconds:item.mid
     }));
@@ -557,13 +664,20 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
     const createdAt=new Date().toISOString();
     const segments=rows.map(row=>segment({...row,created_at:createdAt,updated_at:createdAt} as SegmentRow));
     const assetTitle=aggregateTitle(analyzed);
-    await enrichOwnedAsset(source,segments,metadata,assetTitle);
+    const enriched=await enrichOwnedAsset(source,segments,metadata,assetTitle);
+    const embedding=await refreshEmbeddingIndex(source,enriched,segments);
+    const meanQuality=segments.length
+      ?Number((segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length).toFixed(4))
+      :0;
 
     checked(await db().from('radar_owned_media_visual_analysis').update({
       status:'completed',model,asset_title:assetTitle,duration_seconds:metadata.durationSeconds,
       payload:{
-        stage:'completed',segmentCount:segments.length,width:metadata.width,height:metadata.height,
-        fps:metadata.fps,codec:metadata.codec,bitrate:metadata.bitrate
+        stage:'completed',assetKind:source.asset_kind,segmentCount:segments.length,
+        usableSegmentCount:segments.filter(item=>item.usable).length,meanQuality,
+        width:metadata.width,height:metadata.height,
+        fps:metadata.fps,codec:metadata.codec,bitrate:metadata.bitrate,
+        embedding
       },
       error:null,analyzed_at:new Date().toISOString(),updated_at:new Date().toISOString()
     }).eq('asset_id',source.id));
@@ -571,7 +685,7 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
   }catch(error){
     const message=error instanceof Error?error.message:'Falha desconhecida na análise visual.';
     await db().from('radar_owned_media_visual_analysis').update({
-      status:'failed',error:message.slice(0,1000),payload:{stage:'failed'},updated_at:new Date().toISOString()
+      status:'failed',error:message.slice(0,1000),payload:{stage:'failed',assetKind:source.asset_kind},updated_at:new Date().toISOString()
     }).eq('asset_id',source.id);
     const payload=source.payload&&typeof source.payload==='object'?source.payload as Record<string,unknown>:{};
     await db().from('radar_owned_media_assets').update({
@@ -613,8 +727,15 @@ export async function matchOwnedMediaSegments(input:{
   const ids=(analysisRows.data??[]).map(row=>String(row.asset_id));
   if(!ids.length)return [];
 
+  const semanticMatches=await searchOwnedMediaEmbeddings(query,120).catch(
+    ()=>[] as Array<{resourceType:string;resourceId:string;assetId:string;similarity:number}>
+  );
+  const semanticScores=new Map<string,number>(
+    semanticMatches.map(item=>[item.resourceId,item.similarity])
+  );
+
   const assetRows=await db().from('radar_owned_media_assets')
-    .select('id,title,original_name,width,height,duration_seconds,search_text,semantic,storage_path')
+    .select('id,asset_kind,title,original_name,width,height,duration_seconds,search_text,semantic,storage_path')
     .in('id',ids)
     .eq('status','ready')
     .limit(5000);
@@ -622,7 +743,7 @@ export async function matchOwnedMediaSegments(input:{
   const assets=new Map((assetRows.data??[]).map(row=>[String(row.id),row]));
 
   const segmentRows=await db().from('radar_owned_media_segments')
-    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
+    .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .in('asset_id',ids)
     .limit(10000);
   if(segmentRows.error)throw new HttpError('Falha ao consultar os segmentos visuais.',502);
@@ -645,42 +766,64 @@ export async function matchOwnedMediaSegments(input:{
     }
 
     const item=segment(row as SegmentRow);
+    if(!item.usable)return [];
     if(requestedLandmarks.length){
       const observedLandmarks=mergeUnique(item.semantic.landmarks,semantic.landmarks);
       if(!requestedLandmarks.every(landmark=>observedLandmarks.includes(landmark)))return [];
     }
+
     const visualText=visualSemanticSearchText(item.semantic);
     const contextText=[
       ...semantic.countries,...semantic.regions,...semantic.cities,...semantic.districts
     ].join(' ');
     const intent=scoreVisualIntent(query,visualText,contextText);
+    const semanticSimilarity=semanticScores.get(item.id)??0;
+    const semanticStrong=semanticSimilarity>=.58;
     const locationOnlyEvidence=
       item.semantic.locations.length>0||
       item.semantic.landmarks.length>0||
       item.semantic.environments.length>0;
 
-    if(intent.hasVisualIntent){
+    if(intent.hasVisualIntent&&!semanticStrong){
       const minimumCoverage=intent.intentTokenCount>=3?.40:intent.intentTokenCount===2?.50:1;
       if(intent.visualRelevance<.22||intent.visualCoverage<minimumCoverage)return [];
     }
-    if(!intent.hasVisualIntent&&!locationOnlyEvidence)return [];
+    if(!intent.hasVisualIntent&&!locationOnlyEvidence&&!semanticStrong)return [];
 
     const desired=Math.max(.25,input.desiredDurationSeconds);
-    const durationFit=Math.min(1,item.durationSeconds/desired);
+    const assetKind=String(asset.asset_kind)==='image'?'image':'video';
+    const durationFit=assetKind==='image'?1:Math.min(1,item.durationSeconds/desired);
     const resolutionBonus=Number(width??0)>=3840 ? .04 : Number(width??0)>=1920 ? .02 : 0;
     const visualRelevance=intent.hasVisualIntent?intent.visualRelevance:.30;
-    const relevance=Math.min(1,visualRelevance*.82+intent.contextRelevance*.18);
-    const score=Math.min(
-      1,
-      visualRelevance*.62+
-      intent.contextRelevance*.16+
-      item.confidence*.10+
-      durationFit*.06+
-      resolutionBonus
-    );
-    const sourceStart=item.startSeconds;
+    const lexicalRelevance=Math.min(1,visualRelevance*.82+intent.contextRelevance*.18);
+    const relevance=semanticSimilarity>0
+      ?Math.min(1,semanticSimilarity*.65+lexicalRelevance*.35)
+      :lexicalRelevance;
+    const score=semanticSimilarity>0
+      ?Math.min(
+        1,
+        semanticSimilarity*.50+
+        visualRelevance*.20+
+        intent.contextRelevance*.08+
+        item.qualityScore*.10+
+        item.confidence*.05+
+        durationFit*.05+
+        resolutionBonus
+      )
+      :Math.min(
+        1,
+        visualRelevance*.57+
+        intent.contextRelevance*.15+
+        item.qualityScore*.10+
+        item.confidence*.08+
+        durationFit*.06+
+        resolutionBonus
+      );
+    const sourceStart=assetKind==='image'?0:item.startSeconds;
+    const sourceEnd=assetKind==='image'?1:Math.min(item.endSeconds,sourceStart+desired);
     return [{
       assetId:String(asset.id),
+      assetKind,
       title:String(asset.title??asset.original_name),
       originalName:String(asset.original_name??''),
       width,
@@ -688,16 +831,18 @@ export async function matchOwnedMediaSegments(input:{
       assetDurationSeconds:asset.duration_seconds===null?null:Number(asset.duration_seconds),
       segment:item,
       relevance,
+      semanticSimilarity,
       visualRelevance,
       visualCoverage:intent.visualCoverage,
       matchedIntentTokens:intent.matchedIntentTokens,
       intentTokenCount:intent.intentTokenCount,
       contextRelevance:intent.contextRelevance,
       durationFit,
+      qualityScore:item.qualityScore,
       requestedLandmarks,
       score,
       sourceStartSeconds:sourceStart,
-      sourceEndSeconds:Math.min(item.endSeconds,sourceStart+desired)
+      sourceEndSeconds:sourceEnd
     }];
   }).sort((a,b)=>b.score-a.score);
 

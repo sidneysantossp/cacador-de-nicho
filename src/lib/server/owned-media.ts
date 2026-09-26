@@ -7,6 +7,7 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
 import { probeStoredVideo } from './media-probe';
+import { searchOwnedMediaEmbeddings } from './media-embeddings';
 
 const MAX_BYTES=2*1024*1024*1024;
 
@@ -329,7 +330,7 @@ export async function finalizeOwnedMediaUpload(input:{
     },
     updated_at:new Date().toISOString()
   }).eq('id',row.id));
-  if(row.asset_kind==='video'){
+  if(row.asset_kind==='video'||row.asset_kind==='image'){
     checked(await db().from('radar_owned_media_analysis_jobs').upsert({
       id:crypto.randomUUID(),
       asset_id:row.id,
@@ -378,14 +379,42 @@ export async function listOwnedMediaAssets(input:{
     if(normalized)query=query.contains('semantic',{[key]:[normalized]});
   }
   const term=(input.query??'').trim();
+  const semanticMatches=term
+    ?await searchOwnedMediaEmbeddings(term,120).catch(()=>[])
+    :[];
+  const semanticScoreByAsset=new Map<string,number>();
+  for(const match of semanticMatches){
+    semanticScoreByAsset.set(
+      match.assetId,
+      Math.max(semanticScoreByAsset.get(match.assetId)??0,match.similarity)
+    );
+  }
   if(term){
     const safe=term.replace(/[^a-zA-Z0-9À-ÿ ._()\-]/g,'').replace(/[%_]/g,'').slice(0,120);
-    if(safe)query=query.or('search_text.ilike.%'+safe+'%,original_name.ilike.%'+safe+'%');
+    const clauses:string[]=[];
+    if(safe){
+      clauses.push('search_text.ilike.%'+safe+'%','original_name.ilike.%'+safe+'%');
+    }
+    const semanticIds=[...semanticScoreByAsset.keys()].filter(id=>/^[0-9a-f-]{36}$/i.test(id));
+    if(semanticIds.length)clauses.push('id.in.('+semanticIds.join(',')+')');
+    if(clauses.length)query=query.or(clauses.join(','));
   }
   const start=(page-1)*limit;
-  const result=await query.range(start,start+limit-1);
+  const result=term
+    ?await query.limit(240)
+    :await query.range(start,start+limit-1);
   if(result.error)throw new HttpError('Falha ao carregar a Biblioteca de Mídia.',502);
-  const rows=(result.data??[]) as Row[];
+  let rows=(result.data??[]) as Row[];
+  if(term){
+    const normalized=term.toLowerCase();
+    rows=[...rows].sort((a,b)=>{
+      const semanticDelta=(semanticScoreByAsset.get(String(b.id))??0)-(semanticScoreByAsset.get(String(a.id))??0);
+      if(Math.abs(semanticDelta)>.0001)return semanticDelta;
+      const aLex=(String(a.title??'')+' '+String(a.original_name??'')+' '+String(a.search_text??'')).toLowerCase().includes(normalized)?1:0;
+      const bLex=(String(b.title??'')+' '+String(b.original_name??'')+' '+String(b.search_text??'')).toLowerCase().includes(normalized)?1:0;
+      return bLex-aLex;
+    }).slice(start,start+limit);
+  }
   const assetIds=rows.map(row=>String(row.id));
   const intelligenceByAsset=new Map<string,OwnedMediaAsset['visualIntelligence']>();
   if(assetIds.length){
@@ -395,9 +424,15 @@ export async function listOwnedMediaAssets(input:{
     if(!intelligence.error){
       for(const row of intelligence.data??[]){
         const payload=row.payload&&typeof row.payload==='object'?row.payload as Record<string,unknown>:{};
+        const embedding=payload.embedding&&typeof payload.embedding==='object'
+          ?payload.embedding as Record<string,unknown>
+          :{};
         intelligenceByAsset.set(String(row.asset_id),{
           status:(['processing','completed','failed'].includes(String(row.status))?String(row.status):'idle') as 'idle'|'processing'|'completed'|'failed',
           segmentCount:Math.max(0,Number(payload.segmentCount??0)||0),
+          usableSegmentCount:Math.max(0,Number(payload.usableSegmentCount??0)||0),
+          meanQuality:Math.max(0,Math.min(1,Number(payload.meanQuality??0)||0)),
+          embeddingStatus:(['completed','failed'].includes(String(embedding.status))?String(embedding.status):'idle') as 'idle'|'completed'|'failed',
           analyzedAt:row.analyzed_at?String(row.analyzed_at):undefined,
           error:row.error?String(row.error):undefined
         });
@@ -407,7 +442,7 @@ export async function listOwnedMediaAssets(input:{
   const items=await Promise.all(rows.map(row=>rowToAsset(row,intelligenceByAsset.get(String(row.id))??{
     status:'idle',segmentCount:0
   })));
-  const total=Number(result.count??items.length);
+  const total=term?Math.min(Number(result.count??items.length),240):Number(result.count??items.length);
   return {items,page,limit,total,hasMore:start+items.length<total};
 }
 

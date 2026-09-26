@@ -41,10 +41,22 @@ export type ProductionQualityCharacterFact = {
   referenceReady:boolean;
 };
 
+export type ProductionQualityMediaDiversity = {
+  score:number;
+  sourceDiversity:number;
+  semanticDiversity:number|null;
+  semanticCoverage:number;
+  maxSimilarity:number|null;
+  embeddedClipCount:number;
+  ownedClipCount:number;
+  clipCount:number;
+};
+
 export function structuralQualityChecks(input:{
   job:RenderJob;
   assetFacts?:ProductionQualityAssetFact[];
   characterFacts?:ProductionQualityCharacterFact[];
+  mediaDiversity?:ProductionQualityMediaDiversity;
 }):ProductionQualityCheck[]{
   const {job}=input;
   const manifest=job.payload.manifest;
@@ -147,6 +159,52 @@ export function structuralQualityChecks(input:{
       duplicateRatio:Number(duplicateRatio.toFixed(4))
     }
   ));
+
+  const diversity=input.mediaDiversity;
+  if(!diversity){
+    checks.push(check(
+      'media-diversity','visual','Diversity Score','manual-review',
+      'O Diversity Score desta versão não pôde ser calculado automaticamente.',
+      ['media diversity unavailable'],
+      {clipCount:clips.length}
+    ));
+  }else{
+    const missingOwnedEmbeddings=
+      diversity.ownedClipCount>=2&&diversity.embeddedClipCount<diversity.ownedClipCount;
+    const blocker=diversity.clipCount>=6&&diversity.score<.25;
+    const warning=!blocker&&diversity.clipCount>=5&&diversity.score<.45;
+    const status=blocker?'blocker':missingOwnedEmbeddings?'manual-review':warning?'warning':'pass';
+    checks.push(check(
+      'media-diversity','visual','Diversity Score',
+      status,
+      blocker
+        ?'A montagem está semanticamente muito repetitiva; aumente variedade visual antes da publicação.'
+        :missingOwnedEmbeddings
+          ?'Parte da mídia OWNED usada ainda não possui embedding; confirme a diversidade após indexação.'
+          :warning
+            ?'A variedade visual está abaixo do alvo operacional; revise cenas visualmente parecidas.'
+            :'A diversidade de origem e significado visual está dentro do alvo operacional.',
+      [
+        `score=${(diversity.score*100).toFixed(1)}%`,
+        `source=${(diversity.sourceDiversity*100).toFixed(1)}%`,
+        diversity.semanticDiversity===null
+          ?'semantic=n/a'
+          :`semantic=${(diversity.semanticDiversity*100).toFixed(1)}%`,
+        `semanticCoverage=${(diversity.semanticCoverage*100).toFixed(1)}%`,
+        diversity.maxSimilarity===null?'maxSimilarity=n/a':`maxSimilarity=${(diversity.maxSimilarity*100).toFixed(1)}%`
+      ],
+      {
+        diversityScore:Number(diversity.score.toFixed(4)),
+        sourceDiversity:Number(diversity.sourceDiversity.toFixed(4)),
+        semanticDiversity:diversity.semanticDiversity===null?null:Number(diversity.semanticDiversity.toFixed(4)),
+        semanticCoverage:Number(diversity.semanticCoverage.toFixed(4)),
+        maxSimilarity:diversity.maxSimilarity===null?null:Number(diversity.maxSimilarity.toFixed(4)),
+        embeddedClipCount:diversity.embeddedClipCount,
+        ownedClipCount:diversity.ownedClipCount,
+        clipCount:diversity.clipCount
+      }
+    ));
+  }
 
   if(assetFacts.length){
     const bad=assetFacts.filter(f=>!f.exists||!f.ready||!f.storagePathMatches||!f.sceneMatches);

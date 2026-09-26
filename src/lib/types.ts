@@ -1621,6 +1621,7 @@ export type ProductionQualityCheckCode =
   | 'caption-timing'
   | 'visual-coverage'
   | 'asset-duplication'
+  | 'media-diversity'
   | 'asset-provenance'
   | 'asset-rights'
   | 'character-continuity'
@@ -2203,6 +2204,9 @@ export type OwnedMediaVisualSegment = {
  summary:string;
  semantic:VisualSegmentSemantic;
  confidence:number;
+ qualityScore:number;
+ usable:boolean;
+ qualityIssues:string[];
  searchText:string;
  keyframeSeconds:number;
  createdAt:string;
@@ -2216,6 +2220,9 @@ export type OwnedMediaIntelligenceResult = {
  model:string;
  assetTitle:string;
  durationSeconds:number|null;
+ usableSegmentCount:number;
+ meanQuality:number;
+ embeddingStatus:'idle'|'completed'|'failed';
  analyzedAt?:string;
  error?:string;
  segments:OwnedMediaVisualSegment[];
@@ -2224,6 +2231,9 @@ export type OwnedMediaIntelligenceResult = {
 export type OwnedMediaVisualStatus = {
  status:'idle'|'processing'|'completed'|'failed';
  segmentCount:number;
+ usableSegmentCount?:number;
+ meanQuality?:number;
+ embeddingStatus?:'idle'|'completed'|'failed';
  analyzedAt?:string;
  error?:string;
 };
