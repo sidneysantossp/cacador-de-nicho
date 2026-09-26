@@ -5,8 +5,8 @@ import {
   CheckCircle2, CircleAlert, FileAudio, Mic2, Play, RefreshCw,
   Sparkles, Trash2, Upload, Volume2, WandSparkles
 } from 'lucide-react';
-import type { EpisodeScript, ManagedChannel, VoiceAssetListItem } from '@/lib/types';
-import { splitVoiceText } from '@/lib/voice-policy';
+import type { EpisodeScriptListItem, ManagedChannel, VoiceAssetListItem } from '@/lib/types';
+import { estimatedVoiceChunkCount } from '@/lib/voice-policy';
 
 type VoiceAssetView=VoiceAssetListItem;
 type ElevenVoice={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
@@ -24,7 +24,7 @@ function duration(value:number|null){
 }
 
 export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel}){
-  const [scripts,setScripts]=useState<EpisodeScript[]>([]);
+  const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [scriptId,setScriptId]=useState('');
   const [assets,setAssets]=useState<VoiceAssetView[]>([]);
   const [voices,setVoices]=useState<ElevenVoice[]>([]);
@@ -39,8 +39,8 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
 
   const selectedScript=useMemo(()=>scripts.find(item=>item.id===scriptId)??null,[scripts,scriptId]);
   const selectedAsset=useMemo(()=>assets.find(item=>item.selected)??null,[assets]);
-  const generationPlan=useMemo(()=>
-    selectedScript?splitVoiceText(selectedScript.content,modelId):[],
+  const generationChunkCount=useMemo(()=>
+    selectedScript?estimatedVoiceChunkCount(selectedScript.characterCount,modelId):0,
     [selectedScript,modelId]
   );
 
@@ -66,7 +66,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
       const scriptsBody=await scriptsRes.json().catch(()=>({}));
       const dnaBody=await dnaRes.json().catch(()=>({}));
       if(!scriptsRes.ok)throw new Error(scriptsBody.message??'Falha ao carregar roteiros.');
-      const approved=(scriptsBody.scripts??[]).filter((item:EpisodeScript)=>item.status==='approved');
+      const approved=(scriptsBody.scripts??[]).filter((item:EpisodeScriptListItem)=>item.status==='approved');
       setScripts(approved);
       const first=approved[0]?.id??'';
       setScriptId(first);
@@ -175,7 +175,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
           {voicesError&&<div className="voice-inline-warning"><CircleAlert size={15}/>{voicesError}</div>}
           {voices.length>0?<label>Voz<select value={voiceId} onChange={e=>{const v=voices.find(item=>item.voiceId===e.target.value);setVoiceId(e.target.value);setVoiceName(v?.name??'');}}><option value="">Selecione</option>{voices.map(voice=><option key={voice.voiceId} value={voice.voiceId}>{voice.name}{voice.category?' · '+voice.category:''}</option>)}</select></label>:<label>Voice ID<input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Cole o Voice ID ou carregue suas vozes"/></label>}
           {voiceName&&<div className="voice-selected-name"><Volume2 size={14}/>{voiceName}</div>}
-          {selectedScript&&generationPlan.length>0&&<div className="voice-selected-name"><Sparkles size={14}/>{generationPlan.length===1?'1 geração direta':generationPlan.length+' chunks long-form · stitching automático'}</div>}
+          {selectedScript&&generationChunkCount>0&&<div className="voice-selected-name"><Sparkles size={14}/>{generationChunkCount===1?'1 geração direta':generationChunkCount+' chunks estimados · stitching automático'}</div>}
           <button className="button primary" disabled={!voiceId.trim()||!!busy} onClick={()=>void generate()}><Sparkles size={15}/>{busy==='generate'?'Gerando narração long-form…':'Gerar novo take'}</button>
         </section>
 

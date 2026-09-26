@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   generateScriptForProject, loadEpisodeScript, loadEpisodeScriptHistory,
-  loadEpisodeScripts, regenerateScriptSection, saveEpisodeScript
+  loadEpisodeScriptHistoryVersion, loadEpisodeScripts, regenerateScriptSection, saveEpisodeScript
 } from '@/lib/server/episode-script';
 import { episodeScriptPayloadSchema } from '@/lib/server/validation';
 import { loadContentProject } from '@/lib/server/content-os';
@@ -34,9 +34,19 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     const channelId=url.searchParams.get('channelId')?.trim();
     const scriptId=url.searchParams.get('scriptId')?.trim();
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
 
     if(scriptId){
       if(!z.string().uuid().safeParse(scriptId).success)throw new HttpError('Roteiro inválido.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadEpisodeScriptHistoryVersion(scriptId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
       const [script,history]=await Promise.all([
         loadEpisodeScript(scriptId),
         loadEpisodeScriptHistory(scriptId,20)

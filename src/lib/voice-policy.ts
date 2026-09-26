@@ -43,6 +43,12 @@ export function voiceChunkTarget(modelId:string){
   return Math.max(1000,Math.min(18000,Math.floor(limit*.85)));
 }
 
+export function estimatedVoiceChunkCount(textLength:number,modelId:string){
+  const target=voiceChunkTarget(modelId);
+  if(!target||textLength<=0)return 0;
+  return Math.max(1,Math.ceil(textLength/target));
+}
+
 export function splitVoiceText(text:string,modelId:string):VoiceTextChunk[]{
   const target=voiceChunkTarget(modelId);
   if(!target)return [];

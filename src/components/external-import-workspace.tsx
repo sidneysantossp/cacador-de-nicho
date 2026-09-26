@@ -6,7 +6,7 @@ import {
   Image as ImageIcon, Link2, RefreshCw, SkipForward, Sparkles, Upload
 } from 'lucide-react';
 import type {
-  EpisodeScript, ExternalImportBatch, ExternalImportItem, ManagedChannel,
+  EpisodeScriptListItem, ExternalImportBatch, ExternalImportItem, ManagedChannel,
   VisualPromptSet, VoiceAssetListItem
 } from '@/lib/types';
 import {
@@ -35,7 +35,7 @@ function batchProgress(batch:ExternalImportBatch){
 function fileDescriptor(file:File){return {name:file.name,size:file.size,type:file.type};}
 
 export default function ExternalImportWorkspace({channel}:{channel:ManagedChannel}){
-  const [scripts,setScripts]=useState<EpisodeScript[]>([]);
+  const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [promptSets,setPromptSets]=useState<VisualPromptSet[]>([]);
   const [batches,setBatches]=useState<ExternalImportBatch[]>([]);
   const [scriptId,setScriptId]=useState('');
@@ -70,7 +70,7 @@ export default function ExternalImportWorkspace({channel}:{channel:ManagedChanne
       if(!visualRes.ok)throw new Error(visualBody.message??'Falha ao carregar Visual Prompt Sets.');
       if(!batchesRes.ok)throw new Error(batchesBody.message??'Falha ao carregar batches.');
 
-      const approvedScripts=(scriptsBody.scripts??[]).filter((item:EpisodeScript)=>item.status==='approved');
+      const approvedScripts=(scriptsBody.scripts??[]).filter((item:EpisodeScriptListItem)=>item.status==='approved');
       const approvedSets=(visualBody.promptSets??[]).filter((item:VisualPromptSet)=>item.status==='approved');
       setScripts(approvedScripts);
       setPromptSets(approvedSets);
