@@ -134,7 +134,7 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao criar Scene Plan.');
-      setPlans(prev=>[body.plan,...prev.filter(item=>item.id!==body.plan.id)]);
+      void load();
       setMessage(body.message??'Scene Plan criado.');
       await openPlan(body.plan.id);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar Scene Plan.');}
@@ -154,7 +154,7 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Scene Plan.');
       setCurrent(body.plan);setDraft(payloadOnly(body.plan));setHistory(body.history??[]);
-      setPlans(prev=>[body.plan,...prev.filter(item=>item.id!==body.plan.id)]);
+      void load();
       setMessage(body.message??'Scene Plan salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar Scene Plan.');return false;}
