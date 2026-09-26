@@ -187,6 +187,14 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
             <Field label="Asset mode"><select value={scene.assetMode} onChange={e=>updateScene(index,{...scene,assetMode:e.target.value as SceneAssetMode})}><option value="image">Image</option><option value="video">Video</option><option value="stock">Stock</option><option value="mixed">Mixed</option><option value="none">None</option></select></Field>
           </div>
           <Text label="NARRAÇÃO" value={scene.narration} onChange={v=>updateScene(index,{...scene,narration:v})} rows={4}/>
+          {!!scene.visualBeats?.length&&<div className="scene-visual-beats">
+            {scene.visualBeats.map(beat=><article key={beat.id}>
+              <div><span>VISUAL BEAT {String(beat.sequence).padStart(2,'0')}</span><em>{beat.type} · {beat.sourcePreference}</em></div>
+              <p>{beat.narration}</p>
+              {!!beat.entities.length&&<small>{beat.entities.map(entity=>entity.value).join(' · ')}</small>}
+              <div>{beat.queries.map(query=><code key={query}>{query}</code>)}</div>
+            </article>)}
+          </div>}
           <div className="scene-time-grid two">
             <Text label="INTENÇÃO VISUAL" value={scene.visualIntent} onChange={v=>updateScene(index,{...scene,visualIntent:v})} rows={4}/>
             <Text label="PROMPT DIRECTION" value={scene.promptDirection} onChange={v=>updateScene(index,{...scene,promptDirection:v})} rows={4}/>
