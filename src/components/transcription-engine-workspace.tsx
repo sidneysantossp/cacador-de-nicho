@@ -142,7 +142,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao criar transcript.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);setTab('segments');
+      void loadScriptData(scriptId);setTab('segments');
       setMessage(body.message??'Transcript criado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar transcript.');}
     finally{setBusy('');}
@@ -157,7 +157,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao importar transcrição.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);setTab('segments');
+      void loadScriptData(scriptId);setTab('segments');
       setFile(null);setMessage(body.message??'Transcrição importada.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao importar transcrição.');}
     finally{setBusy('');}
@@ -176,7 +176,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao salvar transcript.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);
+      void loadScriptData(scriptId);
       setMessage(body.message??'Transcript salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar transcript.');return false;}
