@@ -7,6 +7,7 @@ export type SourceRouteAction =
   | 'stock-video'
   | 'generated-image'
   | 'generated-video'
+  | 'manual-archive'
   | 'manual-map'
   | 'manual-document';
 
@@ -42,9 +43,9 @@ export function sourceRouteForScene(scene:SceneTimecode):SourceRoutePlan{
   if(preference==='archive-image'){
     return {
       sceneId:scene.id,beatId:beat?.id??null,preference,query,
-      actions:['owned','wikimedia','stock-image'],
+      actions:['owned','wikimedia','manual-archive'],
       syntheticAllowed:false,
-      rationale:'Historical/archive beat: prioritize authentic or reusable documentary imagery.'
+      rationale:'Historical/archive beat: require authentic or reusable documentary imagery; never substitute modern stock or synthetic evidence.'
     };
   }
   if(preference==='document'){
