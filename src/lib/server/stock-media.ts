@@ -229,7 +229,11 @@ export async function searchStockMedia(input:{
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   const query=input.query.trim();
   if(!validStockQuery(query))throw new HttpError('A busca deve ter entre 1 e 100 caracteres.',400);
-  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
+  if((input.provider==='unsplash'||input.provider==='wikimedia')&&input.kind==='video'){
+    throw new HttpError(input.provider==='wikimedia'
+      ?'O Wikimedia Commons está habilitado nesta fase para imagens documentais.'
+      :'O Unsplash está disponível apenas para imagens.',400);
+  }
 
   let results:StockMediaResult[]=[];
   let remaining:string|null=null;
@@ -285,6 +289,19 @@ export async function searchStockMedia(input:{
     const body=await response.json() as {results?:Record<string,unknown>[]};
     results=(body.results??[]).map(unsplashPhoto).filter(item=>!!item.providerAssetId&&!!item.previewUrl);
     remaining=response.headers.get('x-ratelimit-remaining');
+  }else if(input.provider==='wikimedia'){
+    const params=new URLSearchParams({
+      generator:'search',
+      gsrsearch:query,
+      gsrnamespace:'6',
+      gsrlimit:'24',
+      iiurlwidth:'1280'
+    });
+    const pages=await wikimediaPages(params);
+    results=pages.flatMap(page=>{
+      const item=wikimediaResult(page);
+      return item?[item]:[];
+    });
   }else{
     const config=parseVecteezyConfig(await providerSecret('vecteezy'));
     const params=new URLSearchParams({
