@@ -5,7 +5,7 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
 
-const MODEL='gemini-embedding-001';
+const MODEL=(process.env.MEDIA_EMBEDDING_MODEL||'gemini-embedding-001').trim();
 const DIMENSIONS=768;
 const MAX_BATCH=32;
 
@@ -143,4 +143,27 @@ export async function ownedMediaPairSimilarity(leftSegmentId:string,rightSegment
   if(result.error)return null;
   const value=Number(result.data);
   return Number.isFinite(value)?Math.max(0,Math.min(1,value)):null;
+}
+
+
+export async function ownedMediaDiversityMetrics(segmentIds:string[]){
+  const ids=segmentIds.filter(Boolean);
+  if(ids.length<2)return {
+    embeddedClipCount:ids.length,
+    pairCount:0,
+    meanSimilarity:0,
+    maxSimilarity:0,
+    semanticDiversity:1
+  };
+  const result=await db().rpc('owned_media_diversity_metrics',{p_segment_ids:ids});
+  if(result.error)return null;
+  const row=Array.isArray(result.data)?result.data[0]:result.data;
+  if(!row)return null;
+  return {
+    embeddedClipCount:Math.max(0,Number(row.embedded_clip_count??0)),
+    pairCount:Math.max(0,Number(row.pair_count??0)),
+    meanSimilarity:Math.max(0,Math.min(1,Number(row.mean_similarity??0))),
+    maxSimilarity:Math.max(0,Math.min(1,Number(row.max_similarity??0))),
+    semanticDiversity:Math.max(0,Math.min(1,Number(row.semantic_diversity??1)))
+  };
 }
