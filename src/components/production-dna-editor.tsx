@@ -180,7 +180,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
     {tab==='editing'&&<div className="production-dna-content">
       <section className="production-dna-editing-flags">
         <Field label="Transição padrão"><input value={draft.editing.defaultTransition} onChange={e=>editing('defaultTransition',e.target.value)}/></Field>
-        <label><input type="checkbox" checked={draft.editing.kenBurns} onChange={e=>editing('kenBurns',e.target.checked)}/>Ken Burns permitido</label>
+        <label><input type="checkbox" checked={draft.editing.kenBurns} onChange={e=>editing('kenBurns',e.target.checked)}/>Modo documental de imagens (Ken Burns)</label>
       </section>
       <div className="production-dna-grid two">
         <ListField label="TRANSIÇÕES PERMITIDAS" value={draft.editing.transitions} onChange={v=>editing('transitions',v)}/>
