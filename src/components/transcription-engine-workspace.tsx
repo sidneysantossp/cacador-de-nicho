@@ -6,7 +6,7 @@ import {
   RefreshCw, Save, Sparkles, Trash2, Upload
 } from 'lucide-react';
 import type {
-  EpisodeScript, ManagedChannel, Transcript, TranscriptListItem, TranscriptPayload,
+  EpisodeScript, EpisodeScriptListItem, ManagedChannel, Transcript, TranscriptListItem, TranscriptPayload,
   TranscriptSegment, TranscriptVersionSummary, VoiceAssetListItem
 } from '@/lib/types';
 import { formatTranscriptTimestamp, normalizeTranscriptPayload, transcriptApprovalIssues } from '@/lib/transcript-policy';
@@ -21,8 +21,9 @@ function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateS
 function payloadOnly(value:Transcript):TranscriptPayload{const {version:_version,status:_status,...payload}=value;return payload;}
 
 export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedChannel}){
-  const [scripts,setScripts]=useState<EpisodeScript[]>([]);
+  const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [scriptId,setScriptId]=useState('');
+  const [scriptDetail,setScriptDetail]=useState<EpisodeScript|null>(null);
   const [assets,setAssets]=useState<VoiceAssetView[]>([]);
   const [assetId,setAssetId]=useState('');
   const [transcripts,setTranscripts]=useState<TranscriptListItem[]>([]);
@@ -36,7 +37,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
 
-  const selectedScript=useMemo(()=>scripts.find(item=>item.id===scriptId)??null,[scripts,scriptId]);
+  const selectedScript=useMemo(()=>scriptDetail?.id===scriptId?scriptDetail:null,[scriptDetail,scriptId]);
   const selectedAsset=useMemo(()=>assets.find(item=>item.id===assetId)??null,[assets,assetId]);
   const editorDuration=useMemo(()=>draft?Math.max(
     timedContentDuration(draft.words),
@@ -59,18 +60,22 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   const dirty=useMemo(()=>draft&&current&&selectedScript?JSON.stringify(normalizeTranscriptPayload(draft,selectedScript.content))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current,selectedScript]);
 
   async function loadScriptData(id:string){
-    if(!id){setAssets([]);setTranscripts([]);setAssetId('');return;}
+    if(!id){setAssets([]);setTranscripts([]);setAssetId('');setScriptDetail(null);return;}
     setBusy('load-script');
     try{
-      const [voiceRes,transcriptRes]=await Promise.all([
+      const [scriptRes,voiceRes,transcriptRes]=await Promise.all([
+        fetch('/api/script-engine?scriptId='+encodeURIComponent(id),{cache:'no-store'}),
         fetch('/api/voice-engine?scriptId='+encodeURIComponent(id),{cache:'no-store'}),
         fetch('/api/transcription-engine?scriptId='+encodeURIComponent(id),{cache:'no-store'})
       ]);
+      const scriptBody=await scriptRes.json().catch(()=>({}));
       const voiceBody=await voiceRes.json().catch(()=>({}));
       const transcriptBody=await transcriptRes.json().catch(()=>({}));
+      if(!scriptRes.ok)throw new Error(scriptBody.message??'Falha ao carregar roteiro.');
       if(!voiceRes.ok)throw new Error(voiceBody.message??'Falha ao carregar takes de voz.');
       if(!transcriptRes.ok)throw new Error(transcriptBody.message??'Falha ao carregar transcrições.');
       const nextAssets=voiceBody.assets??[];
+      setScriptDetail(scriptBody.script??null);
       setAssets(nextAssets);
       setTranscripts(transcriptBody.transcripts??[]);
       const active=nextAssets.find((item:VoiceAssetView)=>item.selected)??nextAssets[0];
@@ -85,7 +90,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const res=await fetch('/api/script-engine?channelId='+encodeURIComponent(channel.id),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar roteiros.');
-      const approved=(body.scripts??[]).filter((item:EpisodeScript)=>item.status==='approved');
+      const approved=(body.scripts??[]).filter((item:EpisodeScriptListItem)=>item.status==='approved');
       setScripts(approved);
       const first=approved[0]?.id??'';
       setScriptId(first);
