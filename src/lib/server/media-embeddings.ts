@@ -115,7 +115,10 @@ export async function indexOwnedMediaEmbeddings(input:{
   return {indexed:documents.length,model:MODEL,dimensions:DIMENSIONS};
 }
 
-export async function searchOwnedMediaEmbeddings(query:string,limit=80){
+export async function searchOwnedMediaEmbeddings(
+  query:string,
+  limit=80
+):Promise<Array<{resourceType:string;resourceId:string;assetId:string;similarity:number}>>{
   const text=query.trim();
   if(text.length<3)return [] as Array<{
     resourceType:string;resourceId:string;assetId:string;similarity:number;
@@ -127,7 +130,9 @@ export async function searchOwnedMediaEmbeddings(query:string,limit=80){
     p_resource_type:'segment'
   });
   if(result.error)throw new HttpError('Falha ao pesquisar o índice semântico.',502);
-  return (result.data??[]).map(row=>({
+  return (result.data??[]).map((row:{
+    resource_type?:unknown;resource_id?:unknown;asset_id?:unknown;similarity?:unknown;
+  })=>({
     resourceType:String(row.resource_type),
     resourceId:String(row.resource_id),
     assetId:String(row.asset_id),
