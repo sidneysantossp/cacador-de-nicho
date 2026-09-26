@@ -547,13 +547,13 @@ function chapterManifest(master,plan,payload){
     .sort((a,b)=>a.startSeconds-b.startSeconds)
     .map((clip,index,array)=>{
       const style={...clip.style};
-      if(index===0){
-        style.transitionIn='fade';
-        style.transitionSeconds=Math.max(.15,Math.min(.3,Number(style.transitionSeconds||.25)));
+      if(index===0&&style.transitionIn==='cross-dissolve'){
+        style.transitionIn='none';
+        style.transitionSeconds=0;
       }
-      if(index===array.length-1){
-        style.transitionOut='fade';
-        style.transitionSeconds=Math.max(.15,Math.min(.3,Number(style.transitionSeconds||.25)));
+      if(index===array.length-1&&style.transitionOut==='cross-dissolve'){
+        style.transitionOut='none';
+        style.transitionSeconds=0;
       }
       return {
         ...clip,
@@ -609,7 +609,7 @@ function concatEscape(value){
   return String(value).replace(/'/g,"'\\''");
 }
 
-async function concatChapterVideos(paths,outputPath,root){
+async function concatChapterVideos(paths,outputPath,root,payload){
   if(paths.length===1){
     await copyFile(paths[0],outputPath);
     return;
@@ -620,12 +620,24 @@ async function concatChapterVideos(paths,outputPath,root){
     paths.map(file=>"file '"+concatEscape(file)+"'").join('\n')+'\n',
     'utf8'
   );
-  await run(FFMPEG,[
-    '-hide_banner','-loglevel','error','-y',
-    '-f','concat','-safe','0','-i',listPath,
-    '-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',
-    outputPath
-  ]);
+  try{
+    await run(FFMPEG,[
+      '-hide_banner','-loglevel','error','-y',
+      '-f','concat','-safe','0','-i',listPath,
+      '-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',
+      outputPath
+    ]);
+  }catch(error){
+    console.error(JSON.stringify({
+      event:'render-v4-concat-copy-fallback',
+      error:safeError(error)
+    }));
+    await runVideoEncode([
+      '-hide_banner','-loglevel','error','-y',
+      '-f','concat','-safe','0','-i',listPath,
+      '-map','0:v:0','-an','-movflags','+faststart'
+    ],outputPath,payload,{crf:payload.crf,preset:'medium'});
+  }
 }
 
 async function downloadItems(items,inputDir,paths){
@@ -764,7 +776,7 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
   await assertActive(jobId,token);
   await heartbeat(jobId,token,82,'concatenating-chapters');
   const visualMaster=path.join(root,'visual-master.mp4');
-  await concatChapterVideos(chapterPaths,visualMaster,root);
+  await concatChapterVideos(chapterPaths,visualMaster,root,payload);
 
   await assertActive(jobId,token);
   await heartbeat(jobId,token,88,'downloading-audio');
