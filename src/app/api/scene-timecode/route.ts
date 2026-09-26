@@ -4,7 +4,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { checked, db, dbConfigured } from '@/lib/server/db';
 import {
   createScenePlanFromTranscript, listScenePlans, loadScenePlan,
-  loadScenePlanHistory, saveScenePlan
+  loadScenePlanHistory, loadScenePlanHistoryVersion, saveScenePlan
 } from '@/lib/server/scene-timecode';
 import { scenePlanPayloadSchema } from '@/lib/server/validation';
 import { listTranscriptsByChannel, loadTranscript } from '@/lib/server/transcription-engine';
@@ -29,10 +29,20 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Scene Timecode Protocol.',503);
     const url=new URL(request.url);
     const planId=url.searchParams.get('planId')?.trim();
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
 
     if(planId){
       if(!z.string().uuid().safeParse(planId).success)throw new HttpError('Scene Plan inválido.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadScenePlanHistoryVersion(planId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
       const [plan,history]=await Promise.all([
         loadScenePlan(planId),
         loadScenePlanHistory(planId,20)
