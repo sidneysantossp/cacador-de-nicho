@@ -422,15 +422,15 @@ export async function downloadVoiceAsset(assetId:string){
   }
 }
 
-export async function listVoiceAssets(scriptId:string){
+export async function listVoiceAssets(scriptId:string):Promise<VoiceAssetListItem[]>{
   const script=await loadEpisodeScript(scriptId);
   if(!script)throw new HttpError('Roteiro não encontrado.',404);
-  const rows=checked(await db().from('radar_voice_assets')
-    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+  const rows=checked(await db().from('radar_voice_asset_list')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,script_version,script_word_count,text_hash,model_id,voice_id,voice_name,duration_seconds,character_count,has_alignment,generation_chunk_count,created_at,updated_at')
     .eq('script_id',scriptId)
     .order('take',{ascending:false})
     .limit(100));
-  const assets=(rows??[]).map(row=>normalizeAsset(row as never));
+  const assets=(rows??[]).map(row=>normalizeVoiceListRow(row as never));
   return Promise.all(assets.map(async asset=>{
     let signedUrl:string|null=null;
     if(asset.status==='ready'&&asset.storagePath){
