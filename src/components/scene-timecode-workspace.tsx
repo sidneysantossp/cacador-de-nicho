@@ -14,6 +14,9 @@ import {
   scenePlanStructuralIssues
 } from '@/lib/scene-timecode-policy';
 import { formatTranscriptTimestamp } from '@/lib/transcript-policy';
+import {
+  buildLongFormEditorWindows, timedEntriesInWindow
+} from '@/lib/long-form-editor-window';
 
 type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
 type ScenePlanView=ScenePlan&{stale?:boolean;staleReason?:string};
@@ -32,12 +35,25 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
   const [history,setHistory]=useState<ScenePlanVersionSummary[]>([]);
   const [audioUrl,setAudioUrl]=useState<string|null>(null);
   const [tab,setTab]=useState<Tab>('scenes');
+  const [activeWindowId,setActiveWindowId]=useState('');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
 
   const plannedTranscriptIds=useMemo(()=>new Set(plans.map(plan=>plan.transcriptId)),[plans]);
   const eligible=useMemo(()=>transcripts.filter(item=>!plannedTranscriptIds.has(item.id)),[transcripts,plannedTranscriptIds]);
+  const editorWindows=useMemo(()=>
+    buildLongFormEditorWindows(draft?.audioDurationSeconds??0),
+    [draft?.audioDurationSeconds]
+  );
+  const activeWindow=useMemo(()=>
+    editorWindows.find(item=>item.id===activeWindowId)??editorWindows[0]??null,
+    [editorWindows,activeWindowId]
+  );
+  const visibleScenes=useMemo(()=>
+    timedEntriesInWindow(draft?.scenes??[],activeWindow),
+    [draft?.scenes,activeWindow]
+  );
   const structural=useMemo(()=>draft&&transcript?scenePlanStructuralIssues(normalizeScenePlan(draft),transcript):[],[draft,transcript]);
   const durationWarnings=useMemo(()=>draft?sceneDurationWarnings(normalizeScenePlan(draft),dna):[],[draft,dna]);
   const approvalIssues=useMemo(()=>draft&&transcript?scenePlanApprovalIssues(normalizeScenePlan(draft),transcript,dna):[],[draft,transcript,dna]);
@@ -56,6 +72,13 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
   }
 
   useEffect(()=>{void load();},[channel.id]);
+
+  useEffect(()=>{
+    if(!editorWindows.length){setActiveWindowId('');return;}
+    if(!editorWindows.some(item=>item.id===activeWindowId)){
+      setActiveWindowId(editorWindows[0].id);
+    }
+  },[editorWindows,activeWindowId]);
 
   async function loadAudio(scriptId:string,voiceAssetId:string){
     setAudioUrl(null);
@@ -174,7 +197,7 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
 
   if(draft&&transcript){
     return <div className="scene-timecode-editor">
-      <div className="scene-timecode-back"><button onClick={()=>{setDraft(null);setCurrent(null);setTranscript(null);setDna(null);setHistory([]);setAudioUrl(null);}}><ArrowLeft size={15}/>Todos os planos</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="scene-timecode-back"><button onClick={()=>{setDraft(null);setCurrent(null);setTranscript(null);setDna(null);setHistory([]);setAudioUrl(null);setActiveWindowId('');}}><ArrowLeft size={15}/>Todos os planos</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="scene-timecode-hero">
         <div><span>SCENE TIMECODE PROTOCOL</span><h2>{draft.scenes.length} cenas · {formatTranscriptTimestamp(draft.audioDurationSeconds)}</h2><p>Take {draft.voiceTake} · transcript v{draft.transcriptVersion} · cada cena permanece vinculada ao timing aprovado.</p></div>
@@ -190,8 +213,16 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
 
+      {editorWindows.length>1&&<section className="long-form-window-nav">
+        <div><span>EDITOR WINDOWS</span><strong>{editorWindows.length} blocos · máximo 10 minutos por tela</strong>{activeWindow&&<small>{formatTranscriptTimestamp(activeWindow.startSeconds)}–{formatTranscriptTimestamp(activeWindow.endSeconds)} · {visibleScenes.length} cenas visíveis de {draft.scenes.length}</small>}</div>
+        <div className="long-form-window-list">{editorWindows.map(window=><button key={window.id} className={window.id===activeWindow?.id?'active':''} onClick={()=>setActiveWindowId(window.id)}>
+          <span>{String(window.sequence).padStart(2,'0')}</span>
+          <strong>{formatTranscriptTimestamp(window.startSeconds)}–{formatTranscriptTimestamp(window.endSeconds)}</strong>
+        </button>)}</div>
+      </section>}
+
       {tab==='scenes'&&<div className="scene-timecode-content">
-        <div className="scene-timecode-list">{draft.scenes.map((scene,index)=><section className="scene-card" key={scene.id}>
+        <div className="scene-timecode-list">{visibleScenes.map(({item:scene,index})=><section className="scene-card" key={scene.id}>
           <header>
             <div><span>SCENE {String(scene.sequence).padStart(3,'0')}</span><strong>{formatTranscriptTimestamp(scene.startSeconds)} → {formatTranscriptTimestamp(scene.endSeconds)}</strong><small>{scene.durationSeconds.toFixed(2)}s</small></div>
             <button className="icon-button" disabled={draft.scenes.length<=1} onClick={()=>removeScene(index)}><Trash2 size={15}/></button>
