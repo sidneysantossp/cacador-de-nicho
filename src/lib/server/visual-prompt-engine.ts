@@ -11,7 +11,8 @@ import { loadVoiceAsset } from './voice-engine';
 import { draftVisualScenes } from './visual-prompt-ai';
 import {
   buildInitialVisualPromptSet, compileCharacterReference, compileScenePrompt,
-  normalizeVisualPromptSet, recurringCharacterIds, visualPromptIssues
+  normalizeVisualPromptSet, recurringCharacterIds, visualPromptIssues,
+  visualPromptPlanningBatch
 } from '@/lib/visual-prompt-policy';
 
 function normalizeRow(row:{
@@ -119,9 +120,13 @@ async function eligibleContext(scenePlanId:string){
   return {plan,dna};
 }
 
-function workflowStage(payload:VisualPromptSetPayload){
+function workflowStage(payload:VisualPromptSetPayload,expectedScenes:number){
+  if(
+    payload.aiPlanning&&
+    payload.aiPlanning.completedScenes<Math.max(0,expectedScenes)
+  )return 'scenes' as const;
+  if(payload.scenePrompts.length<expectedScenes)return 'scenes' as const;
   if(payload.characterReferences.some(ref=>!ref.assetReady))return 'references' as const;
-  if(payload.scenePrompts.length===0)return 'scenes' as const;
   return 'complete' as const;
 }
 
@@ -132,13 +137,49 @@ export async function createVisualPromptSet(scenePlanId:string):Promise<VisualPr
   return saveVisualPromptSet(buildInitialVisualPromptSet(plan,dna),'draft',0,false);
 }
 
-export async function generateVisualPromptDrafts(setId:string):Promise<VisualPromptSet>{
+export async function generateVisualPromptDrafts(
+  setId:string,
+  options:{maxScenes?:number}={}
+):Promise<VisualPromptSet>{
   const current=await loadVisualPromptSet(setId);
   if(!current)throw new HttpError('Visual Prompt Set não encontrado.',404);
   const {plan,dna}=await eligibleContext(current.scenePlanId);
 
-  const drafts=await draftVisualScenes(plan,dna);
-  const recurring=recurringCharacterIds(drafts.map(item=>({sceneId:item.sceneId,characterIds:item.characterIds})));
+  const planning=visualPromptPlanningBatch({
+    totalScenes:plan.scenes.length,
+    completedScenes:current.aiPlanning?.completedScenes??0,
+    batchSize:options.maxScenes??current.aiPlanning?.batchSize??40
+  });
+  if(planning.count===0){
+    return current;
+  }
+
+  const batchScenes=plan.scenes.slice(planning.startIndex,planning.endIndex);
+  const batchPlan:ScenePlan={...plan,scenes:batchScenes};
+  const drafts=await draftVisualScenes(batchPlan,dna);
+
+  const knownDrafts=new Map(current.scenePrompts.map(item=>[
+    item.sceneId,
+    {
+      sceneId:item.sceneId,
+      characterIds:[...item.characterIds],
+      direction:item.direction
+    }
+  ]));
+  for(const draft of drafts){
+    knownDrafts.set(draft.sceneId,{
+      sceneId:draft.sceneId,
+      characterIds:[...draft.characterIds],
+      direction:draft.direction
+    });
+  }
+
+  const recurring=recurringCharacterIds(
+    [...knownDrafts.values()].map(item=>({
+      sceneId:item.sceneId,
+      characterIds:item.characterIds
+    }))
+  );
   const existingReady=new Map(current.characterReferences.map(ref=>[ref.characterId,ref.assetReady]));
 
   const references=recurring.flatMap(characterId=>{
@@ -147,28 +188,36 @@ export async function generateVisualPromptDrafts(setId:string):Promise<VisualPro
     const ref=compileCharacterReference(
       character,
       dna,
-      drafts.filter(item=>item.characterIds.includes(characterId)).map(item=>item.sceneId)
+      [...knownDrafts.values()]
+        .filter(item=>item.characterIds.includes(characterId))
+        .map(item=>item.sceneId)
     );
     return [{...ref,assetReady:existingReady.get(characterId)??false}];
   });
 
   const scenePrompts=plan.scenes.map(scene=>{
-    const draft=drafts.find(item=>item.sceneId===scene.id);
+    const draft=knownDrafts.get(scene.id);
     const characterIds=draft?.characterIds??scene.characterIds;
     const direction=draft?.direction??scene.promptDirection??scene.visualIntent??scene.narration;
     const compiled=compileScenePrompt(scene,dna,characterIds,direction,recurring);
     return {...compiled,direction,characterIds};
   });
 
+  const now=new Date().toISOString();
   const next:VisualPromptSetPayload=normalizeVisualPromptSet({
     ...current,
     scenePlanVersion:plan.version,
     productionDnaVersion:dna.version,
     styleLock:dna.visual.basePrompt.trim(),
+    aiPlanning:{
+      completedScenes:planning.endIndex,
+      totalScenes:planning.totalScenes,
+      batchSize:planning.batchSize,
+      updatedAt:now
+    },
     characterReferences:references,
     scenePrompts,
-    workflowStage:references.some(ref=>!ref.assetReady)?'references':'complete',
-    updatedAt:new Date().toISOString()
+    updatedAt:now
   });
 
   return saveVisualPromptSet(next,'draft',current.version,false);
@@ -188,7 +237,7 @@ export async function saveVisualPromptSet(
   const existing=await loadVisualPromptSet(payload.id);
   const normalized=normalizeVisualPromptSet({
     ...payload,
-    workflowStage:workflowStage(payload),
+    workflowStage:workflowStage(payload,plan.scenes.length),
     createdAt:existing?.createdAt??payload.createdAt??new Date().toISOString(),
     updatedAt:new Date().toISOString()
   });
