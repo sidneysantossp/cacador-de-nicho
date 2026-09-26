@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
@@ -67,7 +68,7 @@ export async function POST(request:Request){
       });
     }
 
-    if(Number(request.headers.get('content-length')??0)>450000)throw new HttpError('Transcript muito extenso.',413);
+    if(Number(request.headers.get('content-length')??0)>longFormJsonLimit('transcript'))throw new HttpError('Transcript muito extenso.',413);
     const parsed=jsonSchema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os campos do Transcription Engine.',400);
     const body=parsed.data;
