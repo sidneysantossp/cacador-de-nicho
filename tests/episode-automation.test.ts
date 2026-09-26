@@ -6,7 +6,8 @@ import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, automationPackageSnapshotIssues,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
-  automationTimelineSnapshotIssues, automationVideoEditSnapshotIssues, inspectAutomationSteps
+  automationTimelineSnapshotIssues, automationVideoEditSnapshotIssues, inspectAutomationSteps,
+  visualAssetBatchPlan
 } from '../src/lib/episode-automation-policy';
 
 function step(
@@ -181,4 +182,41 @@ test('Automation invalidates QA package and publish when upstream identity chang
     packageId:'pkg-1',
     packageVersion:2
   }),['stale-publication-package']);
+});
+
+
+test('Visual asset batching skips covered and already-running stock scenes without starvation',()=>{
+  const result=visualAssetBatchPlan({
+    sceneIds:['s1','s2','s3','s4','s5','s6'],
+    selectedReadySceneIds:['s1'],
+    activeStockSceneIds:['s2','s3'],
+    batchSize:2
+  });
+  assert.deepEqual(result.missing,['s2','s3','s4','s5','s6']);
+  assert.deepEqual(result.waiting,['s2','s3']);
+  assert.deepEqual(result.eligible,['s4','s5','s6']);
+  assert.deepEqual(result.targets,['s4','s5']);
+});
+
+test('Visual asset batching preserves scene order, deduplicates ids, and clamps batch size',()=>{
+  const result=visualAssetBatchPlan({
+    sceneIds:['s1','s1','s2','s3','s4'],
+    selectedReadySceneIds:[],
+    activeStockSceneIds:[],
+    batchSize:999
+  });
+  assert.deepEqual(result.missing,['s1','s2','s3','s4']);
+  assert.deepEqual(result.targets,['s1','s2','s3','s4']);
+});
+
+test('Visual asset batching reports waiting-only state without creating duplicate targets',()=>{
+  const result=visualAssetBatchPlan({
+    sceneIds:['s1','s2','s3'],
+    selectedReadySceneIds:['s1'],
+    activeStockSceneIds:['s2','s3'],
+    batchSize:4
+  });
+  assert.deepEqual(result.missing,['s2','s3']);
+  assert.deepEqual(result.waiting,['s2','s3']);
+  assert.deepEqual(result.targets,[]);
 });
