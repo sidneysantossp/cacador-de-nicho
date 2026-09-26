@@ -123,7 +123,7 @@ function goodAssetFacts(){
     {
       assetId:'73111111-1111-4111-8111-111111111111',
       sceneId:'72111111-1111-4111-8111-111111111111',
-      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true,sourceType:'uploaded',provider:'operator',licenseType:'owned',licenseLabel:'Owned'
+      exists:true,ready:true,storagePathMatches:true,sceneMatches:true,promptAligned:true,sourceType:'uploaded',provider:'operator',licenseType:'owned',licenseLabel:'Owned',sourceIdentity:'owned:source-a'
     },
     {
       assetId:'83111111-1111-4111-8111-111111111111',
@@ -273,4 +273,36 @@ test('Production Authenticity blocks extreme single-asset repetition',()=>{
   }));
   const checks=structuralQualityChecks({job:value,assetFacts:facts,characterFacts:[]});
   assert.equal(checks.find(check=>check.code==='asset-duplication')?.status,'blocker');
+});
+
+
+test('Scene Asset clones of one source count as repeated origin',()=>{
+  const value=job();
+  const first=value.payload.manifest.visualClips[0];
+  value.payload.manifest.visualClips=Array.from({length:5},(_,index)=>({
+    ...first,
+    clipId:crypto.randomUUID(),
+    sceneId:crypto.randomUUID(),
+    assetId:crypto.randomUUID(),
+    startSeconds:index,
+    endSeconds:index+1,
+    durationSeconds:1,
+    style:{...first.style,timelineClipId:crypto.randomUUID(),sceneId:crypto.randomUUID()}
+  }));
+  value.payload.manifest.durationSeconds=5;
+  const facts=value.payload.manifest.visualClips.map(clip=>({
+    assetId:clip.assetId,
+    sceneId:clip.sceneId,
+    exists:true,
+    ready:true,
+    storagePathMatches:true,
+    sceneMatches:true,
+    promptAligned:true,
+    sourceIdentity:'owned:same-origin'
+  }));
+  const checks=structuralQualityChecks({job:value,assetFacts:facts,characterFacts:[]});
+  const duplication=checks.find(check=>check.code==='asset-duplication');
+  assert.equal(duplication?.status,'warning');
+  assert.equal(duplication?.metrics.uniqueSources,1);
+  assert.equal(duplication?.metrics.uniqueAssets,5);
 });

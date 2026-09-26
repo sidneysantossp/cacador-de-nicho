@@ -31,6 +31,7 @@ export type ProductionQualityAssetFact = {
   provider?:string|null;
   licenseType?:string|null;
   licenseLabel?:string|null;
+  sourceIdentity?:string|null;
 };
 
 export type ProductionQualityCharacterFact = {
@@ -120,23 +121,33 @@ export function structuralQualityChecks(input:{
     {cueCount:cues.length,enabled:manifest.captions.enabled}
   ));
 
+  const assetFacts=input.assetFacts??[];
+  const identityByAsset=new Map(
+    assetFacts.map(fact=>[fact.assetId,fact.sourceIdentity||fact.assetId])
+  );
+  const sourceIdentities=clips.map(item=>identityByAsset.get(item.assetId)??item.assetId);
   const uniqueAssets=new Set(clips.map(item=>item.assetId)).size;
-  const duplicateRatio=clips.length?1-(uniqueAssets/clips.length):0;
+  const uniqueSources=new Set(sourceIdentities).size;
+  const duplicateRatio=clips.length?1-(uniqueSources/clips.length):0;
   const extremeDuplication=clips.length>=8&&duplicateRatio>=.875;
   const excessiveDuplication=clips.length>=5&&duplicateRatio>.6;
   checks.push(check(
     'asset-duplication','visual','Repetição de assets',
     extremeDuplication?'blocker':excessiveDuplication?'warning':'pass',
     extremeDuplication
-      ?'O render depende quase inteiramente do mesmo asset visual; aumente a diversidade antes da publicação.'
+      ?'O render depende quase inteiramente da mesma mídia de origem; aumente a diversidade antes da publicação.'
       :excessiveDuplication
-        ?'A maior parte dos clips reutiliza assets já usados; revise monotonia visual.'
-        :'A repetição de assets está dentro do limite operacional.',
-    [`${uniqueAssets} asset(s) único(s) em ${clips.length} clip(s)`],
-    {uniqueAssets,clipCount:clips.length,duplicateRatio:Number(duplicateRatio.toFixed(4))}
+        ?'A maior parte dos clips reutiliza mídias de origem já usadas; revise monotonia visual.'
+        :'A repetição de mídias de origem está dentro do limite operacional.',
+    [`${uniqueSources} origem(ns) única(s) em ${clips.length} clip(s) · ${uniqueAssets} Scene Asset ID(s)`],
+    {
+      uniqueAssets,
+      uniqueSources,
+      clipCount:clips.length,
+      duplicateRatio:Number(duplicateRatio.toFixed(4))
+    }
   ));
 
-  const assetFacts=input.assetFacts??[];
   if(assetFacts.length){
     const bad=assetFacts.filter(f=>!f.exists||!f.ready||!f.storagePathMatches||!f.sceneMatches);
     checks.push(check(

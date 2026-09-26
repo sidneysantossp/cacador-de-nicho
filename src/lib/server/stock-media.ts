@@ -9,7 +9,8 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed, validStockQuery
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
+  stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
 import { downloadMedia } from './media-storage';
@@ -529,6 +530,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
 }){
   const editorialQuery=input.query.trim();
   const query=stockDiscoveryQuery(editorialQuery);
+  const validationQuery=stockVisualValidationQuery(editorialQuery);
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
   const orientation=input.orientation??'landscape';
@@ -599,15 +601,21 @@ export async function resolveVerifiedStockMediaForScene(input:{
           }
           match=await bestVisualSegment({
             assetId:verificationAssetId,
-            query,
+            query:validationQuery,
             desiredDurationSeconds:input.desiredDurationSeconds
           });
-          visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
+          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
           combinedScore=candidate.score*.55+visualRelevance*.45;
         }
 
         let asset=existing?{id:String(existing.id)}:null;
-        if(cached&&match&&stockCandidateAccepted({
+        const cachedConstraints=match
+          ?stockVisualConstraintsSatisfied({
+            query:validationQuery,
+            timeOfDay:match.segment.semantic.timeOfDay
+          })
+          :{ok:true,expected:null,observed:[],reason:null};
+        if(cached&&match&&cachedConstraints.ok&&stockCandidateAccepted({
           searchScore:candidate.relevance,
           visualRelevance,
           combinedScore
@@ -655,14 +663,21 @@ export async function resolveVerifiedStockMediaForScene(input:{
           }
           match=await bestVisualSegment({
             assetId:asset.id,
-            query,
+            query:validationQuery,
             desiredDurationSeconds:input.desiredDurationSeconds
           });
-          visualRelevance=match?scoreVisualSegment(query,match.segment.searchText):0;
+          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
           combinedScore=candidate.score*.55+visualRelevance*.45;
         }
 
-        if(match&&stockCandidateAccepted({
+        const constraints=match
+          ?stockVisualConstraintsSatisfied({
+            query:validationQuery,
+            timeOfDay:match.segment.semantic.timeOfDay
+          })
+          :{ok:true,expected:null,observed:[],reason:null};
+
+        if(match&&constraints.ok&&stockCandidateAccepted({
           searchScore:candidate.relevance,
           visualRelevance,
           combinedScore
@@ -678,6 +693,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
               ...payload,
               verifiedStock:{
                 query,
+                validationQuery,
                 provider,
                 providerAssetId:candidate.result.providerAssetId,
                 searchRelevance:candidate.relevance,
@@ -716,6 +732,9 @@ export async function resolveVerifiedStockMediaForScene(input:{
           searchRelevance:candidate.relevance,
           visualRelevance,
           combinedScore,
+          hardConstraintReason:constraints.reason,
+          expectedTimeOfDay:constraints.expected,
+          observedTimeOfDay:constraints.observed,
           accepted:false
         });
         if(createdCandidate)await deleteSceneAsset(asset.id);

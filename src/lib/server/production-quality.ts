@@ -12,6 +12,7 @@ import { listRenderJobs, loadRenderJob } from './render-engine';
 import { loadVideoEdit, loadVideoEditWorkspace } from './video-editor';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { assetIsStale } from '@/lib/asset-factory-policy';
+import { stockVisualConstraintsSatisfied } from '@/lib/stock-media-policy';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
   structuralQualityChecks, technicalQualityChecks,
@@ -293,6 +294,106 @@ async function projectFacts(job:RenderJob):Promise<{
     ?new Map(exactContext.promptSet!.scenePrompts.map(prompt=>[prompt.sceneId,prompt]))
     :new Map();
 
+  const payloadOf=(row:Record<string,unknown>)=>(
+    row.payload&&typeof row.payload==='object'
+      ?row.payload as Record<string,unknown>
+      :{}
+  );
+  const objectField=(value:unknown)=>(
+    value&&typeof value==='object'
+      ?value as Record<string,unknown>
+      :{}
+  );
+
+  const ownedSegmentIds=[...new Set((rows??[]).flatMap(row=>{
+    const owned=objectField(payloadOf(row).owned);
+    const id=String(owned.segmentId??'').trim();
+    return id?[id]:[];
+  }))];
+  const ownedSegments=ownedSegmentIds.length
+    ?checked(await db().from('radar_owned_media_segments')
+      .select('id,semantic')
+      .in('id',ownedSegmentIds))
+    :[];
+  const ownedSemanticBySegment=new Map(
+    (ownedSegments??[]).map(row=>[
+      String(row.id),
+      objectField(row.semantic)
+    ])
+  );
+
+  const stockAnalysisIds=[...new Set((rows??[]).flatMap(row=>{
+    if(String(row.source_type??'')!=='stock')return [];
+    const verified=objectField(payloadOf(row).verifiedStock);
+    const id=String(verified.cachedFromAssetId??row.id??'').trim();
+    return id?[id]:[];
+  }))];
+  const stockSegments=stockAnalysisIds.length
+    ?checked(await db().from('radar_asset_segments')
+      .select('asset_id,start_seconds,end_seconds,semantic')
+      .in('asset_id',stockAnalysisIds))
+    :[];
+  const stockSegmentsByAsset=new Map<string,Array<{
+    start:number;end:number;semantic:Record<string,unknown>;
+  }>>();
+  for(const row of stockSegments??[]){
+    const key=String(row.asset_id);
+    const list=stockSegmentsByAsset.get(key)??[];
+    list.push({
+      start:Number(row.start_seconds??0),
+      end:Number(row.end_seconds??0),
+      semantic:objectField(row.semantic)
+    });
+    stockSegmentsByAsset.set(key,list);
+  }
+
+  function timeOfDayForRow(row:Record<string,unknown>){
+    const payload=payloadOf(row);
+    const owned=objectField(payload.owned);
+    const ownedSegmentId=String(owned.segmentId??'').trim();
+    if(ownedSegmentId){
+      const semantic=ownedSemanticBySegment.get(ownedSegmentId)??{};
+      return Array.isArray(semantic.timeOfDay)
+        ?semantic.timeOfDay.map(String)
+        :[];
+    }
+
+    if(String(row.source_type??'')==='stock'){
+      const verified=objectField(payload.verifiedStock);
+      const analysisId=String(verified.cachedFromAssetId??row.id??'').trim();
+      const start=Number(verified.sourceStartSeconds??0);
+      const end=Number(verified.sourceEndSeconds??start);
+      const candidates=stockSegmentsByAsset.get(analysisId)??[];
+      const best=[...candidates].sort((a,b)=>{
+        const overlapA=Math.max(0,Math.min(a.end,end)-Math.max(a.start,start));
+        const overlapB=Math.max(0,Math.min(b.end,end)-Math.max(b.start,start));
+        return overlapB-overlapA;
+      })[0];
+      const semantic=best?.semantic??{};
+      return Array.isArray(semantic.timeOfDay)
+        ?semantic.timeOfDay.map(String)
+        :[];
+    }
+
+    return [];
+  }
+
+  function sourceIdentity(row:Record<string,unknown>){
+    const payload=payloadOf(row);
+    const owned=objectField(payload.owned);
+    const ownedId=String(owned.assetId??'').trim();
+    if(ownedId)return 'owned:'+ownedId;
+
+    const stock=objectField(payload.stock);
+    const providerId=String(stock.providerAssetId??'').trim();
+    if(providerId){
+      return 'stock:'+String(row.provider??'unknown')+':'+providerId;
+    }
+
+    const storage=String(row.storage_path??'').trim();
+    return storage?'storage:'+storage:'asset:'+String(row.id??'');
+  }
+
   const assetFacts=clips.map(clip=>{
     const row=rowMap.get(clip.assetId);
     if(!row){
@@ -311,13 +412,32 @@ async function projectFacts(job:RenderJob):Promise<{
         promptAligned=false;
         promptReason='cena '+clip.sceneId.slice(0,8)+' não existe no Visual Prompt Set atual da versão';
       }else{
-        const payload=(row.payload??{}) as Record<string,unknown>;
+        const payload=payloadOf(row);
         const stale=assetIsStale({
           promptSetVersion:Number(payload.promptSetVersion??0),
           prompt:String(payload.prompt??'')
         },exactContext.promptSet!.version,currentPrompt);
-        promptAligned=!stale;
-        if(stale)promptReason='asset '+clip.assetId.slice(0,8)+' diverge do prompt/versionamento esperado';
+        if(stale){
+          promptAligned=false;
+          promptReason='asset '+clip.assetId.slice(0,8)+' diverge do prompt/versionamento esperado';
+        }else{
+          const validationText=[currentPrompt.direction,currentPrompt.prompt].filter(Boolean).join(' ');
+          const observedTimeOfDay=timeOfDayForRow(row as Record<string,unknown>);
+          const temporal=stockVisualConstraintsSatisfied({
+            query:validationText,
+            timeOfDay:observedTimeOfDay
+          });
+          if(temporal.expected&&observedTimeOfDay.length===0){
+            promptAligned=null;
+            promptReason='asset '+clip.assetId.slice(0,8)+' exige '+temporal.expected+
+              ', mas a Visual Intelligence não possui evidência de timeOfDay para o trecho.';
+          }else if(!temporal.ok){
+            promptAligned=false;
+            promptReason='asset '+clip.assetId.slice(0,8)+' '+String(temporal.reason??'falhou no constraint temporal');
+          }else{
+            promptAligned=true;
+          }
+        }
       }
     }else{
       promptReason='contexto exato da versão do Video Edit/Timeline não disponível';
@@ -340,7 +460,8 @@ async function projectFacts(job:RenderJob):Promise<{
       sourceType:String(row.source_type??''),
       provider:row.provider?String(row.provider):null,
       licenseType:license?.type?String(license.type):null,
-      licenseLabel:license?.label?String(license.label):null
+      licenseLabel:license?.label?String(license.label):null,
+      sourceIdentity:sourceIdentity(row as Record<string,unknown>)
     } satisfies ProductionQualityAssetFact;
   });
 
