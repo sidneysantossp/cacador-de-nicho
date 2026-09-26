@@ -23,3 +23,21 @@ export function voiceAssetIsStale(
 ){
   return asset.scriptVersion!==script.version||asset.textHash!==currentTextHash;
 }
+
+
+export const voiceDownstreamStages=[
+  'transcript','scenes','visual-prompts','visual-assets','timeline',
+  'video-edit','render','quality','packaging','publish'
+] as const;
+
+export function voicePipelineIssues(input:{
+  ready:boolean;
+  selected:boolean;
+  stale:boolean;
+}){
+  const issues:string[]=[];
+  if(!input.ready)issues.push('voice-not-ready');
+  if(!input.selected)issues.push('voice-not-selected');
+  if(input.stale)issues.push('voice-stale');
+  return issues;
+}
