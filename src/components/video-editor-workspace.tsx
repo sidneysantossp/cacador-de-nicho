@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type {
   AudioLibraryAsset, ManagedChannel, Timeline, Transcript, VideoEdit, VideoEditClipStyle,
-  VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload, VideoEditSfxEvent, VideoEditVersion
+  VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload, VideoEditSfxEvent, VideoEditVersionSummary
 } from '@/lib/types';
 import {
   motionPresetValues, normalizeVideoEdit, suggestSfxEvents,
@@ -45,7 +45,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
   const [transcript,setTranscript]=useState<Transcript|null>(null);
   const [sources,setSources]=useState<Source[]>([]);
   const [audioAssets,setAudioAssets]=useState<AudioLibraryAsset[]>([]);
-  const [history,setHistory]=useState<VideoEditVersion[]>([]);
+  const [history,setHistory]=useState<VideoEditVersionSummary[]>([]);
   const [tab,setTab]=useState<Tab>('editor');
   const [selectedClipId,setSelectedClipId]=useState('');
   const [activeChapterId,setActiveChapterId]=useState('');
@@ -165,6 +165,26 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setPlayhead(scopedClips[0]?.startSeconds??chapter?.startSeconds??0);
       setPlaying(false);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar capítulo.');}
+    finally{setBusy('');}
+  }
+
+  async function loadHistoryVersion(version:number){
+    if(!current)return;
+    setBusy('history:'+version);setMessage('');
+    try{
+      const query=new URLSearchParams({
+        videoEditId:current.id,
+        historyVersion:String(version)
+      });
+      const res=await fetch('/api/video-editor?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar versão histórica.');
+      if(!body.historyVersion?.payload)throw new Error('Versão histórica sem payload.');
+      setDraft({...body.historyVersion.payload,updatedAt:new Date().toISOString()});
+      setPlaying(false);
+      setTab('editor');
+      setMessage('Versão '+version+' carregada no editor. Salve para criar uma nova versão.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar versão histórica.');}
     finally{setBusy('');}
   }
 
@@ -505,7 +525,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
         <div className="video-review-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={structuralIssues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={15}/>Aprovar para render</button></div>
       </div>}
 
-      {tab==='history'&&<div className="video-editor-content"><div className="video-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.payload.clipStyles.length} clip styles · {item.payload.captions.cues.length} captions</span><button className="button subtle small" onClick={()=>{setDraft({...item.payload,updatedAt:new Date().toISOString()});setTab('editor');setMessage('Versão '+item.version+' carregada no editor.');}}>Carregar</button></article>)}</div></div>}
+      {tab==='history'&&<div className="video-editor-content"><div className="video-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · payload carregado somente sob demanda</span><button className="button subtle small" disabled={busy==='history:'+item.version} onClick={()=>void loadHistoryVersion(item.version)}>{busy==='history:'+item.version?'Carregando…':'Carregar'}</button></article>)}</div></div>}
     </div>;
   }
 
