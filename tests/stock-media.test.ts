@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
-  stockFallbackEligible, validStockQuery
+  stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery
 } from '../src/lib/stock-media-policy';
 
 test('Stock Media allows only expected Pexels media hosts',()=>{
@@ -179,4 +179,30 @@ test('Generic stock search does not receive exact-location provider-rank boost',
     }]
   });
   assert.equal(ranked[0].providerRankRelevance,0);
+});
+
+
+test('Visual validation keeps editorial time-of-day while discovery stays compact',()=>{
+  const editorial='Las Vegas city night neon traffic spectacle Fremont Street, real present-day stock footage, 16:9';
+  assert.equal(stockDiscoveryQuery(editorial),'fremont street las vegas');
+  assert.match(stockVisualValidationQuery(editorial),/night/i);
+  assert.match(stockVisualValidationQuery(editorial),/neon/i);
+});
+
+test('Night intent rejects dusk or evening-only stock evidence',()=>{
+  const result=stockVisualConstraintsSatisfied({
+    query:'Fremont Street Las Vegas night neon traffic',
+    timeOfDay:['evening','dusk']
+  });
+  assert.equal(result.ok,false);
+  assert.equal(result.expected,'night');
+});
+
+test('Sunset intent accepts golden-hour visual evidence',()=>{
+  const result=stockVisualConstraintsSatisfied({
+    query:'New York skyline sunset golden hour',
+    timeOfDay:['golden hour','sunset']
+  });
+  assert.equal(result.ok,true);
+  assert.equal(result.expected,'sunset');
 });
