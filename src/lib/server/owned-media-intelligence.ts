@@ -410,7 +410,7 @@ async function enrichOwnedAsset(
       },
       visualAuthority:{
         mode:'visual-over-filename',
-        confidenceFloor:.72,
+        confidenceFloor:.60,
         contestedFilename:contested,
         reconciledAt:new Date().toISOString()
       },
@@ -508,8 +508,18 @@ export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<Ow
   const analysisPayload=analysis.payload&&typeof analysis.payload==='object'
     ?analysis.payload as Record<string,unknown>
     :{};
+  const meanQuality=segments.length
+    ?Number((segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length).toFixed(4))
+    :0;
   checked(await db().from('radar_owned_media_visual_analysis').update({
-    payload:{...analysisPayload,stage:'completed',embedding},
+    payload:{
+      ...analysisPayload,
+      stage:'completed',
+      segmentCount:segments.length,
+      usableSegmentCount:segments.filter(item=>item.usable).length,
+      meanQuality,
+      embedding
+    },
     updated_at:new Date().toISOString()
   }).eq('asset_id',assetId));
   return loadOwnedMediaIntelligence(assetId);
