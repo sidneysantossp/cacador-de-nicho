@@ -367,10 +367,9 @@ export default function OwnedMediaLibraryWorkspace(){
         visualIntelligence:{
           status:'completed',
           segmentCount:Number(body.analysis?.segments?.length??0),
-          usableSegmentCount:(body.analysis?.segments??[]).filter((segment:{usable?:boolean})=>segment.usable!==false).length,
-          meanQuality:(body.analysis?.segments??[]).length
-            ?(body.analysis.segments as Array<{qualityScore?:number}>).reduce((sum:number,segment)=>sum+Number(segment.qualityScore??.5),0)/body.analysis.segments.length
-            :0,
+          usableSegmentCount:Number(body.analysis?.usableSegmentCount??0),
+          meanQuality:Number(body.analysis?.meanQuality??0),
+          embeddingStatus:body.analysis?.embeddingStatus??'idle',
           analyzedAt:body.analysis?.analyzedAt
         }
       }:current);
