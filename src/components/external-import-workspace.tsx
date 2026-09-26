@@ -6,7 +6,7 @@ import {
   Image as ImageIcon, Link2, RefreshCw, SkipForward, Sparkles, Upload
 } from 'lucide-react';
 import type {
-  EpisodeScript, ExternalImportBatch, ExternalImportItem, ManagedChannel,
+  EpisodeScriptListItem, ExternalImportBatch, ExternalImportItem, ManagedChannel,
   VisualPromptSet, VoiceAssetListItem
 } from '@/lib/types';
 import {
@@ -35,7 +35,7 @@ function batchProgress(batch:ExternalImportBatch){
 function fileDescriptor(file:File){return {name:file.name,size:file.size,type:file.type};}
 
 export default function ExternalImportWorkspace({channel}:{channel:ManagedChannel}){
-  const [scripts,setScripts]=useState<EpisodeScript[]>([]);
+  const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [promptSets,setPromptSets]=useState<VisualPromptSet[]>([]);
   const [batches,setBatches]=useState<ExternalImportBatch[]>([]);
   const [scriptId,setScriptId]=useState('');
