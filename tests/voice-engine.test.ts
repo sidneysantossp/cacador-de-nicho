@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EpisodeScript, VoiceAlignment, VoiceAsset } from '../src/lib/types';
 import {
-  maxLongFormVoiceCharacters, mergeVoiceAlignments, splitVoiceText,
+  estimatedVoiceChunkCount, maxLongFormVoiceCharacters, mergeVoiceAlignments, splitVoiceText,
   voiceAssetIsStale, voiceDownstreamStages, voiceGenerationIssues,
   voiceModelCharacterLimits, voicePipelineIssues
 } from '../src/lib/voice-policy';
@@ -86,4 +86,15 @@ test('Voice Engine merges chunk alignments with cumulative offsets and an explic
   assert.equal(merged.characters.join(''),'Hi There');
   assert.equal(merged.characterStartTimesSeconds[3],1.25);
   assert.equal(merged.characterEndTimesSeconds.at(-1),1.75);
+});
+
+
+test('Voice UI can estimate chunk count from lightweight script character count',()=>{
+  assert.equal(estimatedVoiceChunkCount(0,'eleven_flash_v2_5'),0);
+  assert.equal(estimatedVoiceChunkCount(1000,'eleven_flash_v2_5'),1);
+  assert.ok(estimatedVoiceChunkCount(75000,'eleven_flash_v2_5')>=4);
+  assert.ok(
+    estimatedVoiceChunkCount(12000,'eleven_multilingual_v2')>
+    estimatedVoiceChunkCount(12000,'eleven_flash_v2_5')
+  );
 });
