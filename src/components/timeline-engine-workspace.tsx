@@ -47,6 +47,10 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   const timelinePlanIds=useMemo(()=>new Set(timelines.map(item=>item.scenePlanId)),[timelines]);
   const eligiblePlans=useMemo(()=>scenePlans.filter(item=>!timelinePlanIds.has(item.id)),[scenePlans,timelinePlanIds]);
   const sourceMap=useMemo(()=>new Map(sources.map(source=>[source.assetId,source])),[sources]);
+  const voiceSource=useMemo(()=>{
+    const voiceClip=draft?.tracks.find(track=>track.type==='voice')?.clips[0];
+    return voiceClip?.assetId?sourceMap.get(voiceClip.assetId)??null:null;
+  },[draft,sourceMap]);
   const structuralIssues=useMemo(()=>draft&&scenePlan?timelineStructuralIssues(normalizeTimeline(draft),scenePlan):[],[draft,scenePlan]);
   const dirty=useMemo(()=>draft&&current?JSON.stringify(normalizeTimeline(draft))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
   const selectedClip=useMemo(()=>{
@@ -147,7 +151,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="timeline-hero">
-        <div><span>TIMELINE ENGINE</span><h2>{time(draft.durationSeconds)} · {draft.format.width}×{draft.format.height} · {draft.format.fps}fps</h2><p>Scene Plan v{draft.scenePlanVersion} · Visual Prompt v{draft.visualPromptSetVersion}</p></div>
+        <div><span>TIMELINE ENGINE</span><h2>{time(draft.durationSeconds)} · {draft.format.width}×{draft.format.height} · {draft.format.fps}fps</h2><p>Scene Plan v{draft.scenePlanVersion} · Visual Prompt v{draft.visualPromptSetVersion} · {voiceSource?.title??'Narração vinculada'}</p></div>
         <div><em>{structuralIssues.length?structuralIssues.length+' BLOCKER(S)':'STRUCTURE OK'}</em><button className="button primary" disabled={busy==='save'||!dirty} onClick={()=>void save('draft')}><Save size={15}/>{busy==='save'?'Salvando…':'Salvar versão'}</button></div>
       </section>
 
