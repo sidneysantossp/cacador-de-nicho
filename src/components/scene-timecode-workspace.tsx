@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type {
   ManagedChannel, ProductionDNA, SceneAssetMode, ScenePlan, ScenePlanPayload,
-  ScenePlanVersion, SceneTimecode, Transcript, VoiceAsset
+  ScenePlanVersionSummary, SceneTimecode, Transcript, VoiceAsset
 } from '@/lib/types';
 import {
   normalizeScenePlan, sceneDurationWarnings, scenePlanApprovalIssues,
@@ -29,7 +29,7 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
   const [draft,setDraft]=useState<ScenePlanPayload|null>(null);
   const [transcript,setTranscript]=useState<Transcript|null>(null);
   const [dna,setDna]=useState<ProductionDNA|null>(null);
-  const [history,setHistory]=useState<ScenePlanVersion[]>([]);
+  const [history,setHistory]=useState<ScenePlanVersionSummary[]>([]);
   const [audioUrl,setAudioUrl]=useState<string|null>(null);
   const [tab,setTab]=useState<Tab>('scenes');
   const [loading,setLoading]=useState(true);
@@ -82,6 +82,22 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
       setTab('scenes');
       void loadAudio(body.plan.scriptId,body.plan.voiceAssetId);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir Scene Plan.');}
+    finally{setBusy('');}
+  }
+
+  async function loadHistoryVersion(version:number){
+    if(!current)return;
+    setBusy('history:'+version);setMessage('');
+    try{
+      const query=new URLSearchParams({planId:current.id,historyVersion:String(version)});
+      const res=await fetch('/api/scene-timecode?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar versão histórica.');
+      if(!body.historyVersion?.payload)throw new Error('Versão histórica sem payload.');
+      setDraft({...body.historyVersion.payload,updatedAt:new Date().toISOString()});
+      setTab('scenes');
+      setMessage('Versão '+version+' carregada no editor. Salve para criar uma nova versão.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar versão histórica.');}
     finally{setBusy('');}
   }
 
@@ -220,7 +236,7 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
         <div className="scene-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={approvalIssues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar Scene Plan</button></div>
       </div>}
 
-      {tab==='history'&&<div className="scene-timecode-content"><div className="scene-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.payload.scenes.length} cenas · {formatTranscriptTimestamp(item.payload.audioDurationSeconds)}</span><button className="button subtle small" onClick={()=>{setDraft({...item.payload,updatedAt:new Date().toISOString()});setTab('scenes');setMessage('Versão '+item.version+' carregada no editor.');}}>Carregar</button></article>)}</div></div>}
+      {tab==='history'&&<div className="scene-timecode-content"><div className="scene-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · payload carregado somente sob demanda</span><button className="button subtle small" disabled={busy==='history:'+item.version} onClick={()=>void loadHistoryVersion(item.version)}>{busy==='history:'+item.version?'Carregando…':'Carregar'}</button></article>)}</div></div>}
     </div>;
   }
 
