@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { statfsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -67,6 +67,23 @@ async function rpc(name,args){
 async function queryJob(jobId){
   const rows=await rest('/rest/v1/radar_render_jobs?id=eq.'+encodeURIComponent(jobId)+'&select=id,status,worker_token,payload,channel_id,episode_id,video_edit_id,video_edit_version');
   return Array.isArray(rows)?rows[0]??null:null;
+}
+
+async function queryChapters(jobId){
+  const rows=await rest(
+    '/rest/v1/radar_render_chapters?render_job_id=eq.'+encodeURIComponent(jobId)+
+    '&select=id,render_job_id,chapter_id,sequence,label,start_seconds,end_seconds,duration_seconds,content_hash,status,progress,cache_hit,output_path,output_bytes,render_seconds,error,created_at,started_at,completed_at,updated_at'+
+    '&order=sequence.asc'
+  );
+  return Array.isArray(rows)?rows:[];
+}
+
+async function updateChapter(rowId,fields){
+  await rest('/rest/v1/radar_render_chapters?id=eq.'+encodeURIComponent(rowId),{
+    method:'PATCH',
+    headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+    body:JSON.stringify({...fields,updated_at:new Date().toISOString()})
+  });
 }
 
 async function heartbeat(jobId,token,progress,stage){
@@ -204,7 +221,9 @@ function codecArgs(codec,crf,preset='medium'){
 
 function encoderCandidates(payload){
   const primary=payload?.videoCodec||'libx264';
-  const fallback=payload?.compilerVersion==='render-v3'?(payload.fallbackVideoCodecs??[]):[];
+  const fallback=['render-v3','render-v4'].includes(payload?.compilerVersion)
+    ?(payload.fallbackVideoCodecs??[])
+    :[];
   return [...new Set([primary,...fallback])];
 }
 
@@ -234,7 +253,7 @@ async function runVideoEncode(baseArgs,outputPath,payload,{crf,preset='medium'}=
 }
 
 function renderOutputFormat(payload,manifest){
-  const raw=payload?.compilerVersion==='render-v3'&&payload.outputFormat
+  const raw=['render-v3','render-v4'].includes(payload?.compilerVersion)&&payload.outputFormat
     ?payload.outputFormat
     :manifest.format;
   const width=Math.max(2,Math.round(Number(raw.width)/2)*2);
@@ -607,7 +626,7 @@ async function muxAudio(manifest,videoPath,paths,outputPath,payload){
     '-map','0:v:0','-map','[aout]'
   );
 
-  if(payload.compilerVersion==='render-v3'){
+  if(['render-v3','render-v4'].includes(payload.compilerVersion)){
     const format=renderOutputFormat(payload,manifest);
     const canCopyVideo=
       Number(format.width)===Number(manifest.format.width)&&
