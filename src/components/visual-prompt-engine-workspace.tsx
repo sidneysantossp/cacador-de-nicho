@@ -10,6 +10,9 @@ import type {
   VisualPromptSet, VisualPromptSetPayload, VisualPromptSetVersionSummary, VisualScenePrompt
 } from '@/lib/types';
 import { compileScenePrompt, visualPromptIssues } from '@/lib/visual-prompt-policy';
+import {
+  buildLongFormEditorWindows, timedEntriesInWindow
+} from '@/lib/long-form-editor-window';
 
 type Tab='references'|'scenes'|'review'|'history';
 
@@ -25,12 +28,25 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
   const [dna,setDna]=useState<ProductionDNA|null>(null);
   const [history,setHistory]=useState<VisualPromptSetVersionSummary[]>([]);
   const [tab,setTab]=useState<Tab>('references');
+  const [activeWindowId,setActiveWindowId]=useState('');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
 
   const plannedIds=useMemo(()=>new Set(sets.map(item=>item.scenePlanId)),[sets]);
   const eligible=useMemo(()=>plans.filter(item=>!plannedIds.has(item.id)),[plans,plannedIds]);
+  const editorWindows=useMemo(()=>
+    buildLongFormEditorWindows(plan?.audioDurationSeconds??0),
+    [plan?.audioDurationSeconds]
+  );
+  const activeWindow=useMemo(()=>
+    editorWindows.find(item=>item.id===activeWindowId)??editorWindows[0]??null,
+    [editorWindows,activeWindowId]
+  );
+  const visiblePrompts=useMemo(()=>
+    timedEntriesInWindow(draft?.scenePrompts??[],activeWindow),
+    [draft?.scenePrompts,activeWindow]
+  );
   const refsReady=useMemo(()=>!!draft&&draft.characterReferences.every(ref=>ref.assetReady),[draft]);
   const issues=useMemo(()=>draft&&plan&&dna?visualPromptIssues(draft,plan,dna,true):[],[draft,plan,dna]);
   const dirty=useMemo(()=>{
@@ -51,6 +67,13 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
   }
 
   useEffect(()=>{void load();},[channel.id]);
+
+  useEffect(()=>{
+    if(!editorWindows.length){setActiveWindowId('');return;}
+    if(!editorWindows.some(item=>item.id===activeWindowId)){
+      setActiveWindowId(editorWindows[0].id);
+    }
+  },[editorWindows,activeWindowId]);
 
   async function openSet(id:string){
     setBusy('open');setMessage('');
@@ -167,7 +190,7 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
 
   if(draft&&plan&&dna){
     return <div className="visual-prompt-editor">
-      <div className="visual-prompt-back"><button onClick={()=>{setDraft(null);setCurrent(null);setPlan(null);setDna(null);setHistory([]);}}><ArrowLeft size={15}/>Todos os prompt sets</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="visual-prompt-back"><button onClick={()=>{setDraft(null);setCurrent(null);setPlan(null);setDna(null);setHistory([]);setActiveWindowId('');}}><ArrowLeft size={15}/>Todos os prompt sets</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="visual-prompt-hero">
         <div><span>VISUAL PROMPT ENGINE</span><h2>{draft.scenePrompts.length} beats visuais · {draft.characterReferences.length} referência(s)</h2><p>Scene Plan v{draft.scenePlanVersion} · Production DNA v{draft.productionDnaVersion} · stage {refsReady?'scenes':'references'}</p></div>
@@ -182,6 +205,14 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
         <button className={tab==='review'?'active':''} onClick={()=>setTab('review')}><CheckCircle2 size={15}/>Review</button>
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
+
+      {tab==='scenes'&&editorWindows.length>1&&<section className="long-form-window-nav">
+        <div><span>EDITOR WINDOWS</span><strong>{editorWindows.length} blocos · máximo 10 minutos por tela</strong>{activeWindow&&<small>{activeWindow.startSeconds.toFixed(0)}s–{activeWindow.endSeconds.toFixed(0)}s · {visiblePrompts.length} prompts visíveis de {draft.scenePrompts.length}</small>}</div>
+        <div className="long-form-window-list">{editorWindows.map(window=><button key={window.id} className={window.id===activeWindow?.id?'active':''} onClick={()=>setActiveWindowId(window.id)}>
+          <span>{String(window.sequence).padStart(2,'0')}</span>
+          <strong>{Math.floor(window.startSeconds/60)}m–{Math.ceil(window.endSeconds/60)}m</strong>
+        </button>)}</div>
+      </section>}
 
       {tab==='references'&&<div className="visual-prompt-content">
         <section className="visual-ai-box"><div><Sparkles size={22}/><div><strong>Visual Planner</strong><p>Analisa todas as cenas sem mudar timecodes e sugere personagens conhecidos, enquadramento e direção visual.</p></div></div><button className="button subtle" disabled={!!busy} onClick={()=>void generate()}>{busy==='generate'?'Planejando…':'Sugerir com IA'}</button></section>
@@ -200,7 +231,7 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
 
       {tab==='scenes'&&refsReady&&<div className="visual-prompt-content">
         <section className="visual-style-lock"><span>STYLE LOCK</span><p>{draft.styleLock||'Production DNA não possui base prompt.'}</p></section>
-        <div className="visual-scene-list">{draft.scenePrompts.map((scene,index)=><section className="visual-scene-card" key={scene.sceneId}>
+        <div className="visual-scene-list">{visiblePrompts.map(({item:scene,index})=><section className="visual-scene-card" key={scene.sceneId}>
           <header><div><span>{scene.timecodeLabel}</span><strong>SCENE {String(scene.sequence).padStart(3,'0')}</strong></div><div>{scene.referenceNames.map(name=><em key={name}>{name}</em>)}</div></header>
           <label><span>DIREÇÃO VISUAL</span><textarea rows={4} value={scene.direction} onChange={e=>updateDirection(index,e.target.value)}/></label>
           <label><span>PROMPT FINAL</span><textarea rows={8} value={scene.prompt} onChange={e=>updateScene(index,{...scene,prompt:e.target.value})}/></label>

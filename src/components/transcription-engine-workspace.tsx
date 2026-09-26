@@ -10,6 +10,9 @@ import type {
   TranscriptSegment, TranscriptVersionSummary, VoiceAsset
 } from '@/lib/types';
 import { formatTranscriptTimestamp, normalizeTranscriptPayload, transcriptApprovalIssues } from '@/lib/transcript-policy';
+import {
+  buildLongFormEditorWindows, timedContentDuration, timedEntriesInWindow
+} from '@/lib/long-form-editor-window';
 
 type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
 type Tab='segments'|'words'|'review'|'history';
@@ -27,6 +30,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   const [draft,setDraft]=useState<TranscriptPayload|null>(null);
   const [history,setHistory]=useState<TranscriptVersionSummary[]>([]);
   const [tab,setTab]=useState<Tab>('segments');
+  const [activeWindowId,setActiveWindowId]=useState('');
   const [file,setFile]=useState<File|null>(null);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
@@ -34,6 +38,23 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
 
   const selectedScript=useMemo(()=>scripts.find(item=>item.id===scriptId)??null,[scripts,scriptId]);
   const selectedAsset=useMemo(()=>assets.find(item=>item.id===assetId)??null,[assets,assetId]);
+  const editorDuration=useMemo(()=>draft?Math.max(
+    timedContentDuration(draft.words),
+    timedContentDuration(draft.segments)
+  ):0,[draft]);
+  const editorWindows=useMemo(()=>buildLongFormEditorWindows(editorDuration),[editorDuration]);
+  const activeWindow=useMemo(()=>
+    editorWindows.find(item=>item.id===activeWindowId)??editorWindows[0]??null,
+    [editorWindows,activeWindowId]
+  );
+  const visibleSegments=useMemo(()=>
+    timedEntriesInWindow(draft?.segments??[],activeWindow),
+    [draft?.segments,activeWindow]
+  );
+  const visibleWords=useMemo(()=>
+    timedEntriesInWindow(draft?.words??[],activeWindow),
+    [draft?.words,activeWindow]
+  );
   const issues=useMemo(()=>draft&&selectedScript?transcriptApprovalIssues(normalizeTranscriptPayload(draft,selectedScript.content),selectedScript.version):[],[draft,selectedScript]);
   const dirty=useMemo(()=>draft&&current&&selectedScript?JSON.stringify(normalizeTranscriptPayload(draft,selectedScript.content))!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current,selectedScript]);
 
@@ -74,6 +95,13 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   }
 
   useEffect(()=>{void loadInitial();},[channel.id]);
+
+  useEffect(()=>{
+    if(!editorWindows.length){setActiveWindowId('');return;}
+    if(!editorWindows.some(item=>item.id===activeWindowId)){
+      setActiveWindowId(editorWindows[0].id);
+    }
+  },[editorWindows,activeWindowId]);
 
   async function openTranscript(id:string){
     setBusy('open');setMessage('');
@@ -164,7 +192,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
 
   if(draft&&selectedScript){
     return <div className="transcript-editor">
-      <div className="transcript-back"><button onClick={()=>{setDraft(null);setCurrent(null);setHistory([]);}}><ArrowLeft size={15}/>Todos os transcripts</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="transcript-back"><button onClick={()=>{setDraft(null);setCurrent(null);setHistory([]);setActiveWindowId('');}}><ArrowLeft size={15}/>Todos os transcripts</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
       <section className="transcript-hero">
         <div><span>TRANSCRIPTION ENGINE</span><h2>Take {draft.voiceTake} · {draft.sourceType}</h2><p>{draft.segments.length} segmentos · {draft.words.length} words temporizadas · match {draft.scriptMatchScore===null?'—':Math.round(draft.scriptMatchScore*100)+'%'}</p></div>
         <div><em>{issues.length?issues.length+' BLOCKER(S)':'READY'}</em><button className="button primary" disabled={busy==='save'||!dirty} onClick={()=>void save('draft')}><Save size={15}/>{busy==='save'?'Salvando…':'Salvar versão'}</button></div>
@@ -177,8 +205,16 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
         <button className={tab==='history'?'active':''} onClick={()=>setTab('history')}><History size={15}/>Versões</button>
       </nav>
 
+      {editorWindows.length>1&&<section className="long-form-window-nav">
+        <div><span>EDITOR WINDOWS</span><strong>{editorWindows.length} blocos · máximo 10 minutos por tela</strong>{activeWindow&&<small>{formatTranscriptTimestamp(activeWindow.startSeconds)}–{formatTranscriptTimestamp(activeWindow.endSeconds)} · {visibleSegments.length} segmentos · {visibleWords.length} words</small>}</div>
+        <div className="long-form-window-list">{editorWindows.map(window=><button key={window.id} className={window.id===activeWindow?.id?'active':''} onClick={()=>setActiveWindowId(window.id)}>
+          <span>{String(window.sequence).padStart(2,'0')}</span>
+          <strong>{formatTranscriptTimestamp(window.startSeconds)}–{formatTranscriptTimestamp(window.endSeconds)}</strong>
+        </button>)}</div>
+      </section>}
+
       {tab==='segments'&&<div className="transcript-content">
-        <div className="transcript-segment-list">{draft.segments.map((segment,index)=><section className="transcript-segment" key={segment.id}>
+        <div className="transcript-segment-list">{visibleSegments.map(({item:segment,index})=><section className="transcript-segment" key={segment.id}>
           <header><span>{String(index+1).padStart(3,'0')}</span><div><label>START<input type="number" step="0.001" value={segment.startSeconds} onChange={e=>updateSegment(index,{...segment,startSeconds:Number(e.target.value)})}/></label><label>END<input type="number" step="0.001" value={segment.endSeconds??''} onChange={e=>updateSegment(index,{...segment,endSeconds:e.target.value===''?null:Number(e.target.value)})}/></label><em>{formatTranscriptTimestamp(segment.startSeconds)} → {segment.endSeconds===null?'?':formatTranscriptTimestamp(segment.endSeconds)}</em></div><button className="icon-button" disabled={draft.segments.length<=1} onClick={()=>setDraft(normalizeTranscriptPayload({...draft,segments:draft.segments.filter(item=>item.id!==segment.id)},selectedScript.content))}><Trash2 size={15}/></button></header>
           <textarea rows={3} value={segment.text} onChange={e=>updateSegment(index,{...segment,text:e.target.value})}/>
         </section>)}</div>
@@ -186,7 +222,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       </div>}
 
       {tab==='words'&&<div className="transcript-content">
-        {draft.words.length?<div className="transcript-word-grid">{draft.words.map(word=><span key={word.id} title={formatTranscriptTimestamp(word.startSeconds)+' → '+formatTranscriptTimestamp(word.endSeconds)}>{word.text}<small>{word.startSeconds.toFixed(2)}</small></span>)}</div>:<div className="transcript-empty-inline">Este formato não possui word-level timestamps. Os segmentos continuam válidos para a timeline.</div>}
+        {draft.words.length?<div className="transcript-word-grid">{visibleWords.map(({item:word})=><span key={word.id} title={formatTranscriptTimestamp(word.startSeconds)+' → '+formatTranscriptTimestamp(word.endSeconds)}>{word.text}<small>{word.startSeconds.toFixed(2)}</small></span>)}</div>:<div className="transcript-empty-inline">Este formato não possui word-level timestamps. Os segmentos continuam válidos para a timeline.</div>}
       </div>}
 
       {tab==='review'&&<div className="transcript-content">
