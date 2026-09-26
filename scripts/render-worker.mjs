@@ -311,15 +311,25 @@ async function prepareSegment(clip,inputPath,outputPath,manifest,index,payload){
     args.push('-i',inputPath);
   }
 
-  const filters=[
+  const sourceWindow=clip.kind==='video'&&
+    clip.sourceStartSeconds!==null&&clip.sourceEndSeconds!==null
+    ?Math.max(0,Number(clip.sourceEndSeconds)-Number(clip.sourceStartSeconds))
+    :null;
+  const filters=[];
+  if(clip.kind==='video'&&clip.playback!=='loop'&&sourceWindow!==null&&sourceWindow>0){
+    filters.push('trim=duration='+rounded(sourceWindow),'setpts=PTS-STARTPTS');
+  }
+  filters.push(
     fitFilter(clip.fit,width,height),
-    'fps='+fps,
-    motionFilter(clip.style,width,height,fps,outputDuration)
-  ];
-
-  if(clip.kind==='video'&&clip.playback==='trim'&&outCross>0){
+    'fps='+fps
+  );
+  if(clip.kind==='video'&&clip.playback==='hold'&&sourceWindow!==null){
+    const pad=Math.max(0,outputDuration-sourceWindow);
+    if(pad>0)filters.push('tpad=stop_mode=clone:stop_duration='+rounded(pad));
+  }else if(clip.kind==='video'&&clip.playback==='trim'&&outCross>0){
     filters.push('tpad=stop_mode=clone:stop_duration='+rounded(outCross));
   }
+  filters.push(motionFilter(clip.style,width,height,fps,outputDuration));
   if(clip.style.transitionIn==='fade'&&inCross<=0&&clip.style.transitionSeconds>0){
     filters.push('fade=t=in:st=0:d='+rounded(Math.min(clip.style.transitionSeconds,nominal/2)));
   }
@@ -590,10 +600,27 @@ async function muxAudio(manifest,videoPath,paths,outputPath,payload){
 
   if(payload.compilerVersion==='render-v3'){
     const format=renderOutputFormat(payload,manifest);
+    const canCopyVideo=
+      Number(format.width)===Number(manifest.format.width)&&
+      Number(format.height)===Number(manifest.format.height)&&
+      Number(format.fps)===Number(manifest.format.fps);
+    if(canCopyVideo){
+      args.push(
+        '-c:v','copy',
+        '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
+        '-ar','48000',
+        '-t',String(rounded(manifest.durationSeconds)),
+        '-movflags','+faststart',
+        outputPath
+      );
+      await run(FFMPEG,args);
+      return;
+    }
     args.push(
       '-vf','scale='+format.width+':'+format.height+':force_original_aspect_ratio=decrease,'+
         'pad='+format.width+':'+format.height+':(ow-iw)/2:(oh-ih)/2:black,fps='+format.fps,
       '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
+      '-ar','48000',
       '-t',String(rounded(manifest.durationSeconds)),
       '-movflags','+faststart'
     );
@@ -604,6 +631,7 @@ async function muxAudio(manifest,videoPath,paths,outputPath,payload){
   args.push(
     '-c:v','copy',
     '-c:a','aac','-b:a',String(payload.audioBitrateKbps)+'k',
+    '-ar','48000',
     '-t',String(rounded(manifest.durationSeconds)),
     '-movflags','+faststart',
     outputPath
