@@ -159,27 +159,27 @@ function videoEdit(plan:ReturnType<typeof scenePlan>){
 test('60-minute transcript exceeds the former 450 KB cap but fits the bounded long-form limit',()=>{
   const size=bytes(transcript());
   assert.ok(size>450_000,'fixture should prove the former transcript cap was too small');
-  assert.ok(size<LONG_FORM_JSON_LIMITS.transcript,{size,limit:LONG_FORM_JSON_LIMITS.transcript});
+  assert.ok(size<LONG_FORM_JSON_LIMITS.transcript,`transcript size=${size} limit=${LONG_FORM_JSON_LIMITS.transcript}`);
 });
 
 test('60-minute Scene Plan exceeds the former 600 KB cap but fits the bounded long-form limit',()=>{
   const size=bytes(scenePlan());
   assert.ok(size>600_000,'fixture should prove the former Scene Plan cap was too small');
-  assert.ok(size<LONG_FORM_JSON_LIMITS.scenePlan,{size,limit:LONG_FORM_JSON_LIMITS.scenePlan});
+  assert.ok(size<LONG_FORM_JSON_LIMITS.scenePlan,`scenePlan size=${size} limit=${LONG_FORM_JSON_LIMITS.scenePlan}`);
 });
 
 test('rich 60-minute Visual Prompt Set fits the dedicated long-form envelope',()=>{
   const plan=scenePlan();
   const size=bytes(visualPromptSet(plan));
   assert.ok(size>1_000_000,'fixture should exercise payloads beyond the former 1 MB cap');
-  assert.ok(size<LONG_FORM_JSON_LIMITS.visualPromptSet,{size,limit:LONG_FORM_JSON_LIMITS.visualPromptSet});
+  assert.ok(size<LONG_FORM_JSON_LIMITS.visualPromptSet,`visualPromptSet size=${size} limit=${LONG_FORM_JSON_LIMITS.visualPromptSet}`);
 });
 
 test('60-minute word-level Video Edit fits the dedicated long-form envelope',()=>{
   const plan=scenePlan();
   const size=bytes(videoEdit(plan));
   assert.ok(size>1_800_000,'fixture should exercise payloads beyond the former 1.8 MB cap');
-  assert.ok(size<LONG_FORM_JSON_LIMITS.videoEdit,{size,limit:LONG_FORM_JSON_LIMITS.videoEdit});
+  assert.ok(size<LONG_FORM_JSON_LIMITS.videoEdit,`videoEdit size=${size} limit=${LONG_FORM_JSON_LIMITS.videoEdit}`);
 });
 
 test('long-form JSON limits stay bounded',()=>{
