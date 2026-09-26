@@ -121,7 +121,13 @@ export async function saveEpisodeScript(
   },productionDna?.voice.paceWpm??null);
 
   if(status==='approved'){
-    const issues=scriptApprovalIssues(normalized);
+    const issues=scriptApprovalIssues(normalized,{
+      claims:project.research.factChecks,
+      documentaryMode:Boolean(
+        productionDna?.research?.documentaryMode||
+        productionDna?.research?.requireClaimLedger
+      )
+    });
     if(issues.length)throw new HttpError('Roteiro ainda não pode ser aprovado: '+issues.join(' · ')+'.',409);
   }
 
@@ -195,7 +201,8 @@ export async function regenerateScriptSection(scriptId:string,sectionId:string):
   const sections=script.sections.map(section=>section.id===sectionId?{
     ...section,
     purpose:rewritten.purpose||section.purpose,
-    content:rewritten.content
+    content:rewritten.content,
+    claimIds:rewritten.claimIds
   }:section);
   const warnings=[
     ...script.factCheckWarnings.filter(item=>!item.startsWith('section:'+sectionId+':')),
