@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type {
   EpisodeScript, ManagedChannel, Transcript, TranscriptPayload,
-  TranscriptSegment, TranscriptVersion, VoiceAsset
+  TranscriptSegment, TranscriptVersionSummary, VoiceAsset
 } from '@/lib/types';
 import { formatTranscriptTimestamp, normalizeTranscriptPayload, transcriptApprovalIssues } from '@/lib/transcript-policy';
 
@@ -25,7 +25,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   const [transcripts,setTranscripts]=useState<Transcript[]>([]);
   const [current,setCurrent]=useState<Transcript|null>(null);
   const [draft,setDraft]=useState<TranscriptPayload|null>(null);
-  const [history,setHistory]=useState<TranscriptVersion[]>([]);
+  const [history,setHistory]=useState<TranscriptVersionSummary[]>([]);
   const [tab,setTab]=useState<Tab>('segments');
   const [file,setFile]=useState<File|null>(null);
   const [loading,setLoading]=useState(true);
@@ -83,6 +83,22 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       if(!res.ok)throw new Error(body.message??'Falha ao abrir transcript.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);setTab('segments');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir transcript.');}
+    finally{setBusy('');}
+  }
+
+  async function loadHistoryVersion(version:number){
+    if(!current)return;
+    setBusy('history:'+version);setMessage('');
+    try{
+      const query=new URLSearchParams({transcriptId:current.id,historyVersion:String(version)});
+      const res=await fetch('/api/transcription-engine?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar versão histórica.');
+      if(!body.historyVersion?.payload)throw new Error('Versão histórica sem payload.');
+      setDraft({...body.historyVersion.payload,updatedAt:new Date().toISOString()});
+      setTab('segments');
+      setMessage('Versão '+version+' carregada no editor. Salve para criar uma nova versão.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar versão histórica.');}
     finally{setBusy('');}
   }
 
@@ -181,7 +197,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
         <div className="transcript-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={issues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar transcript</button></div>
       </div>}
 
-      {tab==='history'&&<div className="transcript-content"><div className="transcript-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.payload.segments.length} segmentos · match {item.payload.scriptMatchScore===null?'—':Math.round(item.payload.scriptMatchScore*100)+'%'}</span><button className="button subtle small" onClick={()=>{setDraft({...item.payload,updatedAt:new Date().toISOString()});setTab('segments');setMessage('Versão '+item.version+' carregada no editor.');}}>Carregar</button></article>)}</div></div>}
+      {tab==='history'&&<div className="transcript-content"><div className="transcript-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · payload carregado somente sob demanda</span><button className="button subtle small" disabled={busy==='history:'+item.version} onClick={()=>void loadHistoryVersion(item.version)}>{busy==='history:'+item.version?'Carregando…':'Carregar'}</button></article>)}</div></div>}
     </div>;
   }
 
