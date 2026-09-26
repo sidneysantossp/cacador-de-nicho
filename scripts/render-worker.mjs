@@ -535,6 +535,290 @@ async function burnText(manifest,inputPath,assPath,outputPath,crf,payload){
   return outputPath;
 }
 
+function shifted(value,start){
+  return Math.max(0,rounded(Number(value)-Number(start)));
+}
+
+function chapterManifest(master,plan,payload){
+  const sceneIds=new Set(plan.sceneIds??[]);
+  const format=renderOutputFormat(payload,master);
+  const visualClips=master.visualClips
+    .filter(clip=>sceneIds.has(clip.sceneId))
+    .sort((a,b)=>a.startSeconds-b.startSeconds)
+    .map((clip,index,array)=>{
+      const style={...clip.style};
+      if(index===0){
+        style.transitionIn='fade';
+        style.transitionSeconds=Math.max(.15,Math.min(.3,Number(style.transitionSeconds||.25)));
+      }
+      if(index===array.length-1){
+        style.transitionOut='fade';
+        style.transitionSeconds=Math.max(.15,Math.min(.3,Number(style.transitionSeconds||.25)));
+      }
+      return {
+        ...clip,
+        startSeconds:shifted(clip.startSeconds,plan.startSeconds),
+        endSeconds:shifted(clip.endSeconds,plan.startSeconds),
+        style
+      };
+    });
+
+  const cues=(master.captions?.cues??[])
+    .filter(cue=>cue.endSeconds>plan.startSeconds&&cue.startSeconds<plan.endSeconds)
+    .map(cue=>{
+      const words=(cue.words??[])
+        .filter(word=>word.endSeconds>plan.startSeconds&&word.startSeconds<plan.endSeconds)
+        .map(word=>({
+          ...word,
+          startSeconds:shifted(Math.max(plan.startSeconds,word.startSeconds),plan.startSeconds),
+          endSeconds:shifted(Math.min(plan.endSeconds,word.endSeconds),plan.startSeconds)
+        }))
+        .filter(word=>word.endSeconds>word.startSeconds);
+      return {
+        ...cue,
+        startSeconds:shifted(Math.max(plan.startSeconds,cue.startSeconds),plan.startSeconds),
+        endSeconds:shifted(Math.min(plan.endSeconds,cue.endSeconds),plan.startSeconds),
+        text:words.length?words.map(word=>word.text).join(' '):cue.text,
+        words
+      };
+    })
+    .filter(cue=>cue.endSeconds>cue.startSeconds);
+
+  const overlays=(master.overlays??[])
+    .filter(item=>item.endSeconds>plan.startSeconds&&item.startSeconds<plan.endSeconds)
+    .map(item=>({
+      ...item,
+      startSeconds:shifted(Math.max(plan.startSeconds,item.startSeconds),plan.startSeconds),
+      endSeconds:shifted(Math.min(plan.endSeconds,item.endSeconds),plan.startSeconds)
+    }))
+    .filter(item=>item.endSeconds>item.startSeconds);
+
+  return {
+    ...master,
+    format:{...format,aspectRatio:master.format.aspectRatio},
+    durationSeconds:Number(plan.durationSeconds),
+    visualClips,
+    captions:{...master.captions,cues},
+    overlays,
+    music:null,
+    sfxEvents:[]
+  };
+}
+
+function concatEscape(value){
+  return String(value).replace(/'/g,"'\\''");
+}
+
+async function concatChapterVideos(paths,outputPath,root){
+  if(paths.length===1){
+    await copyFile(paths[0],outputPath);
+    return;
+  }
+  const listPath=path.join(root,'chapters.concat.txt');
+  await writeFile(
+    listPath,
+    paths.map(file=>"file '"+concatEscape(file)+"'").join('\n')+'\n',
+    'utf8'
+  );
+  await run(FFMPEG,[
+    '-hide_banner','-loglevel','error','-y',
+    '-f','concat','-safe','0','-i',listPath,
+    '-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',
+    outputPath
+  ]);
+}
+
+async function downloadItems(items,inputDir,paths){
+  const dedup=[...new Map(items.map(item=>[item.id,item])).values()];
+  for(let i=0;i<dedup.length;i++){
+    const item=dedup[i];
+    const ext=path.extname(item.storagePath)||'.bin';
+    const dest=path.join(inputDir,item.id+ext);
+    await downloadStorage(item.storagePath,dest);
+    paths.set(item.id,dest);
+  }
+}
+
+async function renderV4Chapter(jobId,token,job,payload,master,row,plan,chapterDir,chapterIndex,total){
+  const cachedPath=String(row.output_path??'');
+  const finalLocal=path.join(chapterDir,String(plan.sequence).padStart(3,'0')+'.mp4');
+  if(row.status==='completed'&&cachedPath){
+    try{
+      await downloadStorage(cachedPath,finalLocal);
+      return {path:finalLocal,cacheHit:true,renderSeconds:Number(row.render_seconds??0)};
+    }catch(error){
+      console.error(JSON.stringify({
+        event:'render-chapter-cache-miss',
+        jobId,chapterId:plan.id,error:safeError(error)
+      }));
+    }
+  }
+
+  const started=Date.now();
+  await updateChapter(row.id,{
+    status:'processing',progress:1,cache_hit:false,started_at:new Date().toISOString(),
+    completed_at:null,error:null,output_path:null,output_bytes:null
+  });
+
+  const chapterRoot=await mkdtemp(path.join(os.tmpdir(),'cacadores-render-chapter-'));
+  try{
+    const manifest=chapterManifest(master,plan,payload);
+    if(!manifest.visualClips.length)throw new Error('Chapter has no visual clips: '+plan.id);
+    const inputDir=path.join(chapterRoot,'inputs');
+    const segDir=path.join(chapterRoot,'segments');
+    await mkdir(inputDir,{recursive:true});
+    await mkdir(segDir,{recursive:true});
+    const paths=new Map();
+    await downloadItems(
+      manifest.visualClips.map(clip=>({id:clip.assetId,storagePath:clip.storagePath})),
+      inputDir,paths
+    );
+    await updateChapter(row.id,{progress:12});
+
+    const segmentPaths=[];
+    for(let i=0;i<manifest.visualClips.length;i++){
+      await assertActive(jobId,token);
+      const disk=renderDiskReady();
+      if(!disk.ready)throw new Error('insufficient-render-disk');
+      const clip=manifest.visualClips[i];
+      const input=paths.get(clip.assetId);
+      if(!input)throw new Error('Missing local source for '+clip.assetId);
+      const output=path.join(segDir,String(i).padStart(4,'0')+'.mp4');
+      await prepareSegment(clip,input,output,manifest,i,payload);
+      segmentPaths.push(output);
+      await updateChapter(row.id,{
+        progress:12+Math.round((i+1)/manifest.visualClips.length*55)
+      });
+      const globalProgress=5+Math.round(
+        ((chapterIndex+(i+1)/manifest.visualClips.length)/Math.max(1,total))*72
+      );
+      await heartbeat(jobId,token,globalProgress,'rendering-chapter-'+plan.sequence);
+    }
+
+    const assembled=path.join(chapterRoot,'assembled.mp4');
+    await assembleSegments(manifest,segmentPaths,assembled,payload.crf,payload);
+    await updateChapter(row.id,{progress:80});
+    const textVideo=await burnText(
+      manifest,assembled,path.join(chapterRoot,'overlays.ass'),
+      path.join(chapterRoot,'text.mp4'),payload.crf,payload
+    );
+    await copyFile(textVideo,finalLocal);
+
+    const cacheKey=[
+      'channels',job.channel_id,'episodes',job.episode_id,'render-cache','v4',
+      plan.contentHash+'.mp4'
+    ].join('/');
+    const uploaded=await uploadStorage(cacheKey,finalLocal);
+    const renderSeconds=(Date.now()-started)/1000;
+    await updateChapter(row.id,{
+      status:'completed',progress:100,cache_hit:false,
+      output_path:uploaded.path,output_bytes:uploaded.bytes,
+      render_seconds:renderSeconds,completed_at:new Date().toISOString(),error:null
+    });
+    return {path:finalLocal,cacheHit:false,renderSeconds};
+  }catch(error){
+    if(error?.code!=='RENDER_CANCELLED'){
+      await updateChapter(row.id,{
+        status:'failed',error:safeError(error),completed_at:new Date().toISOString()
+      }).catch(()=>{});
+    }
+    throw error;
+  }finally{
+    await rm(chapterRoot,{recursive:true,force:true}).catch(()=>{});
+  }
+}
+
+async function processJobV4(jobId,token,root,job,payload,manifest){
+  const wallStarted=Date.now();
+  const plans=[...(payload.chapterPlan??[])].sort((a,b)=>a.sequence-b.sequence);
+  if(!plans.length)throw new Error('render-v4 chapter plan missing');
+  let rows=await queryChapters(jobId);
+  const rowByChapter=new Map(rows.map(row=>[String(row.chapter_id),row]));
+  const chapterDir=path.join(root,'chapter-output');
+  await mkdir(chapterDir,{recursive:true});
+  const chapterPaths=[];
+  let cacheHits=0;
+  let renderedChapters=0;
+
+  await heartbeat(jobId,token,4,'preparing-chapters');
+  for(let index=0;index<plans.length;index++){
+    await assertActive(jobId,token);
+    const plan=plans[index];
+    const row=rowByChapter.get(plan.id);
+    if(!row)throw new Error('Render chapter row missing: '+plan.id);
+    const result=await renderV4Chapter(
+      jobId,token,job,payload,manifest,row,plan,chapterDir,index,plans.length
+    );
+    chapterPaths.push(result.path);
+    if(result.cacheHit)cacheHits++;
+    else renderedChapters++;
+    rows=await queryChapters(jobId);
+    const refreshed=rows.find(item=>String(item.chapter_id)===plan.id);
+    if(refreshed)rowByChapter.set(plan.id,refreshed);
+    await heartbeat(
+      jobId,token,8+Math.round((index+1)/plans.length*70),
+      result.cacheHit?'reusing-chapter-'+plan.sequence:'completed-chapter-'+plan.sequence
+    );
+  }
+
+  await assertActive(jobId,token);
+  await heartbeat(jobId,token,82,'concatenating-chapters');
+  const visualMaster=path.join(root,'visual-master.mp4');
+  await concatChapterVideos(chapterPaths,visualMaster,root);
+
+  await assertActive(jobId,token);
+  await heartbeat(jobId,token,88,'downloading-audio');
+  const inputDir=path.join(root,'audio-inputs');
+  await mkdir(inputDir,{recursive:true});
+  const audioPaths=new Map();
+  await downloadItems([
+    {id:manifest.voice.assetId,storagePath:manifest.voice.storagePath},
+    ...(manifest.music?[{id:manifest.music.assetId,storagePath:manifest.music.storagePath}]:[]),
+    ...(manifest.sfxEvents??[]).map(item=>({id:item.assetId,storagePath:item.storagePath}))
+  ],inputDir,audioPaths);
+
+  await assertActive(jobId,token);
+  await heartbeat(jobId,token,92,'mixing-master-audio');
+  const finalPath=path.join(root,'render.mp4');
+  const muxManifest={
+    ...manifest,
+    format:{...renderOutputFormat(payload,manifest),aspectRatio:manifest.format.aspectRatio}
+  };
+  await muxAudio(muxManifest,visualMaster,audioPaths,finalPath,payload);
+
+  await assertActive(jobId,token);
+  await heartbeat(jobId,token,97,'uploading-output');
+  const outputPath=[
+    'channels',job.channel_id,'episodes',job.episode_id,'renders',
+    job.video_edit_id,'v'+String(job.video_edit_version).padStart(4,'0'),
+    job.id+'.mp4'
+  ].join('/');
+  const uploadedOutput=await uploadStorage(outputPath,finalPath);
+  const wallSeconds=(Date.now()-wallStarted)/1000;
+  const finishedMinutes=Math.max(.001,Number(manifest.durationSeconds)/60);
+  const metrics={
+    wallSeconds:rounded(wallSeconds),
+    finishedMinutes:rounded(finishedMinutes),
+    secondsPerFinishedMinute:rounded(wallSeconds/finishedMinutes),
+    realTimeFactor:rounded(wallSeconds/Math.max(.001,Number(manifest.durationSeconds))),
+    cacheHits,
+    renderedChapters
+  };
+
+  await assertActive(jobId,token);
+  await updateOwned(jobId,token,{
+    status:'completed',progress:100,stage:'completed',
+    output_path:uploadedOutput.path,output_bytes:uploadedOutput.bytes,
+    payload:{...payload,metrics},
+    worker_token:null,lease_until:null,
+    completed_at:new Date().toISOString(),error:null
+  });
+  console.log(JSON.stringify({
+    event:'render-v4-completed',jobId,outputPath:uploadedOutput.path,
+    outputBytes:uploadedOutput.bytes,metrics
+  }));
+}
+
 async function muxAudio(manifest,videoPath,paths,outputPath,payload){
   const voicePath=paths.get(manifest.voice.assetId);
   if(!voicePath)throw new Error('Narration source missing.');
