@@ -419,7 +419,7 @@ async function projectFacts(job:RenderJob):Promise<{
     :null;
   const semanticWeight=semanticDiversity===null
     ?0
-    :Math.min(.45,.45*semanticCoverage);
+    :Math.min(.80,.80*semanticCoverage);
   const diversityScore=Math.max(0,Math.min(
     1,
     sourceDiversity*(1-semanticWeight)+(semanticDiversity??0)*semanticWeight
