@@ -6,8 +6,8 @@ import {
   Image as ImageIcon, Save, Sparkles, Video, Volume2
 } from 'lucide-react';
 import type {
-  ManagedChannel, ScenePlan, Timeline, TimelineChapterStatus, TimelineClip, TimelinePayload,
-  TimelineVersionSummary
+  ManagedChannel, ScenePlan, ScenePlanListItem, Timeline, TimelineChapterStatus, TimelineClip,
+  TimelineListItem, TimelinePayload, TimelineVersionSummary
 } from '@/lib/types';
 import {
   normalizeTimeline, timelineChapters, timelineHealth, timelineStructuralIssues
@@ -21,8 +21,8 @@ type Source={
   title:string;
 };
 type Tab='timeline'|'review'|'history';
-type TimelineView=Timeline&{stale?:boolean;staleReason?:string};
-type ScenePlanView=ScenePlan&{stale?:boolean;staleReason?:string};
+type TimelineView=TimelineListItem;
+type ScenePlanView=ScenePlanListItem;
 
 function time(value:number){
   const m=Math.floor(value/60);
@@ -150,7 +150,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao criar Timeline.');
-      setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
+      void load();
       setMessage(body.message??'Timeline criada.');
       await openTimeline(body.timeline.id);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar Timeline.');}
@@ -178,7 +178,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       setHistory(body.history??[]);
       setSources(body.sources??sources);
       setActiveChapterId(String(body.activeChapterId??activeChapter?.id??''));
-      setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
+      void load();
       setMessage(body.message??'Timeline salva.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar Timeline.');return false;}
@@ -254,7 +254,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       setHistory(body.history??[]);
       setSources(body.sources??[]);
       setActiveChapterId(String(body.activeChapterId??activeChapter.id));
-      setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
+      void load();
       setMessage(body.message??'Capítulo reprocessado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao reprocessar capítulo.');}
     finally{setBusy('');}
@@ -395,14 +395,12 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
 
     {eligiblePlans.length>0&&<section className="timeline-ready">
       <div className="timeline-section-head"><div><span>READY FOR TIMELINE</span><h3>Scene Plans aprovados esperando projeto de edição.</h3></div><Clapperboard size={21}/></div>
-      {eligiblePlans.map(plan=><article key={plan.id}><div><strong>Take {plan.voiceTake} · {plan.scenes.length} cenas</strong><p>{time(plan.audioDurationSeconds)} · Scene Plan v{plan.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(plan.id)}>{busy==='create:'+plan.id?'Criando…':'Criar Timeline'}</button></article>)}
+      {eligiblePlans.map(plan=><article key={plan.id}><div><strong>Take {plan.voiceTake} · {plan.sceneCount} cenas</strong><p>{time(plan.audioDurationSeconds)} · Scene Plan v{plan.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(plan.id)}>{busy==='create:'+plan.id?'Criando…':'Criar Timeline'}</button></article>)}
     </section>}
 
-    <section className="timeline-project-grid">{timelines.map(item=>{
-      const visuals=item.tracks.find(track=>track.type==='visual')?.clips??[];
-      const placeholders=visuals.filter(clip=>clip.clipKind==='placeholder').length;
-      return <article key={item.id}><div><span>{item.stale?'stale':item.status}</span><em>v{item.version}</em></div><h3>{visuals.length} cenas</h3><p>{time(item.durationSeconds)} · {item.format.width}×{item.format.height}</p><small>{item.stale?'Take de voz mudou · reconstrução necessária':placeholders?placeholders+' placeholder(s)':'mídia completa'}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTimeline(item.id)}>Abrir Timeline</button></article>;
-    })}</section>
+    <section className="timeline-project-grid">{timelines.map(item=>
+      <article key={item.id}><div><span>{item.stale?'stale':item.status}</span><em>v{item.version}</em></div><h3>{item.visualClipCount} cenas</h3><p>{time(item.durationSeconds)} · {item.width}×{item.height}</p><small>{item.stale?'Take de voz mudou · reconstrução necessária':item.placeholderCount?item.placeholderCount+' placeholder(s)':'mídia completa'}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTimeline(item.id)}>Abrir Timeline</button></article>
+    )}</section>
 
     {!timelines.length&&!eligiblePlans.length&&<div className="timeline-empty"><Clapperboard size={28}/><h3>Nenhum Scene Plan pronto para Timeline.</h3><p>A timeline nasce somente depois do Scene Timecode e Visual Prompt Engine aprovados.</p></div>}
   </div>;
