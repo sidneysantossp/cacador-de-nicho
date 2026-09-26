@@ -449,6 +449,59 @@ function validHex(value:string){
   return /^#[0-9a-f]{6}$/i.test(value);
 }
 
+export function captionQaIssues(editInput:VideoEditPayload,transcript:Transcript){
+  const edit=upgradeVideoEditPayload(editInput);
+  if(!edit.captions.enabled)return [] as string[];
+  const issues:string[]=[];
+  const style=edit.captions.style;
+  const margin=Math.max(0,Math.min(25,style.safeMarginPercent));
+  if(margin<3)issues.push('caption-safe-margin-low');
+
+  const usableWidth=Math.max(1,edit.format.width*(1-margin*2/100));
+  const approxCharacterWidth=Math.max(1,edit.captions.fontSize*.56);
+  const maxCharsPerLine=Math.max(8,Math.floor(usableWidth/approxCharacterWidth));
+  const maxWordsPerLine=Math.max(2,style.maxWordsPerLine);
+  const maxLines=Math.max(1,edit.captions.maxLines);
+  const transcriptWordIds=new Set(
+    transcript.words.filter(word=>word.type==='word').map(word=>word.id)
+  );
+
+  for(const cue of edit.captions.cues){
+    const tokens=(cue.words.length?cue.words.map(word=>word.text):cue.text.split(/\s+/))
+      .map(token=>token.trim()).filter(Boolean);
+    let lines=1,lineWords=0,lineChars=0;
+    for(const token of tokens){
+      const chars=[...token].length;
+      if(chars>maxCharsPerLine)issues.push('caption-overflow-width');
+      const nextChars=lineChars+(lineWords?1:0)+chars;
+      if(lineWords>=maxWordsPerLine||nextChars>maxCharsPerLine){
+        lines++;
+        lineWords=0;
+        lineChars=0;
+      }
+      lineChars+=(lineWords?1:0)+chars;
+      lineWords++;
+    }
+    if(lines>maxLines)issues.push('caption-overflow-lines');
+
+    const cueDuration=Math.max(0,cue.endSeconds-cue.startSeconds);
+    if(tokens.length>1&&cueDuration>0&&tokens.length/cueDuration>5.2){
+      issues.push('caption-reading-rate-high');
+    }
+    if(tokens.length>1&&cueDuration>0&&cueDuration<.45){
+      issues.push('caption-display-too-short');
+    }
+
+    if(
+      style.highlightMode==='active-word'&&
+      (!cue.words.length||cue.words.some(word=>!transcriptWordIds.has(word.id)))
+    ){
+      issues.push('caption-active-word-without-alignment');
+    }
+  }
+  return [...new Set(issues)];
+}
+
 export function videoEditStructuralIssues(
   editInput:VideoEditPayload,
   timeline:Timeline,
@@ -499,6 +552,7 @@ export function videoEditStructuralIssues(
   if(captionStyle.outlineWidth<0||captionStyle.outlineWidth>12)issues.push('caption-outline-invalid');
   if(captionStyle.maxWordsPerLine<2||captionStyle.maxWordsPerLine>20)issues.push('caption-line-length-invalid');
   if(captionStyle.safeMarginPercent<0||captionStyle.safeMarginPercent>25)issues.push('caption-safe-margin-invalid');
+  issues.push(...captionQaIssues(edit,transcript));
 
   const transcriptSegments=new Map(transcript.segments.map(segment=>[segment.id,segment]));
   if(edit.captions.enabled&&!edit.captions.cues.length)issues.push('captions-enabled-without-cues');
