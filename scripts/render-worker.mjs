@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { statfsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -9,7 +10,18 @@ const SUPABASE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
 const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const BUCKET='cacadores-media';
 const POLL_MS=Math.max(2000,Number(process.env.RENDER_WORKER_POLL_MS||5000));
+const MIN_FREE_DISK_BYTES=Math.max(4,Number(process.env.RENDER_MIN_FREE_DISK_GB||10))*1024*1024*1024;
 const LEASE_SECONDS=900;
+
+function renderDiskReady(){
+  try{
+    const fs=statfsSync(os.tmpdir());
+    const freeBytes=Number(fs.bavail)*Number(fs.bsize);
+    return {ready:freeBytes>=MIN_FREE_DISK_BYTES,freeBytes};
+  }catch(error){
+    return {ready:false,freeBytes:0,error:safeError(error)};
+  }
+}
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
 
 if(!SUPABASE_URL||!SERVICE_KEY){
@@ -713,6 +725,16 @@ async function loop(){
   console.log(JSON.stringify({event:'render-worker-started',pollMs:POLL_MS}));
   while(true){
     try{
+      const disk=renderDiskReady();
+      if(!disk.ready){
+        console.error(JSON.stringify({
+          event:'render-worker-low-disk',
+          freeGb:Math.round(disk.freeBytes/1024/1024/1024*100)/100,
+          requiredGb:Math.round(MIN_FREE_DISK_BYTES/1024/1024/1024*100)/100
+        }));
+        await sleep(Math.max(POLL_MS,30000));
+        continue;
+      }
       const token=randomUUID();
       const jobId=await rpc('claim_render_job',{
         p_worker_token:token,

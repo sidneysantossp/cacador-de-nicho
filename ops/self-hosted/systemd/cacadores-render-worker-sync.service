@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores Render Worker image synchronizer
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-render-worker-sync
+TimeoutStartSec=2min

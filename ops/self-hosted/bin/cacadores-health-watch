@@ -23,6 +23,7 @@ UNITS=(
   cacadores-auto-deploy.timer
   cacadores-episode-automation-worker-sync.timer
   cacadores-owned-visual-worker-sync.timer
+  cacadores-render-worker-sync.timer
   cacadores-verified-stock-worker-sync.timer
 )
 if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then

@@ -533,6 +533,14 @@ where r.mode='autonomous'
         and j.status in ('queued','processing')
     )
   )
+  and not (
+    r.current_step='render'
+    and exists(
+      select 1 from public.radar_render_jobs j
+      where j.episode_id=r.episode_id
+        and j.status in ('queued','processing')
+    )
+  )
 order by r.updated_at asc for update skip locked limit 1;
 if picked is null then return null;end if;
 update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
