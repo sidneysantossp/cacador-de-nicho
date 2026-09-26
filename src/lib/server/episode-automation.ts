@@ -114,10 +114,8 @@ function latest<T extends {updated_at?:string;created_at?:string}>(rows:T[]|null
 
 async function sourceSnapshot(run:EpisodeAutomationRun){
   const client=db();
-  const [
-    projectResult,scriptResult,voiceResult,transcriptResult,sceneResult,promptResult,
-    assetResult,stockJobResult,timelineResult,editResult,renderResult,qualityResult,packageResult,dnaResult
-  ]=await Promise.all([
+
+  const [projectResult,scriptResult,voiceResult,stockJobResult,dnaResult]=await Promise.all([
     client.from('radar_content_projects')
       .select('id,version,status,payload,updated_at')
       .eq('id',run.contentProjectId).maybeSingle(),
@@ -128,38 +126,11 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
       .select('id,status,selected,payload,updated_at')
       .eq('episode_id',run.episodeId).eq('selected',true)
       .order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_transcripts')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_scene_plans')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_visual_prompt_sets')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_scene_assets')
-      .select('id,scene_id,status,selected,payload,updated_at')
-      .eq('episode_id',run.episodeId).eq('selected',true),
     client.from('radar_verified_stock_jobs')
       .select('id,scene_id,status,result,last_error,updated_at')
       .eq('episode_id',run.episodeId)
       .order('updated_at',{ascending:false})
       .limit(100),
-    client.from('radar_timelines')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_video_edits')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_render_jobs')
-      .select('id,status,progress,stage,error,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('created_at',{ascending:false}).limit(1),
-    client.from('radar_production_quality_reports')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
-    client.from('radar_publication_packages')
-      .select('id,version,status,payload,updated_at')
-      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
     client.from('radar_production_dna')
       .select('id,version,payload,updated_at')
       .eq('id',run.channelId).maybeSingle()
@@ -168,7 +139,84 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
   const project=checked(projectResult);
   if(!project)throw new HttpError('Content Project do Automation Run não existe mais.',409);
 
+  const script=latest(checked(scriptResult)??[]);
+  const voice=latest(checked(voiceResult)??[]);
+
+  // Audio-first chain: every downstream artifact is resolved from the selected
+  // voice take instead of "latest by episode". This prevents an older approved
+  // transcript/timeline/render from being reused after the operator changes take.
+  const transcriptResult=voice
+    ?await client.from('radar_transcripts')
+      .select('id,version,status,payload,updated_at')
+      .eq('voice_asset_id',String(voice.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const transcript=latest(checked(transcriptResult)??[]);
+
+  const sceneResult=transcript
+    ?await client.from('radar_scene_plans')
+      .select('id,version,status,payload,updated_at')
+      .eq('transcript_id',String(transcript.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const scenePlan=latest(checked(sceneResult)??[]);
+
+  const promptResult=scenePlan
+    ?await client.from('radar_visual_prompt_sets')
+      .select('id,version,status,payload,updated_at')
+      .eq('scene_plan_id',String(scenePlan.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const promptSet=latest(checked(promptResult)??[]);
+
+  const assetResult=promptSet
+    ?await client.from('radar_scene_assets')
+      .select('id,scene_id,status,selected,payload,updated_at')
+      .eq('visual_prompt_set_id',String(promptSet.id))
+      .eq('selected',true)
+    :{data:[],error:null};
+
+  const timelineResult=scenePlan
+    ?await client.from('radar_timelines')
+      .select('id,version,status,payload,updated_at')
+      .eq('scene_plan_id',String(scenePlan.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const timeline=latest(checked(timelineResult)??[]);
+
+  const editResult=timeline
+    ?await client.from('radar_video_edits')
+      .select('id,version,status,payload,updated_at')
+      .eq('timeline_id',String(timeline.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const videoEdit=latest(checked(editResult)??[]);
+
+  const renderResult=videoEdit
+    ?await client.from('radar_render_jobs')
+      .select('id,status,progress,stage,error,payload,updated_at')
+      .eq('video_edit_id',String(videoEdit.id))
+      .eq('video_edit_version',Number(videoEdit.version))
+      .order('created_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const render=latest(checked(renderResult)??[]);
+
+  const qualityResult=render
+    ?await client.from('radar_production_quality_reports')
+      .select('id,version,status,payload,updated_at')
+      .eq('render_job_id',String(render.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const quality=latest(checked(qualityResult)??[]);
+
+  const packageResult=quality
+    ?await client.from('radar_publication_packages')
+      .select('id,version,status,payload,updated_at')
+      .eq('quality_report_id',String(quality.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
   const pkg=latest(checked(packageResult)??[]);
+
   const publishResult=pkg
     ?await client.from('radar_youtube_publish_jobs')
       .select('id,status,progress,stage,error,payload,updated_at')
@@ -178,17 +226,17 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
 
   return {
     project,
-    script:latest(checked(scriptResult)??[]),
-    voice:latest(checked(voiceResult)??[]),
-    transcript:latest(checked(transcriptResult)??[]),
-    scenePlan:latest(checked(sceneResult)??[]),
-    promptSet:latest(checked(promptResult)??[]),
+    script,
+    voice,
+    transcript,
+    scenePlan,
+    promptSet,
     assets:checked(assetResult)??[],
     stockJobs:checked(stockJobResult)??[],
-    timeline:latest(checked(timelineResult)??[]),
-    videoEdit:latest(checked(editResult)??[]),
-    render:latest(checked(renderResult)??[]),
-    quality:latest(checked(qualityResult)??[]),
+    timeline,
+    videoEdit,
+    render,
+    quality,
     package:pkg,
     publish,
     productionDna:checked(dnaResult)
