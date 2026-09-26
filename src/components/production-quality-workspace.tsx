@@ -174,6 +174,31 @@ export default function ProductionQualityWorkspace({channel}:{channel:ManagedCha
             <span>peak {report.technical.maxVolumeDb===null?'—':report.technical.maxVolumeDb.toFixed(2)+' dB'}</span>
           </div>
 
+          {report.technicalMode==='chapter-v2'&&Boolean(report.chapterTechnical?.length)&&<section className="quality-chapters">
+            <div className="quality-chapter-head">
+              <div>
+                <span>CHAPTER QA</span>
+                <strong>{report.chapterTechnical!.length} capítulo(s) analisados</strong>
+              </div>
+              <em>{report.chapterTechnical!.filter(item=>item.cacheHit).length} cache hit(s)</em>
+            </div>
+            <div className="quality-chapter-list">{report.chapterTechnical!.map(chapter=><article key={chapter.chapterId} className={chapter.decodeOk?'pass':'blocker'}>
+              <div>
+                <strong>{String(chapter.sequence).padStart(2,'0')} · {chapter.label}</strong>
+                <span>{seconds(chapter.durationSeconds)} · {chapter.cacheHit?'CACHE HIT':'ANALISADO'}</span>
+              </div>
+              <div>
+                <span>{chapter.videoCodec??'no video'} · {chapter.width??'—'}×{chapter.height??'—'} · {chapter.fps??'—'} fps</span>
+                <span>black {percent(chapter.blackRatio)}</span>
+              </div>
+              <div>
+                <b>{chapter.decodeOk?'decode ok':'decode failed'}</b>
+                <small>{chapter.analysisSeconds===null?'—':chapter.analysisSeconds.toFixed(1)+'s'}</small>
+              </div>
+              {chapter.error&&<p>{chapter.error}</p>}
+            </article>)}</div>
+          </section>}
+
           <div className="quality-check-list">{ordered.map(check=><section key={check.id} className={'quality-check '+check.status}>
             <div className="quality-check-icon">
               {check.status==='pass'?<CheckCircle2 size={17}/>:

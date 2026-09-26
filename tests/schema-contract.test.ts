@@ -36,3 +36,18 @@ test('Render-v4 schema persists chapter cache state with bounded status',()=>{
   assert.match(block,/render_seconds numeric/);
   assert.match(block,/radar_render_chapters_cache/);
 });
+
+
+test('Production QA chapter cache schema is isolated and reusable by content hash',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const start=sql.indexOf('create table if not exists public.radar_production_quality_chapters(');
+  const end=sql.indexOf('create table if not exists public.radar_production_quality_reports(',start);
+  assert.ok(start>=0&&end>start,'production quality chapter cache missing');
+  const block=sql.slice(start,end);
+  assert.match(block,/id uuid primary key default gen_random_uuid\(\)/);
+  assert.match(block,/render_job_id uuid not null references public\.radar_render_jobs\(id\) on delete cascade/);
+  assert.match(block,/content_hash text not null/);
+  assert.match(block,/technical jsonb not null/);
+  assert.match(block,/cache_hit boolean not null default false/);
+  assert.match(block,/radar_production_quality_chapters_cache/);
+});

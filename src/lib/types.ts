@@ -1711,6 +1711,25 @@ export type ProductionQualityTechnical = {
  blackRatio: number | null;
  decodeOk: boolean;
 };
+export type ProductionQualityChapterTechnical = {
+ chapterId: string;
+ sequence: number;
+ label: string;
+ contentHash: string;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ cacheHit: boolean;
+ decodeOk: boolean;
+ width: number | null;
+ height: number | null;
+ fps: number | null;
+ videoCodec: string | null;
+ blackSeconds: number | null;
+ blackRatio: number | null;
+ analysisSeconds: number | null;
+ error?: string;
+};
 export type ProductionQualityReportPayload = {
  kind: 'production-quality-report';
  id: string;
@@ -1729,6 +1748,8 @@ export type ProductionQualityReportPayload = {
   manualReview: number;
  };
  technical: ProductionQualityTechnical;
+ chapterTechnical?: ProductionQualityChapterTechnical[];
+ technicalMode?: 'master-v1' | 'chapter-v2';
  review: {
   notes: string;
   overrides: ProductionQualityCheckCode[];
