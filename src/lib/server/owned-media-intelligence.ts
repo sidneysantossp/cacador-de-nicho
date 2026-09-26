@@ -430,6 +430,27 @@ async function enrichOwnedAsset(
   return {semanticTitle,searchText};
 }
 
+async function refreshEmbeddingIndex(
+  source:AssetRow,
+  enriched:{semanticTitle:string;searchText:string},
+  segments:OwnedMediaVisualSegment[]
+){
+  try{
+    const result=await indexOwnedMediaEmbeddings({
+      assetId:source.id,
+      assetTitle:enriched.semanticTitle,
+      assetText:enriched.searchText,
+      segments:segments.map(item=>({id:item.id,title:item.title,searchText:item.searchText}))
+    });
+    return {status:'completed' as const,...result};
+  }catch(error){
+    return {
+      status:'failed' as const,
+      error:(error instanceof Error?error.message:'embedding-index-failed').slice(0,500)
+    };
+  }
+}
+
 export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMediaIntelligenceResult>{
   const analysis=checked(await db().from('radar_owned_media_visual_analysis')
     .select('asset_id,status,provider,model,asset_title,duration_seconds,payload,error,analyzed_at,created_at,updated_at')
@@ -482,7 +503,15 @@ export async function rebuildOwnedMediaVisualMetadata(assetId:string):Promise<Ow
   const assetTitle=String(analysis.asset_title??'').trim()||aggregateTitle(
     segments.map(item=>({title:item.title,semantic:item.semantic}))
   );
-  await enrichOwnedAsset(source,segments,metadata,assetTitle);
+  const enriched=await enrichOwnedAsset(source,segments,metadata,assetTitle);
+  const embedding=await refreshEmbeddingIndex(source,enriched,segments);
+  const analysisPayload=analysis.payload&&typeof analysis.payload==='object'
+    ?analysis.payload as Record<string,unknown>
+    :{};
+  checked(await db().from('radar_owned_media_visual_analysis').update({
+    payload:{...analysisPayload,stage:'completed',embedding},
+    updated_at:new Date().toISOString()
+  }).eq('asset_id',assetId));
   return loadOwnedMediaIntelligence(assetId);
 }
 
