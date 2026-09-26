@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { PublicationPackage, YouTubeConnection } from '../src/lib/types';
 import {
   buildYouTubePublishPayload, youtubePublishReadinessIssues, youtubeWatchUrl
@@ -101,4 +103,16 @@ test('YouTube watch URL safely encodes video id',()=>{
 
 test('YouTube publication worker is valid Node ESM syntax',()=>{
   execFileSync(process.execPath,['--check','scripts/youtube-publish-worker.mjs'],{stdio:'pipe'});
+});
+
+
+test('YouTube publication worker keeps large-file disk preflight and bounded upload requests',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/youtube-publish-worker.mjs'),'utf8');
+  assert.match(source,/publishDiskReady/);
+  assert.match(source,/HeadObjectCommand/);
+  assert.match(source,/YOUTUBE_PUBLISH_MIN_FREE_DISK_GB/);
+  assert.match(source,/YOUTUBE_PUBLISH_DISK_MARGIN_GB/);
+  assert.match(source,/withLeaseHeartbeat/);
+  assert.match(source,/AbortSignal\.timeout\(UPLOAD_REQUEST_TIMEOUT_MS\)/);
+  assert.match(source,/error\.code='LOW_DISK'/);
 });
