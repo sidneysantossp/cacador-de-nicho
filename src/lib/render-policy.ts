@@ -79,6 +79,8 @@ export function renderManifestIssues(
     if(clip.endSeconds<=clip.startSeconds||clip.durationSeconds<=0)issues.push('render-clip-duration-invalid');
     if(Math.abs((clip.endSeconds-clip.startSeconds)-clip.durationSeconds)>.03)issues.push('render-clip-duration-mismatch');
     if(clip.style.timelineClipId!==clip.clipId||clip.style.sceneId!==clip.sceneId)issues.push('render-style-mismatch');
+    if(clip.focusX!==undefined&&clip.focusX!==null&&(clip.focusX<0||clip.focusX>1))issues.push('render-focus-x-invalid');
+    if(clip.focusY!==undefined&&clip.focusY!==null&&(clip.focusY<0||clip.focusY>1))issues.push('render-focus-y-invalid');
     if(clip.style.scaleStart<1||clip.style.scaleEnd<1)issues.push('render-scale-below-frame');
     if(clip.style.transitionSeconds>clip.durationSeconds/2+.03)issues.push('render-transition-too-long');
     const previous=visual[index-1];
