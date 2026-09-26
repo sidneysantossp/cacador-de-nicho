@@ -252,10 +252,9 @@ async function generateElevenLabsChunk(input:{
       if(!body.audio_base64)throw new HttpError('A ElevenLabs não devolveu áudio para um trecho da narração.',502);
       const bytes=Buffer.from(body.audio_base64,'base64');
       if(!bytes.length)throw new HttpError('A ElevenLabs devolveu um trecho de áudio vazio.',502);
-      return {
-        bytes,
-        alignment:normalizeAlignment(body.normalized_alignment??body.alignment)
-      };
+      const alignment=normalizeAlignment(body.normalized_alignment??body.alignment);
+      if(!alignment)throw new HttpError('A ElevenLabs não devolveu timestamps válidos para um trecho da narração.',502);
+      return {bytes,alignment};
     }
 
     lastStatus=response.status;
@@ -538,11 +537,13 @@ export async function generateElevenLabsVoice(input:{
       if(cached?.storage_path){
         try{
           await downloadMediaToFile(cached.storage_path,filePath);
-          durationSeconds=cached.duration_seconds===null?null:Number(cached.duration_seconds);
-          alignment=cached.alignment&&typeof cached.alignment==='object'
+          const cachedAlignment=cached.alignment&&typeof cached.alignment==='object'
             ?cached.alignment as VoiceAlignment
             :undefined;
-          if(durationSeconds===null)durationSeconds=await audioDuration(filePath);
+          const probedDuration=await audioDuration(filePath);
+          if(!cachedAlignment||probedDuration===null)throw new Error('invalid-voice-chunk-cache');
+          alignment=cachedAlignment;
+          durationSeconds=probedDuration;
           cacheHit=true;
         }catch{
           cacheHit=false;
