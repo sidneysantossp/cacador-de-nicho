@@ -183,7 +183,7 @@ function clampRatio(value:number,duration:number|null){
 
 async function outputSignedUrl(job:RenderJob){
   if(!job.outputPath)throw new HttpError('O render concluído não possui output.',409);
-  const signed=await signedMediaUrl(job.outputPath,900);
+  const signed=await signedMediaUrl(job.outputPath,3600);
   if(!signed)throw new HttpError('Não foi possível abrir o MP4 privado para QA.',502);
   return signed;
 }
