@@ -72,7 +72,8 @@ export function documentaryClipStyle(
   clip:TimelineClip,
   index:number,
   total:number,
-  enabled:boolean
+  enabled:boolean,
+  transitionSeconds=.35
 ):VideoEditClipStyle{
   const base:VideoEditClipStyle={
     timelineClipId:clip.id,
@@ -118,13 +119,16 @@ export function documentaryClipStyle(
       :{motionPreset:'zoom-out',...motionPresetValues('zoom-out')};
   }
 
+  const transition=total>1
+    ?Math.max(.08,Math.min(.35,transitionSeconds,clip.durationSeconds/3))
+    :0;
   return {
     timelineClipId:clip.id,
     sceneId:clip.sceneId!,
     ...motion,
     transitionIn:index>0?'cross-dissolve':'none',
     transitionOut:index<total-1?'cross-dissolve':'none',
-    transitionSeconds:total>1?.35:0
+    transitionSeconds:transition
   };
 }
 
@@ -298,6 +302,9 @@ export function buildInitialVideoEdit(
   const now=new Date().toISOString();
   const visual=timeline.tracks.find(track=>track.type==='visual');
   const visualClips=(visual?.clips??[]).filter(clip=>clip.sceneId);
+  const transitionSeconds=visualClips.length>1
+    ?Math.min(.35,...visualClips.map(clip=>Math.max(.08,clip.durationSeconds/3)))
+    :0;
   const style=defaultCaptionStyle(dna);
   const cues=buildCaptionCues(transcript,timeline.durationSeconds,{
     maxWordsPerCaption:dna?.captions.maxWordsPerCaption??12,
@@ -316,7 +323,9 @@ export function buildInitialVideoEdit(
     format:{...timeline.format},
     durationSeconds:timeline.durationSeconds,
     clipStyles:visualClips.map((clip,index)=>
-      documentaryClipStyle(clip,index,visualClips.length,Boolean(dna?.editing.kenBurns))
+      documentaryClipStyle(
+        clip,index,visualClips.length,Boolean(dna?.editing.kenBurns),transitionSeconds
+      )
     ),
     captions:{
       enabled:dna?.captions.enabled??(cues.length>0),
