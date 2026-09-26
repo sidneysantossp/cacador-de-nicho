@@ -136,9 +136,11 @@ export async function POST(request:Request){
       return Response.json({
         message:result.status==='matched'
           ?'Source Router encontrou e selecionou uma fonte visual validada.'
-          :result.status==='operator-source-required'
-            ?'Source Router exige uma fonte documental real do operador.'
-            :'Source Router não encontrou fonte visual aprovada.',
+          :result.status==='queued'
+            ?'Source Router enfileirou a validação de vídeo real no worker dedicado.'
+            :result.status==='operator-source-required'
+              ?'Source Router exige uma fonte documental real do operador.'
+              :'Source Router não encontrou fonte visual aprovada.',
         result
       });
     }
