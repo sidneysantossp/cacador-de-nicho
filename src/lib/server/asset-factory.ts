@@ -400,8 +400,12 @@ export async function resolveOwnedMediaForScene(input:{
     }
   }
 
+  const beatQuery=(scene.visualBeats??[])
+    .flatMap(beat=>beat.queries)
+    .map(value=>value.trim())
+    .find(Boolean)??'';
   const query=libraryFirstSceneQuery({
-    visualIntent:input.query??scene.visualIntent,
+    visualIntent:input.query??beatQuery||scene.visualIntent,
     direction:visual.direction,
     prompt:visual.prompt,
     narration:scene.narration
