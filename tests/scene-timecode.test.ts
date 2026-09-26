@@ -68,6 +68,8 @@ test('Scene Timecode creates a contiguous initial timeline from transcript segme
   assert.equal(scenes[1].endSeconds,6);
   assert.deepEqual(scenes[0].transcriptSegmentIds,[transcript.segments[0].id]);
   assert.deepEqual(scenes[1].transcriptSegmentIds,[transcript.segments[1].id]);
+  assert.equal(scenes[0].visualBeats?.length,1);
+  assert.equal(scenes[0].visualBeats?.[0].narration,'First line.');
 });
 
 test('Scene Timecode normalization resequences scenes and recalculates duration',()=>{
