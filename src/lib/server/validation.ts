@@ -452,6 +452,12 @@ export const visualPromptSetPayloadSchema=z.object({
  productionDnaVersion:z.number().int().min(1).max(100000),
  styleLock:z.string().trim().max(16000),
  workflowStage:z.enum(['references','scenes','complete']),
+ aiPlanning:z.object({
+  completedScenes:z.number().int().min(0).max(100000),
+  totalScenes:z.number().int().min(0).max(100000),
+  batchSize:z.number().int().min(1).max(40),
+  updatedAt:z.string().datetime()
+ }).strict().optional(),
  characterReferences:z.array(z.object({
   characterId:z.string().trim().min(1).max(120),
   refName:z.string().trim().regex(/^#[A-Za-z][A-Za-z0-9]*$/).max(120),

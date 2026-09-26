@@ -87,7 +87,9 @@ export async function POST(request:Request){
       message:body.action==='create'
         ?'Visual Prompt Set criado.'
         :body.action==='generate'
-          ?'Direções visuais atualizadas sem alterar os timecodes.'
+          ?promptSet.aiPlanning
+            ?'Planejamento visual IA: '+promptSet.aiPlanning.completedScenes+'/'+promptSet.aiPlanning.totalScenes+' cenas concluídas.'
+            :'Direções visuais atualizadas sem alterar os timecodes.'
           :body.status==='approved'
             ?'Visual Prompt Set aprovado.'
             :'Visual Prompt Set salvo.',

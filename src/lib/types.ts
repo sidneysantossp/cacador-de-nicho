@@ -1126,6 +1126,12 @@ export type VisualPromptSetPayload = {
  productionDnaVersion: number;
  styleLock: string;
  workflowStage: 'references' | 'scenes' | 'complete';
+ aiPlanning?: {
+  completedScenes: number;
+  totalScenes: number;
+  batchSize: number;
+  updatedAt: string;
+ };
  characterReferences: VisualCharacterReference[];
  scenePrompts: VisualScenePrompt[];
  review: {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { ProductionDNA, ScenePlan } from '../src/lib/types';
 import {
   buildInitialVisualPromptSet, compileScenePrompt, recurringCharacterIds,
-  visualPromptIssues, visualTimecodeLabel
+  visualPromptIssues, visualPromptPlanningBatch, visualTimecodeLabel
 } from '../src/lib/visual-prompt-policy';
 
 const now='2026-09-23T21:00:00.000Z';
@@ -83,7 +83,9 @@ test('Initial visual prompt set creates one prompt per scene and one recurring r
   assert.equal(set.characterReferences.length,1);
   assert.equal(set.characterReferences[0].characterId,'grug');
   assert.equal(set.characterReferences[0].refName,'#Grug');
-  assert.equal(set.workflowStage,'references');
+  assert.equal(set.workflowStage,'scenes');
+  assert.equal(set.aiPlanning?.completedScenes,0);
+  assert.equal(set.aiPlanning?.totalScenes,plan.scenes.length);
 });
 
 test('Scene prompts use @Name only for recurring characters and append style lock literally',()=>{
@@ -134,4 +136,30 @@ test('Visual approval detects missing or extra scene prompts',()=>{
   const issues=visualPromptIssues(set,plan,dna,true);
   assert.ok(issues.includes('scene-prompt-count-mismatch'));
   assert.ok(issues.includes('missing-scene-prompt'));
+});
+
+
+test('Planning batches resume from the saved scene cursor and stay bounded at 40',()=>{
+  const first=visualPromptPlanningBatch({totalScenes:600,completedScenes:0,batchSize:40});
+  assert.deepEqual(
+    {start:first.startIndex,end:first.endIndex,count:first.count,remaining:first.remaining,done:first.done},
+    {start:0,end:40,count:40,remaining:560,done:false}
+  );
+  const ninth=visualPromptPlanningBatch({totalScenes:600,completedScenes:320,batchSize:80});
+  assert.equal(ninth.batchSize,40);
+  assert.equal(ninth.startIndex,320);
+  assert.equal(ninth.endIndex,360);
+  const last=visualPromptPlanningBatch({totalScenes:600,completedScenes:590,batchSize:40});
+  assert.equal(last.count,10);
+  assert.equal(last.endIndex,600);
+  assert.equal(last.done,true);
+});
+
+test('Visual approval blocks while resumable AI planning is incomplete',()=>{
+  const set=buildInitialVisualPromptSet(plan,dna);
+  set.characterReferences.forEach(ref=>{ref.assetReady=true;});
+  const issues=visualPromptIssues(set,plan,dna,true);
+  assert.ok(issues.includes('ai-planning-incomplete'));
+  set.aiPlanning={completedScenes:plan.scenes.length,totalScenes:plan.scenes.length,batchSize:40,updatedAt:now};
+  assert.equal(visualPromptIssues(set,plan,dna,true).includes('ai-planning-incomplete'),false);
 });

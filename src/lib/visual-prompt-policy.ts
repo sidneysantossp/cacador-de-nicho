@@ -16,6 +16,27 @@ export function visualTimecodeLabel(seconds:number){
   return '#'+minutes+'-'+String(secs).padStart(2,'0');
 }
 
+export function visualPromptPlanningBatch(input:{
+  totalScenes:number;
+  completedScenes:number;
+  batchSize:number;
+}){
+  const total=Math.max(0,Math.floor(input.totalScenes));
+  const completed=Math.max(0,Math.min(total,Math.floor(input.completedScenes)));
+  const batchSize=Math.max(1,Math.min(40,Math.floor(input.batchSize)||40));
+  const end=Math.min(total,completed+batchSize);
+  return {
+    totalScenes:total,
+    completedScenes:completed,
+    batchSize,
+    startIndex:completed,
+    endIndex:end,
+    count:Math.max(0,end-completed),
+    remaining:Math.max(0,total-end),
+    done:end>=total
+  };
+}
+
 export function recurringCharacterIds(
   scenes:Array<Pick<VisualScenePrompt,'sceneId'|'characterIds'>>
 ){
@@ -136,7 +157,13 @@ export function buildInitialVisualPromptSet(
     scenePlanVersion:plan.version,
     productionDnaVersion:dna.version,
     styleLock:dna.visual.basePrompt.trim(),
-    workflowStage:references.length?'references':'scenes',
+    workflowStage:'scenes',
+    aiPlanning:{
+      completedScenes:0,
+      totalScenes:plan.scenes.length,
+      batchSize:40,
+      updatedAt:now
+    },
     characterReferences:references,
     scenePrompts,
     review:{notes:''},
@@ -175,6 +202,9 @@ export function visualPromptIssues(
   if(payload.scenePlanVersion!==plan.version)issues.push('stale-scene-plan-version');
   if(payload.productionDnaVersion!==dna.version)issues.push('stale-production-dna-version');
   if(payload.styleLock!==dna.visual.basePrompt.trim())issues.push('style-lock-changed');
+  if(payload.aiPlanning&&payload.aiPlanning.completedScenes<plan.scenes.length){
+    issues.push('ai-planning-incomplete');
+  }
   if(payload.scenePrompts.length!==plan.scenes.length)issues.push('scene-prompt-count-mismatch');
 
   for(const scene of plan.scenes){

@@ -215,7 +215,9 @@ export default function VisualPromptEngineWorkspace({channel}:{channel:ManagedCh
       </section>}
 
       {tab==='references'&&<div className="visual-prompt-content">
-        <section className="visual-ai-box"><div><Sparkles size={22}/><div><strong>Visual Planner</strong><p>Analisa todas as cenas sem mudar timecodes e sugere personagens conhecidos, enquadramento e direção visual.</p></div></div><button className="button subtle" disabled={!!busy} onClick={()=>void generate()}>{busy==='generate'?'Planejando…':'Sugerir com IA'}</button></section>
+        <section className="visual-ai-box"><div><Sparkles size={22}/><div><strong>Visual Planner</strong><p>{draft.aiPlanning
+          ?'Planejamento IA '+draft.aiPlanning.completedScenes+'/'+draft.aiPlanning.totalScenes+' cenas · lotes de até '+draft.aiPlanning.batchSize+'. O progresso é salvo a cada lote.'
+          :'Analisa as cenas sem mudar timecodes e salva progresso em lotes recuperáveis.'}</p></div></div><button className="button subtle" disabled={!!busy||Boolean(draft.aiPlanning&&draft.aiPlanning.completedScenes>=draft.aiPlanning.totalScenes)} onClick={()=>void generate()}>{busy==='generate'?'Planejando lote…':draft.aiPlanning&&draft.aiPlanning.completedScenes>=draft.aiPlanning.totalScenes?'Planejamento concluído':'Gerar próximo lote'}</button></section>
 
         {!draft.characterReferences.length&&<div className="visual-no-refs"><CheckCircle2 size={24}/><h3>Nenhuma referência recorrente necessária.</h3><p>O fluxo pode seguir diretamente para os prompts das cenas.</p><button className="button primary small" onClick={()=>setTab('scenes')}>Abrir Scene Prompts</button></div>}
 
