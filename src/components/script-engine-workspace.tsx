@@ -206,6 +206,16 @@ export default function ScriptEngineWorkspace({channel}:{channel:ManagedChannel}
       </section>
 
       {message&&<div className="script-engine-message"><CheckCircle2 size={15}/>{message}</div>}
+      {draft.generation?.stage==='sections'&&<section className="script-generation-progress">
+        <div>
+          <span>LONG-FORM SCRIPT GENERATION</span>
+          <strong>{draft.generation.completedSections}/{draft.generation.totalSections} seções · {draft.wordCount}/{draft.generation.targetWords} palavras</strong>
+          <p>O outline já está salvo. Cada avanço gera somente a próxima seção e preserva as anteriores. {dirty?'Salve suas alterações antes de continuar a IA.':''}</p>
+        </div>
+        <button className="button primary" disabled={!!busy||dirty} onClick={()=>void generate(draft.contentProjectId)}>
+          <Sparkles size={15}/>{busy==='generate:'+draft.contentProjectId?'Gerando seção…':'Gerar próxima seção'}
+        </button>
+      </section>}
       {draft.factCheckWarnings.length>0&&<div className="script-engine-warning"><CircleAlert size={17}/><div><strong>Fact-check warnings</strong>{draft.factCheckWarnings.map(item=><span key={item}>{item}</span>)}</div></div>}
 
       <nav className="script-engine-tabs">
