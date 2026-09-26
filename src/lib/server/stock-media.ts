@@ -168,6 +168,7 @@ function wikimediaResult(page:WikimediaPage):StockMediaResult|null{
   const license=wikimediaField(info,'LicenseShortName')||'Wikimedia Commons reusable media';
   const title=plainMetadata(wikimediaField(info,'ImageDescription'))||
     String(page.title??'Wikimedia Commons image').replace(/^File:/i,'');
+  const sourceDate=wikimediaField(info,'DateTimeOriginal');
   return {
     provider:'wikimedia',
     providerAssetId:String(page.pageid),
@@ -179,6 +180,7 @@ function wikimediaResult(page:WikimediaPage):StockMediaResult|null{
     width:Number(info.width)||null,
     height:Number(info.height)||null,
     durationSeconds:null,
+    sourceDate:sourceDate||undefined,
     licenseLabel:license,
     attributionLabel:creator+' · '+license+' · Wikimedia Commons'
   };
@@ -190,7 +192,7 @@ async function wikimediaPages(params:URLSearchParams){
   params.set('formatversion','2');
   params.set('prop','imageinfo');
   params.set('iiprop','url|size|mime|thumbmime|extmetadata');
-  params.set('iiextmetadatafilter','LicenseShortName|LicenseUrl|UsageTerms|Artist|Attribution|AttributionRequired|Copyrighted|NonFree|ImageDescription');
+  params.set('iiextmetadatafilter','LicenseShortName|LicenseUrl|UsageTerms|Artist|Attribution|AttributionRequired|Copyrighted|NonFree|ImageDescription|DateTimeOriginal');
   let response:Response;
   try{
     response=await fetch('https://commons.wikimedia.org/w/api.php?'+params,{
@@ -398,7 +400,7 @@ export async function importStockMedia(input:{
       :'O Unsplash está disponível apenas para imagens.',400);
   }
 
-  let pageUrl='',creatorName='',creatorUrl:string|undefined,downloadUrl='',mimeType='',width:number|null=null,height:number|null=null,duration:number|null=null,attribution='',licenseLabel='',licenseUrl='';
+  let pageUrl='',creatorName='',creatorUrl:string|undefined,downloadUrl='',mimeType='',width:number|null=null,height:number|null=null,duration:number|null=null,sourceDate:string|undefined,attribution='',licenseLabel='',licenseUrl='';
 
   if(input.provider==='pexels'){
     const key=await providerSecret('pexels');
@@ -475,6 +477,7 @@ export async function importStockMedia(input:{
     creatorName=wikimediaField(info,'Attribution')||wikimediaField(info,'Artist')||'Wikimedia Commons contributor';
     licenseLabel=wikimediaField(info,'LicenseShortName')||'Wikimedia Commons reusable media';
     licenseUrl=wikimediaField(info,'LicenseUrl')||WIKIMEDIA_REUSE;
+    sourceDate=wikimediaField(info,'DateTimeOriginal')||undefined;
     attribution=creatorName+' · '+licenseLabel+' · Wikimedia Commons';
   }else{
     const config=parseVecteezyConfig(await providerSecret('vecteezy'));
@@ -535,6 +538,7 @@ export async function importStockMedia(input:{
     mimeType:actualMime,
     width,height,durationSeconds:duration,
     pageUrl,creatorName,creatorUrl,attributionLabel:attribution,
+    sourceDate,
     licenseLabel,licenseUrl,
     selectIfNone:input.selectIfNone
   });
@@ -636,6 +640,7 @@ async function cloneCachedStockToScene(input:{
     creatorName:String(stock.creatorName??(input.provider+' contributor')),
     creatorUrl:stock.creatorUrl?String(stock.creatorUrl):undefined,
     attributionLabel:String(stock.attributionLabel??''),
+    sourceDate:stock.sourceDate?String(stock.sourceDate):undefined,
     licenseLabel:String(license.label??'Licensed stock'),
     licenseUrl:String(license.sourceUrl??''),
     selectIfNone:false

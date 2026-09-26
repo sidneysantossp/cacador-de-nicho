@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
-import { sourceRouteForScene } from '../src/lib/source-router-policy';
+import {
+  archiveTemporalEvidence, sourceRouteForScene
+} from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
   return {
@@ -84,4 +86,47 @@ test('Archive routes never fall back to modern stock or synthetic media',()=>{
   assert.equal(route.actions.includes('generated-image'),false);
   assert.equal(route.syntheticAllowed,false);
   assert.equal(route.actions.at(-1),'manual-archive');
+});
+
+
+test('Archive temporal provenance rejects modern photographs for a dated historical beat',()=>{
+  const result=archiveTemporalEvidence({
+    query:'Church Hill Tunnel Richmond 1925 historical photograph',
+    sourceDate:'1981-06-01',
+    title:'Church Hill Tunnel East Entrance 1981'
+  });
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,'archive-date-mismatch');
+  assert.deepEqual(result.expectedYears,['1925']);
+  assert.deepEqual(result.observedYears,['1981']);
+});
+
+test('Archive temporal provenance accepts media explicitly dated to the requested year',()=>{
+  const result=archiveTemporalEvidence({
+    query:'Church Hill Tunnel Richmond 1925 historical photograph',
+    sourceDate:'1925-10-02',
+    title:'Church Hill Tunnel collapse'
+  });
+  assert.equal(result.ok,true);
+  assert.equal(result.reason,null);
+});
+
+test('Archive temporal provenance rejects undated evidence when the beat requires an explicit year',()=>{
+  const result=archiveTemporalEvidence({
+    query:'Church Hill Tunnel Richmond 1925 historical photograph',
+    sourceDate:'',
+    title:'Church Hill Tunnel East Entrance'
+  });
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,'archive-date-missing');
+});
+
+test('Archive temporal provenance does not require a date for undated archive queries',()=>{
+  const result=archiveTemporalEvidence({
+    query:'Church Hill Tunnel Richmond historical photograph',
+    sourceDate:'',
+    title:'Church Hill Tunnel East Entrance'
+  });
+  assert.equal(result.ok,true);
+  assert.equal(result.required,false);
 });

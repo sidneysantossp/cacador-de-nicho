@@ -104,3 +104,33 @@ export function sourceRouteForScene(scene:SceneTimecode):SourceRoutePlan{
     rationale:'Legacy scene without an explicit source preference.'
   };
 }
+
+
+export function sourceYears(value:string){
+  return [...new Set(value.match(/\b(?:18|19|20)\d{2}\b/g)??[])];
+}
+
+export function archiveTemporalEvidence(input:{
+  query:string;
+  sourceDate?:string|null;
+  title?:string|null;
+}){
+  const expectedYears=sourceYears(input.query);
+  if(!expectedYears.length){
+    return {ok:true,required:false,expectedYears,observedYears:[] as string[],reason:null as string|null};
+  }
+  const observedYears=sourceYears(
+    [input.sourceDate??'',input.title??''].filter(Boolean).join(' ')
+  );
+  if(!observedYears.length){
+    return {
+      ok:false,required:true,expectedYears,observedYears,
+      reason:'archive-date-missing'
+    };
+  }
+  const ok=expectedYears.some(year=>observedYears.includes(year));
+  return {
+    ok,required:true,expectedYears,observedYears,
+    reason:ok?null:'archive-date-mismatch'
+  };
+}

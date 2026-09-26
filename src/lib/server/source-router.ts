@@ -16,7 +16,9 @@ import {
   enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
 } from './verified-stock-jobs';
 import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
-import { sourceRouteForScene, type SourceRouteAction } from '@/lib/source-router-policy';
+import {
+  archiveTemporalEvidence, sourceRouteForScene, type SourceRouteAction
+} from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 
 type ImageVerification={
@@ -121,6 +123,7 @@ async function resolveStillCandidates(input:{
   query:string;
   provider:StockMediaProvider;
   minimumRelevance:number;
+  requireTemporalProvenance?:boolean;
 }){
   const discovered=await searchStockMedia({
     promptSetId:input.promptSetId,
@@ -141,6 +144,25 @@ async function resolveStillCandidates(input:{
   for(const candidate of ranked){
     let asset:SceneAsset|null=null;
     try{
+      if(input.requireTemporalProvenance){
+        const temporal=archiveTemporalEvidence({
+          query:input.query,
+          sourceDate:candidate.result.sourceDate,
+          title:candidate.result.title
+        });
+        if(!temporal.ok){
+          attempts.push({
+            provider:input.provider,
+            providerAssetId:candidate.result.providerAssetId,
+            stage:'temporal-provenance',
+            sourceDate:candidate.result.sourceDate??null,
+            title:candidate.result.title,
+            ...temporal
+          });
+          continue;
+        }
+      }
+
       asset=await importStockMedia({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
@@ -213,7 +235,8 @@ export async function resolveSourceForScene(input:{
         sceneId:input.sceneId,
         query:route.query,
         provider:'wikimedia',
-        minimumRelevance:.46
+        minimumRelevance:.46,
+        requireTemporalProvenance:true
       });
       attempts.push({action,status:result.status,details:result.attempts});
       if(result.status==='matched')return {status:'matched' as const,route,action,result,attempts};
