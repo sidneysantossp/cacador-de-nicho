@@ -405,7 +405,7 @@ export async function resolveOwnedMediaForScene(input:{
     .map(value=>value.trim())
     .find(Boolean)??'';
   const query=libraryFirstSceneQuery({
-    visualIntent:input.query??beatQuery||scene.visualIntent,
+    visualIntent:input.query??(beatQuery||scene.visualIntent),
     direction:visual.direction,
     prompt:visual.prompt,
     narration:scene.narration
