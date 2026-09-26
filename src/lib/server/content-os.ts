@@ -5,6 +5,7 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadChannelBrain } from './channel-brain';
 import { loadNarrativeBundle } from './narrative';
+import { loadProductionDna } from './production-dna';
 import { contentProjectReadiness, contentProjectStage } from '@/lib/content-os-policy';
 
 function normalizeProject(row:{
@@ -71,9 +72,14 @@ export async function saveContentProject(
   const episode=bundle.episodes.find(item=>item.id===payload.episodeId);
   if(!episode)throw new HttpError('Episódio não encontrado para este canal.',404);
 
-  const brain=await loadChannelBrain(payload.channelId);
+  const [brain,productionDna]=await Promise.all([
+    loadChannelBrain(payload.channelId),
+    loadProductionDna(payload.channelId)
+  ]);
   if(payload.approval.status==='approved'){
-    const readiness=contentProjectReadiness(payload,episode,bundle.concepts,brain);
+    const readiness=contentProjectReadiness(
+      payload,episode,bundle.concepts,brain,productionDna?.research??{}
+    );
     if(!readiness.ready){
       throw new HttpError(`Content Project ainda não pode ser aprovado: ${readiness.blockers.join(' · ')}.`,409);
     }
