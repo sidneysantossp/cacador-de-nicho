@@ -940,6 +940,22 @@ export type TranscriptVersionSummary = {
  status: Transcript['status'];
  createdAt: string;
 };
+export type TranscriptListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scriptId: string;
+ voiceAssetId: string;
+ version: number;
+ sourceType: Transcript['sourceType'];
+ status: Transcript['status'];
+ segmentCount: number;
+ scriptMatchScore: number | null;
+ scriptVersion: number;
+ voiceTake: number;
+ createdAt: string;
+ updatedAt: string;
+};
 export type SceneAssetMode = 'image' | 'video' | 'stock' | 'mixed' | 'none';
 export type VisualBeatType = 'literal' | 'contextual' | 'atmosphere' | 'map' | 'document' | 'archive' | 'illustration' | 'generated';
 export type VisualBeatSourcePreference =
@@ -1027,6 +1043,24 @@ export type ScenePlanVersionSummary = {
  status: ScenePlan['status'];
  createdAt: string;
 };
+export type ScenePlanListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scriptId: string;
+ voiceAssetId: string;
+ transcriptId: string;
+ version: number;
+ status: ScenePlan['status'];
+ transcriptVersion: number;
+ voiceTake: number;
+ audioDurationSeconds: number;
+ sceneCount: number;
+ stale?: boolean;
+ staleReason?: 'voice-take-changed';
+ createdAt: string;
+ updatedAt: string;
+};
 export type VisualCharacterReference = {
  characterId: string;
  refName: string;
@@ -1077,6 +1111,21 @@ export type VisualPromptSetVersionSummary = {
  version: number;
  status: VisualPromptSet['status'];
  createdAt: string;
+};
+export type VisualPromptSetListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scenePlanId: string;
+ version: number;
+ status: VisualPromptSet['status'];
+ scenePlanVersion: number;
+ productionDnaVersion: number;
+ workflowStage: VisualPromptSetPayload['workflowStage'];
+ scenePromptCount: number;
+ characterReferenceCount: number;
+ createdAt: string;
+ updatedAt: string;
 };
 export type SceneAssetKind = 'image' | 'video' | 'graphic';
 export type SceneAssetSource = 'generated' | 'uploaded' | 'stock' | 'owned';
@@ -1384,6 +1433,26 @@ export type TimelineVersionSummary = {
  status: Timeline['status'];
  createdAt: string;
 };
+export type TimelineListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ scenePlanId: string;
+ scriptId: string;
+ voiceAssetId: string;
+ visualPromptSetId: string;
+ version: number;
+ status: Timeline['status'];
+ durationSeconds: number;
+ width: number;
+ height: number;
+ visualClipCount: number;
+ placeholderCount: number;
+ stale?: boolean;
+ staleReason?: 'voice-take-changed';
+ createdAt: string;
+ updatedAt: string;
+};
 export type VideoEditTransition = 'none' | 'fade' | 'cross-dissolve';
 export type VideoEditMotionPreset = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'custom';
 export type VideoEditClipStyle = {
@@ -1541,6 +1610,21 @@ export type VideoEditVersionSummary = {
  version: number;
  status: VideoEdit['status'];
  createdAt: string;
+};
+export type VideoEditListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ timelineId: string;
+ transcriptId: string;
+ version: number;
+ status: VideoEdit['status'];
+ durationSeconds: number;
+ clipStyleCount: number;
+ captionCount: number;
+ overlayCount: number;
+ createdAt: string;
+ updatedAt: string;
 };
 export type RenderJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type RenderManifestVisualClip = {
