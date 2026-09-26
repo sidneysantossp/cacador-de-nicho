@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  VisualPromptSet, VisualPromptSetPayload, VisualPromptSetVersion, VisualPromptSetVersionSummary
+  VisualPromptSet, VisualPromptSetListItem, VisualPromptSetPayload, VisualPromptSetVersion, VisualPromptSetVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -33,13 +33,28 @@ function normalizeRow(row:{
   };
 }
 
-export async function listVisualPromptSets(channelId:string):Promise<VisualPromptSet[]>{
-  const rows=checked(await db().from('radar_visual_prompt_sets')
-    .select('id,channel_id,episode_id,scene_plan_id,version,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;scene_plan_id:string;version:number;
+  status:VisualPromptSet['status'];scene_plan_version:number|string;production_dna_version:number|string;
+  workflow_stage:VisualPromptSetPayload['workflowStage'];scene_prompt_count:number|string;
+  character_reference_count:number|string;created_at:string;updated_at:string;
+}):VisualPromptSetListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,scenePlanId:row.scene_plan_id,
+    version:Number(row.version),status:row.status,scenePlanVersion:Number(row.scene_plan_version),
+    productionDnaVersion:Number(row.production_dna_version),workflowStage:row.workflow_stage,
+    scenePromptCount:Number(row.scene_prompt_count),characterReferenceCount:Number(row.character_reference_count),
+    createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function listVisualPromptSets(channelId:string):Promise<VisualPromptSetListItem[]>{
+  const rows=checked(await db().from('radar_visual_prompt_set_list')
+    .select('id,channel_id,episode_id,scene_plan_id,version,status,scene_plan_version,production_dna_version,workflow_stage,scene_prompt_count,character_reference_count,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(200));
-  return (rows??[]).map(row=>normalizeRow(row as never));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadVisualPromptSet(setId:string):Promise<VisualPromptSet|null>{

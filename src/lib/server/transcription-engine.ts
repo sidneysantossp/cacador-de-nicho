@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { EpisodeScript, Transcript, TranscriptPayload, TranscriptVersion, TranscriptVersionSummary, VoiceAsset } from '@/lib/types';
+import type { EpisodeScript, Transcript, TranscriptListItem, TranscriptPayload, TranscriptVersion, TranscriptVersionSummary, VoiceAsset } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadEpisodeScript } from './episode-script';
@@ -32,22 +32,37 @@ function normalizeRow(row:{
   };
 }
 
-export async function listTranscripts(scriptId:string):Promise<Transcript[]>{
-  const rows=checked(await db().from('radar_transcripts')
-    .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;script_id:string;voice_asset_id:string;
+  version:number;source_type:Transcript['sourceType'];status:Transcript['status'];
+  segment_count:number|string;script_match_score:number|string|null;
+  script_version:number|string;voice_take:number|string;created_at:string;updated_at:string;
+}):TranscriptListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,scriptId:row.script_id,
+    voiceAssetId:row.voice_asset_id,version:Number(row.version),sourceType:row.source_type,
+    status:row.status,segmentCount:Number(row.segment_count),scriptMatchScore:row.script_match_score===null?null:Number(row.script_match_score),
+    scriptVersion:Number(row.script_version),voiceTake:Number(row.voice_take),
+    createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function listTranscripts(scriptId:string):Promise<TranscriptListItem[]>{
+  const rows=checked(await db().from('radar_transcript_list')
+    .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,segment_count,script_match_score,script_version,voice_take,created_at,updated_at')
     .eq('script_id',scriptId)
     .order('updated_at',{ascending:false})
     .limit(100));
-  return (rows??[]).map(row=>normalizeRow(row as never));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
-export async function listTranscriptsByChannel(channelId:string):Promise<Transcript[]>{
-  const rows=checked(await db().from('radar_transcripts')
-    .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,payload,created_at,updated_at')
+export async function listTranscriptsByChannel(channelId:string):Promise<TranscriptListItem[]>{
+  const rows=checked(await db().from('radar_transcript_list')
+    .select('id,channel_id,episode_id,script_id,voice_asset_id,version,source_type,status,segment_count,script_match_score,script_version,voice_take,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(300));
-  return (rows??[]).map(row=>normalizeRow(row as never));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadTranscript(transcriptId:string):Promise<Transcript|null>{

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  ScenePlan, Timeline, TimelinePayload, TimelineVersion, TimelineVersionSummary, VoiceAsset,
+  ScenePlan, Timeline, TimelineListItem, TimelinePayload, TimelineVersion, TimelineVersionSummary, VoiceAsset,
   VisualPromptSet
 } from '@/lib/types';
 import { checked, db } from './db';
@@ -59,13 +59,28 @@ function normalizeRow(row:Row):Timeline{
   };
 }
 
-export async function listTimelines(channelId:string):Promise<Timeline[]>{
-  const rows=checked(await db().from('radar_timelines')
-    .select('id,channel_id,episode_id,scene_plan_id,script_id,voice_asset_id,visual_prompt_set_id,version,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;scene_plan_id:string;script_id:string;
+  voice_asset_id:string;visual_prompt_set_id:string;version:number;status:Timeline['status'];
+  duration_seconds:number|string;width:number|string;height:number|string;
+  visual_clip_count:number|string;placeholder_count:number|string;created_at:string;updated_at:string;
+}):TimelineListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,scenePlanId:row.scene_plan_id,
+    scriptId:row.script_id,voiceAssetId:row.voice_asset_id,visualPromptSetId:row.visual_prompt_set_id,
+    version:Number(row.version),status:row.status,durationSeconds:Number(row.duration_seconds),
+    width:Number(row.width),height:Number(row.height),visualClipCount:Number(row.visual_clip_count),
+    placeholderCount:Number(row.placeholder_count),createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function listTimelines(channelId:string):Promise<TimelineListItem[]>{
+  const rows=checked(await db().from('radar_timeline_list')
+    .select('id,channel_id,episode_id,scene_plan_id,script_id,voice_asset_id,visual_prompt_set_id,version,status,duration_seconds,width,height,visual_clip_count,placeholder_count,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(200));
-  return (rows??[]).map(row=>normalizeRow(row as Row));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadTimeline(timelineId:string):Promise<Timeline|null>{

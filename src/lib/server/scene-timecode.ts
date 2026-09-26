@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  ScenePlan, ScenePlanPayload, ScenePlanVersion, ScenePlanVersionSummary
+  ScenePlan, ScenePlanListItem, ScenePlanPayload, ScenePlanVersion, ScenePlanVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -36,13 +36,28 @@ function normalizeRow(row:{
   };
 }
 
-export async function listScenePlans(channelId:string):Promise<ScenePlan[]>{
-  const rows=checked(await db().from('radar_scene_plans')
-    .select('id,channel_id,episode_id,script_id,voice_asset_id,transcript_id,version,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;script_id:string;voice_asset_id:string;
+  transcript_id:string;version:number;status:ScenePlan['status'];transcript_version:number|string;
+  voice_take:number|string;audio_duration_seconds:number|string;scene_count:number|string;
+  created_at:string;updated_at:string;
+}):ScenePlanListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,scriptId:row.script_id,
+    voiceAssetId:row.voice_asset_id,transcriptId:row.transcript_id,version:Number(row.version),
+    status:row.status,transcriptVersion:Number(row.transcript_version),voiceTake:Number(row.voice_take),
+    audioDurationSeconds:Number(row.audio_duration_seconds),sceneCount:Number(row.scene_count),
+    createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function listScenePlans(channelId:string):Promise<ScenePlanListItem[]>{
+  const rows=checked(await db().from('radar_scene_plan_list')
+    .select('id,channel_id,episode_id,script_id,voice_asset_id,transcript_id,version,status,transcript_version,voice_take,audio_duration_seconds,scene_count,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(200));
-  return (rows??[]).map(row=>normalizeRow(row as never));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadScenePlan(planId:string):Promise<ScenePlan|null>{

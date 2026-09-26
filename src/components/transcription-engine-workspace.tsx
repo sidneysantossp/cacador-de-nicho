@@ -6,7 +6,7 @@ import {
   RefreshCw, Save, Sparkles, Trash2, Upload
 } from 'lucide-react';
 import type {
-  EpisodeScript, ManagedChannel, Transcript, TranscriptPayload,
+  EpisodeScript, ManagedChannel, Transcript, TranscriptListItem, TranscriptPayload,
   TranscriptSegment, TranscriptVersionSummary, VoiceAsset
 } from '@/lib/types';
 import { formatTranscriptTimestamp, normalizeTranscriptPayload, transcriptApprovalIssues } from '@/lib/transcript-policy';
@@ -25,7 +25,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
   const [scriptId,setScriptId]=useState('');
   const [assets,setAssets]=useState<VoiceAssetView[]>([]);
   const [assetId,setAssetId]=useState('');
-  const [transcripts,setTranscripts]=useState<Transcript[]>([]);
+  const [transcripts,setTranscripts]=useState<TranscriptListItem[]>([]);
   const [current,setCurrent]=useState<Transcript|null>(null);
   const [draft,setDraft]=useState<TranscriptPayload|null>(null);
   const [history,setHistory]=useState<TranscriptVersionSummary[]>([]);
@@ -142,7 +142,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao criar transcript.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);setTab('segments');
+      void loadScriptData(scriptId);setTab('segments');
       setMessage(body.message??'Transcript criado.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar transcript.');}
     finally{setBusy('');}
@@ -157,7 +157,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao importar transcrição.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);setTab('segments');
+      void loadScriptData(scriptId);setTab('segments');
       setFile(null);setMessage(body.message??'Transcrição importada.');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao importar transcrição.');}
     finally{setBusy('');}
@@ -176,7 +176,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao salvar transcript.');
       setCurrent(body.transcript);setDraft(payloadOnly(body.transcript));setHistory(body.history??[]);
-      setTranscripts(prev=>[body.transcript,...prev.filter(item=>item.id!==body.transcript.id)]);
+      void loadScriptData(scriptId);
       setMessage(body.message??'Transcript salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar transcript.');return false;}
@@ -259,7 +259,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       <section className="transcript-list">
         <div className="transcript-section-head"><div><span>TRANSCRIPTS</span><h3>Versões temporais por take.</h3></div><span>{transcripts.length}</span></div>
         {!transcripts.length&&<div className="transcript-empty-inline">Nenhum transcript criado para este roteiro.</div>}
-        {transcripts.map(item=><article key={item.id}><div><span>{item.sourceType}</span><strong>Take {item.voiceTake} · {item.status}</strong><small>{item.segments.length} segmentos · match {item.scriptMatchScore===null?'—':Math.round(item.scriptMatchScore*100)+'%'}</small></div><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTranscript(item.id)}>Abrir transcript</button></article>)}
+        {transcripts.map(item=><article key={item.id}><div><span>{item.sourceType}</span><strong>Take {item.voiceTake} · {item.status}</strong><small>{item.segmentCount} segmentos · match {item.scriptMatchScore===null?'—':Math.round(item.scriptMatchScore*100)+'%'}</small></div><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTranscript(item.id)}>Abrir transcript</button></article>)}
       </section>
     </>}
   </div>;

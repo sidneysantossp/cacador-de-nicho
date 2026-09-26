@@ -6,8 +6,9 @@ import {
   History, Layers3, Pause, Play, Plus, Save, Sparkles, Trash2, Volume2
 } from 'lucide-react';
 import type {
-  AudioLibraryAsset, ManagedChannel, Timeline, Transcript, VideoEdit, VideoEditClipStyle,
-  VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload, VideoEditSfxEvent, VideoEditVersionSummary
+  AudioLibraryAsset, ManagedChannel, Timeline, TimelineListItem, Transcript, VideoEdit,
+  VideoEditClipStyle, VideoEditListItem, VideoEditMotionPreset, VideoEditOverlay, VideoEditPayload,
+  VideoEditSfxEvent, VideoEditVersionSummary
 } from '@/lib/types';
 import {
   motionPresetValues, normalizeVideoEdit, suggestSfxEvents,
@@ -37,8 +38,8 @@ function comparable(value:VideoEditPayload){
 }
 
 export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel}){
-  const [edits,setEdits]=useState<VideoEdit[]>([]);
-  const [timelines,setTimelines]=useState<Timeline[]>([]);
+  const [edits,setEdits]=useState<VideoEditListItem[]>([]);
+  const [timelines,setTimelines]=useState<TimelineListItem[]>([]);
   const [current,setCurrent]=useState<VideoEdit|null>(null);
   const [draft,setDraft]=useState<VideoEditPayload|null>(null);
   const [timeline,setTimeline]=useState<Timeline|null>(null);
@@ -197,9 +198,9 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao criar Video Edit.');
-      setEdits(prev=>[body.videoEdit,...prev.filter(item=>item.id!==body.videoEdit.id)]);
       setMessage(body.message??'Video Edit criado.');
       await openEdit(body.videoEdit.id);
+      void load();
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao criar Video Edit.');}
     finally{setBusy('');}
   }
@@ -223,7 +224,7 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
       setAudioAssets(body.audioAssets??[]);
       setHistory(body.history??[]);
       setActiveChapterId(String(body.activeChapterId??activeChapter?.id??''));
-      setEdits(prev=>[body.videoEdit,...prev.filter(item=>item.id!==body.videoEdit.id)]);
+      void load();
       setMessage(body.message??'Video Edit salvo.');
       return true;
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao salvar Video Edit.');return false;}
@@ -535,10 +536,10 @@ export default function VideoEditorWorkspace({channel}:{channel:ManagedChannel})
 
     {eligibleTimelines.length>0&&<section className="video-ready">
       <div className="video-section-head"><div><span>READY TO EDIT</span><h3>Timelines aprovadas esperando edição.</h3></div><Clapperboard size={21}/></div>
-      {eligibleTimelines.map(item=><article key={item.id}><div><strong>{time(item.durationSeconds)} · {item.format.width}×{item.format.height}</strong><p>Timeline v{item.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Abrir no editor'}</button></article>)}
+      {eligibleTimelines.map(item=><article key={item.id}><div><strong>{time(item.durationSeconds)} · {item.width}×{item.height}</strong><p>Timeline v{item.version}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Abrir no editor'}</button></article>)}
     </section>}
 
-    <section className="video-project-grid">{edits.map(item=><article key={item.id}><div><span>{item.status}</span><em>v{item.version}</em></div><h3>{item.clipStyles.length} clips</h3><p>{time(item.durationSeconds)} · {item.captions.cues.length} captions</p><small>{item.overlays.length} overlay(s)</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openEdit(item.id)}>Editar projeto</button></article>)}</section>
+    <section className="video-project-grid">{edits.map(item=><article key={item.id}><div><span>{item.status}</span><em>v{item.version}</em></div><h3>{item.clipStyleCount} clips</h3><p>{time(item.durationSeconds)} · {item.captionCount} captions</p><small>{item.overlayCount} overlay(s)</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openEdit(item.id)}>Editar projeto</button></article>)}</section>
 
     {!edits.length&&!eligibleTimelines.length&&<div className="video-editor-empty"><Clapperboard size={28}/><h3>Nenhuma Timeline aprovada pronta.</h3><p>Finalize e aprove uma Timeline antes de iniciar a edição.</p></div>}
   </div>;
