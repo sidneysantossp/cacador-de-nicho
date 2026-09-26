@@ -1067,6 +1067,11 @@ async function executeAutomationTransition(
           ' · estratégia '+String(routed.action)+
           ' · preferência '+String(routed.route.preference)+'.';
       }
+      if(routed.status==='queued'){
+        return 'Source Router enfileirou validação de '+String(routed.action)+
+          ' para '+target.timecodeLabel+
+          ' · job '+String(routed.job.id)+'.';
+      }
       if(routed.status==='operator-source-required'){
         throw new HttpError(
           'Source Router pausou '+target.timecodeLabel+
