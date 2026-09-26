@@ -200,6 +200,51 @@ $;
 revoke all on function public.owned_media_embedding_similarity(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.owned_media_embedding_similarity(uuid,uuid) to service_role;
 
+create or replace function public.owned_media_diversity_metrics(
+  p_segment_ids uuid[]
+) returns table(
+  embedded_clip_count int,
+  pair_count int,
+  mean_similarity double precision,
+  max_similarity double precision,
+  semantic_diversity double precision
+)
+language sql stable security invoker
+set search_path=public,extensions
+as $
+  with requested as (
+    select segment_id,ordinality::int as ord
+    from unnest(coalesce(p_segment_ids,'{}'::uuid[])) with ordinality as item(segment_id,ordinality)
+  ),
+  embedded as (
+    select requested.ord,requested.segment_id,e.embedding
+    from requested
+    join public.radar_owned_media_embeddings e
+      on e.resource_type='segment'
+     and e.resource_id=requested.segment_id
+  ),
+  pairs as (
+    select greatest(
+      0::double precision,
+      least(1::double precision,1-(left_embedding.embedding <=> right_embedding.embedding))
+    ) as similarity
+    from embedded left_embedding
+    join embedded right_embedding on left_embedding.ord<right_embedding.ord
+  )
+  select
+    (select count(*)::int from embedded),
+    count(*)::int,
+    coalesce(avg(similarity),0::double precision),
+    coalesce(max(similarity),0::double precision),
+    case
+      when count(*)=0 then 1::double precision
+      else greatest(0::double precision,least(1::double precision,1-avg(similarity)))
+    end
+  from pairs;
+$;
+revoke all on function public.owned_media_diversity_metrics(uuid[]) from public,anon,authenticated;
+grant execute on function public.owned_media_diversity_metrics(uuid[]) to service_role;
+
 create or replace function public.owned_media_embedding_similarity(
   p_left_segment uuid,
   p_right_segment uuid
