@@ -5,8 +5,8 @@ import type {
 } from '../src/lib/types';
 import {
   buildCaptionCues, buildInitialVideoEdit, captionQaIssues, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
-  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload, videoEditChapterCaptions,
-  videoEditChapterClips, videoEditorChapters,
+  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload, videoEditorChapterCaptions,
+  videoEditorChapterClips, videoEditorChapters,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
 } from '../src/lib/video-editor-policy';
@@ -423,13 +423,13 @@ test('Video Editor scopes clips and captions to the active long-form chapter',()
   const chapters=videoEditorChapters(chaptered);
   assert.equal(chapters.length,2);
 
-  const firstClips=videoEditChapterClips(chaptered,chapters[0].id);
-  const secondClips=videoEditChapterClips(chaptered,chapters[1].id);
+  const firstClips=videoEditorChapterClips(chaptered,chapters[0].id);
+  const secondClips=videoEditorChapterClips(chaptered,chapters[1].id);
   assert.deepEqual(firstClips.map(clip=>clip.sceneId),['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
   assert.deepEqual(secondClips.map(clip=>clip.sceneId),['cccccccc-cccc-4ccc-8ccc-cccccccccccc']);
 
-  const firstCaptions=videoEditChapterCaptions(value,chaptered,chapters[0].id);
-  const secondCaptions=videoEditChapterCaptions(value,chaptered,chapters[1].id);
+  const firstCaptions=videoEditorChapterCaptions(value,chaptered,chapters[0].id);
+  const secondCaptions=videoEditorChapterCaptions(value,chaptered,chapters[1].id);
   assert.equal(firstCaptions.length,1);
   assert.equal(secondCaptions.length,1);
   assert.equal(firstCaptions[0].text,'First line.');
@@ -454,7 +454,7 @@ test('Video Editor falls back to the first chapter for missing chapter id',()=>{
       }
     ]
   } as Timeline;
-  const scoped=videoEditChapterClips(chaptered,'00000000-0000-4000-8000-000000000000');
+  const scoped=videoEditorChapterClips(chaptered,'00000000-0000-4000-8000-000000000000');
   assert.equal(scoped.length,1);
   assert.equal(scoped[0].sceneId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 });
