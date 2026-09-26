@@ -25,8 +25,9 @@ function firstBeat(scene:SceneTimecode):VisualBeat|null{
 }
 
 function firstQuery(scene:SceneTimecode,beat:VisualBeat|null){
+  const beatQuery=beat?.queries.find(value=>value.trim())?.trim()??'';
   return (
-    beat?.queries.find(value=>value.trim())??
+    beatQuery||
     scene.visualIntent.trim()||
     scene.promptDirection.trim()||
     scene.narration.trim()
