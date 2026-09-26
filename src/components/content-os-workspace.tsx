@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import type {
   ChannelBrain, ChannelEpisode, ContentFactCheck, ContentProject, ContentProjectPayload,
-  ContentProjectVersion, ContentResearchPack, ContentResearchSource, ManagedChannel, NarrativeBundle
+  ContentProjectVersion, ContentResearchPack, ContentResearchSource, ManagedChannel, NarrativeBundle,
+  ProductionDNA
 } from '@/lib/types';
 import { contentProjectReadiness } from '@/lib/content-os-policy';
 
@@ -46,6 +47,7 @@ function blankProject(channel:ManagedChannel,episode:ChannelEpisode):ContentProj
 
 export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChannel;brain:ChannelBrain|null}){
   const [bundle,setBundle]=useState<NarrativeBundle>(emptyBundle);
+  const [productionDna,setProductionDna]=useState<ProductionDNA|null>(null);
   const [projects,setProjects]=useState<ContentProject[]>([]);
   const [selectedId,setSelectedId]=useState('');
   const [current,setCurrent]=useState<ContentProject|null>(null);
@@ -92,21 +94,27 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
   const [visualNotes,setVisualNotes]=useState('');
   const [factClaim,setFactClaim]=useState('');
   const [factStatus,setFactStatus]=useState<ContentFactCheck['status']>('unverified');
+  const [factClaimType,setFactClaimType]=useState<NonNullable<ContentFactCheck['claimType']>>('fact');
+  const [factNarrationRule,setFactNarrationRule]=useState<NonNullable<ContentFactCheck['narrationRule']>>('assert');
   const [factNotes,setFactNotes]=useState('');
   const [factSourceIds,setFactSourceIds]=useState<string[]>([]);
 
   async function reload(){
     setLoading(true);setMessage('');
     try{
-      const [narrativeRes,projectsRes]=await Promise.all([
+      const [narrativeRes,projectsRes,dnaRes]=await Promise.all([
         fetch(`/api/narrative?channelId=${encodeURIComponent(channel.id)}`,{cache:'no-store'}),
-        fetch(`/api/content-os?channelId=${encodeURIComponent(channel.id)}`,{cache:'no-store'})
+        fetch(`/api/content-os?channelId=${encodeURIComponent(channel.id)}`,{cache:'no-store'}),
+        fetch(`/api/production-dna?channelId=${encodeURIComponent(channel.id)}`,{cache:'no-store'})
       ]);
       const narrativeBody=await narrativeRes.json().catch(()=>({}));
       const projectsBody=await projectsRes.json().catch(()=>({}));
+      const dnaBody=await dnaRes.json().catch(()=>({}));
       if(!narrativeRes.ok)throw new Error(narrativeBody.message??'Falha ao carregar episódios.');
       if(!projectsRes.ok)throw new Error(projectsBody.message??'Falha ao carregar Content OS.');
+      if(!dnaRes.ok)throw new Error(dnaBody.message??'Falha ao carregar Production DNA.');
       setBundle(narrativeBody);
+      setProductionDna(dnaBody.dna??null);
       setProjects(projectsBody.projects??[]);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar Content OS.');}
     finally{setLoading(false);}
@@ -128,7 +136,9 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
   const plannedEpisodeIds=useMemo(()=>new Set(projects.map(item=>item.episodeId)),[projects]);
   const unplannedEpisodes=useMemo(()=>bundle.episodes.filter(item=>!plannedEpisodeIds.has(item.id)),[bundle.episodes,plannedEpisodeIds]);
   const selectedEpisode=useMemo(()=>draft?bundle.episodes.find(item=>item.id===draft.episodeId)??null:null,[draft,bundle.episodes]);
-  const readiness=useMemo(()=>draft&&selectedEpisode?contentProjectReadiness(draft,selectedEpisode,bundle.concepts,brain):null,[draft,selectedEpisode,bundle.concepts,brain]);
+  const readiness=useMemo(()=>draft&&selectedEpisode
+    ?contentProjectReadiness(draft,selectedEpisode,bundle.concepts,brain,productionDna?.research??{})
+    :null,[draft,selectedEpisode,bundle.concepts,brain,productionDna]);
   const dirty=useMemo(()=>draft&&current?JSON.stringify(draft)!==JSON.stringify(payloadOnly(current)):!!draft,[draft,current]);
   const researchPack=draft?.research.pack??blankResearchPack();
 
@@ -255,9 +265,13 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
 
   function addFactCheck(){
     if(!draft||!factClaim.trim())return;
-    const fact:ContentFactCheck={id:crypto.randomUUID(),claim:factClaim.trim(),status:factStatus,sourceIds:factSourceIds,notes:factNotes.trim()};
+    const fact:ContentFactCheck={
+      id:crypto.randomUUID(),claim:factClaim.trim(),status:factStatus,
+      claimType:factClaimType,narrationRule:factNarrationRule,
+      sourceIds:factSourceIds,notes:factNotes.trim()
+    };
     setDraft({...draft,research:{...draft.research,factChecks:[...draft.research.factChecks,fact]}});
-    setFactClaim('');setFactStatus('unverified');setFactNotes('');setFactSourceIds([]);
+    setFactClaim('');setFactStatus('unverified');setFactClaimType('fact');setFactNarrationRule('assert');setFactNotes('');setFactSourceIds([]);
   }
 
   async function approve(){
@@ -287,6 +301,8 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
         <div><strong>{readiness?.narrative.missingConcepts.length??0}</strong><small>pré-requisitos narrativos faltando</small></div>
         <div><strong>{readiness?.researchPackSourceErrors.length??0}</strong><small>referências quebradas no Research Pack</small></div>
         <div><strong>{readiness?.weakFactCheckEvidence.length??0}</strong><small>fact-checks sem evidência forte</small></div>
+        <div><strong>{readiness?.missingClaimMetadata.length??0}</strong><small>claims sem tipo/regra narrativa</small></div>
+        <div><strong>{readiness?.invalidNarrationRules.length??0}</strong><small>claims com regra narrativa inválida</small></div>
         <div><strong>{readiness?.unknownVisualRights.length??0}</strong><small>leads visuais com direitos desconhecidos</small></div>
       </section>
 
@@ -389,12 +405,14 @@ export default function ContentOsWorkspace({channel,brain}:{channel:ManagedChann
           <TextField label="CLAIM" value={factClaim} onChange={setFactClaim} rows={4}/>
           <div className="content-os-grid two">
             <Field label="Status"><select value={factStatus} onChange={e=>setFactStatus(e.target.value as ContentFactCheck['status'])}><option value="unverified">Não verificado</option><option value="supported">Sustentado</option><option value="needs-review">Precisa revisão</option><option value="contradicted">Contraditório</option></select></Field>
+            <Field label="Tipo de claim"><select value={factClaimType} onChange={e=>setFactClaimType(e.target.value as NonNullable<ContentFactCheck['claimType']>)}><option value="fact">Fato</option><option value="estimate">Estimativa</option><option value="allegation">Alegação</option><option value="folklore">Folclore / lenda</option></select></Field>
+            <Field label="Regra narrativa"><select value={factNarrationRule} onChange={e=>setFactNarrationRule(e.target.value as NonNullable<ContentFactCheck['narrationRule']>)}><option value="assert">Afirmar como fato</option><option value="qualify">Qualificar incerteza</option><option value="attribute">Atribuir à fonte</option><option value="exclude">Não narrar</option></select></Field>
             <TextField label="NOTAS" value={factNotes} onChange={setFactNotes} rows={4}/>
           </div>
           <div className="content-os-source-checks"><span>FONTES QUE SUSTENTAM O CLAIM</span>{draft.research.sources.map(source=><label key={source.id}><input type="checkbox" checked={factSourceIds.includes(source.id)} onChange={e=>setFactSourceIds(prev=>e.target.checked?[...prev,source.id]:prev.filter(id=>id!==source.id))}/>{source.title}</label>)}</div>
           <button className="button subtle" onClick={addFactCheck}><Plus size={15}/>Adicionar fact-check</button>
         </section>
-        <div className="content-os-fact-list">{draft.research.factChecks.map(item=><article key={item.id} className={item.status}><div><span>{item.status}</span><strong>{item.claim}</strong><p>{item.notes||'Sem notas.'}</p><small>{item.sourceIds.length} fonte(s) vinculada(s)</small></div><button className="icon-button" onClick={()=>setDraft({...draft,research:{...draft.research,factChecks:draft.research.factChecks.filter(x=>x.id!==item.id)}})}><Trash2 size={15}/></button></article>)}</div>
+        <div className="content-os-fact-list">{draft.research.factChecks.map(item=><article key={item.id} className={item.status}><div><span>{item.status} · {item.claimType??'legacy'} · {item.narrationRule??'sem regra'}</span><strong>{item.claim}</strong><p>{item.notes||'Sem notas.'}</p><small>{item.sourceIds.length} fonte(s) vinculada(s)</small></div><button className="icon-button" onClick={()=>setDraft({...draft,research:{...draft.research,factChecks:draft.research.factChecks.filter(x=>x.id!==item.id)}})}><Trash2 size={15}/></button></article>)}</div>
       </div>}
 
       {tab==='approval'&&<div className="content-os-content">
