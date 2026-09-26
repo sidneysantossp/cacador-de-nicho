@@ -5,7 +5,8 @@ import type {
 } from '../src/lib/types';
 import {
   buildCaptionCues, buildInitialVideoEdit, captionQaIssues, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
-  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload,
+  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload, videoEditChapterCaptions,
+  videoEditChapterClips, videoEditorChapters,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
 } from '../src/lib/video-editor-policy';
@@ -397,4 +398,63 @@ test('Active-word captions require real word-level alignment',()=>{
     })))
   } as Transcript;
   assert.equal(captionQaIssues(value,aligned).includes('caption-active-word-without-alignment'),false);
+});
+
+
+test('Video Editor scopes clips and captions to the active long-form chapter',()=>{
+  const chaptered={
+    ...timeline,
+    chapters:[
+      {
+        id:'71111111-1111-4111-8111-111111111111',sequence:1,label:'Chapter 01',
+        startSeconds:0,endSeconds:3,durationSeconds:3,
+        sceneIds:['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+        status:'approved' as const,reviewNotes:'',updatedAt:now
+      },
+      {
+        id:'72222222-2222-4222-8222-222222222222',sequence:2,label:'Chapter 02',
+        startSeconds:3,endSeconds:6,durationSeconds:3,
+        sceneIds:['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+        status:'approved' as const,reviewNotes:'',updatedAt:now
+      }
+    ]
+  } as Timeline;
+  const value=buildInitialVideoEdit(chaptered,transcript,dna);
+  const chapters=videoEditorChapters(chaptered);
+  assert.equal(chapters.length,2);
+
+  const firstClips=videoEditChapterClips(chaptered,chapters[0].id);
+  const secondClips=videoEditChapterClips(chaptered,chapters[1].id);
+  assert.deepEqual(firstClips.map(clip=>clip.sceneId),['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
+  assert.deepEqual(secondClips.map(clip=>clip.sceneId),['cccccccc-cccc-4ccc-8ccc-cccccccccccc']);
+
+  const firstCaptions=videoEditChapterCaptions(value,chaptered,chapters[0].id);
+  const secondCaptions=videoEditChapterCaptions(value,chaptered,chapters[1].id);
+  assert.equal(firstCaptions.length,1);
+  assert.equal(secondCaptions.length,1);
+  assert.equal(firstCaptions[0].text,'First line.');
+  assert.equal(secondCaptions[0].text,'Second line.');
+});
+
+test('Video Editor falls back to the first chapter for missing chapter id',()=>{
+  const chaptered={
+    ...timeline,
+    chapters:[
+      {
+        id:'73333333-3333-4333-8333-333333333333',sequence:1,label:'Chapter 01',
+        startSeconds:0,endSeconds:3,durationSeconds:3,
+        sceneIds:['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+        status:'draft' as const,reviewNotes:'',updatedAt:now
+      },
+      {
+        id:'74444444-4444-4444-8444-444444444444',sequence:2,label:'Chapter 02',
+        startSeconds:3,endSeconds:6,durationSeconds:3,
+        sceneIds:['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+        status:'draft' as const,reviewNotes:'',updatedAt:now
+      }
+    ]
+  } as Timeline;
+  const scoped=videoEditChapterClips(chaptered,'00000000-0000-4000-8000-000000000000');
+  assert.equal(scoped.length,1);
+  assert.equal(scoped[0].sceneId,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 });
