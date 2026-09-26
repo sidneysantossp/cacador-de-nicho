@@ -501,57 +501,129 @@ export async function generateElevenLabsVoice(input:{
   if(!voiceId)throw new HttpError('Selecione uma voz ElevenLabs antes de gerar a narração.',400);
 
   const modelId=(input.modelId??'eleven_flash_v2_5').trim();
-  const limit=voiceModelCharacterLimits[modelId as keyof typeof voiceModelCharacterLimits];
-  if(!limit)throw new HttpError('Modelo ElevenLabs não suportado pelo Voice Engine.',400);
-  if(script.content.length>limit){
-    throw new HttpError('O roteiro tem '+script.content.length+' caracteres e excede o limite de '+limit+' deste modelo. Escolha um modelo com limite maior ou divida a produção.',409);
+  const issues=voiceGenerationIssues(script.content.length,modelId);
+  if(issues.includes('unsupported-model'))throw new HttpError('Modelo ElevenLabs não suportado pelo Voice Engine.',400);
+  if(issues.includes('empty-script'))throw new HttpError('O roteiro aprovado está vazio.',409);
+  if(issues.includes('text-too-long')){
+    throw new HttpError(
+      'O roteiro tem '+script.content.length+' caracteres e excede o limite long-form de '+
+      maxLongFormVoiceCharacters+' caracteres por take.',
+      413
+    );
   }
+
+  const chunks=splitVoiceText(script.content,modelId);
+  if(!chunks.length)throw new HttpError('Não foi possível dividir o roteiro para geração de voz.',409);
 
   const key=await providerSecret('elevenlabs');
-  let response:Response;
+  const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-voice-'));
+  const files:string[]=[];
+  const alignmentParts:Array<{alignment:VoiceAlignment;offsetSeconds:number}>=[];
+  const generationChunks:VoiceGenerationChunkSummary[]=[];
+  let offsetSeconds=0;
+
   try{
-    response=await fetch(
-      'https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voiceId)+'/with-timestamps?output_format=mp3_44100_128',
-      {
-        method:'POST',
-        headers:{'xi-api-key':key,'Content-Type':'application/json'},
-        body:JSON.stringify({text:script.content,model_id:modelId}),
-        signal:AbortSignal.timeout(180000),
-        cache:'no-store'
+    for(const chunk of chunks){
+      const cacheKey=voiceChunkCacheKey({
+        voiceId,
+        modelId,
+        text:chunk.text,
+        previousText:chunk.previousText,
+        nextText:chunk.nextText
+      });
+      const filePath=path.join(root,'chunk-'+String(chunk.index).padStart(3,'0')+'.mp3');
+      let durationSeconds:number|null=null;
+      let alignment:VoiceAlignment|undefined;
+      let cacheHit=false;
+
+      const cached=await cachedVoiceChunk(cacheKey);
+      if(cached?.storage_path){
+        try{
+          await downloadMediaToFile(cached.storage_path,filePath);
+          durationSeconds=cached.duration_seconds===null?null:Number(cached.duration_seconds);
+          alignment=cached.alignment&&typeof cached.alignment==='object'
+            ?cached.alignment as VoiceAlignment
+            :undefined;
+          if(durationSeconds===null)durationSeconds=await audioDuration(filePath);
+          cacheHit=true;
+        }catch{
+          cacheHit=false;
+        }
       }
-    );
-  }catch{
-    throw new HttpError('A ElevenLabs excedeu o tempo de geração da narração.',504);
+
+      if(!cacheHit){
+        const generated=await generateElevenLabsChunk({
+          key,
+          voiceId,
+          modelId,
+          text:chunk.text,
+          previousText:chunk.previousText,
+          nextText:chunk.nextText
+        });
+        if(generated.bytes.length>MAX_AUDIO_BYTES){
+          throw new HttpError('Um trecho gerado excedeu o limite de áudio do Voice Engine.',413);
+        }
+        await writeFile(filePath,generated.bytes);
+        alignment=generated.alignment;
+        durationSeconds=await audioDuration(filePath)??durationFromAlignment(alignment);
+        if(durationSeconds===null||durationSeconds<=0){
+          throw new HttpError('Não foi possível determinar a duração de um trecho gerado.',502);
+        }
+        await persistVoiceChunk({
+          script,
+          cacheKey,
+          index:chunk.index,
+          count:chunks.length,
+          text:chunk.text,
+          voiceId,
+          modelId,
+          bytes:generated.bytes,
+          durationSeconds,
+          alignment
+        });
+      }
+
+      if(durationSeconds===null||durationSeconds<=0){
+        throw new HttpError('O cache de voz contém um trecho sem duração válida.',502);
+      }
+      files.push(filePath);
+      if(alignment)alignmentParts.push({alignment,offsetSeconds});
+      generationChunks.push({
+        index:chunk.index,
+        characterCount:chunk.characterCount,
+        durationSeconds:Number(durationSeconds.toFixed(6)),
+        cacheHit
+      });
+      offsetSeconds+=durationSeconds;
+    }
+
+    const outputPath=path.join(root,'stitched.mp3');
+    await stitchMp3Files(files,outputPath,root);
+    const bytes=await readFile(outputPath);
+    if(!bytes.length)throw new HttpError('O stitching da narração gerou um áudio vazio.',502);
+    if(bytes.length>MAX_AUDIO_BYTES)throw new HttpError('O áudio final excede o limite de 100 MB.',413);
+
+    const finalDuration=await audioDuration(outputPath)??offsetSeconds;
+    const alignment=alignmentParts.length===chunks.length
+      ?mergeVoiceAlignments(alignmentParts)
+      :undefined;
+    const metadata={
+      scriptVersion:script.version,
+      scriptWordCount:script.wordCount,
+      textHash:textHash(script.content),
+      modelId,
+      voiceId,
+      voiceName:(input.voiceName??dna?.voice.voiceName??'').trim()||undefined,
+      durationSeconds:Number(finalDuration.toFixed(6)),
+      characterCount:script.content.length,
+      generationChunks,
+      alignment
+    };
+    const reservation=await reserveAsset(script,'generated','elevenlabs','audio/mpeg',null,metadata);
+    return persistAudio(script,reservation,bytes,'audio/mpeg',null,metadata);
+  }finally{
+    await rm(root,{recursive:true,force:true}).catch(()=>{});
   }
-
-  if(!response.ok){
-    const body=await response.text().catch(()=>'');
-    if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
-    if(response.status===429)throw new HttpError('A ElevenLabs atingiu o limite de uso ou créditos da conta.',429);
-    if(response.status===422)throw new HttpError('A ElevenLabs recusou a voz, o modelo ou o texto enviados.',422);
-    throw new HttpError('A ElevenLabs falhou ao gerar a narração'+(body?' ('+body.slice(0,180)+')':'')+'.',502);
-  }
-
-  const body=await response.json() as ElevenTtsResponse;
-  if(!body.audio_base64)throw new HttpError('A ElevenLabs não devolveu áudio para esta geração.',502);
-  const bytes=Buffer.from(body.audio_base64,'base64');
-  if(!bytes.length)throw new HttpError('A ElevenLabs devolveu um áudio vazio.',502);
-  if(bytes.length>MAX_AUDIO_BYTES)throw new HttpError('O áudio gerado excede o limite de 100 MB.',413);
-
-  const alignment=normalizeAlignment(body.normalized_alignment??body.alignment);
-  const metadata={
-    scriptVersion:script.version,
-    scriptWordCount:script.wordCount,
-    textHash:textHash(script.content),
-    modelId,
-    voiceId,
-    voiceName:(input.voiceName??dna?.voice.voiceName??'').trim()||undefined,
-    durationSeconds:durationFromAlignment(alignment),
-    characterCount:script.content.length,
-    alignment
-  };
-  const reservation=await reserveAsset(script,'generated','elevenlabs','audio/mpeg',null,metadata);
-  return persistAudio(script,reservation,bytes,'audio/mpeg',null,metadata);
 }
 
 export async function selectVoiceAsset(scriptId:string,assetId:string){
