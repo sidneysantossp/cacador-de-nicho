@@ -223,3 +223,20 @@ test('Timeline asset gate rejects a voice take that is no longer selected',()=>{
   });
   assert.ok(issues.includes('voice-not-selected'));
 });
+
+
+test('Timeline preserves documentary still dimensions and focus metadata',()=>{
+  const focusedAssets=[
+    {...assets[0],sourceWidth:2400,sourceHeight:1600,focusX:.22,focusY:.38},
+    assets[1]
+  ];
+  const t=buildInitialTimeline({
+    scenePlan,productionDna:dna,visualPromptSet:promptSet,visualAssets:focusedAssets,voiceAsset:voice
+  });
+  const clip=t.tracks.find(track=>track.type==='visual')!.clips[0];
+  assert.equal(clip.clipKind,'image');
+  assert.equal(clip.sourceWidth,2400);
+  assert.equal(clip.sourceHeight,1600);
+  assert.equal(clip.focusX,.22);
+  assert.equal(clip.focusY,.38);
+});
