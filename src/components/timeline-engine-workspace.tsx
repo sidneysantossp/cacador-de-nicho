@@ -96,7 +96,15 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       setScenePlan(body.scenePlan??null);
       setSources(body.sources??[]);
       setHistory(body.history??[]);
-      setSelectedClipId(body.timeline.tracks.find((track:Timeline['tracks'][number])=>track.type==='visual')?.clips[0]?.id??'');
+      const opened=body.timeline as Timeline;
+      const openedChapters=timelineChapters(opened);
+      const chapterId=String(body.activeChapterId??openedChapters[0]?.id??'');
+      setActiveChapterId(chapterId);
+      const chapter=openedChapters.find(item=>item.id===chapterId)??openedChapters[0];
+      const sceneIds=new Set(chapter?.sceneIds??[]);
+      setSelectedClipId(opened.tracks.find((track:Timeline['tracks'][number])=>track.type==='visual')?.clips.find(
+        (clip:TimelineClip)=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId))
+      )?.id??'');
       setTab('timeline');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir Timeline.');}
     finally{setBusy('');}
@@ -127,14 +135,19 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       const res=await fetch('/api/timeline-engine',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'save',expectedVersion:current?.version??0,status,timeline:normalized})
+        body:JSON.stringify({
+          action:'save',expectedVersion:current?.version??0,status,
+          chapterId:activeChapter?.id,
+          timeline:normalized
+        })
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao salvar Timeline.');
       setCurrent(body.timeline);
       setDraft(payloadOnly(body.timeline));
       setHistory(body.history??[]);
-      setSources(body.sources??[]);
+      setSources(body.sources??sources);
+      setActiveChapterId(String(body.activeChapterId??activeChapter?.id??''));
       setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
       setMessage(body.message??'Timeline salva.');
       return true;
@@ -152,12 +165,77 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     });
   }
 
+  function updateChapterStatus(status:TimelineChapterStatus){
+    if(!activeChapter)return;
+    setDraft(prev=>{
+      if(!prev)return prev;
+      const now=new Date().toISOString();
+      return normalizeTimeline({
+        ...prev,
+        chapters:timelineChapters(prev).map(chapter=>chapter.id===activeChapter.id
+          ?{...chapter,status,updatedAt:now}
+          :chapter)
+      });
+    });
+  }
+
+  async function openChapter(chapterId:string){
+    if(!current||chapterId===activeChapterId)return;
+    setBusy('chapter:'+chapterId);setMessage('');
+    try{
+      const res=await fetch(
+        '/api/timeline-engine?timelineId='+encodeURIComponent(current.id)+
+        '&chapterId='+encodeURIComponent(chapterId),
+        {cache:'no-store'}
+      );
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar capítulo.');
+      setSources(body.sources??[]);
+      setActiveChapterId(chapterId);
+      const chapter=timelineChapters(draft??current).find(item=>item.id===chapterId);
+      const sceneIds=new Set(chapter?.sceneIds??[]);
+      const visual=(draft??current).tracks.find(track=>track.type==='visual');
+      setSelectedClipId(visual?.clips.find(clip=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId)))?.id??'');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar capítulo.');}
+    finally{setBusy('');}
+  }
+
+  async function refreshChapter(){
+    if(!current||!activeChapter)return;
+    if(dirty){
+      setMessage('Salve a Timeline antes de reprocessar o capítulo.');
+      return;
+    }
+    setBusy('refresh-chapter');setMessage('');
+    try{
+      const res=await fetch('/api/timeline-engine',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          action:'refresh-chapter',
+          timelineId:current.id,
+          chapterId:activeChapter.id
+        })
+      });
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao reprocessar capítulo.');
+      setCurrent(body.timeline);
+      setDraft(payloadOnly(body.timeline));
+      setHistory(body.history??[]);
+      setSources(body.sources??[]);
+      setActiveChapterId(String(body.activeChapterId??activeChapter.id));
+      setTimelines(prev=>[body.timeline,...prev.filter(item=>item.id!==body.timeline.id)]);
+      setMessage(body.message??'Capítulo reprocessado.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao reprocessar capítulo.');}
+    finally{setBusy('');}
+  }
+
   if(loading)return <div className="timeline-loading"><Sparkles className="spin" size={20}/>Carregando Timeline Engine…</div>;
 
   if(draft&&scenePlan){
     const canvasWidth=Math.max(1000,Math.min(6000,draft.durationSeconds*18));
     return <div className="timeline-editor">
-      <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
+      <div className="timeline-back"><button onClick={()=>{setDraft(null);setCurrent(null);setScenePlan(null);setSources([]);setHistory([]);setSelectedClipId('');setActiveChapterId('');}}><ArrowLeft size={15}/>Todas as timelines</button><span>{current?.status??'draft'} · v{current?.version??0}</span></div>
 
       <section className="timeline-hero">
         <div><span>TIMELINE ENGINE</span><h2>{time(draft.durationSeconds)} · {draft.format.width}×{draft.format.height} · {draft.format.fps}fps</h2><p>Scene Plan v{draft.scenePlanVersion} · Visual Prompt v{draft.visualPromptSetVersion} · {voiceSource?.title??'Narração vinculada'}</p></div>
