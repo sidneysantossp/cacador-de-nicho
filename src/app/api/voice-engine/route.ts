@@ -11,7 +11,7 @@ import {
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=300;
+export const maxDuration=1800;
 
 const jsonSchema=z.discriminatedUnion('action',[
   z.object({
@@ -77,7 +77,15 @@ export async function POST(request:Request){
 
     if(body.action==='generate'){
       const asset=await generateElevenLabsVoice(body);
-      return Response.json({message:'Narração gerada e salva como novo take.',asset,assets:await listVoiceAssets(body.scriptId)});
+      const chunks=asset.generationChunks?.length??1;
+      const cacheHits=asset.generationChunks?.filter(chunk=>chunk.cacheHit).length??0;
+      return Response.json({
+        message:chunks>1
+          ?'Narração long-form gerada em '+chunks+' blocos, costurada em um único take'+(cacheHits?' ('+cacheHits+' cache hit(s)).':'.')
+          :'Narração gerada e salva como novo take.',
+        asset,
+        assets:await listVoiceAssets(body.scriptId)
+      });
     }
     if(body.action==='select'){
       const selection=await selectVoiceAsset(body.scriptId,body.assetId);

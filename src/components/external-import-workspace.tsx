@@ -7,13 +7,13 @@ import {
 } from 'lucide-react';
 import type {
   EpisodeScript, ExternalImportBatch, ExternalImportItem, ManagedChannel,
-  VisualPromptSet, VoiceAsset
+  VisualPromptSet, VoiceAssetListItem
 } from '@/lib/types';
 import {
   classifyExternalFile, previewExternalImportFiles
 } from '@/lib/external-import-policy';
 
-type VoiceAssetView=VoiceAsset&{signedUrl?:string|null;stale?:boolean};
+type VoiceAssetView=VoiceAssetListItem;
 
 function fileIcon(kind:ExternalImportItem['kind']){
   if(kind==='image')return <ImageIcon size={15}/>;

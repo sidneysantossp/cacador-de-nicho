@@ -7,14 +7,14 @@ import {
 } from 'lucide-react';
 import type {
   EpisodeScript, ManagedChannel, Transcript, TranscriptListItem, TranscriptPayload,
-  TranscriptSegment, TranscriptVersionSummary, VoiceAsset
+  TranscriptSegment, TranscriptVersionSummary, VoiceAssetListItem
 } from '@/lib/types';
 import { formatTranscriptTimestamp, normalizeTranscriptPayload, transcriptApprovalIssues } from '@/lib/transcript-policy';
 import {
   buildLongFormEditorWindows, timedContentDuration, timedEntriesInWindow
 } from '@/lib/long-form-editor-window';
 
-type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
+type VoiceAssetView=VoiceAssetListItem;
 type Tab='segments'|'words'|'review'|'history';
 
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
@@ -250,7 +250,7 @@ export default function TranscriptionEngineWorkspace({channel}:{channel:ManagedC
       {selectedAsset&&<section className="transcription-actions">
         <div className="transcription-audio">{selectedAsset.signedUrl&&<audio controls preload="metadata" src={selectedAsset.signedUrl}/>}<div><strong>Take {selectedAsset.take}</strong><small>{selectedAsset.sourceType} · script v{selectedAsset.scriptVersion}</small></div></div>
         <div className="transcription-action-grid">
-          <article className={selectedAsset.alignment?'available':'disabled'}><Sparkles size={21}/><div><strong>Usar alignment</strong><p>{selectedAsset.alignment?'Sem custo adicional. Timing já veio da geração de voz.':'Este take não possui alignment.'}</p></div><button className="button subtle small" disabled={!selectedAsset.alignment||!!busy} onClick={()=>void create('alignment')}>{busy==='alignment'?'Processando…':'Criar transcript'}</button></article>
+          <article className={selectedAsset.hasAlignment?'available':'disabled'}><Sparkles size={21}/><div><strong>Usar alignment</strong><p>{selectedAsset.hasAlignment?'Sem custo adicional. Timing já veio da geração de voz.':'Este take não possui alignment.'}</p></div><button className="button subtle small" disabled={!selectedAsset.hasAlignment||!!busy} onClick={()=>void create('alignment')}>{busy==='alignment'?'Processando…':'Criar transcript'}</button></article>
           <article><RefreshCw size={21}/><div><strong>Scribe v2</strong><p>Transcrição automática com word-level timestamps.</p></div><button className="button subtle small" disabled={!!busy} onClick={()=>void create('scribe')}>{busy==='scribe'?'Transcrevendo…':'Transcrever áudio'}</button></article>
           <article><Upload size={21}/><div><strong>Importar arquivo</strong><p>SRT, VTT, TXT com timestamps ou JSON.</p></div><label className="transcript-file"><input type="file" accept=".srt,.vtt,.txt,.json,text/plain,application/json" onChange={e=>setFile(e.target.files?.[0]??null)}/><span>{file?file.name:'Selecionar arquivo'}</span></label><button className="button subtle small" disabled={!file||!!busy} onClick={()=>void importFile()}>{busy==='import'?'Importando…':'Importar'}</button></article>
         </div>
