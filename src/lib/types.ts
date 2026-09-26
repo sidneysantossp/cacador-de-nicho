@@ -702,6 +702,10 @@ export type ProductionDnaPayload = {
   voice: string[];
   stock: string[];
  };
+ research?: {
+  documentaryMode: boolean;
+  requireClaimLedger: boolean;
+ };
  createdAt: string;
  updatedAt: string;
 };
@@ -760,6 +764,8 @@ export type ContentFactCheck = {
  id: string;
  claim: string;
  status: 'unverified' | 'supported' | 'contradicted' | 'needs-review';
+ claimType?: 'fact' | 'estimate' | 'allegation' | 'folklore';
+ narrationRule?: 'assert' | 'qualify' | 'attribute' | 'exclude';
  sourceIds: string[];
  notes: string;
 };
@@ -811,6 +817,7 @@ export type EpisodeScriptSection = {
  label: string;
  purpose: string;
  content: string;
+ claimIds?: string[];
 };
 export type EpisodeScriptPayload = {
  kind: 'episode-script';
