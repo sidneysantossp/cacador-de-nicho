@@ -145,9 +145,20 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
   }
   if(provider==='elevenlabs'){
     let response:Response;
-    try{response=await fetch('https://api.elevenlabs.io/v1/user',{headers:{'xi-api-key':key},signal:AbortSignal.timeout(15000),cache:'no-store'});}
-    catch{throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);}
-    if(!response.ok)throw new HttpError('A ElevenLabs recusou a chave. Confira a credencial e as permissões da conta.',422);
+    try{
+      response=await fetch('https://api.elevenlabs.io/v2/voices?page_size=1&include_total_count=false',{
+        headers:{'xi-api-key':key},
+        signal:AbortSignal.timeout(15000),
+        cache:'no-store'
+      });
+    }catch{throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);}
+    if(response.status===401){
+      throw new HttpError('A ElevenLabs recusou a chave. Confira se a API key foi copiada por completo e ainda está ativa.',422);
+    }
+    if(response.status===403){
+      throw new HttpError('A chave ElevenLabs autenticou, mas não pode listar vozes. Habilite Voices: Read na chave e confira qualquer restrição de IP.',422);
+    }
+    if(!response.ok)throw new HttpError('A ElevenLabs não conseguiu validar a integração agora.',502);
     return;
   }
   if(provider==='googleai'){
