@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type {
   ManagedChannel, ProductionDNA, SceneAssetMode, ScenePlan, ScenePlanListItem, ScenePlanPayload,
-  ScenePlanVersionSummary, SceneTimecode, Transcript, TranscriptListItem, VoiceAsset
+  ScenePlanVersionSummary, SceneTimecode, Transcript, TranscriptListItem, VoiceAssetListItem
 } from '@/lib/types';
 import {
   normalizeScenePlan, sceneDurationWarnings, scenePlanApprovalIssues,
@@ -18,7 +18,7 @@ import {
   buildLongFormEditorWindows, timedEntriesInWindow
 } from '@/lib/long-form-editor-window';
 
-type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
+type VoiceAssetView=VoiceAssetListItem;
 type ScenePlanView=ScenePlanListItem;
 type Tab='scenes'|'review'|'history';
 
