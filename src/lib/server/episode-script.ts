@@ -1,8 +1,8 @@
 import 'server-only';
 
 import type {
-  ContentProject, EpisodeScript, EpisodeScriptPayload, EpisodeScriptVersion,
-  ManagedChannel
+  ContentProject, EpisodeScript, EpisodeScriptListItem, EpisodeScriptPayload,
+  EpisodeScriptVersion, EpisodeScriptVersionSummary, ManagedChannel
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -38,13 +38,29 @@ function normalize(row:{
   };
 }
 
-export async function loadEpisodeScripts(channelId:string):Promise<EpisodeScript[]>{
-  const rows=checked(await db().from('radar_episode_scripts')
-    .select('id,channel_id,episode_id,content_project_id,version,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;content_project_id:string;version:number|string;
+  status:EpisodeScript['status'];title:string;language:string;word_count:number|string;
+  estimated_minutes:number|string|null;section_count:number|string;
+  generated_by:EpisodeScriptPayload['provenance']['generatedBy'];character_count:number|string;
+  created_at:string;updated_at:string;
+}):EpisodeScriptListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,contentProjectId:row.content_project_id,
+    version:Number(row.version),status:row.status,title:String(row.title),language:String(row.language),
+    wordCount:Number(row.word_count),estimatedMinutes:row.estimated_minutes===null?null:Number(row.estimated_minutes),
+    sectionCount:Number(row.section_count),generatedBy:row.generated_by,
+    characterCount:Number(row.character_count),createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function loadEpisodeScripts(channelId:string):Promise<EpisodeScriptListItem[]>{
+  const rows=checked(await db().from('radar_episode_script_list')
+    .select('id,channel_id,episode_id,content_project_id,version,status,title,language,word_count,estimated_minutes,section_count,generated_by,character_count,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(200));
-  return (rows??[]).map(row=>normalize(row as never));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadEpisodeScript(scriptId:string):Promise<EpisodeScript|null>{
@@ -63,18 +79,40 @@ export async function loadEpisodeScriptByProject(projectId:string):Promise<Episo
   return row?normalize(row as never):null;
 }
 
-export async function loadEpisodeScriptHistory(scriptId:string,limit=20):Promise<EpisodeScriptVersion[]>{
+export async function loadEpisodeScriptHistory(scriptId:string,limit=20):Promise<EpisodeScriptVersionSummary[]>{
   const rows=checked(await db().from('radar_episode_script_versions')
     .select('version,status,payload,created_at')
     .eq('script_id',scriptId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
-  return (rows??[]).map(row=>({
+  return (rows??[]).map(row=>{
+    const payload=row.payload as EpisodeScriptPayload;
+    return {
+      version:Number(row.version),
+      status:row.status as EpisodeScript['status'],
+      wordCount:Number(payload.wordCount??0),
+      sectionCount:Array.isArray(payload.sections)?payload.sections.length:0,
+      createdAt:String(row.created_at)
+    };
+  });
+}
+
+export async function loadEpisodeScriptHistoryVersion(
+  scriptId:string,
+  version:number
+):Promise<EpisodeScriptVersion|null>{
+  const row=checked(await db().from('radar_episode_script_versions')
+    .select('version,status,payload,created_at')
+    .eq('script_id',scriptId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
     version:Number(row.version),
     status:row.status as EpisodeScript['status'],
     payload:row.payload as EpisodeScriptPayload,
     createdAt:String(row.created_at)
-  }));
+  };
 }
 
 async function managedChannel(channelId:string):Promise<ManagedChannel>{
