@@ -441,6 +441,11 @@ select
   coalesce(nullif(p.payload->>'voiceTake','')::int,1) as voice_take,
   coalesce(nullif(p.payload->>'audioDurationSeconds','')::numeric,0) as audio_duration_seconds,
   coalesce(jsonb_array_length(p.payload->'scenes'),0) as scene_count,
+  array(
+    select (scene->>'id')::uuid
+    from jsonb_array_elements(coalesce(p.payload->'scenes','[]'::jsonb)) scene
+    where nullif(scene->>'id','') is not null
+  ) as scene_ids,
   p.created_at,p.updated_at
 from public.radar_scene_plans p;
 
