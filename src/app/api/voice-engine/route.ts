@@ -72,8 +72,15 @@ export async function POST(request:Request){
       return Response.json({message:'Narração gerada e salva como novo take.',asset,assets:await listVoiceAssets(body.scriptId)});
     }
     if(body.action==='select'){
-      await selectVoiceAsset(body.scriptId,body.assetId);
-      return Response.json({message:'Take selecionado para as próximas etapas.',assets:await listVoiceAssets(body.scriptId)});
+      const selection=await selectVoiceAsset(body.scriptId,body.assetId);
+      const message=selection.invalidatedStages.length
+        ?'Take selecionado. A cadeia anterior ficou stale a partir de Transcript: '+selection.invalidatedStages.join(' → ')+'.'
+        :'Take selecionado para as próximas etapas.';
+      return Response.json({
+        message,
+        selection,
+        assets:await listVoiceAssets(body.scriptId)
+      });
     }
 
     await deleteVoiceAsset(body.scriptId,body.assetId);
