@@ -157,9 +157,7 @@ function normalizeVoiceListRow(row:{
     textHash:String(row.text_hash??''),modelId:row.model_id??undefined,voiceId:row.voice_id??undefined,
     voiceName:row.voice_name??undefined,durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds),
     characterCount:Number(row.character_count),hasAlignment:Boolean(row.has_alignment),
-    generationChunks:chunkCount>0?Array.from({length:chunkCount},(_,index)=>({
-      index,characterCount:0,durationSeconds:0,cacheHit:false
-    })):undefined,
+    generationChunkCount:chunkCount,
     createdAt:String(row.created_at),updatedAt:String(row.updated_at)
   };
 }
