@@ -1621,6 +1621,7 @@ export type ProductionQualityCheckCode =
   | 'caption-timing'
   | 'visual-coverage'
   | 'asset-duplication'
+  | 'media-diversity'
   | 'asset-provenance'
   | 'asset-rights'
   | 'character-continuity'
