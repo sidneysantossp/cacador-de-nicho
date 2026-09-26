@@ -20,6 +20,8 @@ const POLL_MS=Math.max(2000,Number(process.env.YOUTUBE_PUBLISH_WORKER_POLL_MS||5
 const LEASE_SECONDS=1800;
 const CHUNK_BYTES=8*1024*1024;
 const MAX_RETRIES=5;
+const UPLOAD_REQUEST_TIMEOUT_MS=Math.max(30000,Number(process.env.YOUTUBE_UPLOAD_REQUEST_TIMEOUT_MS||300000));
+const DOWNLOAD_HEARTBEAT_MS=Math.max(60000,Number(process.env.YOUTUBE_DOWNLOAD_HEARTBEAT_MS||300000));
 const MIN_FREE_DISK_BYTES=Math.max(2,Number(process.env.YOUTUBE_PUBLISH_MIN_FREE_DISK_GB||10))*1024*1024*1024;
 const DISK_MARGIN_BYTES=Math.max(1,Number(process.env.YOUTUBE_PUBLISH_DISK_MARGIN_GB||2))*1024*1024*1024;
 
@@ -37,6 +39,19 @@ const cryptoKey=createHash('sha256').update(ENCRYPTION_SECRET,'utf8').digest();
 let r2StorageCache=null;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+async function withLeaseHeartbeat(jobId,token,stage,task){
+  let leaseError=null;
+  const timer=setInterval(()=>{
+    void heartbeat(jobId,token,3,stage).catch(error=>{leaseError=error;});
+  },DOWNLOAD_HEARTBEAT_MS);
+  try{
+    const result=await task();
+    if(leaseError)throw leaseError;
+    return result;
+  }finally{
+    clearInterval(timer);
+  }
+}
 function safeError(error){return String(error instanceof Error?error.message:error).slice(0,4000);}
 function pathUrl(value){return value.split('/').map(encodeURIComponent).join('/');}
 function b64(value){return value.toString('base64url');}
@@ -338,6 +353,7 @@ async function uploadChunk(sessionUri,accessToken,buffer,start,totalBytes){
   const end=start+buffer.length-1;
   return fetch(sessionUri,{
     method:'PUT',
+    signal:AbortSignal.timeout(UPLOAD_REQUEST_TIMEOUT_MS),
     headers:{
       Authorization:'Bearer '+accessToken,
       'Content-Type':'video/mp4',
@@ -574,7 +590,10 @@ async function processJob(jobId,token){
         throw error;
       }
       await heartbeat(job.id,token,3,'downloading-video');
-      const video=await downloadStorage(job.payload.renderOutputPath,videoPath);
+      const video=await withLeaseHeartbeat(
+        job.id,token,'downloading-video',
+        ()=>downloadStorage(job.payload.renderOutputPath,videoPath)
+      );
       if(video.bytes<=0)throw new Error('Render output is empty.');
       if(expectedBytes>0&&video.bytes!==expectedBytes){
         throw new Error('Downloaded render size mismatch. Expected '+expectedBytes+' bytes, got '+video.bytes+'.');
