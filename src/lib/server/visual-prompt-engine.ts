@@ -1,7 +1,8 @@
 import 'server-only';
 
 import type {
-  VisualPromptSet, VisualPromptSetListItem, VisualPromptSetPayload, VisualPromptSetVersion, VisualPromptSetVersionSummary
+  ScenePlan, VisualPromptSet, VisualPromptSetListItem, VisualPromptSetPayload,
+  VisualPromptSetVersion, VisualPromptSetVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
