@@ -1,8 +1,39 @@
 import type {
-  AudioLibraryAsset, ProductionDNA, Timeline, TimelineClip, Transcript,
+  AudioLibraryAsset, ProductionDNA, Timeline, TimelineChapter, TimelineClip, Transcript,
   VideoEditCaptionCue, VideoEditCaptionStyle, VideoEditCaptionWord,
   VideoEditClipStyle, VideoEditMotionPreset, VideoEditPayload, VideoEditSfxEvent
 } from '@/lib/types';
+import { timelineChapters } from '@/lib/timeline-policy';
+
+export function videoEditorChapters(timeline:Timeline):TimelineChapter[]{
+  return timelineChapters(timeline);
+}
+
+export function resolveVideoEditorChapter(timeline:Timeline,chapterId?:string|null){
+  const chapters=videoEditorChapters(timeline);
+  if(!chapters.length)return null;
+  return chapters.find(chapter=>chapter.id===chapterId)??chapters[0]!;
+}
+
+export function videoEditorChapterClips(timeline:Timeline,chapterId?:string|null){
+  const visual=timeline.tracks.find(track=>track.type==='visual')?.clips??[];
+  const chapter=resolveVideoEditorChapter(timeline,chapterId);
+  if(!chapter)return visual;
+  const sceneIds=new Set(chapter.sceneIds);
+  return visual.filter(clip=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId)));
+}
+
+export function videoEditorChapterCaptions(
+  edit:VideoEditPayload,
+  timeline:Timeline,
+  chapterId?:string|null
+){
+  const chapter=resolveVideoEditorChapter(timeline,chapterId);
+  if(!chapter)return edit.captions.cues;
+  return edit.captions.cues.filter(cue=>
+    cue.endSeconds>chapter.startSeconds&&cue.startSeconds<chapter.endSeconds
+  );
+}
 
 const EPSILON=.03;
 const STOPWORDS=new Set([
