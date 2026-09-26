@@ -84,7 +84,17 @@ export async function POST(request:Request){
       loadProductionDna(script.channelId)
     ]);
     return Response.json({
-      message:body.action==='generate'?'Roteiro gerado e salvo como draft.':body.action==='regenerateSection'?'Trecho regenerado e salvo como nova versão.':body.status==='approved'?'Roteiro aprovado.':'Roteiro salvo.',
+      message:body.action==='generate'
+        ?script.generation
+          ?script.generation.stage==='complete'
+            ?'Roteiro concluído: '+script.generation.completedSections+'/'+script.generation.totalSections+' seções geradas.'
+            :'Roteiro em geração: '+script.generation.completedSections+'/'+script.generation.totalSections+' seções concluídas.'
+          :'Roteiro gerado e salvo como draft.'
+        :body.action==='regenerateSection'
+          ?'Trecho regenerado e salvo como nova versão.'
+          :body.status==='approved'
+            ?'Roteiro aprovado.'
+            :'Roteiro salvo.',
       script,
       history,
       project,
