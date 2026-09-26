@@ -1,8 +1,9 @@
 import 'server-only';
 
 import type {
-  ContentProject, EpisodeScript, EpisodeScriptListItem, EpisodeScriptPayload,
-  EpisodeScriptVersion, EpisodeScriptVersionSummary, ManagedChannel
+  ContentProject, EpisodeScript, EpisodeScriptGeneration, EpisodeScriptListItem,
+  EpisodeScriptPayload, EpisodeScriptSection, EpisodeScriptVersion,
+  EpisodeScriptVersionSummary, ManagedChannel
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -10,7 +11,9 @@ import { loadContentProject } from './content-os';
 import { loadChannelBrain } from './channel-brain';
 import { loadNarrativeBundle, saveChannelEpisode } from './narrative';
 import { loadProductionDna } from './production-dna';
-import { generateOwnedChannelScript, regenerateOwnedScriptSection } from './script-ai';
+import {
+  generateOwnedPlannedSection, planOwnedChannelScript, regenerateOwnedScriptSection
+} from './script-ai';
 import { normalizeScriptPayload, scriptApprovalIssues } from '@/lib/script-policy';
 
 function normalize(row:{
@@ -202,28 +205,138 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
   const project=await loadContentProject(projectId);
   if(!project)throw new HttpError('Content Project não encontrado.',404);
   const context=await scriptContext(project);
-  const generated=await generateOwnedChannelScript(context);
   const existing=await loadEpisodeScriptByProject(project.id);
   const now=new Date().toISOString();
-  const payload:EpisodeScriptPayload={
-    kind:'episode-script',
-    id:existing?.id??crypto.randomUUID(),
-    channelId:project.channelId,
-    episodeId:project.episodeId,
-    contentProjectId:project.id,
-    title:generated.title||project.brief.workingTitle,
-    language:context.productionDna?.voice.language||'English',
-    sections:generated.sections,
-    content:'',
-    wordCount:1,
-    estimatedMinutes:null,
-    continuityNotes:generated.continuityNotes,
-    factCheckWarnings:generated.factCheckWarnings,
-    provenance:{generatedBy:'platform',model:generated.model},
-    createdAt:existing?.createdAt??now,
-    updatedAt:now
+
+  if(existing?.generation?.stage==='complete')return existing;
+
+  if(!existing?.generation){
+    if(existing?.sections.length){
+      throw new HttpError(
+        'Este roteiro já possui conteúdo sem estado de geração resumível. Continue pelo editor ou crie uma nova versão manualmente.',
+        409
+      );
+    }
+
+    const outline=await planOwnedChannelScript(context);
+    const generation:EpisodeScriptGeneration={
+      stage:'sections',
+      targetWords:outline.targetWords,
+      completedSections:0,
+      totalSections:outline.sectionPlans.length,
+      sectionPlans:outline.sectionPlans,
+      sectionSummaries:[],
+      updatedAt:now
+    };
+    const firstPlan=generation.sectionPlans[0];
+    if(!firstPlan)throw new HttpError('O outline não retornou seções utilizáveis.',502);
+    const generated=await generateOwnedPlannedSection(context,generation,[],0);
+    const firstSection:EpisodeScriptSection={
+      id:firstPlan.id,
+      label:firstPlan.label,
+      purpose:firstPlan.purpose,
+      content:generated.content,
+      claimIds:generated.claimIds
+    };
+    const completedSections=1;
+    const completed=completedSections>=generation.totalSections;
+    const nextGeneration:EpisodeScriptGeneration={
+      ...generation,
+      stage:completed?'complete':'sections',
+      completedSections,
+      sectionSummaries:[generated.continuitySummary],
+      updatedAt:new Date().toISOString()
+    };
+    const warnings=generated.factCheckWarnings.map(
+      item=>'section:'+firstPlan.id+': '+item
+    );
+    const payload:EpisodeScriptPayload={
+      kind:'episode-script',
+      id:existing?.id??crypto.randomUUID(),
+      channelId:project.channelId,
+      episodeId:project.episodeId,
+      contentProjectId:project.id,
+      title:outline.title||project.brief.workingTitle,
+      language:context.productionDna?.voice.language||'English',
+      sections:[firstSection],
+      content:'',
+      wordCount:1,
+      estimatedMinutes:null,
+      continuityNotes:outline.continuityNotes,
+      factCheckWarnings:warnings,
+      generation:nextGeneration,
+      provenance:{generatedBy:'platform',model:generated.model||outline.model},
+      createdAt:existing?.createdAt??now,
+      updatedAt:now
+    };
+    return saveEpisodeScript(payload,'draft',existing?.version??0);
+  }
+
+  const generation=existing.generation;
+  const sectionIndex=Math.max(0,Math.min(
+    generation.completedSections,
+    generation.totalSections
+  ));
+  if(sectionIndex>=generation.totalSections){
+    return saveEpisodeScript({
+      ...existing,
+      generation:{
+        ...generation,
+        stage:'complete',
+        completedSections:generation.totalSections,
+        updatedAt:now
+      },
+      updatedAt:now
+    },'draft',existing.version);
+  }
+
+  const plan=generation.sectionPlans[sectionIndex];
+  if(!plan)throw new HttpError('A próxima seção planejada não foi encontrada.',409);
+  const generated=await generateOwnedPlannedSection(
+    context,generation,existing.sections,sectionIndex
+  );
+  const nextSection:EpisodeScriptSection={
+    id:plan.id,
+    label:plan.label,
+    purpose:plan.purpose,
+    content:generated.content,
+    claimIds:generated.claimIds
   };
-  return saveEpisodeScript(payload,'draft',existing?.version??0);
+  const sections=[
+    ...existing.sections.filter(section=>section.id!==plan.id),
+    nextSection
+  ];
+  const completedSections=Math.min(
+    generation.totalSections,
+    sectionIndex+1
+  );
+  const complete=completedSections>=generation.totalSections;
+  const warnings=[
+    ...existing.factCheckWarnings.filter(
+      item=>!item.startsWith('section:'+plan.id+':')
+    ),
+    ...generated.factCheckWarnings.map(
+      item=>'section:'+plan.id+': '+item
+    )
+  ];
+
+  return saveEpisodeScript({
+    ...existing,
+    sections,
+    factCheckWarnings:warnings,
+    generation:{
+      ...generation,
+      stage:complete?'complete':'sections',
+      completedSections,
+      sectionSummaries:[
+        ...generation.sectionSummaries.slice(0,sectionIndex),
+        generated.continuitySummary
+      ],
+      updatedAt:now
+    },
+    provenance:{generatedBy:'platform',model:generated.model},
+    updatedAt:now
+  },'draft',existing.version);
 }
 
 export async function regenerateScriptSection(scriptId:string,sectionId:string):Promise<EpisodeScript>{
