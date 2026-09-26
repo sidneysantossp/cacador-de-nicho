@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  ScenePlan, ScenePlanPayload, ScenePlanVersion
+  ScenePlan, ScenePlanPayload, ScenePlanVersion, ScenePlanVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -61,18 +61,35 @@ export async function loadScenePlanByTranscript(transcriptId:string):Promise<Sce
   return row?normalizeRow(row as never):null;
 }
 
-export async function loadScenePlanHistory(planId:string,limit=20):Promise<ScenePlanVersion[]>{
+export async function loadScenePlanHistory(planId:string,limit=20):Promise<ScenePlanVersionSummary[]>{
   const rows=checked(await db().from('radar_scene_plan_versions')
-    .select('version,status,payload,created_at')
+    .select('version,status,created_at')
     .eq('scene_plan_id',planId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as ScenePlan['status'],
-    payload:row.payload as ScenePlanPayload,
     createdAt:String(row.created_at)
   }));
+}
+
+export async function loadScenePlanHistoryVersion(
+  planId:string,
+  version:number
+):Promise<ScenePlanVersion|null>{
+  const row=checked(await db().from('radar_scene_plan_versions')
+    .select('version,status,payload,created_at')
+    .eq('scene_plan_id',planId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
+    version:Number(row.version),
+    status:row.status as ScenePlan['status'],
+    payload:row.payload as ScenePlanPayload,
+    createdAt:String(row.created_at)
+  };
 }
 
 async function eligibleContext(transcriptId:string){

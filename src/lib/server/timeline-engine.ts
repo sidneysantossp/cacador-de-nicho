@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  ScenePlan, Timeline, TimelinePayload, TimelineVersion, VoiceAsset,
+  ScenePlan, Timeline, TimelinePayload, TimelineVersion, TimelineVersionSummary, VoiceAsset,
   VisualPromptSet
 } from '@/lib/types';
 import { checked, db } from './db';
@@ -84,18 +84,35 @@ export async function loadTimelineByPlan(scenePlanId:string):Promise<Timeline|nu
   return row?normalizeRow(row as Row):null;
 }
 
-export async function loadTimelineHistory(timelineId:string,limit=20):Promise<TimelineVersion[]>{
+export async function loadTimelineHistory(timelineId:string,limit=20):Promise<TimelineVersionSummary[]>{
   const rows=checked(await db().from('radar_timeline_versions')
-    .select('version,status,payload,created_at')
+    .select('version,status,created_at')
     .eq('timeline_id',timelineId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as Timeline['status'],
-    payload:row.payload as TimelinePayload,
     createdAt:String(row.created_at)
   }));
+}
+
+export async function loadTimelineHistoryVersion(
+  timelineId:string,
+  version:number
+):Promise<TimelineVersion|null>{
+  const row=checked(await db().from('radar_timeline_versions')
+    .select('version,status,payload,created_at')
+    .eq('timeline_id',timelineId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
+    version:Number(row.version),
+    status:row.status as Timeline['status'],
+    payload:row.payload as TimelinePayload,
+    createdAt:String(row.created_at)
+  };
 }
 
 async function selectedSceneAssetRows(promptSetId:string){

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  VisualPromptSet, VisualPromptSetPayload, VisualPromptSetVersion
+  VisualPromptSet, VisualPromptSetPayload, VisualPromptSetVersion, VisualPromptSetVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -58,18 +58,35 @@ export async function loadVisualPromptSetByPlan(scenePlanId:string):Promise<Visu
   return row?normalizeRow(row as never):null;
 }
 
-export async function loadVisualPromptSetHistory(setId:string,limit=20):Promise<VisualPromptSetVersion[]>{
+export async function loadVisualPromptSetHistory(setId:string,limit=20):Promise<VisualPromptSetVersionSummary[]>{
   const rows=checked(await db().from('radar_visual_prompt_set_versions')
-    .select('version,status,payload,created_at')
+    .select('version,status,created_at')
     .eq('prompt_set_id',setId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as VisualPromptSet['status'],
-    payload:row.payload as VisualPromptSetPayload,
     createdAt:String(row.created_at)
   }));
+}
+
+export async function loadVisualPromptSetHistoryVersion(
+  setId:string,
+  version:number
+):Promise<VisualPromptSetVersion|null>{
+  const row=checked(await db().from('radar_visual_prompt_set_versions')
+    .select('version,status,payload,created_at')
+    .eq('prompt_set_id',setId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
+    version:Number(row.version),
+    status:row.status as VisualPromptSet['status'],
+    payload:row.payload as VisualPromptSetPayload,
+    createdAt:String(row.created_at)
+  };
 }
 
 async function eligibleContext(scenePlanId:string){

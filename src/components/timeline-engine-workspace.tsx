@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type {
   ManagedChannel, ScenePlan, Timeline, TimelineChapterStatus, TimelineClip, TimelinePayload,
-  TimelineVersion
+  TimelineVersionSummary
 } from '@/lib/types';
 import {
   normalizeTimeline, timelineChapters, timelineHealth, timelineStructuralIssues
@@ -39,7 +39,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   const [draft,setDraft]=useState<TimelinePayload|null>(null);
   const [scenePlan,setScenePlan]=useState<ScenePlan|null>(null);
   const [sources,setSources]=useState<Source[]>([]);
-  const [history,setHistory]=useState<TimelineVersion[]>([]);
+  const [history,setHistory]=useState<TimelineVersionSummary[]>([]);
   const [selectedClipId,setSelectedClipId]=useState('');
   const [activeChapterId,setActiveChapterId]=useState('');
   const [tab,setTab]=useState<Tab>('timeline');
@@ -113,6 +113,30 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
       )?.id??'');
       setTab('timeline');
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao abrir Timeline.');}
+    finally{setBusy('');}
+  }
+
+  async function loadHistoryVersion(version:number){
+    if(!current)return;
+    setBusy('history:'+version);setMessage('');
+    try{
+      const query=new URLSearchParams({timelineId:current.id,historyVersion:String(version)});
+      const res=await fetch('/api/timeline-engine?'+query.toString(),{cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(body.message??'Falha ao carregar versão histórica.');
+      if(!body.historyVersion?.payload)throw new Error('Versão histórica sem payload.');
+      const payload=body.historyVersion.payload as TimelinePayload;
+      setDraft({...payload,updatedAt:new Date().toISOString()});
+      const historicalChapters=timelineChapters(payload);
+      const chapter=historicalChapters[0]??null;
+      setActiveChapterId(chapter?.id??'');
+      const sceneIds=new Set(chapter?.sceneIds??[]);
+      setSelectedClipId(payload.tracks.find(track=>track.type==='visual')?.clips.find(
+        clip=>Boolean(clip.sceneId&&sceneIds.has(clip.sceneId))
+      )?.id??'');
+      setTab('timeline');
+      setMessage('Versão '+version+' carregada no editor. Salve para criar uma nova versão.');
+    }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar versão histórica.');}
     finally{setBusy('');}
   }
 
@@ -361,7 +385,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
         <div className="timeline-approval-actions"><button className="button subtle" onClick={()=>void save('review')}>Marcar para revisão</button><button className="button primary" disabled={structuralIssues.length>0||busy==='save'} onClick={()=>void save('approved')}><CheckCircle2 size={16}/>Aprovar Timeline</button></div>
       </div>}
 
-      {tab==='history'&&<div className="timeline-content"><div className="timeline-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · {item.payload.tracks.find(track=>track.type==='visual')?.clips.length??0} clips · {time(item.payload.durationSeconds)}</span><button className="button subtle small" onClick={()=>{setDraft({...item.payload,updatedAt:new Date().toISOString()});setTab('timeline');setMessage('Versão '+item.version+' carregada no editor.');}}>Carregar</button></article>)}</div></div>}
+      {tab==='history'&&<div className="timeline-content"><div className="timeline-version-list">{history.map(item=><article key={item.version}><div><strong>v{item.version}</strong><small>{when(item.createdAt)}</small></div><span>{item.status} · payload carregado somente sob demanda</span><button className="button subtle small" disabled={busy==='history:'+item.version} onClick={()=>void loadHistoryVersion(item.version)}>{busy==='history:'+item.version?'Carregando…':'Carregar'}</button></article>)}</div></div>}
     </div>;
   }
 

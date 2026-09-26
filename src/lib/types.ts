@@ -935,6 +935,11 @@ export type TranscriptVersion = {
  payload: TranscriptPayload;
  createdAt: string;
 };
+export type TranscriptVersionSummary = {
+ version: number;
+ status: Transcript['status'];
+ createdAt: string;
+};
 export type SceneAssetMode = 'image' | 'video' | 'stock' | 'mixed' | 'none';
 export type VisualBeatType = 'literal' | 'contextual' | 'atmosphere' | 'map' | 'document' | 'archive' | 'illustration' | 'generated';
 export type VisualBeatSourcePreference =
@@ -1017,6 +1022,11 @@ export type ScenePlanVersion = {
  payload: ScenePlanPayload;
  createdAt: string;
 };
+export type ScenePlanVersionSummary = {
+ version: number;
+ status: ScenePlan['status'];
+ createdAt: string;
+};
 export type VisualCharacterReference = {
  characterId: string;
  refName: string;
@@ -1061,6 +1071,11 @@ export type VisualPromptSetVersion = {
  version: number;
  status: VisualPromptSet['status'];
  payload: VisualPromptSetPayload;
+ createdAt: string;
+};
+export type VisualPromptSetVersionSummary = {
+ version: number;
+ status: VisualPromptSet['status'];
  createdAt: string;
 };
 export type SceneAssetKind = 'image' | 'video' | 'graphic';
@@ -1362,6 +1377,11 @@ export type TimelineVersion = {
  version: number;
  status: Timeline['status'];
  payload: TimelinePayload;
+ createdAt: string;
+};
+export type TimelineVersionSummary = {
+ version: number;
+ status: Timeline['status'];
  createdAt: string;
 };
 export type VideoEditTransition = 'none' | 'fade' | 'cross-dissolve';

@@ -4,7 +4,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   createTranscriptFromAlignment, importTranscriptFile, listTranscripts,
-  loadTranscript, loadTranscriptHistory, saveTranscript, transcribeWithScribe
+  loadTranscript, loadTranscriptHistory, loadTranscriptHistoryVersion, saveTranscript, transcribeWithScribe
 } from '@/lib/server/transcription-engine';
 import { transcriptPayloadSchema } from '@/lib/server/validation';
 
@@ -29,10 +29,20 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Transcription Engine.',503);
     const url=new URL(request.url);
     const transcriptId=url.searchParams.get('transcriptId')?.trim();
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
     const scriptId=url.searchParams.get('scriptId')?.trim();
 
     if(transcriptId){
       if(!z.string().uuid().safeParse(transcriptId).success)throw new HttpError('Transcript inválido.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadTranscriptHistoryVersion(transcriptId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
       const [transcript,history]=await Promise.all([
         loadTranscript(transcriptId),
         loadTranscriptHistory(transcriptId,20)

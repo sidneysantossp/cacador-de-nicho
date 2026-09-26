@@ -3,7 +3,7 @@ import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { checked, db, dbConfigured } from '@/lib/server/db';
 import {
-  createTimelineFromPlan, listTimelines, loadTimeline, loadTimelineHistory,
+  createTimelineFromPlan, listTimelines, loadTimeline, loadTimelineHistory, loadTimelineHistoryVersion,
   loadTimelineSources, refreshTimelineChapter, refreshTimelineFromPlan, saveTimeline
 } from '@/lib/server/timeline-engine';
 import { listScenePlans, loadScenePlan } from '@/lib/server/scene-timecode';
@@ -36,11 +36,21 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Timeline Engine.',503);
     const url=new URL(request.url);
     const timelineId=url.searchParams.get('timelineId')?.trim();
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
     const requestedChapterId=url.searchParams.get('chapterId')?.trim();
 
     if(timelineId){
       if(!z.string().uuid().safeParse(timelineId).success)throw new HttpError('Timeline inválida.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadTimelineHistoryVersion(timelineId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
       const [timeline,history]=await Promise.all([
         loadTimeline(timelineId),
         loadTimelineHistory(timelineId,20)
