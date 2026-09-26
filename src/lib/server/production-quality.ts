@@ -16,8 +16,10 @@ import { stockVisualConstraintsSatisfied } from '@/lib/stock-media-policy';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
   structuralQualityChecks, technicalQualityChecks,
-  type ProductionQualityAssetFact, type ProductionQualityCharacterFact
+  type ProductionQualityAssetFact, type ProductionQualityCharacterFact,
+  type ProductionQualityMediaDiversity
 } from '@/lib/production-quality-policy';
+import { ownedMediaDiversityMetrics } from './media-embeddings';
 
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
 const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
@@ -394,6 +396,45 @@ async function projectFacts(job:RenderJob):Promise<{
     return storage?'storage:'+storage:'asset:'+String(row.id??'');
   }
 
+  const clipSources=clips.map(clip=>{
+    const row=rowMap.get(clip.assetId);
+    return row?sourceIdentity(row as Record<string,unknown>):'asset:'+clip.assetId;
+  });
+  const uniqueClipSources=new Set(clipSources).size;
+  const sourceDiversity=clips.length?uniqueClipSources/clips.length:0;
+  const ownedSegmentSequence=clips.flatMap(clip=>{
+    const row=rowMap.get(clip.assetId);
+    if(!row)return [];
+    const owned=objectField(payloadOf(row).owned);
+    const id=String(owned.segmentId??'').trim();
+    return id?[id]:[];
+  });
+  const vectorDiversity=ownedSegmentSequence.length>=2
+    ?await ownedMediaDiversityMetrics(ownedSegmentSequence).catch(()=>null)
+    :null;
+  const embeddedClipCount=vectorDiversity?.embeddedClipCount??0;
+  const semanticCoverage=clips.length?embeddedClipCount/clips.length:0;
+  const semanticDiversity=vectorDiversity&&vectorDiversity.pairCount>0
+    ?vectorDiversity.semanticDiversity
+    :null;
+  const semanticWeight=semanticDiversity===null
+    ?0
+    :Math.min(.45,.45*semanticCoverage);
+  const diversityScore=Math.max(0,Math.min(
+    1,
+    sourceDiversity*(1-semanticWeight)+(semanticDiversity??0)*semanticWeight
+  ));
+  const mediaDiversity:ProductionQualityMediaDiversity={
+    score:diversityScore,
+    sourceDiversity,
+    semanticDiversity,
+    semanticCoverage,
+    maxSimilarity:vectorDiversity&&vectorDiversity.pairCount>0?vectorDiversity.maxSimilarity:null,
+    embeddedClipCount,
+    ownedClipCount:ownedSegmentSequence.length,
+    clipCount:clips.length
+  };
+
   const assetFacts=clips.map(clip=>{
     const row=rowMap.get(clip.assetId);
     if(!row){
@@ -465,7 +506,7 @@ async function projectFacts(job:RenderJob):Promise<{
     } satisfies ProductionQualityAssetFact;
   });
 
-  if(!exactContext)return {assetFacts,characterFacts:undefined};
+  if(!exactContext)return {assetFacts,characterFacts:undefined,mediaDiversity};
 
   const counts=new Map<string,number>();
   for(const scene of exactContext.workspace.scenePlan.scenes){
@@ -482,7 +523,7 @@ async function projectFacts(job:RenderJob):Promise<{
     referenceReady:refs.get(characterId)?.assetReady??false
   }));
 
-  return {assetFacts,characterFacts};
+  return {assetFacts,characterFacts,mediaDiversity};
 }
 
 export async function runProductionQuality(renderJobId:string):Promise<ProductionQualityReport>{
