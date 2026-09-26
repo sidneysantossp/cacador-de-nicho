@@ -278,6 +278,15 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
     transcriptVersion:transcript.version,
     format:{...edit.format},
     durationSeconds:edit.durationSeconds,
+    chapters:timelineChapters(timeline).map(chapter=>({
+      id:chapter.id,
+      sequence:chapter.sequence,
+      label:chapter.label,
+      startSeconds:chapter.startSeconds,
+      endSeconds:chapter.endSeconds,
+      durationSeconds:chapter.durationSeconds,
+      sceneIds:[...chapter.sceneIds]
+    })),
     visualClips:manifestClips,
     voice:{
       assetId:voice.id,
@@ -294,6 +303,90 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   const manifestIssues=renderManifestIssues(manifest,edit,timeline,transcript);
   if(manifestIssues.length)throw new HttpError('Manifest de render inválido: '+manifestIssues.join(' · ')+'.',409);
   return manifest;
+}
+
+function relativeSeconds(value:number,start:number){
+  return Math.max(0,Math.round((value-start)*1000)/1000);
+}
+
+function chapterPlanFor(input:{
+  manifest:RenderManifest;
+  preset:RenderPreset;
+  crf:number;
+}):RenderChapterPlan[]{
+  const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
+  const chapters=input.manifest.chapters?.length
+    ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
+    :[{
+      id:input.manifest.timelineId,
+      sequence:1,
+      label:'Chapter 01',
+      startSeconds:0,
+      endSeconds:input.manifest.durationSeconds,
+      durationSeconds:input.manifest.durationSeconds,
+      sceneIds:input.manifest.visualClips.map(clip=>clip.sceneId)
+    }];
+  return chapters.map(chapter=>{
+    const sceneIds=new Set(chapter.sceneIds);
+    const clips=input.manifest.visualClips
+      .filter(clip=>sceneIds.has(clip.sceneId))
+      .map(clip=>({
+        ...clip,
+        startSeconds:relativeSeconds(clip.startSeconds,chapter.startSeconds),
+        endSeconds:relativeSeconds(clip.endSeconds,chapter.startSeconds)
+      }));
+    const captions=input.manifest.captions.cues
+      .filter(cue=>cue.endSeconds>chapter.startSeconds&&cue.startSeconds<chapter.endSeconds)
+      .map(cue=>({
+        ...cue,
+        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,cue.startSeconds),chapter.startSeconds),
+        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,cue.endSeconds),chapter.startSeconds),
+        words:cue.words.map(word=>({
+          ...word,
+          startSeconds:relativeSeconds(Math.max(chapter.startSeconds,word.startSeconds),chapter.startSeconds),
+          endSeconds:relativeSeconds(Math.min(chapter.endSeconds,word.endSeconds),chapter.startSeconds)
+        }))
+      }));
+    const overlays=input.manifest.overlays
+      .filter(item=>item.endSeconds>chapter.startSeconds&&item.startSeconds<chapter.endSeconds)
+      .map(item=>({
+        ...item,
+        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,item.startSeconds),chapter.startSeconds),
+        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,item.endSeconds),chapter.startSeconds)
+      }));
+    const contentHash=hash(JSON.stringify({
+      compilerVersion:'render-v4',
+      outputFormat,
+      crf:input.crf,
+      durationSeconds:chapter.durationSeconds,
+      clips,
+      captions:{
+        enabled:input.manifest.captions.enabled,
+        position:input.manifest.captions.position,
+        fontSize:input.manifest.captions.fontSize,
+        maxLines:input.manifest.captions.maxLines,
+        backgroundOpacity:input.manifest.captions.backgroundOpacity,
+        style:input.manifest.captions.style,
+        cues:captions
+      },
+      overlays
+    }));
+    return {...chapter,contentHash};
+  });
+}
+
+async function reusableChapterCache(hashes:string[]){
+  if(!hashes.length)return new Map<string,ChapterRow>();
+  const rows=checked(await db().from('radar_render_chapters')
+    .select(chapterSelection)
+    .in('content_hash',hashes)
+    .eq('status','completed')
+    .not('output_path','is',null)
+    .order('completed_at',{ascending:false})
+    .limit(1000)) as ChapterRow[];
+  const result=new Map<string,ChapterRow>();
+  for(const row of rows??[])if(!result.has(row.content_hash))result.set(row.content_hash,row);
+  return result;
 }
 
 export async function createRenderJob(input:{
