@@ -46,6 +46,18 @@ from public.radar_episode_scripts s;
 
 revoke all on table public.radar_episode_script_list from anon,authenticated;
 grant select on table public.radar_episode_script_list to service_role;
+
+create or replace view public.radar_episode_script_version_list
+with (security_invoker=true) as
+select
+  v.script_id,v.version,v.status,
+  coalesce(nullif(v.payload->>'wordCount','')::int,0) as word_count,
+  coalesce(jsonb_array_length(v.payload->'sections'),0) as section_count,
+  v.created_at
+from public.radar_episode_script_versions v;
+
+revoke all on table public.radar_episode_script_version_list from anon,authenticated;
+grant select on table public.radar_episode_script_version_list to service_role;
 create table if not exists public.radar_voice_assets(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,script_id uuid not null references public.radar_episode_scripts(id) on delete cascade,take int not null check(take>=1),source_type text not null check(source_type in ('uploaded','generated')),provider text,status text not null default 'ready' check(status in ('processing','ready','failed')),selected boolean not null default false,storage_path text not null,mime_type text not null,original_name text,bytes bigint not null default 0 check(bytes>=0),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(script_id,take));
 create index if not exists radar_voice_assets_channel_created on public.radar_voice_assets(channel_id,created_at desc);
 create index if not exists radar_voice_assets_script_take on public.radar_voice_assets(script_id,take desc);
