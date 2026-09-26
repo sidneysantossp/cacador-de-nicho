@@ -392,7 +392,11 @@ export async function importStockMedia(input:{
   selectIfNone?:boolean;
 }){
   await sceneContext(input.promptSetId,input.sceneId);
-  if(input.provider==='unsplash'&&input.kind==='video')throw new HttpError('O Unsplash está disponível apenas para imagens.',400);
+  if((input.provider==='unsplash'||input.provider==='wikimedia')&&input.kind==='video'){
+    throw new HttpError(input.provider==='wikimedia'
+      ?'O Wikimedia Commons está habilitado nesta fase para imagens documentais.'
+      :'O Unsplash está disponível apenas para imagens.',400);
+  }
 
   let pageUrl='',creatorName='',creatorUrl:string|undefined,downloadUrl='',mimeType='',width:number|null=null,height:number|null=null,duration:number|null=null,attribution='',licenseLabel='',licenseUrl='';
 
@@ -449,6 +453,29 @@ export async function importStockMedia(input:{
       'O Unsplash está disponível nesta fase para descoberta e preview. A API exige hotlink; cópia automática para o Asset Vault fica bloqueada até o resolver externo preservar hotlink e atribuição.',
       409
     );
+  }else if(input.provider==='wikimedia'){
+    const pages=await wikimediaPages(new URLSearchParams({
+      pageids:input.providerAssetId,
+      iiurlwidth:'2048'
+    }));
+    const page=pages[0];
+    const info=page?.imageinfo?.[0];
+    if(!page?.pageid||!info)throw new HttpError('O Wikimedia Commons não encontrou este arquivo.',404);
+    if(!wikimediaReusable(info))throw new HttpError('O arquivo do Wikimedia Commons não possui licença reutilizável aceita pelo Source Router.',409);
+    downloadUrl=String(info.thumburl??info.url??'');
+    if(!downloadUrl)throw new HttpError('O Wikimedia Commons não devolveu uma imagem utilizável.',502);
+    const detectedMime=String(info.thumbmime??info.mime??'');
+    if(!['image/jpeg','image/png','image/webp'].includes(detectedMime)){
+      throw new HttpError('O Wikimedia Commons devolveu um formato de imagem ainda não suportado.',415);
+    }
+    mimeType=detectedMime;
+    width=Number(info.width)||null;
+    height=Number(info.height)||null;
+    pageUrl='https://commons.wikimedia.org/?curid='+String(page.pageid);
+    creatorName=wikimediaField(info,'Attribution')||wikimediaField(info,'Artist')||'Wikimedia Commons contributor';
+    licenseLabel=wikimediaField(info,'LicenseShortName')||'Wikimedia Commons reusable media';
+    licenseUrl=wikimediaField(info,'LicenseUrl')||WIKIMEDIA_REUSE;
+    attribution=creatorName+' · '+licenseLabel+' · Wikimedia Commons';
   }else{
     const config=parseVecteezyConfig(await providerSecret('vecteezy'));
     const id=encodeURIComponent(input.providerAssetId);
