@@ -262,3 +262,12 @@ test('Automation advances Visual Prompt AI in bounded resumable batches',()=>{
   assert.match(source,/aiPlanningIncomplete/);
   assert.match(source,/generateVisualPromptDrafts\(created\.id,\{[\s\S]*maxScenes:VISUAL_PROMPT_BATCH_SIZE/);
 });
+
+
+test('Automation keeps resumable Script generation actionable until all sections exist',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/scriptGenerationIncomplete/);
+  assert.match(source,/generation\.completedSections/);
+  assert.match(source,/generation\.totalSections/);
+  assert.match(source,/generateScriptForProject\(run\.contentProjectId\)/);
+});
