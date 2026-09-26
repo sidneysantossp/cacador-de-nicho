@@ -19,7 +19,7 @@ import { loadEpisodeScript } from './episode-script';
 import { loadProductionDna } from './production-dna';
 import {
   maxLongFormVoiceCharacters, mergeVoiceAlignments, splitVoiceText,
-  voiceAssetIsStale, voiceDownstreamStages, voiceGenerationIssues, voiceModelCharacterLimits
+  voiceAssetIsStale, voiceDownstreamStages, voiceGenerationIssues
 } from '@/lib/voice-policy';
 
 const MAX_AUDIO_BYTES=100*1024*1024;
