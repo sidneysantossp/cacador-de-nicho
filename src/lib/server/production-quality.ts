@@ -162,6 +162,7 @@ function rational(value:unknown):number|null{
 }
 
 function numeric(value:unknown):number|null{
+  if(value===null||value===undefined||value==='')return null;
   const parsed=Number(value);
   return Number.isFinite(parsed)?parsed:null;
 }
@@ -273,7 +274,7 @@ async function masterProbeAndAudio(job:RenderJob){
 }
 
 async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechnical>{
-  const {url}=await masterProbeAndAudio(job);
+  const url=await outputSignedUrl(job);
   const probe=await runCapture(FFPROBE,[
     '-v','error',
     '-show_entries','format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels',
@@ -465,12 +466,16 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
   technical:ProductionQualityTechnical;
   chapterTechnical:ProductionQualityChapterTechnical[];
 }>{
-  const chapters=(job.chapters??[])
-    .filter(chapter=>chapter.status==='completed'&&chapter.outputPath)
-    .sort((a,b)=>a.sequence-b.sequence);
-  if(!chapters.length){
-    return {technical:await inspectOutputLegacy(job),chapterTechnical:[]};
+  const allChapters=[...(job.chapters??[])].sort((a,b)=>a.sequence-b.sequence);
+  const expectedCount=job.payload.chapterPlan?.length??job.payload.manifest.chapters?.length??0;
+  if(!allChapters.length||expectedCount!==allChapters.length){
+    throw new HttpError('O render-v4 não possui todos os capítulos esperados para QA.',409);
   }
+  const incomplete=allChapters.filter(chapter=>chapter.status!=='completed'||!chapter.outputPath);
+  if(incomplete.length){
+    throw new HttpError('O render-v4 possui capítulo sem output concluído. Reexecute o render antes do QA.',409);
+  }
+  const chapters=allChapters;
 
   const {url:masterUrl,technical:master}=await masterProbeAndAudio(job);
   const cache=await reusableChapterQa(chapters.map(chapter=>chapter.contentHash));
