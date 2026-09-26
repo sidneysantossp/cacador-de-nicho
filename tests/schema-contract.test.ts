@@ -71,3 +71,33 @@ test('Long-form voice schema caches reusable chunks and exposes takes without al
   assert.match(viewBlock,/has_alignment/);
   assert.doesNotMatch(viewBlock,/select[\s\S]*\bpayload\s*(,|from)/i);
 });
+
+
+test('Script Engine list and history views are payload-free security-invoker summaries',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  for(const view of ['radar_episode_script_list','radar_episode_script_version_list']){
+    const start=sql.indexOf('create or replace view public.'+view);
+    assert.ok(start>=0,view+' missing');
+    const next=sql.indexOf('create or replace view public.',start+1);
+    const table=sql.indexOf('create table if not exists public.',start+1);
+    const revoke=sql.indexOf('revoke all on table',start+1);
+    const candidates=[next,table,revoke].filter(value=>value>start);
+    const end=Math.min(...candidates);
+    const block=sql.slice(start,end);
+    assert.match(block,/with \(security_invoker=true\)/);
+    assert.doesNotMatch(block,/select[\s\S]*\bpayload\s*(,|from)/i);
+  }
+});
+
+test('Script Engine server lists current and historical scripts without payload projections',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/episode-script.ts'),'utf8');
+  for(const view of ['radar_episode_script_list','radar_episode_script_version_list']){
+    const start=source.indexOf("from('"+view+"')");
+    assert.ok(start>=0,'missing '+view+' query');
+    const selectStart=source.indexOf('.select(',start);
+    const selectEnd=source.indexOf(')',selectStart);
+    assert.doesNotMatch(source.slice(selectStart,selectEnd+1),/payload/);
+  }
+  assert.match(source,/loadEpisodeScriptHistoryVersion/);
+  assert.match(source,/radar_episode_script_versions/);
+});
