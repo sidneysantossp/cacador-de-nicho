@@ -169,7 +169,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
         <section className="voice-generator">
           <div className="voice-section-head"><div><span>ELEVENLABS</span><h3>Gerar narração.</h3></div><WandSparkles size={21}/></div>
           <div className="voice-provider-row">
-            <label>Modelo<select value={modelId} onChange={e=>setModelId(e.target.value as typeof modelId)}><option value="eleven_flash_v2_5">Flash v2.5 · até 40k caracteres</option><option value="eleven_multilingual_v2">Multilingual v2 · até 10k caracteres</option></select></label>
+            <label>Modelo<select value={modelId} onChange={e=>setModelId(e.target.value as typeof modelId)}><option value="eleven_flash_v2_5">Flash v2.5 · 40k/chunk · long-form automático</option><option value="eleven_multilingual_v2">Multilingual v2 · 10k/chunk · long-form automático</option></select></label>
             <button className="button subtle small" disabled={busy==='voices'} onClick={()=>void loadVoices()}><RefreshCw size={14}/>{busy==='voices'?'Carregando…':'Carregar minhas vozes'}</button>
           </div>
           {voicesError&&<div className="voice-inline-warning"><CircleAlert size={15}/>{voicesError}</div>}
