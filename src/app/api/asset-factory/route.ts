@@ -5,6 +5,7 @@ import {
   attachOwnedMediaToScene, deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
   resolveOwnedMediaForPromptSet, resolveOwnedMediaForScene, selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
+import { resolveSourceForScene } from '@/lib/server/source-router';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -34,6 +35,11 @@ const schema=z.discriminatedUnion('action',[
     minimumScore:z.number().min(.30).max(.90).optional(),
     force:z.boolean().optional(),
     dryRun:z.boolean().optional()
+  }).strict(),
+  z.object({
+    action:z.literal('resolveSource'),
+    promptSetId:z.string().uuid(),
+    sceneId:z.string().uuid()
   }).strict(),
   z.object({
     action:z.literal('resolveOwnedPlan'),
@@ -119,6 +125,20 @@ export async function POST(request:Request){
           :result.status==='skipped'
             ?'A cena já possui uma mídia selecionada e atual.'
             :'Library First não encontrou match OWNED forte para esta cena.',
+        result
+      });
+    }
+    if(body.action==='resolveSource'){
+      const result=await resolveSourceForScene({
+        promptSetId:body.promptSetId,
+        sceneId:body.sceneId
+      });
+      return Response.json({
+        message:result.status==='matched'
+          ?'Source Router encontrou e selecionou uma fonte visual validada.'
+          :result.status==='operator-source-required'
+            ?'Source Router exige uma fonte documental real do operador.'
+            :'Source Router não encontrou fonte visual aprovada.',
         result
       });
     }
