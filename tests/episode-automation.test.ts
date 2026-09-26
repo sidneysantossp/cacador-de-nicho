@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
@@ -223,7 +224,7 @@ test('Visual asset batching reports waiting-only state without creating duplicat
 
 
 test('Automation worker drains ready backlog without the idle poll delay',()=>{
-  const source=require('node:fs').readFileSync('scripts/episode-automation-worker.mjs','utf8');
+  const source=readFileSync('scripts/episode-automation-worker.mjs','utf8');
   assert.match(source,/AUTOMATION_WORKER_BACKLOG_YIELD_MS/);
   assert.match(source,/Math\.max\(50,Math\.min\(2000/);
   assert.match(source,/await sleep\(BACKLOG_YIELD_MS\)/);
