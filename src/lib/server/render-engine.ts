@@ -415,6 +415,8 @@ export async function createRenderJob(input:{
   if(existing)return normalizeRow(existing as Row);
 
   const id=crypto.randomUUID();
+  const chapterPlan=chapterPlanFor({manifest,preset,crf});
+  const cache=await reusableChapterCache(chapterPlan.map(chapter=>chapter.contentHash));
   const payload:RenderJobPayload={
     preset,
     videoCodec:'libx264',
@@ -423,8 +425,10 @@ export async function createRenderJob(input:{
     audioCodec:'aac',
     audioBitrateKbps,
     outputFormat:renderPresetOutput(preset,manifest.format),
-    compilerVersion:'render-v3',
+    compilerVersion:'render-v4',
     requestedBy:'operator',
+    chapterPlan,
+    resourceBudget:{maxConcurrentChapters:1,minFreeDiskGb:10},
     manifest
   };
   const inserted=await db().from('radar_render_jobs').insert({
@@ -453,6 +457,35 @@ export async function createRenderJob(input:{
     }
     throw new HttpError('Falha ao enfileirar o render.',502);
   }
+
+  const chapterRows=chapterPlan.map(chapter=>{
+    const reused=cache.get(chapter.contentHash);
+    return {
+      id:crypto.randomUUID(),
+      render_job_id:id,
+      chapter_id:chapter.id,
+      sequence:chapter.sequence,
+      label:chapter.label,
+      start_seconds:chapter.startSeconds,
+      end_seconds:chapter.endSeconds,
+      duration_seconds:chapter.durationSeconds,
+      content_hash:chapter.contentHash,
+      status:reused?'completed':'queued',
+      progress:reused?100:0,
+      cache_hit:Boolean(reused),
+      output_path:reused?.output_path??null,
+      output_bytes:reused?.output_bytes??null,
+      render_seconds:reused?.render_seconds??null,
+      completed_at:reused?new Date().toISOString():null,
+      error:null
+    };
+  });
+  const chapterInsert=await db().from('radar_render_chapters').insert(chapterRows);
+  if(chapterInsert.error){
+    await db().from('radar_render_jobs').delete().eq('id',id);
+    throw new HttpError('Falha ao preparar capítulos do render.',502);
+  }
+
   const job=await loadRenderJob(id);
   if(!job)throw new HttpError('Render foi enfileirado, mas não pôde ser recarregado.',502);
   return job;
@@ -470,6 +503,10 @@ export async function cancelRenderJob(jobId:string){
     completed_at:new Date().toISOString(),
     updated_at:new Date().toISOString()
   }).eq('id',jobId).in('status',['queued','processing']));
+  checked(await db().from('radar_render_chapters').update({
+    status:'cancelled',
+    updated_at:new Date().toISOString()
+  }).eq('render_job_id',jobId).in('status',['queued','processing']));
   return loadRenderJob(jobId);
 }
 
@@ -487,6 +524,20 @@ export async function retryRenderJob(jobId:string){
     crf:job.payload.crf,
     audioBitrateKbps:job.payload.audioBitrateKbps
   });
+}
+
+export async function retryRenderChapter(jobId:string,chapterId:string){
+  const job=await loadRenderJob(jobId);
+  if(!job)throw new HttpError('Render job não encontrado.',404);
+  const chapter=job.chapters?.find(item=>item.id===chapterId);
+  if(!chapter)throw new HttpError('Capítulo do render não encontrado.',404);
+  if(chapter.status!=='failed'&&chapter.status!=='cancelled'){
+    throw new HttpError('Somente capítulos failed/cancelled podem ser reenfileirados.',409);
+  }
+  if(job.status!=='failed'&&job.status!=='cancelled'){
+    throw new HttpError('O job master ainda está ativo. Aguarde ou cancele antes de refazer o capítulo.',409);
+  }
+  return retryRenderJob(jobId);
 }
 
 export async function renderEngineChannelState(channelId:string){
