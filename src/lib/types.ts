@@ -1517,6 +1517,11 @@ export type VideoEditVersion = {
  payload: VideoEditPayload;
  createdAt: string;
 };
+export type VideoEditVersionSummary = {
+ version: number;
+ status: VideoEdit['status'];
+ createdAt: string;
+};
 export type RenderJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type RenderManifestVisualClip = {
  clipId: string;
