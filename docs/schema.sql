@@ -176,6 +176,22 @@ $;
 revoke all on function public.match_owned_media_embeddings(extensions.vector,int,text) from public,anon,authenticated;
 grant execute on function public.match_owned_media_embeddings(extensions.vector,int,text) to service_role;
 
+create or replace function public.owned_media_embedding_similarity(
+  p_left_segment uuid,
+  p_right_segment uuid
+) returns double precision
+language sql stable security invoker
+set search_path=public,extensions
+as $
+  select greatest(0::double precision,least(1::double precision,1-(a.embedding <=> b.embedding)))
+  from public.radar_owned_media_embeddings a
+  join public.radar_owned_media_embeddings b on b.resource_type='segment' and b.resource_id=p_right_segment
+  where a.resource_type='segment' and a.resource_id=p_left_segment
+  limit 1;
+$;
+revoke all on function public.owned_media_embedding_similarity(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.owned_media_embedding_similarity(uuid,uuid) to service_role;
+
 create table if not exists public.radar_owned_media_analysis_jobs(
   id uuid primary key,
   asset_id uuid not null unique references public.radar_owned_media_assets(id) on delete cascade,
