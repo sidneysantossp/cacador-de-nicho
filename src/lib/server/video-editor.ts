@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  Timeline, Transcript, VideoEdit, VideoEditPayload, VideoEditVersion, VideoEditVersionSummary
+  Timeline, Transcript, VideoEdit, VideoEditListItem, VideoEditPayload, VideoEditVersion, VideoEditVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -38,13 +38,28 @@ function normalizeRow(row:Row):VideoEdit{
   };
 }
 
-export async function listVideoEdits(channelId:string):Promise<VideoEdit[]>{
-  const rows=checked(await db().from('radar_video_edits')
-    .select('id,channel_id,episode_id,timeline_id,transcript_id,version,status,payload,created_at,updated_at')
+function normalizeListRow(row:{
+  id:string;channel_id:string;episode_id:string;timeline_id:string;transcript_id:string;
+  version:number;status:VideoEdit['status'];duration_seconds:number|string;
+  clip_style_count:number|string;caption_count:number|string;overlay_count:number|string;
+  created_at:string;updated_at:string;
+}):VideoEditListItem{
+  return {
+    id:row.id,channelId:row.channel_id,episodeId:row.episode_id,timelineId:row.timeline_id,
+    transcriptId:row.transcript_id,version:Number(row.version),status:row.status,
+    durationSeconds:Number(row.duration_seconds),clipStyleCount:Number(row.clip_style_count),
+    captionCount:Number(row.caption_count),overlayCount:Number(row.overlay_count),
+    createdAt:String(row.created_at),updatedAt:String(row.updated_at)
+  };
+}
+
+export async function listVideoEdits(channelId:string):Promise<VideoEditListItem[]>{
+  const rows=checked(await db().from('radar_video_edit_list')
+    .select('id,channel_id,episode_id,timeline_id,transcript_id,version,status,duration_seconds,clip_style_count,caption_count,overlay_count,created_at,updated_at')
     .eq('channel_id',channelId)
     .order('updated_at',{ascending:false})
     .limit(200));
-  return (rows??[]).map(row=>normalizeRow(row as Row));
+  return (rows??[]).map(row=>normalizeListRow(row as never));
 }
 
 export async function loadVideoEdit(videoEditId:string):Promise<VideoEdit|null>{
