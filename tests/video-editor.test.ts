@@ -4,7 +4,7 @@ import type {
   AudioLibraryAsset, ProductionDNA, Timeline, Transcript, VideoEditPayload
 } from '../src/lib/types';
 import {
-  buildCaptionCues, buildInitialVideoEdit, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
+  buildCaptionCues, buildInitialVideoEdit, captionQaIssues, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
   normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
@@ -306,4 +306,95 @@ test('Documentary transition duration is bounded for short beats',()=>{
   };
   const style=documentaryClipStyle(clip,0,2,true,.35);
   assert.ok(style.transitionSeconds<=.1+1e-9);
+});
+
+
+test('Long-form captions adapt block size to real speech pace',()=>{
+  const words=Array.from({length:12},(_,index)=>({
+    id:'61111111-1111-4111-8111-'+String(index+1).padStart(12,'0'),
+    text:'word'+String(index+1),
+    startSeconds:index*.5,
+    endSeconds:(index+1)*.5,
+    type:'word' as const
+  }));
+  const slow={
+    ...transcript,
+    durationSeconds:undefined,
+    text:words.map(word=>word.text).join(' '),
+    words,
+    segments:[{
+      id:'62111111-1111-4111-8111-111111111111',
+      startSeconds:0,endSeconds:6,text:words.map(word=>word.text).join(' '),
+      wordIds:words.map(word=>word.id)
+    }]
+  } as Transcript;
+  const fixed=buildCaptionCues(slow,6,{
+    maxWordsPerCaption:12,maxWordsPerLine:6,maxLines:2,longFormMode:false
+  });
+  const adaptive=buildCaptionCues(slow,6,{
+    maxWordsPerCaption:12,maxWordsPerLine:6,maxLines:2,longFormMode:true
+  });
+  assert.equal(fixed.length,1);
+  assert.ok(adaptive.length>=2);
+  assert.ok(adaptive.every(cue=>cue.words.length<=5));
+});
+
+test('Long-form factual emphasis marks years numbers and multi-word names',()=>{
+  const tokens=['In','1925','New','York','counted','4.2','million','residents.'];
+  const words=tokens.map((text,index)=>({
+    id:'63111111-1111-4111-8111-'+String(index+1).padStart(12,'0'),
+    text,startSeconds:index*.35,endSeconds:(index+1)*.35,type:'word' as const
+  }));
+  const value={
+    ...transcript,
+    text:tokens.join(' '),
+    words,
+    segments:[{
+      id:'64111111-1111-4111-8111-111111111111',
+      startSeconds:0,endSeconds:2.8,text:tokens.join(' '),wordIds:words.map(word=>word.id)
+    }]
+  } as Transcript;
+  const cues=buildCaptionCues(value,2.8,{
+    maxWordsPerCaption:12,emphasizeFacts:true,highlightKeywords:false
+  });
+  const highlighted=new Set(cues.flatMap(cue=>cue.words.filter(word=>word.highlighted).map(word=>word.text)));
+  assert.ok(highlighted.has('1925'));
+  assert.ok(highlighted.has('New'));
+  assert.ok(highlighted.has('York'));
+  assert.ok(highlighted.has('4.2'));
+  assert.equal(highlighted.has('counted'),false);
+});
+
+test('Caption QA blocks unsafe margins overflow and excessive reading speed',()=>{
+  const value=edit();
+  value.captions.style.safeMarginPercent=1;
+  value.captions.style.maxWordsPerLine=2;
+  value.captions.maxLines=1;
+  value.captions.cues[0]={
+    ...value.captions.cues[0],
+    startSeconds:0,endSeconds:.4,text:'One two three four five six',
+    words:['One','two','three','four','five','six'].map((text,index)=>({
+      id:'65111111-1111-4111-8111-'+String(index+1).padStart(12,'0'),
+      text,startSeconds:index*.05,endSeconds:(index+1)*.05,highlighted:false
+    }))
+  };
+  const issues=captionQaIssues(value,transcript);
+  assert.ok(issues.includes('caption-safe-margin-low'));
+  assert.ok(issues.includes('caption-overflow-lines'));
+  assert.ok(issues.includes('caption-reading-rate-high'));
+  assert.ok(issues.includes('caption-display-too-short'));
+});
+
+test('Active-word captions require real word-level alignment',()=>{
+  const value=edit();
+  value.captions.style.highlightMode='active-word';
+  assert.ok(captionQaIssues(value,transcript).includes('caption-active-word-without-alignment'));
+
+  const aligned={
+    ...transcript,
+    words:value.captions.cues.flatMap(cue=>cue.words.map(word=>({
+      id:word.id,text:word.text,startSeconds:word.startSeconds,endSeconds:word.endSeconds,type:'word' as const
+    })))
+  } as Transcript;
+  assert.equal(captionQaIssues(value,aligned).includes('caption-active-word-without-alignment'),false);
 });

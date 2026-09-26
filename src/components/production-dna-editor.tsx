@@ -27,7 +27,10 @@ function blank(channel:ManagedChannel):ProductionDnaPayload{
     visual:{styleName:'',styleDescription:'',palette:[],compositionRules:[],cameraRules:[],motionRules:[],basePrompt:'',scenePromptTemplate:'{{scene_direction}} + {{character_bible}} + {{visual_bible}} + {{negative_rules}} + {{aspect_ratio}}',negativePrompt:'',forbidden:[]},
     characters:[],
     voice:{language:'English',providerPreference:[],voiceId:'',voiceName:'',narrationStyle:[],paceWpm:null,pronunciationRules:[]},
-    captions:{enabled:true,styleDescription:'',position:'bottom-center',maxWordsPerCaption:null,highlightKeywords:false},
+    captions:{
+      enabled:true,styleDescription:'',position:'bottom-center',maxWordsPerCaption:null,highlightKeywords:false,
+      longFormMode:false,highlightMode:'none',emphasizeFacts:false,safeMarginPercent:6,maxLines:2
+    },
     editing:{transitions:[],defaultTransition:'cut',kenBurns:false,musicStyle:[],sfxRules:[],pacingRules:[]},
     thumbnail:{styleRules:[],forbidden:[]},
     providers:{image:[],video:[],voice:[],stock:[]},
@@ -170,9 +173,20 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
       </div>
       <section className="production-dna-captions">
         <label><input type="checkbox" checked={draft.captions.enabled} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,enabled:e.target.checked}}))}/>Legendas habilitadas</label>
-        <label><input type="checkbox" checked={draft.captions.highlightKeywords} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,highlightKeywords:e.target.checked}}))}/>Destacar palavras-chave</label>
+        <label><input type="checkbox" checked={draft.captions.longFormMode??false} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,longFormMode:e.target.checked}}))}/>Modo Long-Form adaptativo</label>
+        <label><input type="checkbox" checked={draft.captions.emphasizeFacts??false} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,emphasizeFacts:e.target.checked}}))}/>Destacar números, datas e nomes</label>
+        <label><input type="checkbox" checked={draft.captions.highlightKeywords} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,highlightKeywords:e.target.checked}}))}/>Compatibilidade: destacar palavras-chave</label>
+        <Field label="Realce">
+          <select value={draft.captions.highlightMode??(draft.captions.highlightKeywords?'keywords':'none')} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,highlightMode:e.target.value as 'none'|'keywords'|'active-word'}}))}>
+            <option value="none">Nenhum</option>
+            <option value="keywords">Palavras-chave / fatos</option>
+            <option value="active-word">Palavra falada</option>
+          </select>
+        </Field>
         <Field label="Posição"><input value={draft.captions.position} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,position:e.target.value}}))}/></Field>
-        <Field label="Máx. palavras/bloco"><input type="number" value={draft.captions.maxWordsPerCaption??''} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,maxWordsPerCaption:num(e.target.value)}}))}/></Field>
+        <Field label="Máx. palavras/bloco"><input type="number" min="2" max="30" value={draft.captions.maxWordsPerCaption??''} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,maxWordsPerCaption:num(e.target.value)}}))}/></Field>
+        <Field label="Máx. linhas"><input type="number" min="1" max="6" value={draft.captions.maxLines??2} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,maxLines:Math.max(1,Math.min(6,Number(e.target.value)||2))}}))}/></Field>
+        <Field label="Safe area (%)"><input type="number" min="0" max="25" step="0.5" value={draft.captions.safeMarginPercent??6} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,safeMarginPercent:Math.max(0,Math.min(25,Number(e.target.value)||0))}}))}/></Field>
       </section>
       <TextField label="ESTILO DAS LEGENDAS" value={draft.captions.styleDescription} onChange={v=>setDraft(prev=>({...prev,captions:{...prev.captions,styleDescription:v}}))} rows={5}/>
     </div>}
