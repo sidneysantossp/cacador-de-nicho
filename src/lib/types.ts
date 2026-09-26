@@ -855,6 +855,12 @@ export type VoiceAlignment = {
  characterStartTimesSeconds: number[];
  characterEndTimesSeconds: number[];
 };
+export type VoiceGenerationChunkSummary = {
+ index: number;
+ characterCount: number;
+ durationSeconds: number;
+ cacheHit: boolean;
+};
 export type VoiceAsset = {
  id: string;
  channelId: string;
@@ -878,8 +884,14 @@ export type VoiceAsset = {
  durationSeconds: number | null;
  characterCount: number;
  alignment?: VoiceAlignment;
+ generationChunks?: VoiceGenerationChunkSummary[];
  createdAt: string;
  updatedAt: string;
+};
+export type VoiceAssetListItem = Omit<VoiceAsset,'alignment'> & {
+ hasAlignment: boolean;
+ signedUrl: string | null;
+ stale: boolean;
 };
 export type TranscriptWord = {
  id: string;
