@@ -551,18 +551,8 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
       throw new HttpError('Não foi possível determinar a duração do vídeo.',422);
     }
 
-    const specs=source.asset_kind==='image'
-      ?[{sequence:1,start:0,end:1,mid:0}]
-      :normalizeBoundaries(
-        await detectBoundaries(inputFile,metadata.durationSeconds!),
-        metadata.durationSeconds!
-      ).slice(0,-1).map((start,index)=>{
-        const end=normalizeBoundaries([],1)[0]===-1?start:0;
-        return {sequence:index+1,start,end,mid:0};
-      });
-
     const normalizedSpecs=source.asset_kind==='image'
-      ?specs
+      ?[{sequence:1,start:0,end:1,mid:0}]
       :await (async()=>{
         const boundaries=await detectBoundaries(inputFile,metadata.durationSeconds!);
         return boundaries.slice(0,-1)
