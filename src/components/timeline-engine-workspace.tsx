@@ -21,6 +21,8 @@ type Source={
   title:string;
 };
 type Tab='timeline'|'review'|'history';
+type TimelineView=Timeline&{stale?:boolean;staleReason?:string};
+type ScenePlanView=ScenePlan&{stale?:boolean;staleReason?:string};
 
 function time(value:number){
   const m=Math.floor(value/60);
@@ -31,8 +33,8 @@ function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateS
 function payloadOnly(value:Timeline):TimelinePayload{const {version:_version,status:_status,...payload}=value;return payload;}
 
 export default function TimelineEngineWorkspace({channel}:{channel:ManagedChannel}){
-  const [timelines,setTimelines]=useState<Timeline[]>([]);
-  const [scenePlans,setScenePlans]=useState<ScenePlan[]>([]);
+  const [timelines,setTimelines]=useState<TimelineView[]>([]);
+  const [scenePlans,setScenePlans]=useState<ScenePlanView[]>([]);
   const [current,setCurrent]=useState<Timeline|null>(null);
   const [draft,setDraft]=useState<TimelinePayload|null>(null);
   const [scenePlan,setScenePlan]=useState<ScenePlan|null>(null);
@@ -45,7 +47,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
   const [message,setMessage]=useState('');
 
   const timelinePlanIds=useMemo(()=>new Set(timelines.map(item=>item.scenePlanId)),[timelines]);
-  const eligiblePlans=useMemo(()=>scenePlans.filter(item=>!timelinePlanIds.has(item.id)),[scenePlans,timelinePlanIds]);
+  const eligiblePlans=useMemo(()=>scenePlans.filter(item=>!item.stale&&!timelinePlanIds.has(item.id)),[scenePlans,timelinePlanIds]);
   const sourceMap=useMemo(()=>new Map(sources.map(source=>[source.assetId,source])),[sources]);
   const voiceSource=useMemo(()=>{
     const voiceClip=draft?.tracks.find(track=>track.type==='voice')?.clips[0];
@@ -232,7 +234,7 @@ export default function TimelineEngineWorkspace({channel}:{channel:ManagedChanne
     <section className="timeline-project-grid">{timelines.map(item=>{
       const visuals=item.tracks.find(track=>track.type==='visual')?.clips??[];
       const placeholders=visuals.filter(clip=>clip.clipKind==='placeholder').length;
-      return <article key={item.id}><div><span>{item.status}</span><em>v{item.version}</em></div><h3>{visuals.length} cenas</h3><p>{time(item.durationSeconds)} · {item.format.width}×{item.format.height}</p><small>{placeholders?placeholders+' placeholder(s)':'mídia completa'}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTimeline(item.id)}>Abrir Timeline</button></article>;
+      return <article key={item.id}><div><span>{item.stale?'stale':item.status}</span><em>v{item.version}</em></div><h3>{visuals.length} cenas</h3><p>{time(item.durationSeconds)} · {item.format.width}×{item.format.height}</p><small>{item.stale?'Take de voz mudou · reconstrução necessária':placeholders?placeholders+' placeholder(s)':'mídia completa'}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openTimeline(item.id)}>Abrir Timeline</button></article>;
     })}</section>
 
     {!timelines.length&&!eligiblePlans.length&&<div className="timeline-empty"><Clapperboard size={28}/><h3>Nenhum Scene Plan pronto para Timeline.</h3><p>A timeline nasce somente depois do Scene Timecode e Visual Prompt Engine aprovados.</p></div>}
