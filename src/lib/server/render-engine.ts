@@ -357,6 +357,8 @@ function chapterPlanFor(input:{
     const contentHash=hash(JSON.stringify({
       compilerVersion:'render-v4',
       outputFormat,
+      videoCodec:'libx264',
+      fallbackVideoCodecs:['mpeg4'],
       crf:input.crf,
       durationSeconds:chapter.durationSeconds,
       clips,
