@@ -44,7 +44,8 @@ import {
   automationHttpErrorShouldHold, automationPackageSnapshotIssues,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues,
   automationRenderSnapshotIssues, automationTimelineSnapshotIssues,
-  automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps
+  automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps,
+  visualAssetBatchPlan
 } from '@/lib/episode-automation-policy';
 
 type RunRow={
@@ -56,6 +57,15 @@ type RunRow={
 };
 
 const runSelection='id,channel_id,episode_id,content_project_id,mode,status,current_step,attempts,payload,last_error,hold_step,hold_reason,hold_created_at,created_at,updated_at';
+
+const visualBatchConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_SIZE??4);
+const VISUAL_ASSET_BATCH_SIZE=Number.isFinite(visualBatchConfigured)
+  ?Math.max(1,Math.min(12,Math.floor(visualBatchConfigured)))
+  :4;
+const visualBudgetConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_BUDGET_MS??210000);
+const VISUAL_ASSET_BATCH_BUDGET_MS=Number.isFinite(visualBudgetConfigured)
+  ?Math.max(30000,Math.min(240000,Math.floor(visualBudgetConfigured)))
+  :210000;
 
 function normalizeRun(row:RunRow):EpisodeAutomationRun{
   const payload=row.payload as EpisodeAutomationRunPayload;
@@ -124,8 +134,9 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
     client.from('radar_verified_stock_jobs')
       .select('id,scene_id,status,result,last_error,updated_at')
       .eq('episode_id',run.episodeId)
+      .in('status',['queued','processing'])
       .order('updated_at',{ascending:false})
-      .limit(100),
+      .limit(1000),
     client.from('radar_production_dna')
       .select('id,version,payload,updated_at')
       .eq('id',run.channelId).maybeSingle()
@@ -1063,47 +1074,91 @@ async function executeAutomationTransition(
       if(!run.policy.autoGenerateVisualAssets)throw new HttpError('Geração automática de assets visuais está desativada.',409);
       const promptSetId=automationStep(run,'visual-prompts')?.entityId;
       if(!promptSetId)throw new HttpError('Visual Prompt Set aprovado não identificado.',409);
-      const [promptSet,assets]=await Promise.all([
+      const [promptSet,assets,activeStockRows]=await Promise.all([
         loadVisualPromptSet(promptSetId),
-        listSceneAssets(promptSetId)
+        listSceneAssets(promptSetId),
+        db().from('radar_verified_stock_jobs')
+          .select('scene_id,status')
+          .eq('visual_prompt_set_id',promptSetId)
+          .in('status',['queued','processing'])
+          .limit(1000)
       ]);
       if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
       if(promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
 
-      const selectedReady=new Set(
-        assets.filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
-          .map(asset=>asset.sceneId)
-      );
-      const target=promptSet.scenePrompts.find(item=>!selectedReady.has(item.sceneId));
-      if(!target)return 'Todos os assets visuais já estão cobertos.';
-
-      const routed=await resolveSourceForScene({
-        promptSetId:promptSet.id,
-        sceneId:target.sceneId
+      const selectedReadySceneIds=assets
+        .filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
+        .map(asset=>asset.sceneId);
+      const activeStockSceneIds=(checked(activeStockRows)??[])
+        .map(row=>String(row.scene_id??''))
+        .filter(Boolean);
+      const batch=visualAssetBatchPlan({
+        sceneIds:promptSet.scenePrompts.map(item=>item.sceneId),
+        selectedReadySceneIds,
+        activeStockSceneIds,
+        batchSize:VISUAL_ASSET_BATCH_SIZE
       });
-      if(routed.status==='matched'){
-        return 'Source Router cobriu '+target.timecodeLabel+
-          ' · estratégia '+String(routed.action)+
-          ' · preferência '+String(routed.route.preference)+'.';
+
+      if(!batch.missing.length)return 'Todos os assets visuais já estão cobertos.';
+      if(!batch.targets.length){
+        return String(batch.waiting.length)+
+          ' cena(s) aguardando validação stock já enfileirada; nenhum novo job foi duplicado.';
       }
-      if(routed.status==='queued'){
-        return 'Source Router enfileirou validação de '+String(routed.action)+
-          ' para '+target.timecodeLabel+
-          ' · job '+String(routed.job.id)+'.';
-      }
-      if(routed.status==='operator-source-required'){
+
+      const byScene=new Map(promptSet.scenePrompts.map(item=>[item.sceneId,item]));
+      const startedAt=Date.now();
+      let processed=0;
+      let matched=0;
+      let queued=0;
+      const actions=new Map<string,number>();
+
+      for(const sceneId of batch.targets){
+        if(processed>0&&Date.now()-startedAt>=VISUAL_ASSET_BATCH_BUDGET_MS)break;
+        const target=byScene.get(sceneId);
+        if(!target)continue;
+
+        const routed=await resolveSourceForScene({
+          promptSetId:promptSet.id,
+          sceneId:target.sceneId
+        });
+        processed++;
+        const action=String(routed.action??'none');
+        actions.set(action,(actions.get(action)??0)+1);
+
+        if(routed.status==='matched'){
+          matched++;
+          continue;
+        }
+        if(routed.status==='queued'){
+          queued++;
+          continue;
+        }
+        if(routed.status==='operator-source-required'){
+          throw new HttpError(
+            'Source Router pausou '+target.timecodeLabel+
+            ': '+routed.reason+
+            ' A geração sintética permanece bloqueada para este beat factual.',
+            409
+          );
+        }
         throw new HttpError(
-          'Source Router pausou '+target.timecodeLabel+
-          ': '+routed.reason+
-          ' A geração sintética permanece bloqueada para este beat factual.',
+          'Source Router não encontrou fonte aprovada para '+target.timecodeLabel+
+          ': '+routed.reason,
           409
         );
       }
-      throw new HttpError(
-        'Source Router não encontrou fonte aprovada para '+target.timecodeLabel+
-        ': '+routed.reason,
-        409
-      );
+
+      const remainingEligible=Math.max(0,batch.eligible.length-processed);
+      const actionSummary=[...actions.entries()]
+        .map(([action,count])=>action+':'+count)
+        .join(', ');
+      return 'Lote visual processou '+processed+' cena(s): '+
+        matched+' coberta(s), '+queued+' enfileirada(s). '+
+        remainingEligible+' elegível(is) para próximos lotes; '+
+        batch.waiting.length+' já aguardando stock. '+
+        (actionSummary?'Rotas '+actionSummary+'. ':'')+
+        'Batch '+VISUAL_ASSET_BATCH_SIZE+
+        ' · budget '+Math.round(VISUAL_ASSET_BATCH_BUDGET_MS/1000)+'s.';
     }
 
     case 'timeline':{
