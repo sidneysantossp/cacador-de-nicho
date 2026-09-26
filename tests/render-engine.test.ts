@@ -198,3 +198,12 @@ test('Render cross-dissolve uses bounded scene duration',()=>{
 test('Render worker script is valid Node ESM syntax',()=>{
   execFileSync(process.execPath,['--check','scripts/render-worker.mjs'],{stdio:'pipe'});
 });
+
+
+test('Render manifest validates normalized documentary focus coordinates',()=>{
+  const value=manifest();
+  value.visualClips[0]={...value.visualClips[0],focusX:.2,focusY:.8};
+  assert.deepEqual(renderManifestIssues(value,edit,timeline,transcript),[]);
+  value.visualClips[0].focusX=1.2;
+  assert.ok(renderManifestIssues(value,edit,timeline,transcript).includes('render-focus-x-invalid'));
+});
