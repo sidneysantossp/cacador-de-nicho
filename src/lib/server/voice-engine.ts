@@ -8,7 +8,7 @@ import { providerSecret } from './providers';
 import { downloadMedia, putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadEpisodeScript } from './episode-script';
 import { loadProductionDna } from './production-dna';
-import { voiceAssetIsStale, voiceModelCharacterLimits } from '@/lib/voice-policy';
+import { voiceAssetIsStale, voiceDownstreamStages, voiceModelCharacterLimits } from '@/lib/voice-policy';
 
 const MAX_AUDIO_BYTES=100*1024*1024;
 
@@ -349,12 +349,51 @@ export async function generateElevenLabsVoice(input:{
 }
 
 export async function selectVoiceAsset(scriptId:string,assetId:string){
+  const [current,target]=await Promise.all([
+    db().from('radar_voice_assets')
+      .select('id')
+      .eq('script_id',scriptId)
+      .eq('selected',true)
+      .maybeSingle(),
+    db().from('radar_voice_assets')
+      .select('id,status,episode_id')
+      .eq('script_id',scriptId)
+      .eq('id',assetId)
+      .maybeSingle()
+  ]);
+  if(current.error)throw new HttpError('Falha ao verificar o take ativo.',502);
+  if(target.error)throw new HttpError('Falha ao verificar o take selecionado.',502);
+  if(!target.data)throw new HttpError('Take de voz não encontrado para este roteiro.',404);
+  if(target.data.status!=='ready')throw new HttpError('Este take ainda não está pronto para uso.',409);
+
+  const previousAssetId=current.data?.id?String(current.data.id):null;
+  const changed=previousAssetId!==assetId;
   const result=await db().rpc('select_voice_asset',{p_script_id:scriptId,p_asset_id:assetId});
   if(result.error){
     const message=String(result.error.message??'');
     if(message.includes('voice asset not ready'))throw new HttpError('Este take ainda não está pronto para uso.',409);
     throw new HttpError('Falha ao selecionar o take de voz.',502);
   }
+  if(changed){
+    const reopened=await db().from('radar_episode_automation_runs').update({
+      status:'active',
+      worker_token:null,
+      lease_until:null,
+      hold_step:null,
+      hold_reason:null,
+      hold_created_at:null,
+      last_error:null,
+      updated_at:new Date().toISOString()
+    }).eq('episode_id',String(target.data.episode_id)).neq('status','cancelled');
+    if(reopened.error)throw new HttpError('Take ativado, mas não foi possível reabrir a automação do episódio.',502);
+  }
+
+  return {
+    changed,
+    previousAssetId,
+    selectedAssetId:assetId,
+    invalidatedStages:changed&&previousAssetId?[...voiceDownstreamStages]:[]
+  };
 }
 
 export async function deleteVoiceAsset(scriptId:string,assetId:string){

@@ -123,6 +123,7 @@ test('Timeline asset gate detects changed selection and stale upstream assets',(
     currentScenePlanVersion:scenePlan.version,
     currentPromptSetVersion:promptSet.version,
     voiceReady:true,
+    voiceSelected:true,
     voiceStale:false,
     selectedSceneAssets:selected
   });
@@ -203,4 +204,22 @@ test('Large source shortage remains explicit and blocks approval',()=>{
   });
   assert.equal(fit.playback,'loop');
   assert.equal(fit.shortfallSeconds,1);
+});
+
+
+test('Timeline asset gate rejects a voice take that is no longer selected',()=>{
+  const t=timeline();
+  const selected=new Map(scenePlan.scenes.map((scene,index)=>[
+    scene.id,{id:assets[index].id,stale:false,ready:true}
+  ]));
+  const issues=timelineAssetIssues({
+    timeline:t,
+    currentScenePlanVersion:scenePlan.version,
+    currentPromptSetVersion:promptSet.version,
+    voiceReady:true,
+    voiceSelected:false,
+    voiceStale:false,
+    selectedSceneAssets:selected
+  });
+  assert.ok(issues.includes('voice-not-selected'));
 });

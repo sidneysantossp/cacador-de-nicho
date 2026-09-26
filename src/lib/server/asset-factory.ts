@@ -11,6 +11,7 @@ import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
+import { loadVoiceAsset } from './voice-engine';
 import { matchOwnedMediaSegments } from './owned-media-intelligence';
 import { libraryFirstMatchAccepted, libraryFirstSceneQuery } from '@/lib/media-library-policy';
 import {
@@ -89,6 +90,10 @@ async function eligibleContext(promptSetId:string,sceneId:string){
   ]);
   if(!plan||plan.status!=='approved')throw new HttpError('O Scene Plan não está aprovado.',409);
   if(!dna)throw new HttpError('Production DNA não encontrado.',409);
+  const voice=await loadVoiceAsset(plan.voiceAssetId);
+  if(!voice||voice.status!=='ready'||!voice.selected){
+    throw new HttpError('O plano visual pertence a um take que não está mais ativo. Reconstrua a cadeia antes de gerar ou selecionar mídia.',409);
+  }
   const scene=plan.scenes.find(item=>item.id===sceneId);
   const visual=promptSet.scenePrompts.find(item=>item.sceneId===sceneId);
   if(!scene||!visual)throw new HttpError('Cena não encontrada no plano visual aprovado.',404);

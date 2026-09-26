@@ -123,6 +123,7 @@ async function eligibleContext(scenePlanId:string){
   }
   if(!dna)throw new HttpError('Production DNA não encontrado.',409);
   if(!voiceAsset||voiceAsset.status!=='ready')throw new HttpError('O take de voz do Scene Plan não está pronto.',409);
+  if(!voiceAsset.selected)throw new HttpError('O Scene Plan usa um take que não está mais ativo. Reconstrua a cadeia a partir do take selecionado.',409);
   if(!script||script.status!=='approved')throw new HttpError('O roteiro não está aprovado.',409);
 
   const selectedAssets=await selectedSceneAssetRows(visualPromptSet.id);
@@ -233,6 +234,7 @@ function currentAssetIssues(input:{
     currentScenePlanVersion:input.scenePlan.version,
     currentPromptSetVersion:input.promptSet.version,
     voiceReady:input.voiceAsset.status==='ready',
+    voiceSelected:input.voiceAsset.selected,
     voiceStale,
     selectedSceneAssets:selected
   });

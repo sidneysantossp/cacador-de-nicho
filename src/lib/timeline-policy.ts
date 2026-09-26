@@ -291,6 +291,7 @@ export function timelineAssetIssues(input:{
   currentScenePlanVersion:number;
   currentPromptSetVersion:number;
   voiceReady:boolean;
+  voiceSelected:boolean;
   voiceStale:boolean;
   selectedSceneAssets:Map<string,{id:string;stale:boolean;ready:boolean}>;
 }){
@@ -298,6 +299,7 @@ export function timelineAssetIssues(input:{
   if(input.timeline.scenePlanVersion!==input.currentScenePlanVersion)issues.push('stale-scene-plan-version');
   if(input.timeline.visualPromptSetVersion!==input.currentPromptSetVersion)issues.push('stale-visual-prompt-set-version');
   if(!input.voiceReady)issues.push('voice-not-ready');
+  if(!input.voiceSelected)issues.push('voice-not-selected');
   if(input.voiceStale)issues.push('voice-stale');
 
   const visual=input.timeline.tracks.find(track=>track.type==='visual');

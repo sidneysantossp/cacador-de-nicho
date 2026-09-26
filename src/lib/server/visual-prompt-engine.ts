@@ -7,6 +7,7 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
+import { loadVoiceAsset } from './voice-engine';
 import { draftVisualScenes } from './visual-prompt-ai';
 import {
   buildInitialVisualPromptSet, compileCharacterReference, compileScenePrompt,
@@ -75,8 +76,14 @@ async function eligibleContext(scenePlanId:string){
   const plan=await loadScenePlan(scenePlanId);
   if(!plan)throw new HttpError('Scene Plan não encontrado.',404);
   if(plan.status!=='approved')throw new HttpError('Aprove o Scene Plan antes de criar prompts visuais.',409);
-  const dna=await loadProductionDna(plan.channelId);
+  const [dna,voice]=await Promise.all([
+    loadProductionDna(plan.channelId),
+    loadVoiceAsset(plan.voiceAssetId)
+  ]);
   if(!dna)throw new HttpError('Configure o Production DNA antes de criar prompts visuais.',409);
+  if(!voice||voice.status!=='ready'||!voice.selected){
+    throw new HttpError('O Scene Plan pertence a um take que não está mais ativo. Reconstrua a cadeia a partir da narração selecionada.',409);
+  }
   return {plan,dna};
 }
 

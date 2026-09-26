@@ -3,8 +3,11 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   deleteVoiceAsset, generateElevenLabsVoice, listElevenLabsVoices,
-  listVoiceAssets, selectVoiceAsset, uploadVoiceAsset
+  listVoiceAssets, loadVoiceAsset, selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
+import {
+  createTranscriptFromAlignment, loadTranscriptByVoiceAsset, transcribeWithScribe
+} from '@/lib/server/transcription-engine';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -20,6 +23,11 @@ const jsonSchema=z.discriminatedUnion('action',[
   }).strict(),
   z.object({
     action:z.literal('select'),
+    scriptId:z.string().uuid(),
+    assetId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('rebuild'),
     scriptId:z.string().uuid(),
     assetId:z.string().uuid()
   }).strict(),
@@ -72,8 +80,35 @@ export async function POST(request:Request){
       return Response.json({message:'Narração gerada e salva como novo take.',asset,assets:await listVoiceAssets(body.scriptId)});
     }
     if(body.action==='select'){
-      await selectVoiceAsset(body.scriptId,body.assetId);
-      return Response.json({message:'Take selecionado para as próximas etapas.',assets:await listVoiceAssets(body.scriptId)});
+      const selection=await selectVoiceAsset(body.scriptId,body.assetId);
+      const message=selection.invalidatedStages.length
+        ?'Take selecionado. A cadeia anterior ficou stale a partir de Transcript: '+selection.invalidatedStages.join(' → ')+'.'
+        :'Take selecionado para as próximas etapas.';
+      return Response.json({
+        message,
+        selection,
+        assets:await listVoiceAssets(body.scriptId)
+      });
+    }
+    if(body.action==='rebuild'){
+      const selection=await selectVoiceAsset(body.scriptId,body.assetId);
+      const asset=await loadVoiceAsset(body.assetId);
+      if(!asset)throw new HttpError('Take de voz não encontrado.',404);
+      let transcript=await loadTranscriptByVoiceAsset(body.assetId);
+      if(!transcript){
+        transcript=asset.alignment
+          ?await createTranscriptFromAlignment(body.assetId)
+          :await transcribeWithScribe(body.assetId);
+      }
+      return Response.json({
+        message:transcript.status==='approved'
+          ?'Take ativado. Transcript existente está aprovado; a cadeia pode continuar pelo Scene Timecode.'
+          :'Take ativado e Transcript reconstruído como draft. Revise/aprove em Transcription antes de seguir.',
+        selection,
+        transcript,
+        nextStep:transcript.status==='approved'?'scenes':'transcript',
+        assets:await listVoiceAssets(body.scriptId)
+      });
     }
 
     await deleteVoiceAsset(body.scriptId,body.assetId);

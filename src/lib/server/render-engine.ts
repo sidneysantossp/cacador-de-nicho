@@ -116,6 +116,7 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   ]);
 
   if(!voice||voice.status!=='ready'||!voice.storagePath)throw new HttpError('A narração da Timeline não está pronta para render.',409);
+  if(!voice.selected)throw new HttpError('A Timeline usa um take de voz que não está mais ativo. Reconstrua Transcript, Scene Plan, Timeline e Video Edit a partir do take selecionado.',409);
   if(!script||script.status!=='approved')throw new HttpError('O roteiro deixou de estar aprovado.',409);
   if(!promptSet||promptSet.status!=='approved')throw new HttpError('O Visual Prompt Set deixou de estar aprovado.',409);
   if(promptSet.version!==timeline.visualPromptSetVersion)throw new HttpError('A Timeline usa uma versão antiga dos prompts visuais. Revise a Timeline antes de renderizar.',409);
