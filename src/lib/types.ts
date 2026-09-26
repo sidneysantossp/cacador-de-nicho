@@ -678,6 +678,11 @@ export type ProductionDnaPayload = {
   position: string;
   maxWordsPerCaption: number | null;
   highlightKeywords: boolean;
+  longFormMode?: boolean;
+  highlightMode?: 'none' | 'keywords' | 'active-word';
+  emphasizeFacts?: boolean;
+  safeMarginPercent?: number;
+  maxLines?: number;
  };
  editing: {
   transitions: string[];
