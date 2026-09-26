@@ -21,3 +21,18 @@ test('Media Intelligence vector schema uses valid dollar quoting and no duplicat
     1
   );
 });
+
+
+test('Render-v4 schema persists chapter cache state with bounded status',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const start=sql.indexOf('create table if not exists public.radar_render_chapters(');
+  const end=sql.indexOf('create table if not exists public.radar_production_quality_reports(',start);
+  assert.ok(start>=0&&end>start,'render chapters table missing');
+  const block=sql.slice(start,end);
+  assert.match(block,/render_job_id uuid not null references public\.radar_render_jobs\(id\) on delete cascade/);
+  assert.match(block,/scene_ids uuid\[\] not null default '\{\}'/);
+  assert.match(block,/content_hash text not null/);
+  assert.match(block,/cache_hit boolean not null default false/);
+  assert.match(block,/render_seconds numeric/);
+  assert.match(block,/radar_render_chapters_cache/);
+});
