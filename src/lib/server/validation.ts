@@ -491,6 +491,18 @@ export const timelinePayloadSchema=z.object({
   aspectRatio:z.string().trim().min(1).max(30)
  }).strict(),
  durationSeconds:z.number().min(0).max(86400),
+ chapters:z.array(z.object({
+  id:z.string().uuid(),
+  sequence:z.number().int().min(1).max(10000),
+  label:z.string().trim().min(1).max(200),
+  startSeconds:z.number().min(0).max(86400),
+  endSeconds:z.number().min(0).max(86400),
+  durationSeconds:z.number().min(0).max(86400),
+  sceneIds:z.array(z.string().uuid()).max(5000),
+  status:z.enum(['draft','review','approved']),
+  reviewNotes:z.string().trim().max(5000),
+  updatedAt:z.string().datetime()
+ }).strict()).max(500).optional(),
  tracks:z.array(z.object({
   id:z.string().uuid(),
   type:z.enum(['visual','voice','overlay','music','sfx','captions']),
