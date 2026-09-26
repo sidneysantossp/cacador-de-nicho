@@ -1538,6 +1538,15 @@ export type RenderManifestVisualClip = {
  fit: 'cover' | 'contain' | 'stretch';
  style: VideoEditClipStyle;
 };
+export type RenderManifestChapter = {
+ id: string;
+ sequence: number;
+ label: string;
+ startSeconds: number;
+ endSeconds: number;
+ durationSeconds: number;
+ sceneIds: string[];
+};
 export type RenderManifest = {
  videoEditId: string;
  videoEditVersion: number;
@@ -1552,6 +1561,7 @@ export type RenderManifest = {
   aspectRatio: string;
  };
  durationSeconds: number;
+ chapters?: RenderManifestChapter[];
  visualClips: RenderManifestVisualClip[];
  voice: {
   assetId: string;
@@ -1582,6 +1592,24 @@ export type RenderOutputFormat = {
  height: number;
  fps: number;
 };
+export type RenderChapterPlan = RenderManifestChapter & {
+ contentHash: string;
+};
+export type RenderChapterStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type RenderChapter = RenderChapterPlan & {
+ renderJobId: string;
+ status: RenderChapterStatus;
+ progress: number;
+ cacheHit: boolean;
+ outputPath?: string;
+ outputBytes?: number;
+ renderSeconds?: number;
+ error?: string;
+ createdAt: string;
+ startedAt?: string;
+ completedAt?: string;
+ updatedAt: string;
+};
 export type RenderJobPayload = {
  preset: RenderPreset;
  videoCodec: 'libx264';
@@ -1590,8 +1618,21 @@ export type RenderJobPayload = {
  audioCodec: 'aac';
  audioBitrateKbps: number;
  outputFormat?: RenderOutputFormat;
- compilerVersion: 'render-v1' | 'render-v2' | 'render-v3';
+ compilerVersion: 'render-v1' | 'render-v2' | 'render-v3' | 'render-v4';
  requestedBy: 'operator';
+ chapterPlan?: RenderChapterPlan[];
+ resourceBudget?: {
+  maxConcurrentChapters: 1;
+  minFreeDiskGb: number;
+ };
+ metrics?: {
+  wallSeconds: number;
+  finishedMinutes: number;
+  secondsPerFinishedMinute: number;
+  realTimeFactor: number;
+  cacheHits: number;
+  renderedChapters: number;
+ };
  manifest: RenderManifest;
 };
 export type RenderJob = {
@@ -1609,6 +1650,7 @@ export type RenderJob = {
  outputSignedUrl?: string | null;
  error?: string;
  payload: RenderJobPayload;
+ chapters?: RenderChapter[];
  createdAt: string;
  startedAt?: string;
  completedAt?: string;

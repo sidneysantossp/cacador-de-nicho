@@ -2,8 +2,8 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  RenderJob, RenderJobPayload, RenderManifest, RenderManifestVisualClip, RenderPreset,
-  SceneAsset, VideoEdit
+  RenderChapter, RenderChapterPlan, RenderJob, RenderJobPayload, RenderManifest,
+  RenderManifestVisualClip, RenderPreset, SceneAsset, VideoEdit
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -15,6 +15,7 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { assetIsStale } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
+import { timelineChapters } from '@/lib/timeline-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
   DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF, renderManifestIssues,
@@ -34,6 +35,49 @@ type AssetRow={
   selected:boolean;storage_path:string;mime_type:string;duration_seconds:number|string|null;payload:unknown;
 };
 
+type ChapterRow={
+  id:string;render_job_id:string;chapter_id:string;sequence:number;label:string;
+  start_seconds:number|string;end_seconds:number|string;duration_seconds:number|string;
+  scene_ids:string[]|null;content_hash:string;status:RenderChapter['status'];progress:number;cache_hit:boolean;
+  output_path:string|null;output_bytes:number|string|null;render_seconds:number|string|null;
+  error:string|null;created_at:string;started_at:string|null;completed_at:string|null;updated_at:string;
+};
+
+function normalizeChapter(row:ChapterRow):RenderChapter{
+  return {
+    id:row.chapter_id,
+    sequence:Number(row.sequence),
+    label:String(row.label??''),
+    startSeconds:Number(row.start_seconds),
+    endSeconds:Number(row.end_seconds),
+    durationSeconds:Number(row.duration_seconds),
+    sceneIds:(row.scene_ids??[]).map(String),
+    contentHash:String(row.content_hash),
+    renderJobId:row.render_job_id,
+    status:row.status,
+    progress:Number(row.progress),
+    cacheHit:Boolean(row.cache_hit),
+    outputPath:row.output_path??undefined,
+    outputBytes:row.output_bytes===null?undefined:Number(row.output_bytes),
+    renderSeconds:row.render_seconds===null?undefined:Number(row.render_seconds),
+    error:row.error??undefined,
+    createdAt:String(row.created_at),
+    startedAt:row.started_at??undefined,
+    completedAt:row.completed_at??undefined,
+    updatedAt:String(row.updated_at)
+  };
+}
+
+const chapterSelection='id,render_job_id,chapter_id,sequence,label,start_seconds,end_seconds,duration_seconds,scene_ids,content_hash,status,progress,cache_hit,output_path,output_bytes,render_seconds,error,created_at,started_at,completed_at,updated_at';
+
+async function renderChapters(jobId:string){
+  const rows=checked(await db().from('radar_render_chapters')
+    .select(chapterSelection)
+    .eq('render_job_id',jobId)
+    .order('sequence',{ascending:true})) as ChapterRow[];
+  return (rows??[]).map(normalizeChapter);
+}
+
 function hash(value:string){
   return createHash('sha256').update(value,'utf8').digest('hex');
 }
@@ -43,7 +87,7 @@ async function signedOutput(path:string|null){
   return signedMediaUrl(path,3600);
 }
 
-async function normalizeRow(row:Row):Promise<RenderJob>{
+async function normalizeRow(row:Row,chapters?:RenderChapter[]):Promise<RenderJob>{
   return {
     id:row.id,
     channelId:row.channel_id,
@@ -59,6 +103,7 @@ async function normalizeRow(row:Row):Promise<RenderJob>{
     outputSignedUrl:await signedOutput(row.output_path),
     error:row.error??undefined,
     payload:row.payload as RenderJobPayload,
+    chapters:chapters??await renderChapters(row.id),
     createdAt:String(row.created_at),
     startedAt:row.started_at??undefined,
     completedAt:row.completed_at??undefined,
@@ -73,8 +118,21 @@ export async function listRenderJobs(channelId:string):Promise<RenderJob[]>{
     .select(selection)
     .eq('channel_id',channelId)
     .order('created_at',{ascending:false})
-    .limit(200));
-  return Promise.all((rows??[]).map(row=>normalizeRow(row as Row)));
+    .limit(200)) as Row[];
+  const ids=(rows??[]).map(row=>row.id);
+  const chapterRows=ids.length
+    ?checked(await db().from('radar_render_chapters')
+      .select(chapterSelection)
+      .in('render_job_id',ids)
+      .order('sequence',{ascending:true})) as ChapterRow[]
+    :[];
+  const grouped=new Map<string,RenderChapter[]>();
+  for(const row of chapterRows??[]){
+    const items=grouped.get(row.render_job_id)??[];
+    items.push(normalizeChapter(row));
+    grouped.set(row.render_job_id,items);
+  }
+  return Promise.all((rows??[]).map(row=>normalizeRow(row,grouped.get(row.id)??[])));
 }
 
 export async function loadRenderJob(jobId:string):Promise<RenderJob|null>{
@@ -82,7 +140,7 @@ export async function loadRenderJob(jobId:string):Promise<RenderJob|null>{
     .select(selection)
     .eq('id',jobId)
     .maybeSingle());
-  return row?normalizeRow(row as Row):null;
+  return row?normalizeRow(row as Row,await renderChapters(jobId)):null;
 }
 
 async function rawAssets(assetIds:string[]){
@@ -220,6 +278,15 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
     transcriptVersion:transcript.version,
     format:{...edit.format},
     durationSeconds:edit.durationSeconds,
+    chapters:timelineChapters(timeline).map(chapter=>({
+      id:chapter.id,
+      sequence:chapter.sequence,
+      label:chapter.label,
+      startSeconds:chapter.startSeconds,
+      endSeconds:chapter.endSeconds,
+      durationSeconds:chapter.durationSeconds,
+      sceneIds:[...chapter.sceneIds]
+    })),
     visualClips:manifestClips,
     voice:{
       assetId:voice.id,
@@ -236,6 +303,90 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   const manifestIssues=renderManifestIssues(manifest,edit,timeline,transcript);
   if(manifestIssues.length)throw new HttpError('Manifest de render inválido: '+manifestIssues.join(' · ')+'.',409);
   return manifest;
+}
+
+function relativeSeconds(value:number,start:number){
+  return Math.max(0,Math.round((value-start)*1000)/1000);
+}
+
+function chapterPlanFor(input:{
+  manifest:RenderManifest;
+  preset:RenderPreset;
+  crf:number;
+}):RenderChapterPlan[]{
+  const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
+  const chapters=input.manifest.chapters?.length
+    ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
+    :[{
+      id:input.manifest.timelineId,
+      sequence:1,
+      label:'Chapter 01',
+      startSeconds:0,
+      endSeconds:input.manifest.durationSeconds,
+      durationSeconds:input.manifest.durationSeconds,
+      sceneIds:input.manifest.visualClips.map(clip=>clip.sceneId)
+    }];
+  return chapters.map(chapter=>{
+    const sceneIds=new Set(chapter.sceneIds);
+    const clips=input.manifest.visualClips
+      .filter(clip=>sceneIds.has(clip.sceneId))
+      .map(clip=>({
+        ...clip,
+        startSeconds:relativeSeconds(clip.startSeconds,chapter.startSeconds),
+        endSeconds:relativeSeconds(clip.endSeconds,chapter.startSeconds)
+      }));
+    const captions=input.manifest.captions.cues
+      .filter(cue=>cue.endSeconds>chapter.startSeconds&&cue.startSeconds<chapter.endSeconds)
+      .map(cue=>({
+        ...cue,
+        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,cue.startSeconds),chapter.startSeconds),
+        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,cue.endSeconds),chapter.startSeconds),
+        words:cue.words.map(word=>({
+          ...word,
+          startSeconds:relativeSeconds(Math.max(chapter.startSeconds,word.startSeconds),chapter.startSeconds),
+          endSeconds:relativeSeconds(Math.min(chapter.endSeconds,word.endSeconds),chapter.startSeconds)
+        }))
+      }));
+    const overlays=input.manifest.overlays
+      .filter(item=>item.endSeconds>chapter.startSeconds&&item.startSeconds<chapter.endSeconds)
+      .map(item=>({
+        ...item,
+        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,item.startSeconds),chapter.startSeconds),
+        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,item.endSeconds),chapter.startSeconds)
+      }));
+    const contentHash=hash(JSON.stringify({
+      compilerVersion:'render-v4',
+      outputFormat,
+      crf:input.crf,
+      durationSeconds:chapter.durationSeconds,
+      clips,
+      captions:{
+        enabled:input.manifest.captions.enabled,
+        position:input.manifest.captions.position,
+        fontSize:input.manifest.captions.fontSize,
+        maxLines:input.manifest.captions.maxLines,
+        backgroundOpacity:input.manifest.captions.backgroundOpacity,
+        style:input.manifest.captions.style,
+        cues:captions
+      },
+      overlays
+    }));
+    return {...chapter,contentHash};
+  });
+}
+
+async function reusableChapterCache(hashes:string[]){
+  if(!hashes.length)return new Map<string,ChapterRow>();
+  const rows=checked(await db().from('radar_render_chapters')
+    .select(chapterSelection)
+    .in('content_hash',hashes)
+    .eq('status','completed')
+    .not('output_path','is',null)
+    .order('completed_at',{ascending:false})
+    .limit(1000)) as ChapterRow[];
+  const result=new Map<string,ChapterRow>();
+  for(const row of rows??[])if(!result.has(row.content_hash))result.set(row.content_hash,row);
+  return result;
 }
 
 export async function createRenderJob(input:{
@@ -264,6 +415,8 @@ export async function createRenderJob(input:{
   if(existing)return normalizeRow(existing as Row);
 
   const id=crypto.randomUUID();
+  const chapterPlan=chapterPlanFor({manifest,preset,crf});
+  const cache=await reusableChapterCache(chapterPlan.map(chapter=>chapter.contentHash));
   const payload:RenderJobPayload={
     preset,
     videoCodec:'libx264',
@@ -272,8 +425,10 @@ export async function createRenderJob(input:{
     audioCodec:'aac',
     audioBitrateKbps,
     outputFormat:renderPresetOutput(preset,manifest.format),
-    compilerVersion:'render-v3',
+    compilerVersion:'render-v4',
     requestedBy:'operator',
+    chapterPlan,
+    resourceBudget:{maxConcurrentChapters:1,minFreeDiskGb:10},
     manifest
   };
   const inserted=await db().from('radar_render_jobs').insert({
@@ -302,6 +457,36 @@ export async function createRenderJob(input:{
     }
     throw new HttpError('Falha ao enfileirar o render.',502);
   }
+
+  const chapterRows=chapterPlan.map(chapter=>{
+    const reused=cache.get(chapter.contentHash);
+    return {
+      id:crypto.randomUUID(),
+      render_job_id:id,
+      chapter_id:chapter.id,
+      sequence:chapter.sequence,
+      label:chapter.label,
+      start_seconds:chapter.startSeconds,
+      end_seconds:chapter.endSeconds,
+      duration_seconds:chapter.durationSeconds,
+      scene_ids:chapter.sceneIds,
+      content_hash:chapter.contentHash,
+      status:reused?'completed':'queued',
+      progress:reused?100:0,
+      cache_hit:Boolean(reused),
+      output_path:reused?.output_path??null,
+      output_bytes:reused?.output_bytes??null,
+      render_seconds:reused?.render_seconds??null,
+      completed_at:reused?new Date().toISOString():null,
+      error:null
+    };
+  });
+  const chapterInsert=await db().from('radar_render_chapters').insert(chapterRows);
+  if(chapterInsert.error){
+    await db().from('radar_render_jobs').delete().eq('id',id);
+    throw new HttpError('Falha ao preparar capítulos do render.',502);
+  }
+
   const job=await loadRenderJob(id);
   if(!job)throw new HttpError('Render foi enfileirado, mas não pôde ser recarregado.',502);
   return job;
@@ -319,6 +504,10 @@ export async function cancelRenderJob(jobId:string){
     completed_at:new Date().toISOString(),
     updated_at:new Date().toISOString()
   }).eq('id',jobId).in('status',['queued','processing']));
+  checked(await db().from('radar_render_chapters').update({
+    status:'cancelled',
+    updated_at:new Date().toISOString()
+  }).eq('render_job_id',jobId).in('status',['queued','processing']));
   return loadRenderJob(jobId);
 }
 
@@ -336,6 +525,20 @@ export async function retryRenderJob(jobId:string){
     crf:job.payload.crf,
     audioBitrateKbps:job.payload.audioBitrateKbps
   });
+}
+
+export async function retryRenderChapter(jobId:string,chapterId:string){
+  const job=await loadRenderJob(jobId);
+  if(!job)throw new HttpError('Render job não encontrado.',404);
+  const chapter=job.chapters?.find(item=>item.id===chapterId);
+  if(!chapter)throw new HttpError('Capítulo do render não encontrado.',404);
+  if(chapter.status!=='failed'&&chapter.status!=='cancelled'){
+    throw new HttpError('Somente capítulos failed/cancelled podem ser reenfileirados.',409);
+  }
+  if(job.status!=='failed'&&job.status!=='cancelled'){
+    throw new HttpError('O job master ainda está ativo. Aguarde ou cancele antes de refazer o capítulo.',409);
+  }
+  return retryRenderJob(jobId);
 }
 
 export async function renderEngineChannelState(channelId:string){

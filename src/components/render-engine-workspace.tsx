@@ -107,7 +107,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     </section>
 
     <section className="render-create">
-      <div className="render-section-head"><div><span>NEW RENDER · V3</span><h3>Preset versionado + fallback de encoder.</h3><p>Novos jobs usam render-v3 com saída explícita e fallback libx264 → MPEG-4.</p></div></div>
+      <div className="render-section-head"><div><span>NEW RENDER · V4</span><h3>Capítulos cacheáveis + master incremental.</h3><p>Novos jobs usam render-v4: um capítulo por vez, cache por conteúdo, concatenação sem reencode e áudio aplicado no master.</p></div></div>
       <div className="render-grid four">
         <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.format.width}×{edit.format.height}</option>)}</select></label>
         <label>Preset<select value={preset} onChange={e=>setPreset(e.target.value as RenderPreset)}><option value="source">Source</option><option value="hd-1080p30">HD 1080p · 30 fps</option><option value="draft-720p30">Draft 720p · 30 fps</option></select></label>
@@ -145,6 +145,31 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
           <span>{duration(job.payload.manifest.durationSeconds)}</span>
           {job.outputBytes!==undefined&&<span>{bytes(job.outputBytes)}</span>}
         </div>
+
+        {job.payload.metrics&&<div className="render-v4-metrics">
+          <span><strong>{job.payload.metrics.realTimeFactor.toFixed(2)}×</strong> real-time</span>
+          <span><strong>{job.payload.metrics.secondsPerFinishedMinute.toFixed(0)}s</strong> / min final</span>
+          <span><strong>{job.payload.metrics.cacheHits}</strong> cache hits</span>
+          <span><strong>{job.payload.metrics.renderedChapters}</strong> capítulos renderizados</span>
+        </div>}
+
+        {Boolean(job.chapters?.length)&&<div className="render-chapter-list">{job.chapters!.map(chapter=><article key={chapter.id} className={chapter.status}>
+          <div>
+            <strong>{String(chapter.sequence).padStart(2,'0')} · {chapter.label}</strong>
+            <span>{duration(chapter.durationSeconds)} · {chapter.cacheHit?'CACHE HIT':chapter.status}</span>
+          </div>
+          <div className="render-chapter-progress"><span style={{width:Math.max(0,Math.min(100,chapter.progress))+'%'}}/></div>
+          <div>
+            {chapter.renderSeconds!==undefined&&<small>{chapter.renderSeconds.toFixed(1)}s render</small>}
+            {chapter.outputBytes!==undefined&&<small>{bytes(chapter.outputBytes)}</small>}
+            {(chapter.status==='failed'||chapter.status==='cancelled')&&
+              (job.status==='failed'||job.status==='cancelled')&&
+              <button className="button subtle small" disabled={busy==='retry-chapter:'+chapter.id} onClick={()=>void action({
+                action:'retry-chapter',jobId:job.id,chapterId:chapter.id
+              },'retry-chapter:'+chapter.id)}><RotateCcw size={12}/>Retry capítulo</button>}
+          </div>
+          {chapter.error&&<p>{chapter.error}</p>}
+        </article>)}</div>}
 
         {job.error&&<div className="render-error"><AlertTriangle size={14}/><span>{job.error}</span></div>}
 
