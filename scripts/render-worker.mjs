@@ -243,13 +243,18 @@ function renderOutputFormat(payload,manifest){
   return {width,height,fps};
 }
 
-function fitFilter(kind,width,height){
+function fitFilter(kind,width,height,focusX=.5,focusY=.5){
   if(kind==='contain'){
     return 'scale='+width+':'+height+':force_original_aspect_ratio=decrease,'+
       'pad='+width+':'+height+':(ow-iw)/2:(oh-ih)/2:black';
   }
   if(kind==='stretch')return 'scale='+width+':'+height;
-  return 'scale='+width+':'+height+':force_original_aspect_ratio=increase,crop='+width+':'+height;
+  const fx=Math.max(0,Math.min(1,Number(focusX??.5))).toFixed(6);
+  const fy=Math.max(0,Math.min(1,Number(focusY??.5))).toFixed(6);
+  const cropX="'max(0,min(iw-"+width+",(iw-"+width+")*"+fx+"))'";
+  const cropY="'max(0,min(ih-"+height+",(ih-"+height+")*"+fy+"))'";
+  return 'scale='+width+':'+height+':force_original_aspect_ratio=increase,'+
+    'crop='+width+':'+height+':'+cropX+':'+cropY;
 }
 
 function motionFilter(style,width,height,fps,duration){
@@ -320,7 +325,11 @@ async function prepareSegment(clip,inputPath,outputPath,manifest,index,payload){
     filters.push('trim=duration='+rounded(sourceWindow),'setpts=PTS-STARTPTS');
   }
   filters.push(
-    fitFilter(clip.fit,width,height),
+    fitFilter(
+      clip.fit,width,height,
+      clip.kind==='image'?clip.focusX:.5,
+      clip.kind==='image'?clip.focusY:.5
+    ),
     'fps='+fps
   );
   if(clip.kind==='video'&&clip.playback==='hold'&&sourceWindow!==null){
