@@ -246,3 +246,13 @@ test('Render-v4 chapter manifest blocks temporal gaps and duplicate scene member
   assert.ok(issues.includes('render-chapter-gap'));
   assert.ok(issues.includes('render-chapter-duplicate-scene'));
 });
+
+
+test('Render-v4 chapter boundaries do not inject artificial fades',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/style\.transitionIn==='cross-dissolve'/);
+  assert.match(source,/style\.transitionOut==='cross-dissolve'/);
+  assert.doesNotMatch(source,/style\.transitionIn='fade';/);
+  assert.doesNotMatch(source,/style\.transitionOut='fade';/);
+  assert.match(source,/render-v4-concat-copy-fallback/);
+});
