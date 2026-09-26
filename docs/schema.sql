@@ -343,6 +343,91 @@ create table if not exists public.radar_video_edits(id uuid primary key,channel_
 create index if not exists radar_video_edits_channel_updated on public.radar_video_edits(channel_id,updated_at desc);
 create table if not exists public.radar_video_edit_versions(id bigint generated always as identity primary key,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,version int not null check(version>=1),status text not null,payload jsonb not null,created_at timestamptz not null default now(),unique(video_edit_id,version));
 create index if not exists radar_video_edit_versions_edit_version on public.radar_video_edit_versions(video_edit_id,version desc);
+
+create or replace view public.radar_transcript_list
+with (security_invoker=true) as
+select
+  t.id,t.channel_id,t.episode_id,t.script_id,t.voice_asset_id,t.version,t.source_type,t.status,
+  coalesce(jsonb_array_length(t.payload->'segments'),0) as segment_count,
+  nullif(t.payload->>'scriptMatchScore','')::numeric as script_match_score,
+  coalesce(nullif(t.payload->>'scriptVersion','')::int,1) as script_version,
+  coalesce(nullif(t.payload->>'voiceTake','')::int,1) as voice_take,
+  t.created_at,t.updated_at
+from public.radar_transcripts t;
+
+create or replace view public.radar_scene_plan_list
+with (security_invoker=true) as
+select
+  p.id,p.channel_id,p.episode_id,p.script_id,p.voice_asset_id,p.transcript_id,p.version,p.status,
+  coalesce(nullif(p.payload->>'transcriptVersion','')::int,1) as transcript_version,
+  coalesce(nullif(p.payload->>'voiceTake','')::int,1) as voice_take,
+  coalesce(nullif(p.payload->>'audioDurationSeconds','')::numeric,0) as audio_duration_seconds,
+  coalesce(jsonb_array_length(p.payload->'scenes'),0) as scene_count,
+  p.created_at,p.updated_at
+from public.radar_scene_plans p;
+
+create or replace view public.radar_visual_prompt_set_list
+with (security_invoker=true) as
+select
+  s.id,s.channel_id,s.episode_id,s.scene_plan_id,s.version,s.status,
+  coalesce(nullif(s.payload->>'scenePlanVersion','')::int,1) as scene_plan_version,
+  coalesce(nullif(s.payload->>'productionDnaVersion','')::int,1) as production_dna_version,
+  coalesce(nullif(s.payload->>'workflowStage',''),'references') as workflow_stage,
+  coalesce(jsonb_array_length(s.payload->'scenePrompts'),0) as scene_prompt_count,
+  coalesce(jsonb_array_length(s.payload->'characterReferences'),0) as character_reference_count,
+  s.created_at,s.updated_at
+from public.radar_visual_prompt_sets s;
+
+create or replace view public.radar_timeline_list
+with (security_invoker=true) as
+select
+  t.id,t.channel_id,t.episode_id,t.scene_plan_id,t.script_id,t.voice_asset_id,
+  t.visual_prompt_set_id,t.version,t.status,
+  coalesce(nullif(t.payload->>'durationSeconds','')::numeric,0) as duration_seconds,
+  coalesce(nullif(t.payload->'format'->>'width','')::int,0) as width,
+  coalesce(nullif(t.payload->'format'->>'height','')::int,0) as height,
+  coalesce(v.visual_clip_count,0)::int as visual_clip_count,
+  coalesce(v.placeholder_count,0)::int as placeholder_count,
+  t.created_at,t.updated_at
+from public.radar_timelines t
+left join lateral (
+  select
+    coalesce(jsonb_array_length(track->'clips'),0) as visual_clip_count,
+    (
+      select count(*)
+      from jsonb_array_elements(coalesce(track->'clips','[]'::jsonb)) clip
+      where clip->>'clipKind'='placeholder'
+    ) as placeholder_count
+  from jsonb_array_elements(coalesce(t.payload->'tracks','[]'::jsonb)) track
+  where track->>'type'='visual'
+  limit 1
+) v on true;
+
+create or replace view public.radar_video_edit_list
+with (security_invoker=true) as
+select
+  e.id,e.channel_id,e.episode_id,e.timeline_id,e.transcript_id,e.version,e.status,
+  coalesce(nullif(e.payload->>'durationSeconds','')::numeric,0) as duration_seconds,
+  coalesce(jsonb_array_length(e.payload->'clipStyles'),0) as clip_style_count,
+  coalesce(jsonb_array_length(e.payload->'captions'->'cues'),0) as caption_count,
+  coalesce(jsonb_array_length(e.payload->'overlays'),0) as overlay_count,
+  e.created_at,e.updated_at
+from public.radar_video_edits e;
+
+revoke all on table
+  public.radar_transcript_list,
+  public.radar_scene_plan_list,
+  public.radar_visual_prompt_set_list,
+  public.radar_timeline_list,
+  public.radar_video_edit_list
+from anon,authenticated;
+grant select on table
+  public.radar_transcript_list,
+  public.radar_scene_plan_list,
+  public.radar_visual_prompt_set_list,
+  public.radar_timeline_list,
+  public.radar_video_edit_list
+to service_role;
 create table if not exists public.radar_render_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,video_edit_version int not null check(video_edit_version>=1),status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,output_path text,output_bytes bigint check(output_bytes is null or output_bytes>=0),error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
 create index if not exists radar_render_jobs_channel_created on public.radar_render_jobs(channel_id,created_at desc);
 create index if not exists radar_render_jobs_queue on public.radar_render_jobs(status,created_at) where status in ('queued','processing');
