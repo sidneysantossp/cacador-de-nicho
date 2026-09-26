@@ -255,14 +255,17 @@ function currentAssetIssues(input:{
   });
 }
 
-async function buildTimelineFromCurrentSources(scenePlanId:string){
+async function buildTimelineFromCurrentSources(scenePlanId:string,sceneScope?:Set<string>){
   const context=await eligibleContext(scenePlanId);
+  const selectedAssets=context.selectedAssets.filter(asset=>
+    asset.status==='ready'&&(!sceneScope||sceneScope.has(asset.scene_id))
+  );
   const payload=buildInitialTimeline({
     scenePlan:context.scenePlan,
     productionDna:context.dna,
     visualPromptSet:context.visualPromptSet,
     visualAssets:await selectedVisualRefs(
-      context.selectedAssets.filter(asset=>asset.status==='ready'),
+      selectedAssets,
       context.scenePlan,
       context.visualPromptSet
     ),
@@ -296,7 +299,12 @@ export async function refreshTimelineChapter(
 ):Promise<Timeline>{
   const existing=await loadTimeline(timelineId);
   if(!existing)throw new HttpError('Timeline não encontrada.',404);
-  const {context,payload:fresh}=await buildTimelineFromCurrentSources(existing.scenePlanId);
+  const chapter=timelineChapters(existing).find(item=>item.id===chapterId);
+  if(!chapter)throw new HttpError('Capítulo da Timeline não encontrado.',404);
+  const {context,payload:fresh}=await buildTimelineFromCurrentSources(
+    existing.scenePlanId,
+    new Set(chapter.sceneIds)
+  );
   if(
     existing.scenePlanVersion!==context.scenePlan.version||
     existing.visualPromptSetVersion!==context.visualPromptSet.version
