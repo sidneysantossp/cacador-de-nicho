@@ -306,3 +306,101 @@ test('Scene Asset clones of one source count as repeated origin',()=>{
   assert.equal(duplication?.metrics.uniqueSources,1);
   assert.equal(duplication?.metrics.uniqueAssets,5);
 });
+
+
+test('Media Intelligence Diversity Score passes a varied episode',()=>{
+  const value=job();
+  const checks=structuralQualityChecks({
+    job:value,
+    assetFacts:goodAssetFacts(),
+    characterFacts:[],
+    mediaDiversity:{
+      score:.82,
+      sourceDiversity:1,
+      semanticDiversity:.60,
+      semanticCoverage:1,
+      maxSimilarity:.48,
+      embeddedClipCount:2,
+      ownedClipCount:2,
+      clipCount:2
+    }
+  });
+  const diversity=checks.find(check=>check.code==='media-diversity');
+  assert.equal(diversity?.status,'pass');
+  assert.equal(diversity?.metrics.diversityScore,.82);
+});
+
+test('Media Intelligence Diversity Score blocks severe semantic monotony',()=>{
+  const value=job();
+  const first=value.payload.manifest.visualClips[0];
+  value.payload.manifest.visualClips=Array.from({length:8},(_,index)=>({
+    ...first,
+    clipId:crypto.randomUUID(),
+    sceneId:crypto.randomUUID(),
+    assetId:crypto.randomUUID(),
+    startSeconds:index,
+    endSeconds:index+1,
+    durationSeconds:1,
+    style:{...first.style,timelineClipId:crypto.randomUUID(),sceneId:crypto.randomUUID()}
+  }));
+  value.payload.manifest.durationSeconds=8;
+  const checks=structuralQualityChecks({
+    job:value,
+    assetFacts:value.payload.manifest.visualClips.map(clip=>({
+      assetId:clip.assetId,sceneId:clip.sceneId,exists:true,ready:true,
+      storagePathMatches:true,sceneMatches:true,promptAligned:true,
+      sourceIdentity:'owned:'+clip.assetId
+    })),
+    characterFacts:[],
+    mediaDiversity:{
+      score:.19,
+      sourceDiversity:1,
+      semanticDiversity:.05,
+      semanticCoverage:1,
+      maxSimilarity:.98,
+      embeddedClipCount:8,
+      ownedClipCount:8,
+      clipCount:8
+    }
+  });
+  const diversity=checks.find(check=>check.code==='media-diversity');
+  assert.equal(diversity?.status,'blocker');
+  assert.equal(diversity?.metrics.maxSimilarity,.98);
+});
+
+test('Media Intelligence requires review when OWNED clips are not fully embedded',()=>{
+  const value=job();
+  value.payload.manifest.visualClips=Array.from({length:5},(_,index)=>({
+    ...value.payload.manifest.visualClips[index%2],
+    clipId:crypto.randomUUID(),
+    sceneId:crypto.randomUUID(),
+    startSeconds:index,
+    endSeconds:index+1,
+    durationSeconds:1,
+    style:{
+      ...value.payload.manifest.visualClips[index%2].style,
+      timelineClipId:crypto.randomUUID(),
+      sceneId:crypto.randomUUID()
+    }
+  }));
+  value.payload.manifest.durationSeconds=5;
+  const checks=structuralQualityChecks({
+    job:value,
+    assetFacts:[],
+    characterFacts:[],
+    mediaDiversity:{
+      score:.72,
+      sourceDiversity:.8,
+      semanticDiversity:.6,
+      semanticCoverage:.2,
+      maxSimilarity:.55,
+      embeddedClipCount:1,
+      ownedClipCount:4,
+      clipCount:5
+    }
+  });
+  assert.equal(
+    checks.find(check=>check.code==='media-diversity')?.status,
+    'manual-review'
+  );
+});
