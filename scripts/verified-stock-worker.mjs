@@ -5,6 +5,10 @@ const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const BASE_WORKER_URL=(process.env.VERIFIED_STOCK_WORKER_URL||process.env.AUTOMATION_WORKER_URL||'').trim();
 const WORKER_SECRET=(process.env.VERIFIED_STOCK_WORKER_SECRET||process.env.AUTOMATION_WORKER_SECRET||'').trim();
 const POLL_MS=Math.max(3000,Number(process.env.VERIFIED_STOCK_WORKER_POLL_MS||5000));
+const drainYieldConfigured=Number(process.env.VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS||250);
+const DRAIN_YIELD_MS=Number.isFinite(drainYieldConfigured)
+  ?Math.max(50,Math.min(2000,Math.floor(drainYieldConfigured)))
+  :250;
 const LEASE_SECONDS=Math.max(300,Math.min(7200,Number(process.env.VERIFIED_STOCK_WORKER_LEASE_SECONDS||1800)));
 
 if(!SUPABASE_URL||!SERVICE_KEY){console.error('Verified Stock worker requires Supabase service credentials.');process.exit(1);}
@@ -50,19 +54,26 @@ async function execute(claimed){
   return body;
 }
 
-console.log(JSON.stringify({event:'verified-stock-worker-started',pollMs:POLL_MS,leaseSeconds:LEASE_SECONDS}));
+console.log(JSON.stringify({
+  event:'verified-stock-worker-started',
+  pollMs:POLL_MS,
+  drainYieldMs:DRAIN_YIELD_MS,
+  leaseSeconds:LEASE_SECONDS
+}));
 while(true){
   try{
     const claimed=await claim();
     if(!claimed){await sleep(POLL_MS);continue;}
     console.log(JSON.stringify({event:'verified-stock-job-claimed',jobId:claimed.jobId}));
+    let executionFailed=false;
     try{
       const result=await execute(claimed);
       console.log(JSON.stringify({event:'verified-stock-job-finished',jobId:claimed.jobId,status:result.status}));
     }catch(error){
+      executionFailed=true;
       console.error(JSON.stringify({event:'verified-stock-job-error',jobId:claimed.jobId,error:safeError(error)}));
     }
-    await sleep(POLL_MS);
+    await sleep(executionFailed?POLL_MS:DRAIN_YIELD_MS);
   }catch(error){
     console.error(JSON.stringify({event:'verified-stock-worker-loop-error',error:safeError(error)}));
     await sleep(Math.max(POLL_MS,5000));
