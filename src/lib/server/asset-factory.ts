@@ -537,6 +537,7 @@ export async function persistStockSceneAsset(input:{
   creatorName:string;
   creatorUrl?:string;
   attributionLabel:string;
+  sourceDate?:string;
   licenseLabel:string;
   licenseUrl:string;
   selectIfNone?:boolean;
@@ -550,7 +551,8 @@ export async function persistStockSceneAsset(input:{
       pageUrl:input.pageUrl,
       creatorName:input.creatorName,
       creatorUrl:input.creatorUrl,
-      attributionLabel:input.attributionLabel
+      attributionLabel:input.attributionLabel,
+      sourceDate:input.sourceDate
     },
     costUsd:0
   } as Partial<SceneAsset>);
