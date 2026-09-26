@@ -18,6 +18,7 @@ function pkg():PublicationPackage{
     qualityReportVersion:2,
     renderJobId:'55555555-5555-4555-8555-555555555555',
     renderOutputPath:'channels/x/final.mp4',
+    renderOutputBytes:5*1024*1024*1024,
     metadata:{
       title:'Will AI Change What It Means to Be Human?',
       description:'Description',
@@ -79,6 +80,7 @@ test('YouTube publish snapshot maps compliance fields explicitly',()=>{
   assert.equal(payload.video.selfDeclaredMadeForKids,false);
   assert.equal(payload.video.containsSyntheticMedia,true);
   assert.equal(payload.renderOutputPath,'channels/x/final.mp4');
+  assert.equal(payload.renderOutputBytes,5*1024*1024*1024);
   assert.equal(payload.thumbnailStoragePath,'channels/x/thumb.jpg');
 });
 
