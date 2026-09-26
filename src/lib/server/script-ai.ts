@@ -14,7 +14,8 @@ import { HttpError } from './auth';
 const sectionSchema=z.object({
   label:z.string(),
   purpose:z.string(),
-  content:z.string()
+  content:z.string(),
+  claimIds:z.array(z.string().uuid()).max(100)
 });
 
 const draftSchema=z.object({
@@ -27,6 +28,7 @@ const draftSchema=z.object({
 const sectionRewriteSchema=z.object({
   purpose:z.string(),
   content:z.string(),
+  claimIds:z.array(z.string().uuid()).max(100),
   factCheckWarnings:z.array(z.string()).max(20)
 });
 
@@ -58,12 +60,19 @@ export type OwnedScriptContext={
 };
 
 function compactContext(input:OwnedScriptContext){
+  const sourceById=new Map(input.project.research.sources.map(source=>[source.id,source]));
   const supportedClaims=input.project.research.factChecks
     .filter(item=>item.status==='supported')
     .map(item=>({
+      id:item.id,
       claim:item.claim,
+      claimType:item.claimType??'fact',
+      narrationRule:item.narrationRule??'assert',
       notes:item.notes,
-      sourceIds:item.sourceIds
+      sources:item.sourceIds.map(id=>sourceById.get(id)).filter(Boolean).map(source=>({
+        id:source!.id,title:source!.title,url:source!.url,
+        sourceType:source!.sourceType,origin:source!.origin??null,role:source!.role??null
+      }))
     }));
 
   return {
@@ -116,12 +125,14 @@ function compactContext(input:OwnedScriptContext){
       targetDurationMinutes:input.productionDna?.format.targetDurationMinutes??null,
       narrationLanguage:input.productionDna?.voice.language??'English',
       narrationStyle:input.productionDna?.voice.narrationStyle??[],
-      paceWpm:input.productionDna?.voice.paceWpm??null
+      paceWpm:input.productionDna?.voice.paceWpm??null,
+      documentaryMode:input.productionDna?.research?.documentaryMode??false,
+      requireClaimLedger:input.productionDna?.research?.requireClaimLedger??false
     }
   };
 }
 
-const instructions='You are the Script Engine for Caçadores de Nichos. Write the audience-facing script in ENGLISH unless the Production DNA explicitly defines another narration language. The output is narration only. Do not write storyboard directions, camera instructions, scene prompts, production notes, timestamps or markdown headings inside section content. Preserve the channel constitution, worldview, character knowledge, established metaphors, narrative continuity, open threads and do-not-repeat rules. Do not make a character know a concept before the supplied narrative state allows it. Use the approved Content Project as the editorial contract. Do not change its thesis, angle, promise or audience merely to make writing easier. Use factual claims only when supported by the supplied research/fact-check context. Research Pack timeline and audience signals are planning context, not independent factual proof; audience signals from Reddit/community remain anecdotal unless the same claim appears in supportedClaims. If a useful factual claim is not supported, either omit it or mark it explicitly with [VERIFY] and include a factCheckWarning. Do not invent sources, statistics, quotations, studies, previous episode events or audience feedback. Avoid generic filler and repeated explanations. Each section must have a clear narrative purpose. The final content should feel like one continuous narration even though it is stored in editable sections.';
+const instructions='You are the Script Engine for Caçadores de Nichos. Write the audience-facing script in ENGLISH unless the Production DNA explicitly defines another narration language. The output is narration only. Do not write storyboard directions, camera instructions, scene prompts, production notes, timestamps or markdown headings inside section content. Preserve the channel constitution, worldview, character knowledge, established metaphors, narrative continuity, open threads and do-not-repeat rules. Do not make a character know a concept before the supplied narrative state allows it. Use the approved Content Project as the editorial contract. Do not change its thesis, angle, promise or audience merely to make writing easier. Use factual claims only when supported by the supplied research/fact-check context. Each section must return claimIds containing ONLY the UUIDs of supportedClaims actually used in that section. Never invent claim IDs. Research Pack timeline and audience signals are planning context, not independent factual proof; audience signals from Reddit/community remain anecdotal unless the same claim appears in supportedClaims. Obey each supported claim's narrationRule: assert may be stated directly; qualify must explicitly signal uncertainty with language such as about, approximately, estimated, likely or believed; attribute must name or clearly attribute the source/record/report; exclude must not appear in narration. A claimType of allegation must be attributed. A claimType of folklore must be framed as legend, tradition, story or belief, never as established fact. If a useful factual claim is not supported, either omit it or mark it explicitly with [VERIFY] and include a factCheckWarning. Do not invent sources, statistics, quotations, studies, previous episode events or audience feedback. Avoid generic filler and repeated explanations. Each section must have a clear narrative purpose. The final content should feel like one continuous narration even though it is stored in editable sections.';
 
 export async function generateOwnedChannelScript(input:OwnedScriptContext){
   const config=await settings();
@@ -146,7 +157,8 @@ export async function generateOwnedChannelScript(input:OwnedScriptContext){
         id:crypto.randomUUID(),
         label:section.label||('Section '+(index+1)),
         purpose:section.purpose,
-        content:section.content
+        content:section.content,
+        claimIds:section.claimIds
       })),
       continuityNotes:parsed.continuityNotes,
       factCheckWarnings:parsed.factCheckWarnings
@@ -177,7 +189,8 @@ export async function regenerateOwnedScriptSection(
             id:section.id,
             label:section.label,
             purpose:section.purpose,
-            content:section.content
+            content:section.content,
+            claimIds:section.claimIds??[]
           }))
         },
         targetSectionId:sectionId
