@@ -183,6 +183,30 @@ create or replace function public.owned_media_embedding_similarity(
 language sql stable security invoker
 set search_path=public,extensions
 as $
+  select greatest(
+    0::double precision,
+    least(1::double precision,1-(left_embedding.embedding <=> right_embedding.embedding))
+  )
+  from public.radar_owned_media_embeddings left_embedding
+  join public.radar_owned_media_embeddings right_embedding
+    on right_embedding.resource_type='segment'
+   and right_embedding.resource_id=p_right_segment
+  where left_embedding.resource_type='segment'
+    and left_embedding.resource_id=p_left_segment
+    and left_embedding.model=right_embedding.model
+    and left_embedding.dimensions=right_embedding.dimensions
+  limit 1;
+$;
+revoke all on function public.owned_media_embedding_similarity(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.owned_media_embedding_similarity(uuid,uuid) to service_role;
+
+create or replace function public.owned_media_embedding_similarity(
+  p_left_segment uuid,
+  p_right_segment uuid
+) returns double precision
+language sql stable security invoker
+set search_path=public,extensions
+as $
   select greatest(0::double precision,least(1::double precision,1-(a.embedding <=> b.embedding)))
   from public.radar_owned_media_embeddings a
   join public.radar_owned_media_embeddings b on b.resource_type='segment' and b.resource_id=p_right_segment
