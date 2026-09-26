@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowUpRight, CheckCircle2, Clapperboard, History, Image as ImageIcon,
+  ArrowUpRight, CheckCircle2, Clapperboard, FileCheck2, History, Image as ImageIcon,
   Mic2, Plus, Save, Sparkles, Trash2, UserRound, WandSparkles
 } from 'lucide-react';
 import type {
@@ -11,7 +11,7 @@ import type {
 } from '@/lib/types';
 import { productionDnaFormatIssues } from '@/lib/production-dna-policy';
 
-type Tab='visual'|'characters'|'voice'|'editing'|'providers'|'history';
+type Tab='visual'|'characters'|'voice'|'research'|'editing'|'providers'|'history';
 
 function parseLines(value:string){return value.split('\n').map(item=>item.trim()).filter(Boolean);}
 function lines(value:string[]){return value.join('\n');}
@@ -34,6 +34,7 @@ function blank(channel:ManagedChannel):ProductionDnaPayload{
     editing:{transitions:[],defaultTransition:'cut',kenBurns:false,musicStyle:[],sfxRules:[],pacingRules:[]},
     thumbnail:{styleRules:[],forbidden:[]},
     providers:{image:[],video:[],voice:[],stock:[]},
+    research:{documentaryMode:false,requireClaimLedger:false},
     createdAt:now,updatedAt:now
   };
 }
@@ -93,6 +94,9 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
   function voice<K extends keyof ProductionDnaPayload['voice']>(key:K,value:ProductionDnaPayload['voice'][K]){setDraft(prev=>({...prev,voice:{...prev.voice,[key]:value}}));}
   function editing<K extends keyof ProductionDnaPayload['editing']>(key:K,value:ProductionDnaPayload['editing'][K]){setDraft(prev=>({...prev,editing:{...prev.editing,[key]:value}}));}
   function providers<K extends keyof ProductionDnaPayload['providers']>(key:K,value:ProductionDnaPayload['providers'][K]){setDraft(prev=>({...prev,providers:{...prev.providers,[key]:value}}));}
+  function research(key:'documentaryMode'|'requireClaimLedger',value:boolean){
+    setDraft(prev=>({...prev,research:{documentaryMode:false,requireClaimLedger:false,...prev.research,[key]:value}}));
+  }
   function character(index:number,next:ProductionDnaCharacter){setDraft(prev=>({...prev,characters:prev.characters.map((item,i)=>i===index?next:item)}));}
 
   if(loading)return <div className="production-dna-loading"><Sparkles className="spin" size={20}/>Carregando Production DNA…</div>;
@@ -101,6 +105,7 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
     {id:'visual',label:'Visual & Formato',icon:<ImageIcon size={15}/>},
     {id:'characters',label:'Character Bible',icon:<UserRound size={15}/>,count:draft.characters.length},
     {id:'voice',label:'Voz & Captions',icon:<Mic2 size={15}/>},
+    {id:'research',label:'Pesquisa',icon:<FileCheck2 size={15}/>},
     {id:'editing',label:'Edição',icon:<Clapperboard size={15}/>},
     {id:'providers',label:'Providers',icon:<WandSparkles size={15}/>},
     {id:'history',label:'Versões',icon:<History size={15}/>,count:history.length}
@@ -189,6 +194,21 @@ export default function ProductionDnaEditor({channel}:{channel:ManagedChannel}){
         <Field label="Safe area (%)"><input type="number" min="0" max="25" step="0.5" value={draft.captions.safeMarginPercent??6} onChange={e=>setDraft(prev=>({...prev,captions:{...prev.captions,safeMarginPercent:Math.max(0,Math.min(25,Number(e.target.value)||0))}}))}/></Field>
       </section>
       <TextField label="ESTILO DAS LEGENDAS" value={draft.captions.styleDescription} onChange={v=>setDraft(prev=>({...prev,captions:{...prev.captions,styleDescription:v}}))} rows={5}/>
+    </div>}
+
+    {tab==='research'&&<div className="production-dna-content">
+      <section className="production-provider-note">
+        <FileCheck2 size={25}/>
+        <div>
+          <h3>Research Engine do canal.</h3>
+          <p>Em canais documentais, o Content OS exige Claim Ledger e proveniência antes de liberar roteiro e voz.</p>
+        </div>
+      </section>
+      <section className="production-dna-editing-flags">
+        <label><input type="checkbox" checked={draft.research?.documentaryMode??false} onChange={e=>research('documentaryMode',e.target.checked)}/>Modo histórico / documental</label>
+        <label><input type="checkbox" checked={draft.research?.requireClaimLedger??false} onChange={e=>research('requireClaimLedger',e.target.checked)}/>Claim Ledger obrigatório antes do roteiro</label>
+      </section>
+      <p className="credential-note">Use o modo documental para canais como Old Alignment. Claims incertos precisam ser qualificados ou atribuídos; folklore não pode ser narrado como fato.</p>
     </div>}
 
     {tab==='editing'&&<div className="production-dna-content">
