@@ -442,7 +442,6 @@ async function saveChapterQa(
     blackRatio:chapter.blackRatio
   };
   const result=await db().from('radar_production_quality_chapters').upsert({
-    id:crypto.randomUUID(),
     render_job_id:jobId,
     chapter_id:chapter.chapterId,
     sequence:chapter.sequence,
