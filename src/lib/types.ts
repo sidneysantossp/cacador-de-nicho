@@ -850,6 +850,30 @@ export type EpisodeScriptVersion = {
  payload: EpisodeScriptPayload;
  createdAt: string;
 };
+export type EpisodeScriptVersionSummary = {
+ version: number;
+ status: EpisodeScript['status'];
+ wordCount: number;
+ sectionCount: number;
+ createdAt: string;
+};
+export type EpisodeScriptListItem = {
+ id: string;
+ channelId: string;
+ episodeId: string;
+ contentProjectId: string;
+ version: number;
+ status: EpisodeScript['status'];
+ title: string;
+ language: string;
+ wordCount: number;
+ estimatedMinutes: number | null;
+ sectionCount: number;
+ generatedBy: EpisodeScriptPayload['provenance']['generatedBy'];
+ characterCount: number;
+ createdAt: string;
+ updatedAt: string;
+};
 export type VoiceAlignment = {
  characters: string[];
  characterStartTimesSeconds: number[];
