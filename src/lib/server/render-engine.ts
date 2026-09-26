@@ -2,8 +2,8 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import type {
-  RenderJob, RenderJobPayload, RenderManifest, RenderManifestVisualClip, RenderPreset,
-  SceneAsset, VideoEdit
+  RenderChapter, RenderChapterPlan, RenderJob, RenderJobPayload, RenderManifest,
+  RenderManifestVisualClip, RenderPreset, SceneAsset, VideoEdit
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -15,6 +15,7 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { assetIsStale } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
+import { timelineChapters } from '@/lib/timeline-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
   DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF, renderManifestIssues,
@@ -34,6 +35,49 @@ type AssetRow={
   selected:boolean;storage_path:string;mime_type:string;duration_seconds:number|string|null;payload:unknown;
 };
 
+type ChapterRow={
+  id:string;render_job_id:string;chapter_id:string;sequence:number;label:string;
+  start_seconds:number|string;end_seconds:number|string;duration_seconds:number|string;
+  content_hash:string;status:RenderChapter['status'];progress:number;cache_hit:boolean;
+  output_path:string|null;output_bytes:number|string|null;render_seconds:number|string|null;
+  error:string|null;created_at:string;started_at:string|null;completed_at:string|null;updated_at:string;
+};
+
+function normalizeChapter(row:ChapterRow):RenderChapter{
+  return {
+    id:row.chapter_id,
+    sequence:Number(row.sequence),
+    label:String(row.label??''),
+    startSeconds:Number(row.start_seconds),
+    endSeconds:Number(row.end_seconds),
+    durationSeconds:Number(row.duration_seconds),
+    sceneIds:[],
+    contentHash:String(row.content_hash),
+    renderJobId:row.render_job_id,
+    status:row.status,
+    progress:Number(row.progress),
+    cacheHit:Boolean(row.cache_hit),
+    outputPath:row.output_path??undefined,
+    outputBytes:row.output_bytes===null?undefined:Number(row.output_bytes),
+    renderSeconds:row.render_seconds===null?undefined:Number(row.render_seconds),
+    error:row.error??undefined,
+    createdAt:String(row.created_at),
+    startedAt:row.started_at??undefined,
+    completedAt:row.completed_at??undefined,
+    updatedAt:String(row.updated_at)
+  };
+}
+
+const chapterSelection='id,render_job_id,chapter_id,sequence,label,start_seconds,end_seconds,duration_seconds,content_hash,status,progress,cache_hit,output_path,output_bytes,render_seconds,error,created_at,started_at,completed_at,updated_at';
+
+async function renderChapters(jobId:string){
+  const rows=checked(await db().from('radar_render_chapters')
+    .select(chapterSelection)
+    .eq('render_job_id',jobId)
+    .order('sequence',{ascending:true})) as ChapterRow[];
+  return (rows??[]).map(normalizeChapter);
+}
+
 function hash(value:string){
   return createHash('sha256').update(value,'utf8').digest('hex');
 }
@@ -43,7 +87,7 @@ async function signedOutput(path:string|null){
   return signedMediaUrl(path,3600);
 }
 
-async function normalizeRow(row:Row):Promise<RenderJob>{
+async function normalizeRow(row:Row,chapters?:RenderChapter[]):Promise<RenderJob>{
   return {
     id:row.id,
     channelId:row.channel_id,
@@ -59,6 +103,7 @@ async function normalizeRow(row:Row):Promise<RenderJob>{
     outputSignedUrl:await signedOutput(row.output_path),
     error:row.error??undefined,
     payload:row.payload as RenderJobPayload,
+    chapters:chapters??await renderChapters(row.id),
     createdAt:String(row.created_at),
     startedAt:row.started_at??undefined,
     completedAt:row.completed_at??undefined,
@@ -73,8 +118,21 @@ export async function listRenderJobs(channelId:string):Promise<RenderJob[]>{
     .select(selection)
     .eq('channel_id',channelId)
     .order('created_at',{ascending:false})
-    .limit(200));
-  return Promise.all((rows??[]).map(row=>normalizeRow(row as Row)));
+    .limit(200)) as Row[];
+  const ids=(rows??[]).map(row=>row.id);
+  const chapterRows=ids.length
+    ?checked(await db().from('radar_render_chapters')
+      .select(chapterSelection)
+      .in('render_job_id',ids)
+      .order('sequence',{ascending:true})) as ChapterRow[]
+    :[];
+  const grouped=new Map<string,RenderChapter[]>();
+  for(const row of chapterRows??[]){
+    const items=grouped.get(row.render_job_id)??[];
+    items.push(normalizeChapter(row));
+    grouped.set(row.render_job_id,items);
+  }
+  return Promise.all((rows??[]).map(row=>normalizeRow(row,grouped.get(row.id)??[])));
 }
 
 export async function loadRenderJob(jobId:string):Promise<RenderJob|null>{
@@ -82,7 +140,7 @@ export async function loadRenderJob(jobId:string):Promise<RenderJob|null>{
     .select(selection)
     .eq('id',jobId)
     .maybeSingle());
-  return row?normalizeRow(row as Row):null;
+  return row?normalizeRow(row as Row,await renderChapters(jobId)):null;
 }
 
 async function rawAssets(assetIds:string[]){
