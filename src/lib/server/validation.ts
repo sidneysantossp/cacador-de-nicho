@@ -315,6 +315,7 @@ export const publicationPackagePayloadSchema=z.object({
  qualityReportVersion:z.number().int().min(1).max(100000),
  renderJobId:z.string().uuid(),
  renderOutputPath:z.string().trim().min(1).max(3000),
+ renderOutputBytes:z.number().int().min(0).max(1024*1024*1024*1024).optional(),
  metadata:z.object({
   title:z.string().max(100),
   description:z.string().max(5000),
