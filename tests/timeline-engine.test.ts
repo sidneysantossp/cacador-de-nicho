@@ -4,7 +4,7 @@ import type {
   ProductionDNA, ScenePlan, TimelinePayload, VisualPromptSet, VoiceAsset
 } from '../src/lib/types';
 import {
-  buildInitialTimeline, normalizeTimeline, timelineApprovalIssues,
+  buildInitialTimeline, fitVideoSourceWindow, normalizeTimeline, timelineApprovalIssues,
   timelineAssetIssues, timelineStructuralIssues
 } from '../src/lib/timeline-policy';
 
@@ -49,7 +49,7 @@ const voice={
 
 const assets=[
   {id:'99999999-9999-4999-8999-999999999999',sceneId:scenePlan.scenes[0].id,assetKind:'image' as const,durationSeconds:null},
-  {id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',sceneId:scenePlan.scenes[1].id,assetKind:'video' as const,durationSeconds:2}
+  {id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',sceneId:scenePlan.scenes[1].id,assetKind:'video' as const,durationSeconds:3}
 ];
 
 function timeline():TimelinePayload{
@@ -67,11 +67,19 @@ test('Timeline Engine builds visual and narration tracks from approved upstream 
   assert.equal(t.format.width,1920);
 });
 
-test('Short video clips default to loop instead of silently leaving visual gaps',()=>{
-  const clip=timeline().tracks.find(track=>track.type==='visual')!.clips[1];
+test('Long video shortfall cannot silently pass approval as a loop',()=>{
+  const shortAssets=[
+    assets[0],
+    {...assets[1],durationSeconds:2}
+  ];
+  const t=buildInitialTimeline({
+    scenePlan,productionDna:dna,visualPromptSet:promptSet,visualAssets:shortAssets,voiceAsset:voice
+  });
+  const clip=t.tracks.find(track=>track.type==='visual')!.clips[1];
   assert.equal(clip.clipKind,'video');
   assert.equal(clip.playback,'loop');
   assert.equal(clip.sourceEndSeconds,2);
+  assert.ok(timelineStructuralIssues(t,scenePlan).includes('video-loop-too-long'));
 });
 
 test('Timeline Engine makes missing media an explicit placeholder and blocks approval',()=>{
@@ -145,4 +153,54 @@ test('Timeline preserves Visual Intelligence source trim instead of starting vid
   assert.equal(clip.sourceStartSeconds,13);
   assert.equal(clip.sourceEndSeconds,18);
   assert.equal(clip.playback,'trim');
+});
+
+
+test('Source window fitting expands Manhattan Bridge within the same source asset',()=>{
+  const fit=fitVideoSourceWindow({
+    sourceStartSeconds:0,
+    sourceEndSeconds:5.613333333333333,
+    assetDurationSeconds:16.84,
+    desiredDurationSeconds:7
+  });
+  assert.equal(fit.playback,'trim');
+  assert.equal(fit.sourceStartSeconds,0);
+  assert.equal(fit.sourceEndSeconds,7);
+  assert.equal(fit.shortfallSeconds,0);
+});
+
+test('Source window fitting can extend backward when verified trim ends at source end',()=>{
+  const fit=fitVideoSourceWindow({
+    sourceStartSeconds:6.6733335,
+    sourceEndSeconds:13.346667,
+    assetDurationSeconds:13.346667,
+    desiredDurationSeconds:7
+  });
+  assert.equal(fit.playback,'trim');
+  assert.ok(Math.abs(fit.sourceStartSeconds-6.346667)<.00001);
+  assert.equal(fit.sourceEndSeconds,13.346667);
+  assert.ok(fit.shortfallSeconds<.00001);
+});
+
+test('Small source shortage freezes the final frame instead of looping',()=>{
+  const fit=fitVideoSourceWindow({
+    sourceStartSeconds:0,
+    sourceEndSeconds:6.740067,
+    assetDurationSeconds:6.740067,
+    desiredDurationSeconds:7
+  });
+  assert.equal(fit.playback,'hold');
+  assert.equal(fit.sourceEndSeconds,6.740067);
+  assert.ok(fit.shortfallSeconds>.25&&fit.shortfallSeconds<.27);
+});
+
+test('Large source shortage remains explicit and blocks approval',()=>{
+  const fit=fitVideoSourceWindow({
+    sourceStartSeconds:0,
+    sourceEndSeconds:2,
+    assetDurationSeconds:2,
+    desiredDurationSeconds:3
+  });
+  assert.equal(fit.playback,'loop');
+  assert.equal(fit.shortfallSeconds,1);
 });
