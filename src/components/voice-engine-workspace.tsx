@@ -5,9 +5,9 @@ import {
   CheckCircle2, CircleAlert, FileAudio, Mic2, Play, RefreshCw,
   Sparkles, Trash2, Upload, Volume2, WandSparkles
 } from 'lucide-react';
-import type { EpisodeScript, ManagedChannel, VoiceAsset } from '@/lib/types';
+import type { EpisodeScript, ManagedChannel, VoiceAssetListItem } from '@/lib/types';
 
-type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
+type VoiceAssetView=VoiceAssetListItem;
 type ElevenVoice={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
 
 function bytes(value:number){
@@ -193,10 +193,10 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
               {asset.voiceName&&<span>{asset.voiceName}</span>}
               <span>{duration(asset.durationSeconds)}</span>
               <span>{bytes(asset.bytes)}</span>
-              <span>script v{asset.scriptVersion}</span>
+              <span>script v{asset.scriptVersion}</span>{asset.generationChunkCount>1&&<span>{asset.generationChunkCount} chunks</span>}
             </div>
             {asset.stale&&<div className="voice-stale"><CircleAlert size={14}/>Este áudio foi criado para uma versão anterior do roteiro.</div>}
-            {asset.alignment?<div className="voice-alignment"><CheckCircle2 size={14}/>Alignment temporal disponível para a próxima etapa.</div>:<div className="voice-alignment pending"><CircleAlert size={14}/>Sem alignment. Transcrição será necessária.</div>}
+            {asset.hasAlignment?<div className="voice-alignment"><CheckCircle2 size={14}/>Alignment temporal disponível para a próxima etapa.</div>:<div className="voice-alignment pending"><CircleAlert size={14}/>Sem alignment. Transcrição será necessária.</div>}
             {asset.signedUrl&&<audio controls preload="metadata" src={asset.signedUrl}/>}
           </div>
           <div className="voice-take-actions">
