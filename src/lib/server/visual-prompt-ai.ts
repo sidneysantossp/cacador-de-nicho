@@ -60,7 +60,8 @@ export async function draftVisualScenes(plan:ScenePlan,dna:ProductionDNA){
           'direction describes only the visual action, environment, objects and composition needed for the narration.',
           'Do NOT describe the recurring character appearance; later stages use @Name references.',
           'Do NOT include style language, aspect ratio, negative prompts, model names, timecodes, markdown or filenames in direction.',
-          'Prefer one clear visual idea per scene. Avoid adding facts that are not in the narration or supplied context.'
+          'Prefer one clear visual idea per scene. Avoid adding facts that are not in the narration or supplied context.',
+          'When visualBeats are present, use their type, sourcePreference, entities and search queries as semantic guidance. Do not copy query syntax into the final direction.'
         ].join(' '),
         input:JSON.stringify({
           knownCharacters,
@@ -73,7 +74,14 @@ export async function draftVisualScenes(plan:ScenePlan,dna:ProductionDNA){
             visualIntent:scene.visualIntent,
             shotType:scene.shotType,
             existingCharacterIds:scene.characterIds,
-            promptDirection:scene.promptDirection
+            promptDirection:scene.promptDirection,
+            visualBeats:(scene.visualBeats??[]).map(beat=>({
+              type:beat.type,
+              sourcePreference:beat.sourcePreference,
+              narration:beat.narration,
+              entities:beat.entities,
+              queries:beat.queries
+            }))
           }))
         }),
         text:{format:zodTextFormat(z.object({scenes:z.array(sceneDraft).min(1).max(40)}),'visual_scene_drafts')},
@@ -92,13 +100,13 @@ export async function draftVisualScenes(plan:ScenePlan,dna:ProductionDNA){
       sceneId:scene.id,
       characterIds:scene.characterIds.filter(id=>allowed.has(id)),
       shotType:scene.shotType,
-      direction:scene.promptDirection||scene.visualIntent||scene.narration
+      direction:scene.promptDirection||scene.visualIntent||scene.visualBeats?.[0]?.queries?.[0]||scene.narration
     };
     return {
       sceneId:scene.id,
       characterIds:[...new Set(item.characterIds.filter(id=>allowed.has(id)))],
       shotType:item.shotType.trim()||scene.shotType,
-      direction:item.direction.trim()||scene.promptDirection||scene.visualIntent||scene.narration
+      direction:item.direction.trim()||scene.promptDirection||scene.visualIntent||scene.visualBeats?.[0]?.queries?.[0]||scene.narration
     };
   });
 }
