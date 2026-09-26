@@ -3,7 +3,7 @@ import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  createVideoEditFromTimeline, loadVideoEdit, loadVideoEditHistory,
+  createVideoEditFromTimeline, loadVideoEdit, loadVideoEditHistory, loadVideoEditHistoryVersion,
   loadVideoEditWorkspace, refreshVideoEditFromTimeline, saveVideoEdit, videoEditorChannelState
 } from '@/lib/server/video-editor';
 import { videoEditPayloadSchema } from '@/lib/server/validation';
@@ -32,9 +32,20 @@ export async function GET(request:Request){
     const videoEditId=url.searchParams.get('videoEditId')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
     const requestedChapterId=url.searchParams.get('chapterId')?.trim()||undefined;
+    const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
 
     if(videoEditId){
       if(!z.string().uuid().safeParse(videoEditId).success)throw new HttpError('Video Edit inválido.',400);
+      if(historyVersionRaw){
+        const historyVersion=Number(historyVersionRaw);
+        if(!Number.isInteger(historyVersion)||historyVersion<1||historyVersion>100000){
+          throw new HttpError('Versão histórica inválida.',400);
+        }
+        const version=await loadVideoEditHistoryVersion(videoEditId,historyVersion);
+        if(!version)throw new HttpError('Versão histórica não encontrada.',404);
+        return Response.json({historyVersion:version},{headers:{'Cache-Control':'no-store'}});
+      }
+
       const videoEdit=await loadVideoEdit(videoEditId);
       if(!videoEdit)throw new HttpError('Video Edit não encontrado.',404);
       const [history,workspace]=await Promise.all([
