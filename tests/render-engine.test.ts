@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
   boundaryTransition, renderManifestIssues, renderOutputPath, renderPresetOutput,
