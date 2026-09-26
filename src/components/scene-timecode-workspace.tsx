@@ -6,8 +6,8 @@ import {
   Save, Sparkles, Trash2
 } from 'lucide-react';
 import type {
-  ManagedChannel, ProductionDNA, SceneAssetMode, ScenePlan, ScenePlanPayload,
-  ScenePlanVersionSummary, SceneTimecode, Transcript, VoiceAsset
+  ManagedChannel, ProductionDNA, SceneAssetMode, ScenePlan, ScenePlanListItem, ScenePlanPayload,
+  ScenePlanVersionSummary, SceneTimecode, Transcript, TranscriptListItem, VoiceAsset
 } from '@/lib/types';
 import {
   normalizeScenePlan, sceneDurationWarnings, scenePlanApprovalIssues,
@@ -19,7 +19,7 @@ import {
 } from '@/lib/long-form-editor-window';
 
 type VoiceAssetView=VoiceAsset&{signedUrl:string|null;stale:boolean};
-type ScenePlanView=ScenePlan&{stale?:boolean;staleReason?:string};
+type ScenePlanView=ScenePlanListItem;
 type Tab='scenes'|'review'|'history';
 
 function when(value:string){return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});}
@@ -27,7 +27,7 @@ function payloadOnly(value:ScenePlan):ScenePlanPayload{const {version:_version,s
 
 export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel}){
   const [plans,setPlans]=useState<ScenePlanView[]>([]);
-  const [transcripts,setTranscripts]=useState<Transcript[]>([]);
+  const [transcripts,setTranscripts]=useState<TranscriptListItem[]>([]);
   const [current,setCurrent]=useState<ScenePlan|null>(null);
   const [draft,setDraft]=useState<ScenePlanPayload|null>(null);
   const [transcript,setTranscript]=useState<Transcript|null>(null);
@@ -277,10 +277,10 @@ export default function SceneTimecodeWorkspace({channel}:{channel:ManagedChannel
 
     {eligible.length>0&&<section className="scene-ready">
       <div className="scene-section-head"><div><span>READY FOR SCENES</span><h3>Transcripts aprovados esperando timeline.</h3></div><Clapperboard size={21}/></div>
-      {eligible.map(item=><article key={item.id}><div><strong>Take {item.voiceTake} · transcript v{item.version}</strong><p>{item.segments.length} segmentos · match {item.scriptMatchScore===null?'—':Math.round(item.scriptMatchScore*100)+'%'}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Criar Scene Plan'}</button></article>)}
+      {eligible.map(item=><article key={item.id}><div><strong>Take {item.voiceTake} · transcript v{item.version}</strong><p>{item.segmentCount} segmentos · match {item.scriptMatchScore===null?'—':Math.round(item.scriptMatchScore*100)+'%'}</p></div><button className="button primary small" disabled={!!busy} onClick={()=>void create(item.id)}>{busy==='create:'+item.id?'Criando…':'Criar Scene Plan'}</button></article>)}
     </section>}
 
-    <section className="scene-plan-grid">{plans.map(plan=><article key={plan.id}><div><span>{plan.stale?'stale':plan.status}</span><em>v{plan.version}</em></div><h3>Take {plan.voiceTake}</h3><p>{plan.scenes.length} cenas · {formatTranscriptTimestamp(plan.audioDurationSeconds)}</p><small>{plan.stale?'Take de voz mudou · reconstrução necessária':'transcript v'+plan.transcriptVersion}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openPlan(plan.id)}>Abrir timeline</button></article>)}</section>
+    <section className="scene-plan-grid">{plans.map(plan=><article key={plan.id}><div><span>{plan.stale?'stale':plan.status}</span><em>v{plan.version}</em></div><h3>Take {plan.voiceTake}</h3><p>{plan.sceneCount} cenas · {formatTranscriptTimestamp(plan.audioDurationSeconds)}</p><small>{plan.stale?'Take de voz mudou · reconstrução necessária':'transcript v'+plan.transcriptVersion}</small><button className="button subtle small" disabled={busy==='open'} onClick={()=>void openPlan(plan.id)}>Abrir timeline</button></article>)}</section>
 
     {!plans.length&&!eligible.length&&<div className="scene-timecode-empty"><Clapperboard size={28}/><h3>Nenhum transcript aprovado para cenas.</h3><p>A timeline começa somente depois da aprovação da transcrição.</p></div>}
   </div>;
