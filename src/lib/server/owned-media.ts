@@ -329,7 +329,7 @@ export async function finalizeOwnedMediaUpload(input:{
     },
     updated_at:new Date().toISOString()
   }).eq('id',row.id));
-  if(row.asset_kind==='video'){
+  if(row.asset_kind==='video'||row.asset_kind==='image'){
     checked(await db().from('radar_owned_media_analysis_jobs').upsert({
       id:crypto.randomUUID(),
       asset_id:row.id,
