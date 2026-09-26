@@ -456,18 +456,35 @@ export async function loadOwnedMediaIntelligence(assetId:string):Promise<OwnedMe
     .select('asset_id,status,provider,model,asset_title,duration_seconds,payload,error,analyzed_at,created_at,updated_at')
     .eq('asset_id',assetId).maybeSingle()) as AnalysisRow|null;
   if(!analysis){
-    return {assetId,status:'idle',provider:'googleai',model:'',assetTitle:'',durationSeconds:null,segments:[]};
+    return {
+      assetId,status:'idle',provider:'googleai',model:'',assetTitle:'',durationSeconds:null,
+      usableSegmentCount:0,meanQuality:0,embeddingStatus:'idle',segments:[]
+    };
   }
   const rows=checked(await db().from('radar_owned_media_segments')
     .select('id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,quality_score,usable,quality_issues,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',assetId).order('sequence',{ascending:true})) as SegmentRow[];
+  const payload=analysis.payload&&typeof analysis.payload==='object'
+    ?analysis.payload as Record<string,unknown>
+    :{};
+  const embedding=payload.embedding&&typeof payload.embedding==='object'
+    ?payload.embedding as Record<string,unknown>
+    :{};
+  const segments=(rows??[]).map(segment);
   return {
     assetId,status:analysis.status,provider:'googleai',model:String(analysis.model??''),
     assetTitle:String(analysis.asset_title??''),
     durationSeconds:analysis.duration_seconds===null?null:Number(analysis.duration_seconds),
+    usableSegmentCount:Math.max(0,Number(payload.usableSegmentCount??segments.filter(item=>item.usable).length)||0),
+    meanQuality:Math.max(0,Math.min(1,Number(
+      payload.meanQuality??(segments.length?segments.reduce((sum,item)=>sum+item.qualityScore,0)/segments.length:0)
+    )||0)),
+    embeddingStatus:(['completed','failed'].includes(String(embedding.status))
+      ?String(embedding.status)
+      :'idle') as 'idle'|'completed'|'failed',
     analyzedAt:analysis.analyzed_at?String(analysis.analyzed_at):undefined,
     error:analysis.error?String(analysis.error):undefined,
-    segments:(rows??[]).map(segment)
+    segments
   };
 }
 
