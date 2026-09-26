@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type {
-  Timeline, Transcript, VideoEdit, VideoEditPayload, VideoEditVersion
+  Timeline, Transcript, VideoEdit, VideoEditPayload, VideoEditVersion, VideoEditVersionSummary
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -63,18 +63,35 @@ export async function loadVideoEditByTimeline(timelineId:string):Promise<VideoEd
   return row?normalizeRow(row as Row):null;
 }
 
-export async function loadVideoEditHistory(videoEditId:string,limit=20):Promise<VideoEditVersion[]>{
+export async function loadVideoEditHistory(videoEditId:string,limit=20):Promise<VideoEditVersionSummary[]>{
   const rows=checked(await db().from('radar_video_edit_versions')
-    .select('version,status,payload,created_at')
+    .select('version,status,created_at')
     .eq('video_edit_id',videoEditId)
     .order('version',{ascending:false})
     .limit(Math.max(1,Math.min(limit,50))));
   return (rows??[]).map(row=>({
     version:Number(row.version),
     status:row.status as VideoEdit['status'],
-    payload:upgradeVideoEditPayload(row.payload as Record<string,unknown>),
     createdAt:String(row.created_at)
   }));
+}
+
+export async function loadVideoEditHistoryVersion(
+  videoEditId:string,
+  version:number
+):Promise<VideoEditVersion|null>{
+  const row=checked(await db().from('radar_video_edit_versions')
+    .select('version,status,payload,created_at')
+    .eq('video_edit_id',videoEditId)
+    .eq('version',version)
+    .maybeSingle());
+  if(!row)return null;
+  return {
+    version:Number(row.version),
+    status:row.status as VideoEdit['status'],
+    payload:upgradeVideoEditPayload(row.payload as Record<string,unknown>),
+    createdAt:String(row.created_at)
+  };
 }
 
 async function eligibleContext(timelineId:string){
