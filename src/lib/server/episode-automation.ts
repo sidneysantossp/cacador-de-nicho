@@ -109,16 +109,98 @@ function step(
   };
 }
 
-function rowPayload<T=Record<string,unknown>>(row:{payload?:unknown}|null|undefined){
-  return (row?.payload??{}) as T;
+function rowPayload<T=Record<string,unknown>>(row:unknown){
+  if(!row||typeof row!=='object'||!('payload' in row))return {} as T;
+  return (((row as {payload?:unknown}).payload)??{}) as T;
 }
 
 function latest<T extends {updated_at?:string;created_at?:string}>(rows:T[]|null|undefined){
   return (rows??[])[0]??null;
 }
 
+async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnType<typeof db>){
+  const [projectResult,scriptResult,voiceResult,stockJobResult,dnaResult]=await Promise.all([
+    client.from('radar_content_projects')
+      .select('id,version,status,payload,updated_at')
+      .eq('id',run.contentProjectId).maybeSingle(),
+    client.from('radar_episode_script_list')
+      .select('id,version,status,updated_at')
+      .eq('episode_id',run.episodeId).order('updated_at',{ascending:false}).limit(1),
+    client.from('radar_voice_asset_list')
+      .select('id,status,selected,updated_at')
+      .eq('episode_id',run.episodeId).eq('selected',true)
+      .order('updated_at',{ascending:false}).limit(1),
+    client.from('radar_verified_stock_jobs')
+      .select('id,scene_id,status,result,last_error,updated_at')
+      .eq('episode_id',run.episodeId)
+      .in('status',['queued','processing'])
+      .order('updated_at',{ascending:false})
+      .limit(1000),
+    client.from('radar_production_dna')
+      .select('id,version,payload,updated_at')
+      .eq('id',run.channelId).maybeSingle()
+  ]);
+
+  const project=checked(projectResult);
+  if(!project)throw new HttpError('Content Project do Automation Run não existe mais.',409);
+  const script=latest(checked(scriptResult)??[]);
+  const voice=latest(checked(voiceResult)??[]);
+
+  const transcriptResult=voice
+    ?await client.from('radar_transcript_list')
+      .select('id,version,status,voice_asset_id,updated_at')
+      .eq('voice_asset_id',String(voice.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const transcript=latest(checked(transcriptResult)??[]);
+
+  const sceneResult=transcript
+    ?await client.from('radar_scene_plan_list')
+      .select('id,version,status,transcript_id,scene_ids,updated_at')
+      .eq('transcript_id',String(transcript.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const scenePlan=latest(checked(sceneResult)??[]);
+
+  const promptResult=scenePlan
+    ?await client.from('radar_visual_prompt_set_list')
+      .select('id,version,status,scene_plan_id,updated_at')
+      .eq('scene_plan_id',String(scenePlan.id))
+      .order('updated_at',{ascending:false}).limit(1)
+    :{data:[],error:null};
+  const promptSet=latest(checked(promptResult)??[]);
+
+  const assetResult=promptSet
+    ?await client.from('radar_scene_assets')
+      .select('id,scene_id,status,selected,updated_at')
+      .eq('visual_prompt_set_id',String(promptSet.id))
+      .eq('selected',true)
+    :{data:[],error:null};
+
+  return {
+    project,
+    script,
+    voice,
+    transcript,
+    scenePlan,
+    promptSet,
+    assets:checked(assetResult)??[],
+    stockJobs:checked(stockJobResult)??[],
+    timeline:null,
+    videoEdit:null,
+    render:null,
+    quality:null,
+    package:null,
+    publish:null,
+    productionDna:checked(dnaResult)
+  };
+}
+
 async function sourceSnapshot(run:EpisodeAutomationRun){
   const client=db();
+  if(run.currentStep==='visual-assets'){
+    return visualAssetSourceSnapshot(run,client);
+  }
 
   const [projectResult,scriptResult,voiceResult,stockJobResult,dnaResult]=await Promise.all([
     client.from('radar_content_projects')
@@ -272,14 +354,18 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   const documentaryMode=Boolean(
     dnaDetail.research?.documentaryMode||dnaDetail.research?.requireClaimLedger
   );
-  const scriptPayload=script?rowPayload<EpisodeScriptPayload>(script):null;
-  const documentaryIssues=scriptPayload
-    ?documentaryScriptClaimIssues({
+  const scriptPayload=script&&'payload' in script
+    ?rowPayload<EpisodeScriptPayload>(script)
+    :null;
+  const documentaryIssues=script?.status==='approved'
+    ?[]
+    :scriptPayload
+      ?documentaryScriptClaimIssues({
       payload:scriptPayload,
       claims:projectDetail.research?.factChecks??[],
-      documentaryMode
-    })
-    :[];
+        documentaryMode
+      })
+      :[];
 
   if(!contentApproved){
     steps.push(step('script','pending',{reason:'Aguardando Content Project aprovado.'}));
@@ -385,7 +471,12 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   }
 
   const scenePayload=rowPayload<{scenes?:Array<{id?:string}>}>(scenePlan);
-  const sceneIds=new Set((scenePayload.scenes??[]).map(item=>String(item.id??'')).filter(Boolean));
+  const sceneSummary=scenePlan as {scene_ids?:string[]}|null;
+  const sceneIds=new Set(
+    (sceneSummary?.scene_ids??(scenePayload.scenes??[]).map(item=>String(item.id??'')))
+      .map(String)
+      .filter(Boolean)
+  );
   const selectedReadyRows=src.assets.filter(item=>item.selected&&item.status==='ready');
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));

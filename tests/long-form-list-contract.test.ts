@@ -53,3 +53,14 @@ test('List summary views retain the card metrics required by long-form workspace
     assert.match(sql,new RegExp('\\b'+field+'\\b'),field+' summary metric missing');
   }
 });
+
+
+test('Scene Plan summary exposes only scene IDs for lightweight automation coverage checks',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const start=sql.indexOf('create or replace view public.radar_scene_plan_list');
+  const end=sql.indexOf('create or replace view public.radar_visual_prompt_set_list',start);
+  assert.ok(start>=0&&end>start,'scene plan list view missing');
+  const block=sql.slice(start,end);
+  assert.match(block,/array\([\s\S]*scene->>'id'[\s\S]*\) as scene_ids/);
+  assert.doesNotMatch(block,/select[\s\S]*\bp\.payload\s*(,|from)/i);
+});
