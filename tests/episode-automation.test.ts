@@ -231,3 +231,25 @@ test('Automation worker drains ready backlog without the idle poll delay',()=>{
   assert.match(source,/if\(!claimed\)[\s\S]*await sleep\(POLL_MS\)/);
   assert.match(source,/episode-automation-step-error[\s\S]*await sleep\(Math\.max\(POLL_MS,5000\)\)/);
 });
+
+
+test('Visual-assets automation snapshot stays lightweight across repeated batches',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const start=source.indexOf('async function visualAssetSourceSnapshot');
+  const end=source.indexOf('async function sourceSnapshot',start);
+  assert.ok(start>=0&&end>start,'lightweight visual snapshot helper missing');
+  const block=source.slice(start,end);
+  for(const view of [
+    'radar_episode_script_list',
+    'radar_voice_asset_list',
+    'radar_transcript_list',
+    'radar_scene_plan_list',
+    'radar_visual_prompt_set_list'
+  ]){
+    assert.match(block,new RegExp(view));
+  }
+  assert.doesNotMatch(block,/radar_timelines|radar_video_edits|radar_render_jobs|radar_production_quality_reports|radar_publication_packages/);
+  assert.match(block,/timeline:null/);
+  assert.match(block,/videoEdit:null/);
+  assert.match(block,/render:null/);
+});
