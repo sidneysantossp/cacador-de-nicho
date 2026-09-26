@@ -1620,6 +1620,8 @@ export type VideoEditListItem = {
  version: number;
  status: VideoEdit['status'];
  durationSeconds: number;
+ width: number;
+ height: number;
  clipStyleCount: number;
  captionCount: number;
  overlayCount: number;
