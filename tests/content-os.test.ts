@@ -254,3 +254,67 @@ test('Wikipedia discovery plus institutional evidence can support a factual clai
   assert.equal(result.ready,true);
   assert.deepEqual(result.weakFactCheckEvidence,[]);
 });
+
+
+test('Documentary Content OS requires a non-empty Claim Ledger',()=>{
+  const input=project();
+  input.research.factChecks=[];
+  const result=contentProjectReadiness(input,episode,[saving],brain,{
+    documentaryMode:true,requireClaimLedger:true
+  });
+  assert.equal(result.ready,false);
+  assert.equal(result.claimLedgerEmpty,true);
+  assert.ok(result.blockers.includes('claim-ledger-empty'));
+});
+
+test('Documentary Claim Ledger requires claim type and narration rule',()=>{
+  const input=project();
+  const result=contentProjectReadiness(input,episode,[saving],brain,{
+    documentaryMode:true,requireClaimLedger:true
+  });
+  assert.equal(result.ready,false);
+  assert.deepEqual(result.missingClaimMetadata,[input.research.factChecks[0].id]);
+});
+
+test('Documentary estimates cannot be narrated as certain facts',()=>{
+  const input=project();
+  input.research.factChecks[0]={
+    ...input.research.factChecks[0],
+    claimType:'estimate',
+    narrationRule:'assert'
+  };
+  const result=contentProjectReadiness(input,episode,[saving],brain,{
+    documentaryMode:true,requireClaimLedger:true
+  });
+  assert.equal(result.ready,false);
+  assert.deepEqual(result.invalidNarrationRules,[input.research.factChecks[0].id]);
+});
+
+test('Documentary allegations are valid only with attribution',()=>{
+  const input=project();
+  input.research.factChecks[0]={
+    ...input.research.factChecks[0],
+    claimType:'allegation',
+    narrationRule:'attribute'
+  };
+  const result=contentProjectReadiness(input,episode,[saving],brain,{
+    documentaryMode:true,requireClaimLedger:true
+  });
+  assert.equal(result.ready,true);
+  assert.deepEqual(result.invalidNarrationRules,[]);
+});
+
+test('Excluded unresolved documentary claims do not block the pre-script gate',()=>{
+  const input=project();
+  input.research.factChecks[0]={
+    ...input.research.factChecks[0],
+    status:'needs-review',
+    claimType:'folklore',
+    narrationRule:'exclude'
+  };
+  const result=contentProjectReadiness(input,episode,[saving],brain,{
+    documentaryMode:true,requireClaimLedger:true
+  });
+  assert.equal(result.ready,true);
+  assert.deepEqual(result.unresolvedFactChecks,[]);
+});
