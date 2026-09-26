@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Download, Film, LoaderCircle, RefreshCw,
   RotateCcw, Sparkles, Square, XCircle
 } from 'lucide-react';
-import type { ManagedChannel, RenderJob, RenderPreset, VideoEdit } from '@/lib/types';
+import type { ManagedChannel, RenderJob, RenderPreset, VideoEditListItem } from '@/lib/types';
 
 function when(value?:string){
   if(!value)return '—';
@@ -24,7 +24,7 @@ function duration(value:number){
 
 export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}){
   const [jobs,setJobs]=useState<RenderJob[]>([]);
-  const [edits,setEdits]=useState<VideoEdit[]>([]);
+  const [edits,setEdits]=useState<VideoEditListItem[]>([]);
   const [videoEditId,setVideoEditId]=useState('');
   const [preset,setPreset]=useState<RenderPreset>('source');
   const [liveStatus,setLiveStatus]=useState<'connecting'|'live'|'fallback'>('connecting');
@@ -44,7 +44,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar Render Engine.');
       const nextJobs=(body.jobs??[]) as RenderJob[];
-      const nextEdits=(body.videoEdits??[]) as VideoEdit[];
+      const nextEdits=(body.videoEdits??[]) as VideoEditListItem[];
       setJobs(nextJobs);
       setEdits(nextEdits);
       setVideoEditId(prev=>prev&&nextEdits.some(edit=>edit.id===prev)?prev:(nextEdits[0]?.id??''));
@@ -109,12 +109,12 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     <section className="render-create">
       <div className="render-section-head"><div><span>NEW RENDER · V4</span><h3>Capítulos cacheáveis + master incremental.</h3><p>Novos jobs usam render-v4: um capítulo por vez, cache por conteúdo, concatenação sem reencode e áudio aplicado no master.</p></div></div>
       <div className="render-grid four">
-        <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.format.width}×{edit.format.height}</option>)}</select></label>
+        <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.width}×{edit.height}</option>)}</select></label>
         <label>Preset<select value={preset} onChange={e=>setPreset(e.target.value as RenderPreset)}><option value="source">Source</option><option value="hd-1080p30">HD 1080p · 30 fps</option><option value="draft-720p30">Draft 720p · 30 fps</option></select></label>
         <label>Qualidade CRF<input type="number" min="18" max="30" step="1" value={crf} onChange={e=>setCrf(Number(e.target.value))}/><small>18 = maior qualidade/arquivo · 30 = menor arquivo</small></label>
         <label>Áudio AAC<input type="number" min="96" max="320" step="16" value={audioBitrateKbps} onChange={e=>setAudioBitrateKbps(Number(e.target.value))}/><small>kbps</small></label>
       </div>
-      {selectedEdit&&<div className="render-edit-summary"><strong>Video Edit v{selectedEdit.version}</strong><span>{duration(selectedEdit.durationSeconds)}</span><span>{selectedEdit.clipStyles.length} clips</span><span>{selectedEdit.captions.cues.length} captions</span><span>{selectedEdit.overlays.length} overlays</span></div>}
+      {selectedEdit&&<div className="render-edit-summary"><strong>Video Edit v{selectedEdit.version}</strong><span>{duration(selectedEdit.durationSeconds)}</span><span>{selectedEdit.clipStyleCount} clips</span><span>{selectedEdit.captionCount} captions</span><span>{selectedEdit.overlayCount} overlays</span></div>}
       <button className="button primary" disabled={!videoEditId||busy==='create'} onClick={()=>void action({action:'create',videoEditId,preset,crf,audioBitrateKbps},'create')}><Film size={15}/>{busy==='create'?'Enfileirando…':'Enfileirar render'}</button>
     </section>
 
