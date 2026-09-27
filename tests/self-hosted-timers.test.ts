@@ -29,3 +29,11 @@ test('promotion restarts enabled timers so changed definitions are re-armed',()=
   assert.match(source,/cacadores-youtube-publish-worker-sync\.timer/);
   assert.match(source,/systemctl disable --now "\$TIMER"/);
 });
+
+
+test('health watch rearms timers that are active but elapsed',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-health-watch'),'utf8');
+  assert.match(source,/systemctl show "\$UNIT" -p SubState --value/);
+  assert.match(source,/== "elapsed"/);
+  assert.match(source,/systemctl restart "\$UNIT"/);
+});

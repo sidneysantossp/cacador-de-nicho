@@ -35,6 +35,8 @@ for UNIT in "${UNITS[@]}"; do
   fi
   if ! systemctl is-active --quiet "$UNIT"; then
     systemctl start "$UNIT" >/dev/null 2>&1 || true
+  elif [[ "$(systemctl show "$UNIT" -p SubState --value 2>/dev/null || true)" == "elapsed" ]]; then
+    systemctl restart "$UNIT" >/dev/null 2>&1 || true
   fi
 done
 
