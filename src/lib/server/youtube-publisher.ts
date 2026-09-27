@@ -6,7 +6,7 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadPublicationPackage, listPublicationPackages } from './publication-package';
-import { listLinkedYouTubeChannels, loadLinkedYouTubeConnection, loadYouTubeConnection } from './youtube-oauth';
+import { listLinkedYouTubeChannels, loadLinkedYouTubeConnection } from './youtube-oauth';
 import {
   buildYouTubePublishPayload, youtubePublishReadinessIssues, youtubeWatchUrl
 } from '@/lib/youtube-publisher-policy';
@@ -140,8 +140,7 @@ export async function retryYouTubePublication(jobId:string){
 }
 
 export async function youtubePublisherChannelState(channelId:string){
-  const [connection,linkedChannels,jobs,packages]=await Promise.all([
-    loadYouTubeConnection(channelId),
+  const [linkedChannels,jobs,packages]=await Promise.all([
     listLinkedYouTubeChannels(),
     listYouTubePublishJobs(channelId),
     listPublicationPackages(channelId)
@@ -151,7 +150,6 @@ export async function youtubePublisherChannelState(channelId:string){
   return {
     configured:config.configured,
     missing:config.missing,
-    connection,
     linkedChannels:linkedChannels.filter(item=>item.projectId===channelId),
     jobs,
     readyPackages:packages.filter(pkg=>pkg.status==='approved'&&!jobPackages.has(pkg.id))
