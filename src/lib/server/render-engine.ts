@@ -18,8 +18,9 @@ import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
 import { timelineChapters } from '@/lib/timeline-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
-  DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF, renderManifestIssues,
-  renderOutputPath, renderPresetOutput, validRenderAudioBitrate, validRenderCrf
+  buildRenderChapterPlan, DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF,
+  renderManifestIssues, renderOutputPath, renderPresetOutput,
+  validRenderAudioBitrate, validRenderCrf
 } from '@/lib/render-policy';
 
 
@@ -77,6 +78,7 @@ async function renderChapters(jobId:string){
     .order('sequence',{ascending:true})) as ChapterRow[];
   return (rows??[]).map(normalizeChapter);
 }
+
 
 function hash(value:string){
   return createHash('sha256').update(value,'utf8').digest('hex');
@@ -305,78 +307,6 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   return manifest;
 }
 
-function relativeSeconds(value:number,start:number){
-  return Math.max(0,Math.round((value-start)*1000)/1000);
-}
-
-function chapterPlanFor(input:{
-  manifest:RenderManifest;
-  preset:RenderPreset;
-  crf:number;
-}):RenderChapterPlan[]{
-  const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
-  const chapters=input.manifest.chapters?.length
-    ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
-    :[{
-      id:input.manifest.timelineId,
-      sequence:1,
-      label:'Chapter 01',
-      startSeconds:0,
-      endSeconds:input.manifest.durationSeconds,
-      durationSeconds:input.manifest.durationSeconds,
-      sceneIds:input.manifest.visualClips.map(clip=>clip.sceneId)
-    }];
-  return chapters.map(chapter=>{
-    const sceneIds=new Set(chapter.sceneIds);
-    const clips=input.manifest.visualClips
-      .filter(clip=>sceneIds.has(clip.sceneId))
-      .map(clip=>({
-        ...clip,
-        startSeconds:relativeSeconds(clip.startSeconds,chapter.startSeconds),
-        endSeconds:relativeSeconds(clip.endSeconds,chapter.startSeconds)
-      }));
-    const captions=input.manifest.captions.cues
-      .filter(cue=>cue.endSeconds>chapter.startSeconds&&cue.startSeconds<chapter.endSeconds)
-      .map(cue=>({
-        ...cue,
-        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,cue.startSeconds),chapter.startSeconds),
-        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,cue.endSeconds),chapter.startSeconds),
-        words:cue.words.map(word=>({
-          ...word,
-          startSeconds:relativeSeconds(Math.max(chapter.startSeconds,word.startSeconds),chapter.startSeconds),
-          endSeconds:relativeSeconds(Math.min(chapter.endSeconds,word.endSeconds),chapter.startSeconds)
-        }))
-      }));
-    const overlays=input.manifest.overlays
-      .filter(item=>item.endSeconds>chapter.startSeconds&&item.startSeconds<chapter.endSeconds)
-      .map(item=>({
-        ...item,
-        startSeconds:relativeSeconds(Math.max(chapter.startSeconds,item.startSeconds),chapter.startSeconds),
-        endSeconds:relativeSeconds(Math.min(chapter.endSeconds,item.endSeconds),chapter.startSeconds)
-      }));
-    const contentHash=hash(JSON.stringify({
-      compilerVersion:'render-v4',
-      outputFormat,
-      videoCodec:'libx264',
-      fallbackVideoCodecs:['mpeg4'],
-      crf:input.crf,
-      durationSeconds:chapter.durationSeconds,
-      clips,
-      captions:{
-        enabled:input.manifest.captions.enabled,
-        position:input.manifest.captions.position,
-        fontSize:input.manifest.captions.fontSize,
-        maxLines:input.manifest.captions.maxLines,
-        backgroundOpacity:input.manifest.captions.backgroundOpacity,
-        style:input.manifest.captions.style,
-        cues:captions
-      },
-      overlays
-    }));
-    return {...chapter,contentHash};
-  });
-}
-
 async function reusableChapterCache(hashes:string[]){
   if(!hashes.length)return new Map<string,ChapterRow>();
   const rows=checked(await db().from('radar_render_chapters')
@@ -417,7 +347,7 @@ export async function createRenderJob(input:{
   if(existing)return normalizeRow(existing as Row);
 
   const id=crypto.randomUUID();
-  const chapterPlan=chapterPlanFor({manifest,preset,crf});
+  const chapterPlan=buildRenderChapterPlan({manifest,preset,crf});
   const cache=await reusableChapterCache(chapterPlan.map(chapter=>chapter.contentHash));
   const payload:RenderJobPayload={
     preset,
