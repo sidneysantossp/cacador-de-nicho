@@ -1758,6 +1758,7 @@ export type RenderManifest = {
  audioMix: VideoEditPayload['audioMix'];
 };
 export type RenderPreset = 'source' | 'hd-1080p30' | 'draft-720p30';
+export type RenderEncoderPreset = 'medium' | 'ultrafast';
 export type RenderOutputFormat = {
  width: number;
  height: number;
@@ -1783,6 +1784,7 @@ export type RenderChapter = RenderChapterPlan & {
 };
 export type RenderJobPayload = {
  preset: RenderPreset;
+ encoderPreset?: RenderEncoderPreset;
  videoCodec: 'libx264';
  fallbackVideoCodecs?: Array<'mpeg4'>;
  crf: number;
