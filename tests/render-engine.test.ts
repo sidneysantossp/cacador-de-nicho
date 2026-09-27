@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
-  boundaryTransition, buildRenderChapterPlan, renderManifestIssues, renderOutputPath,
+  boundaryTransition, buildRenderChapterPlan, renderEncoderPreset, renderManifestIssues, renderOutputPath,
   renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
@@ -375,4 +375,24 @@ test('Render-v4 compiles a 60-minute 600-clip chapter plan with stable increment
 
   const elapsedMs=performance.now()-started;
   assert.ok(elapsedMs<5000,'60-minute render plan exceeded 5s: '+elapsedMs.toFixed(0)+'ms');
+});
+
+
+test('Draft render uses an ultrafast encoder profile while final presets stay medium',()=>{
+  assert.equal(renderEncoderPreset('draft-720p30'),'ultrafast');
+  assert.equal(renderEncoderPreset('source'),'medium');
+  assert.equal(renderEncoderPreset('hd-1080p30'),'medium');
+});
+
+test('Render-v4 chapter cache hash separates draft and final encoder profiles',()=>{
+  const value=manifest();
+  value.chapters=[{
+    id:'19111111-1111-4111-8111-111111111111',
+    sequence:1,label:'Chapter 01',
+    startSeconds:0,endSeconds:6,durationSeconds:6,
+    sceneIds:value.visualClips.map(clip=>clip.sceneId)
+  }];
+  const draft=buildRenderChapterPlan({manifest:value,preset:'draft-720p30',crf:24});
+  const final=buildRenderChapterPlan({manifest:value,preset:'hd-1080p30',crf:24});
+  assert.notEqual(draft[0].contentHash,final[0].contentHash);
 });

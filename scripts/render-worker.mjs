@@ -252,6 +252,11 @@ async function runVideoEncode(baseArgs,outputPath,payload,{crf,preset='medium'}=
   throw new Error('All video encoders failed: '+failures.map(item=>item.codec+': '+item.error).join(' | '));
 }
 
+function renderEncodePreset(payload,fallback='medium'){
+  if(payload?.encoderPreset==='ultrafast'||payload?.encoderPreset==='medium')return payload.encoderPreset;
+  return payload?.preset==='draft-720p30'?'ultrafast':fallback;
+}
+
 function renderOutputFormat(payload,manifest){
   const raw=['render-v3','render-v4'].includes(payload?.compilerVersion)&&payload.outputFormat
     ?payload.outputFormat
@@ -373,7 +378,10 @@ async function prepareSegment(clip,inputPath,outputPath,manifest,index,payload){
     '-t',String(rounded(outputDuration)),
     '-r',String(fps)
   );
-  await runVideoEncode(args,outputPath,payload,{crf:18,preset:'veryfast'});
+  await runVideoEncode(args,outputPath,payload,{
+    crf:payload?.preset==='draft-720p30'?payload.crf:18,
+    preset:renderEncodePreset(payload,'veryfast')
+  });
 }
 
 async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
@@ -382,7 +390,7 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
 
   if(segmentPaths.length===1){
     args.push('-map','0:v:0','-an');
-    await runVideoEncode(args,outputPath,payload,{crf,preset:'medium'});
+    await runVideoEncode(args,outputPath,payload,{crf,preset:renderEncodePreset(payload)});
     return;
   }
 
@@ -412,7 +420,7 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
     '-t',String(rounded(manifest.durationSeconds)),
     '-r',String(manifest.format.fps)
   );
-  await runVideoEncode(args,outputPath,payload,{crf,preset:'medium'});
+  await runVideoEncode(args,outputPath,payload,{crf,preset:renderEncodePreset(payload)});
 }
 
 function assEscape(value){
@@ -531,7 +539,7 @@ async function burnText(manifest,inputPath,assPath,outputPath,crf,payload){
     '-hide_banner','-loglevel','error','-y','-i',inputPath,
     '-vf','ass='+assPath,
     '-an'
-  ],outputPath,payload,{crf,preset:'medium'});
+  ],outputPath,payload,{crf,preset:renderEncodePreset(payload)});
   return outputPath;
 }
 
@@ -636,7 +644,7 @@ async function concatChapterVideos(paths,outputPath,root,payload){
       '-hide_banner','-loglevel','error','-y',
       '-f','concat','-safe','0','-i',listPath,
       '-map','0:v:0','-an','-movflags','+faststart'
-    ],outputPath,payload,{crf:payload.crf,preset:'medium'});
+    ],outputPath,payload,{crf:payload.crf,preset:renderEncodePreset(payload)});
   }
 }
 
@@ -948,7 +956,7 @@ async function muxAudio(manifest,videoPath,paths,outputPath,payload){
       '-t',String(rounded(manifest.durationSeconds)),
       '-movflags','+faststart'
     );
-    await runVideoEncode(args,outputPath,payload,{crf:payload.crf,preset:'medium'});
+    await runVideoEncode(args,outputPath,payload,{crf:payload.crf,preset:renderEncodePreset(payload)});
     return;
   }
 

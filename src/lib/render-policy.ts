@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
-  RenderChapterPlan, RenderManifest, RenderOutputFormat, RenderPreset,
+  RenderChapterPlan, RenderEncoderPreset, RenderManifest, RenderOutputFormat, RenderPreset,
   VideoEdit, Timeline, Transcript
 } from '@/lib/types';
 
@@ -21,6 +21,10 @@ export function renderPresetOutput(
   return portrait
     ?{width:720,height:1280,fps:30}
     :{width:1280,height:720,fps:30};
+}
+
+export function renderEncoderPreset(preset:RenderPreset):RenderEncoderPreset{
+  return preset==='draft-720p30'?'ultrafast':'medium';
 }
 
 export function validRenderCrf(value:number){
@@ -45,6 +49,7 @@ export function buildRenderChapterPlan(input:{
   crf:number;
 }):RenderChapterPlan[]{
   const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
+  const encoderPreset=renderEncoderPreset(input.preset);
   const chapters=input.manifest.chapters?.length
     ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
     :[{
@@ -102,6 +107,7 @@ export function buildRenderChapterPlan(input:{
       outputFormat,
       videoCodec:'libx264',
       fallbackVideoCodecs:['mpeg4'],
+      encoderPreset,
       crf:input.crf,
       durationSeconds:chapter.durationSeconds,
       clips,

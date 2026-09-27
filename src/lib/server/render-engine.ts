@@ -19,7 +19,7 @@ import { timelineChapters } from '@/lib/timeline-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
   buildRenderChapterPlan, DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF,
-  renderManifestIssues, renderOutputPath, renderPresetOutput,
+  renderEncoderPreset, renderManifestIssues, renderOutputPath, renderPresetOutput,
   validRenderAudioBitrate, validRenderCrf
 } from '@/lib/render-policy';
 
@@ -351,6 +351,7 @@ export async function createRenderJob(input:{
   const cache=await reusableChapterCache(chapterPlan.map(chapter=>chapter.contentHash));
   const payload:RenderJobPayload={
     preset,
+    encoderPreset:renderEncoderPreset(preset),
     videoCodec:'libx264',
     fallbackVideoCodecs:['mpeg4'],
     crf,
