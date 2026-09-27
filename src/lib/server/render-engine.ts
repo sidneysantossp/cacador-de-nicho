@@ -351,6 +351,7 @@ export async function createRenderJob(input:{
   const cache=await reusableChapterCache(chapterPlan.map(chapter=>chapter.contentHash));
   const payload:RenderJobPayload={
     preset,
+    encoderPreset:renderEncoderPreset(preset),
     videoCodec:'libx264',
     fallbackVideoCodecs:['mpeg4'],
     crf,
