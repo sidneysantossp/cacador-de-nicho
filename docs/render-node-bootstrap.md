@@ -20,7 +20,7 @@ Create `/etc/cacadores/render-worker.env` outside the repository, then run:
 ```bash
 sudo CACADORES_RENDER_REF=<exact-git-sha> \
   CACADORES_RENDER_WORKER_ID=render-02 \
-  ops/self-hosted/bin/cacadores-render-node-bootstrap
+  bash ops/self-hosted/bin/cacadores-render-node-bootstrap
 ```
 
 The bootstrap fetches that ref, resolves it to a commit SHA, builds the existing project Dockerfile, and starts only `scripts/render-worker.mjs`.
@@ -33,7 +33,7 @@ If an image registry is available:
 sudo CACADORES_RENDER_IMAGE=<registry/image:tag> \
   CACADORES_RENDER_SHA=<exact-git-sha> \
   CACADORES_RENDER_WORKER_ID=render-02 \
-  ops/self-hosted/bin/cacadores-render-node-bootstrap
+  bash ops/self-hosted/bin/cacadores-render-node-bootstrap
 ```
 
 The SHA is mandatory with a prebuilt image so the worker registry always exposes which code is running.
