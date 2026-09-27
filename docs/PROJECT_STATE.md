@@ -902,3 +902,17 @@ Motivo:
 - seguir autorização incremental e evitar transformar a futura camada de Analytics em bloqueio para upload.
 
 Nenhuma flag de Analytics foi habilitada por esta fase.
+
+
+## FASE 39 — Re-armable Self-Hosted Timers — 27/09/2026
+
+Diagnóstico live no `server1` encontrou `cacadores-render-worker-sync.timer` e `cacadores-episode-automation-worker-sync.timer` como `active (elapsed)`, sem próximo trigger, após terem sido desligados/religados com o host já em uptime. O Render Worker permaneceu online no SHA `66d4a023...` enquanto a aplicação já estava em `745a439b...`.
+
+Correção:
+- timers monotônicos recorrentes de auto-deploy, health-watch e worker sync passam de `OnBootSec` para `OnActiveSec`;
+- `OnUnitActiveSec` continua responsável pela recorrência após cada execução;
+- o promote executa `daemon-reload` e reinicia os timers habilitados, rearmando imediatamente suas definições;
+- timers deliberadamente desabilitados pelo modo `assisted-manual` continuam desabilitados, incluindo o YouTube Publish Worker;
+- Universe/Market, que seguem outra política de agendamento e permanecem pausados, não foram alterados.
+
+Objetivo: impedir timers aparentemente ativos porém sem próximo disparo após disable/re-enable ou atualização de unit files.

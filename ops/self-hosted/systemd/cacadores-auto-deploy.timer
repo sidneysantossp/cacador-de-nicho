@@ -2,7 +2,7 @@
 Description=Watch GitHub master for Caçadores de Nichos deploys
 
 [Timer]
-OnBootSec=2min
+OnActiveSec=2min
 OnUnitActiveSec=60s
 AccuracySec=10s
 Persistent=true
