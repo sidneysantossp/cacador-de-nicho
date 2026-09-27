@@ -118,8 +118,11 @@ test('Performance Observation schema accepts YouTube Analytics payload',()=>{
   assert.equal(performanceObservationPayloadSchema.safeParse(observation()).success,true);
 });
 
-test('OAuth source requests analytics scope before first connection',async()=>{
+test('Publishing OAuth does not pre-authorize YouTube Analytics',async()=>{
   const {readFile}=await import('node:fs/promises');
   const source=await readFile('src/lib/server/youtube-oauth.ts','utf8');
-  assert.match(source,/yt-analytics\.readonly/);
+  const scopeBlock=source.match(/export const YOUTUBE_OAUTH_SCOPES=\[([\s\S]*?)\] as const;/)?.[1]??'';
+  assert.match(scopeBlock,/youtube\.upload/);
+  assert.match(scopeBlock,/youtube\.readonly/);
+  assert.doesNotMatch(scopeBlock,/yt-analytics\.readonly/);
 });
