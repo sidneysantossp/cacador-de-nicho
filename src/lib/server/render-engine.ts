@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import type {
   RenderChapter, RenderChapterPlan, RenderJob, RenderJobPayload, RenderManifest,
   RenderManifestVisualClip, RenderPreset, SceneAsset, VideoEdit
@@ -78,6 +79,10 @@ async function renderChapters(jobId:string){
   return (rows??[]).map(normalizeChapter);
 }
 
+
+function hash(value:string){
+  return createHash('sha256').update(value,'utf8').digest('hex');
+}
 
 async function signedOutput(path:string|null){
   if(!path)return null;
