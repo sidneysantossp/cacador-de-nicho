@@ -171,7 +171,7 @@ PYMODE
       continue
     fi
     systemctl enable "$TIMER" >/dev/null 2>&1 || true
-    systemctl start "$TIMER" >/dev/null 2>&1 || true
+    systemctl restart "$TIMER" >/dev/null 2>&1 || true
   done
   systemctl reset-failed cacadores-universe-batch.service >/dev/null 2>&1 || true
 fi
