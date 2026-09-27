@@ -4,7 +4,8 @@ import type { EpisodeScript, Transcript, TranscriptListItem, TranscriptPayload, 
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadEpisodeScript } from './episode-script';
-import { downloadVoiceAsset, loadVoiceAsset } from './voice-engine';
+import { loadVoiceAsset } from './voice-engine';
+import { signedMediaUrl } from './media-storage';
 import { providerSecret } from './providers';
 import {
   normalizeTranscriptPayload, parseSrtOrVtt, parseTimestampedText,
@@ -241,12 +242,19 @@ export async function createTranscriptFromAlignment(voiceAssetId:string){
 
 export async function transcribeWithScribe(voiceAssetId:string){
   const {asset,script}=await eligibleContext(voiceAssetId);
-  const {bytes}=await downloadVoiceAsset(voiceAssetId);
   const key=await providerSecret('elevenlabs');
+  const timeoutMs=Math.max(
+    300000,
+    Math.min(1800000,Number(process.env.SCRIBE_LONG_FORM_TIMEOUT_MS||900000))
+  );
+  const signedUrl=await signedMediaUrl(
+    asset.storagePath,
+    Math.ceil(timeoutMs/1000)+900
+  );
+  if(!signedUrl)throw new HttpError('Não foi possível assinar o áudio para transcrição remota.',502);
 
   const form=new FormData();
-  const filename=asset.originalName||('take-'+String(asset.take).padStart(3,'0')+'.mp3');
-  form.set('file',new Blob([bytes],{type:asset.mimeType}),filename);
+  form.set('source_url',signedUrl);
   form.set('model_id','scribe_v2');
   form.set('timestamps_granularity','word');
   form.set('diarize','false');
@@ -258,11 +266,11 @@ export async function transcribeWithScribe(voiceAssetId:string){
       method:'POST',
       headers:{'xi-api-key':key},
       body:form,
-      signal:AbortSignal.timeout(300000),
+      signal:AbortSignal.timeout(timeoutMs),
       cache:'no-store'
     });
   }catch{
-    throw new HttpError('A ElevenLabs excedeu o tempo de transcrição.',504);
+    throw new HttpError('A ElevenLabs excedeu o tempo de transcrição long-form.',504);
   }
 
   if(!response.ok){
