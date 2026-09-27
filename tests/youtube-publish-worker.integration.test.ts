@@ -50,10 +50,16 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
 
   const connection={
     id:connectionId,
-    channel_id:channelId,
     youtube_channel_id:'UC_STAGE21_MOCK',
     status:'connected',
-    refresh_token_ciphertext:encrypt('stage21-refresh-token',channelId,secret)
+    token_aad:'UC_STAGE21_MOCK',
+    refresh_token_ciphertext:encrypt('stage21-refresh-token','UC_STAGE21_MOCK',secret)
+  };
+  const projectLink={
+    id:'21210000-0000-4000-8000-000000000106',
+    project_id:channelId,
+    youtube_channel_id:connectionId,
+    is_primary:true
   };
   const packageId='21210000-0000-4000-8000-000000000103';
   const episodeId='21210000-0000-4000-8000-000000000002';
@@ -173,7 +179,8 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
       return json(res,200,ok);
     }
     if(req.method==='GET'&&url.pathname==='/rest/v1/radar_youtube_publish_jobs')return json(res,200,[job]);
-    if(req.method==='GET'&&url.pathname==='/rest/v1/radar_youtube_connections')return json(res,200,[connection]);
+    if(req.method==='GET'&&url.pathname==='/rest/v1/radar_youtube_channels')return json(res,200,[connection]);
+    if(req.method==='GET'&&url.pathname==='/rest/v1/radar_project_youtube_channels')return json(res,200,[projectLink]);
     if(req.method==='GET'&&url.pathname==='/rest/v1/radar_publication_packages')return json(res,200,[packageRow]);
     if(req.method==='GET'&&url.pathname==='/rest/v1/radar_episodes')return json(res,200,[episode]);
     if(req.method==='PATCH'&&url.pathname==='/rest/v1/radar_episodes'){
@@ -187,7 +194,7 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
       if(String(req.headers.prefer??'').includes('return=representation'))return json(res,200,[{id:job.id}]);
       res.writeHead(204);return res.end();
     }
-    if(req.method==='PATCH'&&url.pathname==='/rest/v1/radar_youtube_connections'){
+    if(req.method==='PATCH'&&url.pathname==='/rest/v1/radar_youtube_channels'){
       Object.assign(connection,JSON.parse((await body(req)).toString()||'{}'));
       res.writeHead(204);return res.end();
     }
