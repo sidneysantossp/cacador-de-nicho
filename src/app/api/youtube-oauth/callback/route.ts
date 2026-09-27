@@ -1,7 +1,7 @@
 import { authenticated, errorResponse, HttpError } from '@/lib/server/auth';
 import {
-  exchangeYouTubeAuthorizationCode, fetchOwnYouTubeChannel,
-  saveYouTubeConnection, verifyYouTubeOAuthState
+  createPendingYouTubeLink, exchangeYouTubeAuthorizationCode, fetchOwnYouTubeChannel,
+  verifyYouTubeOAuthState
 } from '@/lib/server/youtube-oauth';
 import { youtubeOAuthConfig } from '@/lib/server/youtube-secrets';
 
@@ -26,7 +26,7 @@ export async function GET(request:Request){
     }
     const own=await fetchOwnYouTubeChannel(tokens.access_token!);
     const scopes=(tokens.scope??'').split(/\s+/).map(value=>value.trim()).filter(Boolean);
-    await saveYouTubeConnection({
+    const pending=await createPendingYouTubeLink({
       channelId:statePayload.channelId,
       refreshToken:tokens.refresh_token,
       scopes,
@@ -34,7 +34,8 @@ export async function GET(request:Request){
     });
 
     const redirect=new URL('/',youtubeOAuthConfig().redirectUri);
-    redirect.searchParams.set('youtube','connected');
+    redirect.searchParams.set('youtube','pending');
+    redirect.searchParams.set('pendingId',pending.id);
     redirect.searchParams.set('channelId',statePayload.channelId);
     return Response.redirect(redirect,302);
   }catch(error){return errorResponse(error);}
