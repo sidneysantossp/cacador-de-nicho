@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
   boundaryTransition, buildRenderChapterPlan, renderEncoderPreset, renderManifestIssues, renderOutputPath,
-  renderPresetOutput, validRenderAudioBitrate, validRenderCrf
+  renderPresetDefaultCrf, renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
 const now='2026-09-23T23:00:00.000Z';
@@ -395,4 +395,12 @@ test('Render-v4 chapter cache hash separates draft and final encoder profiles',(
   const draft=buildRenderChapterPlan({manifest:value,preset:'draft-720p30',crf:24});
   const final=buildRenderChapterPlan({manifest:value,preset:'hd-1080p30',crf:24});
   assert.notEqual(draft[0].contentHash,final[0].contentHash);
+});
+
+
+test('Render presets choose lean draft quality without changing final quality',()=>{
+  assert.equal(renderPresetDefaultCrf('draft-720p30'),28);
+  assert.equal(renderPresetDefaultCrf('source'),20);
+  assert.equal(renderPresetDefaultCrf('hd-1080p30'),20);
+  assert.equal(validRenderCrf(renderPresetDefaultCrf('draft-720p30')),true);
 });
