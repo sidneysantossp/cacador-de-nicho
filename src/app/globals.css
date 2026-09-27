@@ -1124,3 +1124,11 @@
 .publication-target p{margin:8px 0 0;font-size:11px;line-height:1.55;color:#a66e3e}
 .publication-target small{display:block;margin-top:8px;font-size:9px;color:#879172;word-break:break-all}
 
+.youtube-project-link-edit{grid-template-columns:auto minmax(0,1fr);align-items:center}
+.youtube-project-link-edit svg{grid-row:auto}
+.youtube-project-link-edit select{grid-column:2;width:100%;min-width:0;font-size:11px;background:#fff;border:1px solid #ddd6e7;border-radius:7px;padding:7px 8px;color:#62596f}
+.youtube-project-channel-list{display:grid;gap:10px}
+.youtube-project-channel-list .youtube-channel-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
+.youtube-channel-inline-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:680px){.youtube-project-channel-list .youtube-channel-card{grid-template-columns:auto minmax(0,1fr)}.youtube-channel-inline-actions{grid-column:1/-1;justify-content:flex-start;margin-top:8px}}
+
