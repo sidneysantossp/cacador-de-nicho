@@ -16,6 +16,7 @@ import { loadRenderJob, listRenderJobs } from './render-engine';
 import {
   initialPublicationPackage, normalizePublicationTags, publicationPackageIssues
 } from '@/lib/publication-package-policy';
+import { loadLinkedYouTubeConnection } from './youtube-oauth';
 
 const FFPROBE=process.env.FFPROBE_PATH||'ffprobe';
 const MAX_THUMBNAIL_BYTES=50*1024*1024;
@@ -127,6 +128,7 @@ async function savePackage(
 function cleanPayload(payload:PublicationPackagePayload):PublicationPackagePayload{
   return {
     ...payload,
+    targetYouTubeChannelId:payload.targetYouTubeChannelId?.trim()||undefined,
     metadata:{
       ...payload.metadata,
       title:payload.metadata.title.trim(),
@@ -260,6 +262,9 @@ export async function savePublicationPackage(input:{
     if(blockers.length){
       throw new HttpError('Publication Package ainda não pode ser aprovado: '+blockers.map(issue=>issue.message).join(' · '),409);
     }
+    const target=await loadLinkedYouTubeConnection(payload.channelId,payload.targetYouTubeChannelId!);
+    if(!target)throw new HttpError('O canal YouTube escolhido não está vinculado a este projeto.',409);
+    if(target.status!=='connected')throw new HttpError('O canal YouTube escolhido precisa ser reautorizado antes da aprovação.',409);
     const now=new Date().toISOString();
     payload.review={...payload.review,approvedAt:now,approvedBy:'operator'};
     payload.updatedAt=now;
