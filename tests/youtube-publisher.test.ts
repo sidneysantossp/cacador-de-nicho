@@ -116,3 +116,25 @@ test('YouTube publication worker keeps large-file disk preflight and bounded upl
   assert.match(source,/AbortSignal\.timeout\(UPLOAD_REQUEST_TIMEOUT_MS\)/);
   assert.match(source,/error\.code='LOW_DISK'/);
 });
+
+
+test('Self-hosted YouTube publish worker sync is syntax-valid and guarded by OAuth readiness',()=>{
+  const file=resolve(process.cwd(),'ops/self-hosted/bin/cacadores-youtube-publish-worker-sync');
+  execFileSync('bash',['-n',file],{stdio:'pipe'});
+  const source=readFileSync(file,'utf8');
+  assert.match(source,/YOUTUBE_OAUTH_CLIENT_ID/);
+  assert.match(source,/YOUTUBE_OAUTH_CLIENT_SECRET/);
+  assert.match(source,/YOUTUBE_TOKEN_ENCRYPTION_KEY/);
+  assert.match(source,/YOUTUBE_PUBLISH_WORKER_BLOCKED/);
+  assert.match(source,/node scripts\/youtube-publish-worker\.mjs/);
+  assert.match(source,/auditseo\.youtube-publish\.sha/);
+});
+
+test('Assisted-manual mode does not auto-enable the YouTube publish worker timer',()=>{
+  const promote=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-promote'),'utf8');
+  const health=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-health-watch'),'utf8');
+  assert.match(promote,/cacadores-youtube-publish-worker-sync\.timer/);
+  assert.match(promote,/assisted-manual/);
+  assert.match(health,/cacadores-youtube-publish-worker-sync\.timer/);
+  assert.match(health,/OPERATION_MODE.*assisted-manual/s);
+});

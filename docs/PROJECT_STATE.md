@@ -872,3 +872,18 @@ Escopo futuro:
 - embeddings vetoriais podem complementar o matcher lexical;
 - batch/worker de ingestão só deve ser implementado após provar necessidade e orçamento;
 - exact-location / viewpoint matching para Then & Now permanece próxima camada especializada, sem inferir landmarks sem evidência visual.
+
+
+## FASE 37 — Self-hosted YouTube Publish Worker — 27/09/2026
+
+Implementado wiring operacional do `scripts/youtube-publish-worker.mjs` para a VPS:
+- novo sincronizador self-hosted usa exatamente a imagem/SHA promovidos em produção;
+- container dedicado `cacador-de-nicho-youtube-publish-worker`;
+- work volume separado para downloads temporários de vídeos grandes;
+- preflight bloqueia startup quando Supabase/OAuth/encryption ainda não estão configurados e registra o motivo sem expor segredos;
+- service + timer versionados no GitHub;
+- em `assisted-manual`, o deploy instala os units, mas mantém o timer do publisher desabilitado;
+- fora de `assisted-manual`, health-watch pode restaurar o timer caso ele seja interrompido;
+- nenhuma publicação é criada ou enfileirada automaticamente por esta fase.
+
+Próximo gate externo: configurar o OAuth real do Google/YouTube, conectar um canal e executar o primeiro E2E com package `private`.

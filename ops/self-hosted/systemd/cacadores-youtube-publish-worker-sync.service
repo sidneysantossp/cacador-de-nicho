@@ -1,0 +1,9 @@
+[Unit]
+Description=Caçadores YouTube Publish worker synchronizer
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-youtube-publish-worker-sync
+TimeoutStartSec=2min
