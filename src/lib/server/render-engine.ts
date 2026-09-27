@@ -18,8 +18,8 @@ import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
 import { timelineChapters } from '@/lib/timeline-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
-  buildRenderChapterPlan, DEFAULT_RENDER_AUDIO_KBPS, DEFAULT_RENDER_CRF,
-  renderEncoderPreset, renderManifestIssues, renderOutputPath, renderPresetOutput,
+  buildRenderChapterPlan, DEFAULT_RENDER_AUDIO_KBPS,
+  renderEncoderPreset, renderManifestIssues, renderOutputPath, renderPresetDefaultCrf, renderPresetOutput,
   validRenderAudioBitrate, validRenderCrf
 } from '@/lib/render-policy';
 
@@ -328,7 +328,7 @@ export async function createRenderJob(input:{
   audioBitrateKbps?:number;
 }):Promise<RenderJob>{
   const preset=input.preset??'source';
-  const crf=input.crf??DEFAULT_RENDER_CRF;
+  const crf=input.crf??renderPresetDefaultCrf(preset);
   const audioBitrateKbps=input.audioBitrateKbps??DEFAULT_RENDER_AUDIO_KBPS;
   if(!validRenderCrf(crf))throw new HttpError('CRF deve ser um inteiro entre 18 e 30.',400);
   if(!validRenderAudioBitrate(audioBitrateKbps))throw new HttpError('Bitrate de áudio deve estar entre 96 e 320 kbps.',400);
