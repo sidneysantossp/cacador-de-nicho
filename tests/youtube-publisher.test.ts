@@ -236,3 +236,27 @@ test('Performance Analyst follows the immutable publication destination credenti
   assert.match(source,/connection\.id!==String\(jobRow\.connection_id\)/);
 });
 
+test('connected YouTube cards support safe project moves and primary selection',()=>{
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-oauth.ts'),'utf8');
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/youtube-channels/route.ts'),'utf8');
+  const ui=readFileSync(resolve(process.cwd(),'src/components/channel-management.tsx'),'utf8');
+  assert.match(server,/moveLinkedYouTubeChannel/);
+  assert.match(server,/setPrimaryLinkedYouTubeChannel/);
+  assert.match(server,/já possui histórico de publicação e não pode ser movido/);
+  assert.match(server,/syncLegacyPrimaryConnection/);
+  assert.match(route,/set-primary/);
+  assert.match(route,/action:z\.literal\('move'\)/);
+  assert.match(ui,/Projeto vinculado a/);
+  assert.match(ui,/Definir principal/);
+});
+
+test('project Publisher renders linked destinations instead of the legacy connection endpoint',()=>{
+  const component=readFileSync(resolve(process.cwd(),'src/components/youtube-publisher-workspace.tsx'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-publisher.ts'),'utf8');
+  assert.match(component,/CANAIS VINCULADOS AO PROJETO/);
+  assert.match(component,/Conectar outro canal/);
+  assert.match(component,/linkedChannels/);
+  assert.doesNotMatch(component,/\/api\/youtube-connection/);
+  assert.doesNotMatch(server,/loadYouTubeConnection\(/);
+});
+

@@ -1,24 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle,
-  Play, RefreshCw, RotateCcw, Send, ShieldCheck, Unplug
+  Play, RefreshCw, RotateCcw, Send, ShieldCheck
 } from 'lucide-react';
 import type {
-  LinkedYouTubeChannel, ManagedChannel, PublicationPackage, YouTubeConnection, YouTubePublishJob
+  LinkedYouTubeChannel, ManagedChannel, PublicationPackage, YouTubePublishJob
 } from '@/lib/types';
 
 type State={
   configured:boolean;
   missing:string[];
-  connection:YouTubeConnection|null;
   linkedChannels:LinkedYouTubeChannel[];
   jobs:YouTubePublishJob[];
   readyPackages:PublicationPackage[];
 };
 
-const EMPTY:State={configured:false,missing:[],connection:null,linkedChannels:[],jobs:[],readyPackages:[]};
+const EMPTY:State={configured:false,missing:[],linkedChannels:[],jobs:[],readyPackages:[]};
 
 function when(value:string){
   return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});
@@ -45,7 +44,6 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
       setState({
         configured:Boolean(body.configured),
         missing:Array.isArray(body.missing)?body.missing:[],
-        connection:body.connection??null,
         linkedChannels:Array.isArray(body.linkedChannels)?body.linkedChannels:[],
         jobs:body.jobs??[],
         readyPackages:body.readyPackages??[]
@@ -76,11 +74,6 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
     };
   },[channel.id,state.jobs.some(job=>job.status==='queued'||job.status==='processing')]);
 
-  const active=useMemo(
-    ()=>state.jobs.filter(job=>job.status==='queued'||job.status==='processing'),
-    [state.jobs]
-  );
-
   async function publisherAction(payload:Record<string,unknown>,key:string){
     setBusy(key);setMessage('');
     try{
@@ -97,16 +90,17 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
     }finally{setBusy('');}
   }
 
-  async function connectionAction(action:'validate'|'disconnect'){
-    setBusy(action);setMessage('');
+  async function validateLinkedChannel(item:LinkedYouTubeChannel){
+    const key='validate:'+item.id;
+    setBusy(key);setMessage('');
     try{
-      const res=await fetch('/api/youtube-connection',{
+      const res=await fetch('/api/youtube-channels',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action,channelId:channel.id})
+        body:JSON.stringify({action:'validate',youtubeChannelId:item.id})
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha na conexão YouTube.');
-      setMessage(body.message??'Conexão atualizada.');
+      setMessage(body.message??'Conexão YouTube validada.');
       await load(true);
     }catch(error){
       setMessage(error instanceof Error?error.message:'Falha na conexão YouTube.');
@@ -114,9 +108,6 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
   }
 
   if(loading)return <div className="youtube-loading"><LoaderCircle className="spin" size={19}/>Carregando YouTube Publisher…</div>;
-
-  const connection=state.connection;
-  const connected=connection?.status==='connected';
 
   return <div className="youtube-publisher">
     {message&&<div className="youtube-message"><CheckCircle2 size={15}/>{message}</div>}
@@ -133,8 +124,9 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
     <section className="youtube-connection">
       <div className="youtube-section-head">
         <div>
-          <span>CONEXÃO DO CANAL</span>
-          <h3>{connected?'Canal autorizado.':connection?.status==='needs-reauth'?'Reautorização necessária.':'Conecte o canal do YouTube.'}</h3>
+          <span>CANAIS VINCULADOS AO PROJETO</span>
+          <h3>{state.linkedChannels.length?state.linkedChannels.length+' destino(s) configurado(s).':'Nenhum destino YouTube vinculado.'}</h3>
+          <p>O Publication Package escolhe explicitamente qual destes canais receberá cada vídeo.</p>
         </div>
         <button className="button subtle small" disabled={busy==='refresh'} onClick={()=>{setBusy('refresh');void load().finally(()=>setBusy(''));}}><RefreshCw size={13}/>Atualizar</button>
       </div>
@@ -144,25 +136,27 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
         <div><strong>OAuth ainda não configurado no servidor.</strong><p>Variáveis pendentes: {state.missing.join(', ')||'credenciais OAuth do YouTube'}.</p></div>
       </div>}
 
-      {connection&&<article className={'youtube-channel-card '+connection.status}>
-        {connection.youtubeThumbnail?<img src={connection.youtubeThumbnail} alt="Canal YouTube"/>:<div className="youtube-channel-avatar"><Play size={22}/></div>}
-        <div>
-          <span>{connection.status.toUpperCase()}</span>
-          <strong>{connection.youtubeTitle}</strong>
-          <small>{connection.youtubeHandle||connection.youtubeChannelId}</small>
-          {connection.lastValidatedAt&&<small>Validado em {when(connection.lastValidatedAt)}</small>}
-          {connection.error&&<p>{connection.error}</p>}
-        </div>
-      </article>}
-
-      <div className="youtube-connection-actions">
-        {state.configured&&(!connected||connection?.status==='needs-reauth'||connection?.status==='disconnected')&&
-          <a className="button primary" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(channel.id)}><Play size={14}/>{connection?'Reconectar YouTube':'Conectar YouTube'}</a>}
-        {connected&&<>
-          <button className="button subtle" disabled={busy==='validate'} onClick={()=>void connectionAction('validate')}><ShieldCheck size={14}/>{busy==='validate'?'Validando…':'Validar conexão'}</button>
-          <button className="button subtle danger" disabled={busy==='disconnect'||active.length>0} onClick={()=>void connectionAction('disconnect')}><Unplug size={14}/>Desconectar</button>
-        </>}
+      <div className="youtube-project-channel-list">
+        {state.linkedChannels.map(item=><article className={'youtube-channel-card '+item.status} key={item.id}>
+          {item.youtubeThumbnail?<img src={item.youtubeThumbnail} alt="Canal YouTube"/>:<div className="youtube-channel-avatar"><Play size={22}/></div>}
+          <div>
+            <span>{item.status.toUpperCase()}{item.isPrimary?' · PRINCIPAL':''}</span>
+            <strong>{item.youtubeTitle}</strong>
+            <small>{item.youtubeHandle||item.youtubeChannelId}</small>
+            {item.lastValidatedAt&&<small>Validado em {when(item.lastValidatedAt)}</small>}
+            {item.error&&<p>{item.error}</p>}
+          </div>
+          <div className="youtube-channel-inline-actions">
+            <button className="button subtle small" disabled={busy==='validate:'+item.id} onClick={()=>void validateLinkedChannel(item)}><ShieldCheck size={13}/>{busy==='validate:'+item.id?'Validando…':'Validar'}</button>
+            <a className="button subtle small" href={'https://www.youtube.com/channel/'+encodeURIComponent(item.youtubeChannelId)} target="_blank" rel="noreferrer"><ExternalLink size={13}/>YouTube</a>
+          </div>
+        </article>)}
+        {!state.linkedChannels.length&&<div className="youtube-empty-inline">Vincule um canal na Gestão de projetos para habilitar o Packaging e a publicação.</div>}
       </div>
+
+      {state.configured&&<div className="youtube-connection-actions">
+        <a className="button primary" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(channel.id)}><Play size={14}/>Conectar outro canal</a>
+      </div>}
     </section>
 
     <section className="youtube-ready">

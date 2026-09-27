@@ -454,6 +454,100 @@ export async function loadLinkedYouTubeConnectionSecret(connectionId:string){
   };
 }
 
+async function syncLegacyPrimaryConnection(projectId:string){
+  const link=checked(await db().from('radar_project_youtube_channels')
+    .select('youtube_channel_id').eq('project_id',projectId).eq('is_primary',true).maybeSingle());
+  if(!link){
+    checked(await db().from('radar_youtube_connections').delete().eq('channel_id',projectId));
+    return;
+  }
+
+  const row=checked(await db().from('radar_youtube_channels')
+    .select(linkedSelection+',refresh_token_ciphertext,token_aad')
+    .eq('id',String(link.youtube_channel_id)).maybeSingle()) as YouTubeChannelRow|null;
+  if(!row)return;
+
+  const refreshToken=decryptYouTubeRefreshToken(
+    String(row.refresh_token_ciphertext),
+    String(row.token_aad)
+  );
+  const existing=checked(await db().from('radar_youtube_connections')
+    .select('id').eq('channel_id',projectId).maybeSingle());
+  const now=new Date().toISOString();
+  checked(await db().from('radar_youtube_connections').upsert({
+    id:existing?.id?String(existing.id):crypto.randomUUID(),
+    channel_id:projectId,
+    youtube_channel_id:row.youtube_channel_id,
+    youtube_title:row.youtube_title,
+    youtube_handle:row.youtube_handle,
+    youtube_thumbnail:row.youtube_thumbnail,
+    scopes:row.scopes??[],
+    refresh_token_ciphertext:encryptYouTubeRefreshToken(refreshToken,projectId),
+    status:row.status,
+    last_validated_at:row.last_validated_at,
+    error:row.error,
+    updated_at:now
+  },{onConflict:'channel_id'}));
+}
+
+export async function setPrimaryLinkedYouTubeChannel(id:string){
+  const link=checked(await db().from('radar_project_youtube_channels')
+    .select('id,project_id,is_primary').eq('youtube_channel_id',id).maybeSingle());
+  if(!link)throw new HttpError('Vínculo do canal YouTube não encontrado.',404);
+  if(!link.is_primary){
+    const now=new Date().toISOString();
+    checked(await db().from('radar_project_youtube_channels')
+      .update({is_primary:false,updated_at:now}).eq('project_id',String(link.project_id)));
+    checked(await db().from('radar_project_youtube_channels')
+      .update({is_primary:true,updated_at:now}).eq('id',String(link.id)));
+    await syncLegacyPrimaryConnection(String(link.project_id));
+  }
+  return loadLinkedYouTubeChannel(id);
+}
+
+export async function moveLinkedYouTubeChannel(id:string,targetProjectId:string){
+  const [link,targetProject,publishRows]=await Promise.all([
+    db().from('radar_project_youtube_channels')
+      .select('id,project_id,is_primary').eq('youtube_channel_id',id).maybeSingle(),
+    db().from('radar_managed_channels').select('id').eq('id',targetProjectId).maybeSingle(),
+    db().from('radar_youtube_publish_jobs').select('id').eq('connection_id',id).limit(1)
+  ]);
+  const current=checked(link);
+  if(!current)throw new HttpError('Vínculo do canal YouTube não encontrado.',404);
+  if(!checked(targetProject))throw new HttpError('Projeto de destino não encontrado.',404);
+  if(String(current.project_id)===targetProjectId)return loadLinkedYouTubeChannel(id);
+  if((checked(publishRows)??[]).length){
+    throw new HttpError('Este canal já possui histórico de publicação e não pode ser movido para outro projeto.',409);
+  }
+
+  const oldProjectId=String(current.project_id);
+  const targetLinks=checked(await db().from('radar_project_youtube_channels')
+    .select('id,is_primary').eq('project_id',targetProjectId))??[];
+  const becomesPrimary=targetLinks.length===0;
+  const now=new Date().toISOString();
+
+  checked(await db().from('radar_project_youtube_channels').update({
+    project_id:targetProjectId,
+    is_primary:becomesPrimary,
+    updated_at:now
+  }).eq('id',String(current.id)));
+
+  if(current.is_primary){
+    const remaining=checked(await db().from('radar_project_youtube_channels')
+      .select('id').eq('project_id',oldProjectId).order('created_at',{ascending:true}).limit(1))??[];
+    if(remaining[0]?.id){
+      checked(await db().from('radar_project_youtube_channels')
+        .update({is_primary:true,updated_at:now}).eq('id',String(remaining[0].id)));
+    }
+  }
+
+  await Promise.all([
+    syncLegacyPrimaryConnection(oldProjectId),
+    syncLegacyPrimaryConnection(targetProjectId)
+  ]);
+  return loadLinkedYouTubeChannel(id);
+}
+
 async function saveIndependentYouTubeChannel(input:{
   channelId:string;
   refreshToken:string;
