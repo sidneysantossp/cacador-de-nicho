@@ -423,3 +423,30 @@ test('Self-hosted render sync propagates stable node identity and declared capac
   assert.match(source,/RENDER_WORKER_MEMORY_BYTES=\$TARGET_MEMORY/);
   assert.match(source,/auditseo\.render\.worker-id=\$WORKER_ID/);
 });
+
+
+test('Render worker streams large media instead of buffering files in memory',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/createReadStream/);
+  assert.match(source,/createWriteStream/);
+  assert.match(source,/pipeline/);
+  assert.match(source,/Readable\.fromWeb/);
+  assert.match(source,/ContentLength:info\.size/);
+  assert.doesNotMatch(source,/transformToByteArray\(\)/);
+  assert.doesNotMatch(source,/response\.arrayBuffer\(\)/);
+  assert.doesNotMatch(source,/readFile\(filePath\)/);
+});
+
+test('Render worker uses bounded R2 multipart uploads and lease keepalive for long IO',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/CreateMultipartUploadCommand/);
+  assert.match(source,/UploadPartCommand/);
+  assert.match(source,/CompleteMultipartUploadCommand/);
+  assert.match(source,/AbortMultipartUploadCommand/);
+  assert.match(source,/R2_MULTIPART_PART_BYTES/);
+  assert.match(source,/withLeaseHeartbeat/);
+  assert.match(source,/RENDER_IO_HEARTBEAT_MS/);
+  assert.match(source,/uploading-cache-chapter-/);
+  assert.match(source,/downloading-cache-chapter-/);
+  assert.match(source,/uploading-output/);
+});
