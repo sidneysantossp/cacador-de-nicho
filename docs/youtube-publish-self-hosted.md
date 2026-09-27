@@ -39,3 +39,12 @@ The created container is:
 It uses the exact production image/SHA, 1 GB RAM, 0.5 CPU, and a dedicated `/tmp` work volume.
 
 Do not enable the timer until autonomous publishing is intentionally approved. For the first real test, keep the Publication Package visibility `private`.
+
+
+## OAuth scope separation
+
+The publishing connection intentionally requests only:
+- `https://www.googleapis.com/auth/youtube.upload`
+- `https://www.googleapis.com/auth/youtube.readonly`
+
+YouTube Analytics scopes are not part of the publishing consent. Analytics must use a separate, explicit authorization step if/when that product capability is approved and enabled.
