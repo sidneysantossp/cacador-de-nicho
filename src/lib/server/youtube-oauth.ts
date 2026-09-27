@@ -174,6 +174,17 @@ type ConnectionRow={
   status:'connected'|'needs-reauth'|'disconnected';last_validated_at:string|null;
   error:string|null;created_at:string;updated_at:string;
 };
+type YouTubeChannelRow={
+  id:string;youtube_channel_id:string;youtube_title:string;youtube_handle:string|null;
+  youtube_thumbnail:string|null;subscriber_count:number|string|null;video_count:number|string|null;
+  view_count:number|string|null;scopes:string[]|null;refresh_token_ciphertext?:string;
+  token_aad?:string;status:'connected'|'needs-reauth'|'disconnected';
+  last_validated_at:string|null;error:string|null;created_at:string;updated_at:string;
+};
+type ProjectYouTubeLinkRow={
+  id:string;project_id:string;youtube_channel_id:string;is_primary:boolean;
+  created_at:string;updated_at:string;
+};
 
 function normalizeConnection(row:ConnectionRow):YouTubeConnection{
   return {
@@ -192,7 +203,14 @@ function normalizeConnection(row:ConnectionRow):YouTubeConnection{
   };
 }
 
+function countValue(value:number|string|null){
+  if(value===null)return undefined;
+  const parsed=Number(value);
+  return Number.isFinite(parsed)&&parsed>=0?parsed:undefined;
+}
+
 const selection='id,channel_id,youtube_channel_id,youtube_title,youtube_handle,youtube_thumbnail,scopes,status,last_validated_at,error,created_at,updated_at';
+const linkedSelection='id,youtube_channel_id,youtube_title,youtube_handle,youtube_thumbnail,subscriber_count,video_count,view_count,scopes,status,last_validated_at,error,created_at,updated_at';
 
 export async function loadYouTubeConnection(channelId:string):Promise<YouTubeConnection|null>{
   const row=checked(await db().from('radar_youtube_connections')
@@ -214,6 +232,116 @@ export async function loadYouTubeConnectionSecret(connectionId:string){
   };
 }
 
+export async function listLinkedYouTubeChannels():Promise<LinkedYouTubeChannel[]>{
+  const links=(checked(await db().from('radar_project_youtube_channels')
+    .select('id,project_id,youtube_channel_id,is_primary,created_at,updated_at')
+    .order('created_at',{ascending:true}))??[]) as ProjectYouTubeLinkRow[];
+  if(!links.length)return [];
+
+  const youtubeIds=[...new Set(links.map(link=>link.youtube_channel_id))];
+  const projectIds=[...new Set(links.map(link=>link.project_id))];
+  const [channelRows,projectRows]=await Promise.all([
+    db().from('radar_youtube_channels').select(linkedSelection).in('id',youtubeIds),
+    db().from('radar_managed_channels').select('id,payload').in('id',projectIds)
+  ]);
+  const channels=(checked(channelRows)??[]) as YouTubeChannelRow[];
+  const projects=(checked(projectRows)??[]) as Array<{id:string;payload:unknown}>;
+  const channelById=new Map(channels.map(row=>[row.id,row]));
+  const projectById=new Map(projects.map(row=>[
+    row.id,
+    String((row.payload as {name?:unknown}|null)?.name??'Projeto sem nome')
+  ]));
+
+  return links.flatMap(link=>{
+    const row=channelById.get(link.youtube_channel_id);
+    if(!row)return [];
+    return [{
+      id:row.id,
+      youtubeChannelId:row.youtube_channel_id,
+      youtubeTitle:row.youtube_title,
+      youtubeHandle:row.youtube_handle??undefined,
+      youtubeThumbnail:row.youtube_thumbnail??undefined,
+      subscriberCount:countValue(row.subscriber_count),
+      videoCount:countValue(row.video_count),
+      viewCount:countValue(row.view_count),
+      scopes:row.scopes??[],
+      status:row.status,
+      lastValidatedAt:row.last_validated_at??undefined,
+      error:row.error??undefined,
+      projectId:link.project_id,
+      projectName:projectById.get(link.project_id)??'Projeto não encontrado',
+      isPrimary:Boolean(link.is_primary),
+      createdAt:row.created_at,
+      updatedAt:row.updated_at
+    } satisfies LinkedYouTubeChannel];
+  });
+}
+
+export async function loadLinkedYouTubeChannel(id:string){
+  return (await listLinkedYouTubeChannels()).find(item=>item.id===id)??null;
+}
+
+async function saveIndependentYouTubeChannel(input:{
+  channelId:string;
+  refreshToken:string;
+  scopes:string[];
+  youtubeChannelId:string;
+  youtubeTitle:string;
+  youtubeHandle?:string;
+  youtubeThumbnail?:string;
+  subscriberCount?:number;
+  videoCount?:number;
+  viewCount?:number;
+}){
+  const existing=checked(await db().from('radar_youtube_channels')
+    .select('id').eq('youtube_channel_id',input.youtubeChannelId).maybeSingle());
+  const id=existing?.id?String(existing.id):crypto.randomUUID();
+  const existingLink=existing
+    ?checked(await db().from('radar_project_youtube_channels')
+      .select('id,project_id,is_primary').eq('youtube_channel_id',id).maybeSingle())
+    :null;
+  if(existingLink&&String(existingLink.project_id)!==input.channelId){
+    throw new HttpError('Este canal do YouTube já está vinculado a outro projeto. Altere o vínculo na Gestão de projetos antes de continuar.',409);
+  }
+
+  const projectLinks=checked(await db().from('radar_project_youtube_channels')
+    .select('id,is_primary').eq('project_id',input.channelId))??[];
+  const isPrimary=existingLink?Boolean(existingLink.is_primary):projectLinks.length===0;
+  const now=new Date().toISOString();
+
+  checked(await db().from('radar_youtube_channels').upsert({
+    id,
+    youtube_channel_id:input.youtubeChannelId,
+    youtube_title:input.youtubeTitle,
+    youtube_handle:input.youtubeHandle??null,
+    youtube_thumbnail:input.youtubeThumbnail??null,
+    subscriber_count:input.subscriberCount??null,
+    video_count:input.videoCount??null,
+    view_count:input.viewCount??null,
+    scopes:[...new Set(input.scopes)].sort(),
+    refresh_token_ciphertext:encryptYouTubeRefreshToken(input.refreshToken,input.youtubeChannelId),
+    token_aad:input.youtubeChannelId,
+    status:'connected',
+    last_validated_at:now,
+    error:null,
+    updated_at:now
+  },{onConflict:'youtube_channel_id'}));
+
+  if(existingLink){
+    checked(await db().from('radar_project_youtube_channels')
+      .update({updated_at:now}).eq('id',String(existingLink.id)));
+  }else{
+    checked(await db().from('radar_project_youtube_channels').insert({
+      id:crypto.randomUUID(),
+      project_id:input.channelId,
+      youtube_channel_id:id,
+      is_primary:isPrimary,
+      updated_at:now
+    }));
+  }
+  return {id,isPrimary};
+}
+
 export async function saveYouTubeConnection(input:{
   channelId:string;
   refreshToken:string;
@@ -222,29 +350,89 @@ export async function saveYouTubeConnection(input:{
   youtubeTitle:string;
   youtubeHandle?:string;
   youtubeThumbnail?:string;
+  subscriberCount?:number;
+  videoCount?:number;
+  viewCount?:number;
 }){
-  const channel=checked(await db().from('radar_managed_channels').select('id').eq('id',input.channelId).maybeSingle());
-  if(!channel)throw new HttpError('Canal interno não encontrado.',404);
+  const project=checked(await db().from('radar_managed_channels').select('id').eq('id',input.channelId).maybeSingle());
+  if(!project)throw new HttpError('Projeto interno não encontrado.',404);
 
-  const existing=checked(await db().from('radar_youtube_connections')
-    .select('id').eq('channel_id',input.channelId).maybeSingle());
-  const id=existing?.id?String(existing.id):crypto.randomUUID();
-  const now=new Date().toISOString();
-  checked(await db().from('radar_youtube_connections').upsert({
-    id,
-    channel_id:input.channelId,
-    youtube_channel_id:input.youtubeChannelId,
-    youtube_title:input.youtubeTitle,
-    youtube_handle:input.youtubeHandle??null,
-    youtube_thumbnail:input.youtubeThumbnail??null,
-    scopes:[...new Set(input.scopes)].sort(),
-    refresh_token_ciphertext:encryptYouTubeRefreshToken(input.refreshToken,input.channelId),
-    status:'connected',
-    last_validated_at:now,
-    error:null,
-    updated_at:now
-  },{onConflict:'channel_id'}));
+  const independent=await saveIndependentYouTubeChannel(input);
+  if(independent.isPrimary){
+    const existing=checked(await db().from('radar_youtube_connections')
+      .select('id').eq('channel_id',input.channelId).maybeSingle());
+    const id=existing?.id?String(existing.id):independent.id;
+    const now=new Date().toISOString();
+    checked(await db().from('radar_youtube_connections').upsert({
+      id,
+      channel_id:input.channelId,
+      youtube_channel_id:input.youtubeChannelId,
+      youtube_title:input.youtubeTitle,
+      youtube_handle:input.youtubeHandle??null,
+      youtube_thumbnail:input.youtubeThumbnail??null,
+      scopes:[...new Set(input.scopes)].sort(),
+      refresh_token_ciphertext:encryptYouTubeRefreshToken(input.refreshToken,input.channelId),
+      status:'connected',
+      last_validated_at:now,
+      error:null,
+      updated_at:now
+    },{onConflict:'channel_id'}));
+  }
   return loadYouTubeConnection(input.channelId);
+}
+
+export async function validateLinkedYouTubeChannel(id:string){
+  const row=checked(await db().from('radar_youtube_channels')
+    .select(linkedSelection+',refresh_token_ciphertext,token_aad').eq('id',id).maybeSingle()) as YouTubeChannelRow|null;
+  if(!row)throw new HttpError('Canal YouTube conectado não encontrado.',404);
+  if(row.status!=='connected')return loadLinkedYouTubeChannel(id);
+
+  const link=checked(await db().from('radar_project_youtube_channels')
+    .select('project_id,is_primary').eq('youtube_channel_id',id).maybeSingle());
+  try{
+    const refresh=decryptYouTubeRefreshToken(String(row.refresh_token_ciphertext),String(row.token_aad));
+    const token=await refreshYouTubeAccessToken(refresh);
+    const own=await fetchOwnYouTubeChannel(token.access_token!);
+    if(own.youtubeChannelId!==row.youtube_channel_id){
+      throw new HttpError('A credencial OAuth respondeu por um canal diferente do canal vinculado.',409);
+    }
+    const now=new Date().toISOString();
+    checked(await db().from('radar_youtube_channels').update({
+      youtube_title:own.youtubeTitle,
+      youtube_handle:own.youtubeHandle??null,
+      youtube_thumbnail:own.youtubeThumbnail??null,
+      subscriber_count:own.subscriberCount??null,
+      video_count:own.videoCount??null,
+      view_count:own.viewCount??null,
+      last_validated_at:now,
+      error:null,
+      updated_at:now
+    }).eq('id',id));
+    if(link?.is_primary){
+      checked(await db().from('radar_youtube_connections').update({
+        youtube_channel_id:own.youtubeChannelId,
+        youtube_title:own.youtubeTitle,
+        youtube_handle:own.youtubeHandle??null,
+        youtube_thumbnail:own.youtubeThumbnail??null,
+        status:'connected',
+        last_validated_at:now,
+        error:null,
+        updated_at:now
+      }).eq('channel_id',String(link.project_id)));
+    }
+  }catch(error){
+    const now=new Date().toISOString();
+    const message=error instanceof Error?error.message:'Falha ao validar conexão YouTube.';
+    checked(await db().from('radar_youtube_channels').update({
+      status:'needs-reauth',error:message,updated_at:now
+    }).eq('id',id));
+    if(link?.is_primary){
+      checked(await db().from('radar_youtube_connections').update({
+        status:'needs-reauth',error:message,updated_at:now
+      }).eq('channel_id',String(link.project_id)));
+    }
+  }
+  return loadLinkedYouTubeChannel(id);
 }
 
 export async function validateYouTubeConnection(channelId:string){
