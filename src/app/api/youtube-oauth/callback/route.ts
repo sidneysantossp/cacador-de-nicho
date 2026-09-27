@@ -3,6 +3,7 @@ import {
   exchangeYouTubeAuthorizationCode, fetchOwnYouTubeChannel,
   saveYouTubeConnection, verifyYouTubeOAuthState
 } from '@/lib/server/youtube-oauth';
+import { youtubeOAuthConfig } from '@/lib/server/youtube-secrets';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -32,7 +33,7 @@ export async function GET(request:Request){
       ...own
     });
 
-    const redirect=new URL('/',request.url);
+    const redirect=new URL('/',youtubeOAuthConfig().redirectUri);
     redirect.searchParams.set('youtube','connected');
     redirect.searchParams.set('channelId',statePayload.channelId);
     return Response.redirect(redirect,302);
