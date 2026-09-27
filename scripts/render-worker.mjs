@@ -1,8 +1,13 @@
 import { spawn } from 'node:child_process';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand,
+  GetObjectCommand, PutObjectCommand, S3Client, UploadPartCommand
+} from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { statfsSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream, statfsSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -17,6 +22,15 @@ const WORKER_SHA=(process.env.APP_COMMIT_SHA||'').trim().slice(0,80);
 const WORKER_MEMORY_BYTES=Math.max(0,Number(process.env.RENDER_WORKER_MEMORY_BYTES||0));
 const WORKER_NANO_CPUS=Math.max(0,Number(process.env.RENDER_WORKER_NANO_CPUS||0));
 const WORKER_HEARTBEAT_MS=Math.max(10000,Number(process.env.RENDER_WORKER_HEARTBEAT_MS||30000));
+const IO_HEARTBEAT_MS=Math.max(60000,Number(process.env.RENDER_IO_HEARTBEAT_MS||300000));
+const R2_MULTIPART_THRESHOLD_BYTES=Math.max(
+  64,
+  Number(process.env.RENDER_R2_MULTIPART_THRESHOLD_MB||256)
+)*1024*1024;
+const R2_MULTIPART_PART_BYTES=Math.max(
+  8,
+  Number(process.env.RENDER_R2_MULTIPART_PART_MB||64)
+)*1024*1024;
 let lastWorkerHeartbeatAt=0;
 
 function renderDiskReady(){
@@ -46,6 +60,36 @@ function rounded(value){return Math.round(Number(value)*1000)/1000;}
 function pathUrl(value){return value.split('/').map(encodeURIComponent).join('/');}
 function safeError(error){
   return String(error instanceof Error?error.message:error).slice(0,4000);
+}
+
+function asNodeReadable(body){
+  if(body&&typeof body.pipe==='function')return body;
+  if(body&&typeof body.transformToWebStream==='function'){
+    return Readable.fromWeb(body.transformToWebStream());
+  }
+  if(body)return Readable.fromWeb(body);
+  throw new Error('Storage response body is unavailable.');
+}
+
+async function streamToFile(body,destination){
+  await pipeline(asNodeReadable(body),createWriteStream(destination));
+  const info=await stat(destination);
+  if(!info.size)throw new Error('Storage object is empty.');
+  return info.size;
+}
+
+async function withLeaseHeartbeat(jobId,token,progress,stage,task){
+  let leaseError=null;
+  const timer=setInterval(()=>{
+    void heartbeat(jobId,token,progress,stage).catch(error=>{leaseError=error;});
+  },IO_HEARTBEAT_MS);
+  try{
+    const result=await task();
+    if(leaseError)throw leaseError;
+    return result;
+  }finally{
+    clearInterval(timer);
+  }
 }
 
 async function rest(pathname,options={}){
@@ -190,10 +234,7 @@ async function downloadStorage(storagePath,destination){
       Key:String(storagePath).slice(3)
     }));
     if(!result.Body)throw new Error('R2 object has no response body: '+storagePath);
-    const bytes=Buffer.from(await result.Body.transformToByteArray());
-    if(!bytes.length)throw new Error('R2 object is empty: '+storagePath);
-    await writeFile(destination,bytes);
-    return;
+    return streamToFile(result.Body,destination);
   }
 
   const response=await fetch(
@@ -201,38 +242,92 @@ async function downloadStorage(storagePath,destination){
     {headers:authHeaders}
   );
   if(!response.ok)throw new Error('Storage download failed '+response.status+' '+storagePath);
-  const bytes=Buffer.from(await response.arrayBuffer());
-  if(!bytes.length)throw new Error('Storage object is empty: '+storagePath);
-  await writeFile(destination,bytes);
+  if(!response.body)throw new Error('Storage download returned no body: '+storagePath);
+  return streamToFile(response.body,destination);
+}
+
+async function uploadR2Multipart(target,storagePath,filePath,size){
+  const started=await target.client.send(new CreateMultipartUploadCommand({
+    Bucket:target.bucket,
+    Key:storagePath,
+    ContentType:'video/mp4',
+    CacheControl:'3600'
+  }));
+  const uploadId=started.UploadId;
+  if(!uploadId)throw new Error('R2 multipart upload did not return an upload id.');
+  const parts=[];
+  try{
+    let partNumber=1;
+    for(let start=0;start<size;start+=R2_MULTIPART_PART_BYTES){
+      const end=Math.min(size-1,start+R2_MULTIPART_PART_BYTES-1);
+      const length=end-start+1;
+      const uploaded=await target.client.send(new UploadPartCommand({
+        Bucket:target.bucket,
+        Key:storagePath,
+        UploadId:uploadId,
+        PartNumber:partNumber,
+        Body:createReadStream(filePath,{start,end}),
+        ContentLength:length
+      }));
+      if(!uploaded.ETag)throw new Error('R2 multipart part '+partNumber+' returned no ETag.');
+      parts.push({ETag:uploaded.ETag,PartNumber:partNumber});
+      partNumber++;
+    }
+    await target.client.send(new CompleteMultipartUploadCommand({
+      Bucket:target.bucket,
+      Key:storagePath,
+      UploadId:uploadId,
+      MultipartUpload:{Parts:parts}
+    }));
+  }catch(error){
+    await target.client.send(new AbortMultipartUploadCommand({
+      Bucket:target.bucket,
+      Key:storagePath,
+      UploadId:uploadId
+    })).catch(()=>{});
+    throw error;
+  }
 }
 
 async function uploadStorage(storagePath,filePath){
-  const bytes=await readFile(filePath);
+  const info=await stat(filePath);
+  if(!info.size)throw new Error('Render output is empty: '+filePath);
   const target=await r2Storage();
   if(target){
-    await target.client.send(new PutObjectCommand({
-      Bucket:target.bucket,
-      Key:storagePath,
-      Body:bytes,
-      ContentType:'video/mp4',
-      CacheControl:'3600'
-    }));
-    return {bytes:bytes.length,path:'r2:'+storagePath};
+    if(info.size>=R2_MULTIPART_THRESHOLD_BYTES){
+      await uploadR2Multipart(target,storagePath,filePath,info.size);
+    }else{
+      await target.client.send(new PutObjectCommand({
+        Bucket:target.bucket,
+        Key:storagePath,
+        Body:createReadStream(filePath),
+        ContentLength:info.size,
+        ContentType:'video/mp4',
+        CacheControl:'3600'
+      }));
+    }
+    return {bytes:info.size,path:'r2:'+storagePath};
   }
 
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
     {
       method:'POST',
-      headers:{...authHeaders,'Content-Type':'video/mp4','x-upsert':'false'},
-      body:bytes
+      headers:{
+        ...authHeaders,
+        'Content-Type':'video/mp4',
+        'Content-Length':String(info.size),
+        'x-upsert':'false'
+      },
+      body:createReadStream(filePath),
+      duplex:'half'
     }
   );
   if(!response.ok){
     const text=await response.text().catch(()=>'');
     throw new Error('Storage upload failed '+response.status+' '+text.slice(0,500));
   }
-  return {bytes:bytes.length,path:storagePath};
+  return {bytes:info.size,path:storagePath};
 }
 
 async function run(command,args,{cwd}={}){
