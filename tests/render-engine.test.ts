@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
-  boundaryTransition, renderManifestIssues, renderOutputPath, renderPresetOutput,
-  validRenderAudioBitrate, validRenderCrf
+  boundaryTransition, buildRenderChapterPlan, renderManifestIssues, renderOutputPath,
+  renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
 const now='2026-09-23T23:00:00.000Z';
@@ -257,4 +258,121 @@ test('Render-v4 chapter boundaries do not inject artificial fades',()=>{
   assert.doesNotMatch(source,/style\.transitionIn='fade';/);
   assert.doesNotMatch(source,/style\.transitionOut='fade';/);
   assert.match(source,/render-v4-concat-copy-fallback/);
+});
+
+
+function longRenderManifest():{
+  manifest:RenderManifest;
+  edit:VideoEdit;
+  timeline:Timeline;
+  transcript:Transcript;
+}{
+  const duration=3600;
+  const sceneSeconds=6;
+  const sceneCount=600;
+  const wordsPerScene=20;
+  const sceneIds=Array.from({length:sceneCount},(_,index)=>
+    '2'+String(index+1).padStart(7,'0')+'-1111-4111-8111-'+String(index+1).padStart(12,'0')
+  );
+  const visualClips=sceneIds.map((sceneId,index)=>{
+    const start=index*sceneSeconds;
+    const clipId='3'+String(index+1).padStart(7,'0')+'-1111-4111-8111-'+String(index+1).padStart(12,'0');
+    return {
+      clipId,
+      sceneId,
+      assetId:'4'+String(index+1).padStart(7,'0')+'-1111-4111-8111-'+String(index+1).padStart(12,'0'),
+      kind:'image' as const,
+      storagePath:'channels/long/assets/'+String(index+1)+'.jpg',
+      mimeType:'image/jpeg',
+      startSeconds:start,
+      endSeconds:start+sceneSeconds,
+      durationSeconds:sceneSeconds,
+      sourceStartSeconds:null,
+      sourceEndSeconds:null,
+      playback:'hold' as const,
+      fit:'cover' as const,
+      style:{
+        timelineClipId:clipId,
+        sceneId,
+        motionPreset:'none' as const,
+        scaleStart:1,scaleEnd:1,xStart:0,xEnd:0,yStart:0,yEnd:0,
+        transitionIn:'none' as const,transitionOut:'none' as const,transitionSeconds:0
+      }
+    };
+  });
+  const captions={
+    ...structuredClone(edit.captions),
+    enabled:true,
+    cues:sceneIds.map((_,sceneIndex)=>{
+      const start=sceneIndex*sceneSeconds;
+      const words=Array.from({length:wordsPerScene},(_,wordIndex)=>{
+        const offset=wordIndex*(sceneSeconds/wordsPerScene);
+        return {
+          id:'5'+String(sceneIndex*wordsPerScene+wordIndex+1).padStart(7,'0')+
+            '-1111-4111-8111-'+String(sceneIndex*wordsPerScene+wordIndex+1).padStart(12,'0'),
+          text:'word'+String(sceneIndex*wordsPerScene+wordIndex+1),
+          startSeconds:start+offset,
+          endSeconds:start+offset+.25,
+          highlighted:false
+        };
+      });
+      return {
+        id:'6'+String(sceneIndex+1).padStart(7,'0')+'-1111-4111-8111-'+String(sceneIndex+1).padStart(12,'0'),
+        transcriptSegmentId:'7'+String(sceneIndex+1).padStart(7,'0')+'-1111-4111-8111-'+String(sceneIndex+1).padStart(12,'0'),
+        startSeconds:start,
+        endSeconds:start+sceneSeconds,
+        text:words.map(word=>word.text).join(' '),
+        words
+      };
+    })
+  };
+  const chapters=Array.from({length:6},(_,index)=>({
+    id:'8'+String(index+1).padStart(7,'0')+'-1111-4111-8111-'+String(index+1).padStart(12,'0'),
+    sequence:index+1,
+    label:'Chapter '+String(index+1).padStart(2,'0'),
+    startSeconds:index*600,
+    endSeconds:(index+1)*600,
+    durationSeconds:600,
+    sceneIds:sceneIds.slice(index*100,(index+1)*100)
+  }));
+  const longEdit={...structuredClone(edit),durationSeconds:duration,captions} as VideoEdit;
+  const longTimeline={...structuredClone(timeline),durationSeconds:duration} as Timeline;
+  const longTranscript={...structuredClone(transcript)} as Transcript;
+  const value:RenderManifest={
+    videoEditId:longEdit.id,videoEditVersion:longEdit.version,
+    timelineId:longTimeline.id,timelineVersion:longTimeline.version,
+    transcriptId:longTranscript.id,transcriptVersion:longTranscript.version,
+    format:{...longEdit.format},durationSeconds:duration,chapters,visualClips,
+    voice:{assetId:longTimeline.voiceAssetId,storagePath:'channels/long/voice.mp3',mimeType:'audio/mpeg'},
+    music:null,sfxEvents:[],captions,overlays:[],audioMix:structuredClone(longEdit.audioMix)
+  };
+  return {manifest:value,edit:longEdit,timeline:longTimeline,transcript:longTranscript};
+}
+
+test('Render-v4 compiles a 60-minute 600-clip chapter plan with stable incremental hashes',()=>{
+  const started=performance.now();
+  const fixture=longRenderManifest();
+  assert.deepEqual(
+    renderManifestIssues(fixture.manifest,fixture.edit,fixture.timeline,fixture.transcript),
+    []
+  );
+  const first=buildRenderChapterPlan({manifest:fixture.manifest,preset:'source',crf:20});
+  assert.equal(first.length,6);
+  assert.ok(first.every(chapter=>chapter.durationSeconds===600));
+  assert.ok(first.every(chapter=>/^[a-f0-9]{64}$/.test(chapter.contentHash)));
+
+  const changed=structuredClone(fixture.manifest);
+  changed.visualClips[350]={
+    ...changed.visualClips[350],
+    assetId:'99999999-9999-4999-8999-999999999999',
+    storagePath:'channels/long/assets/replacement.jpg'
+  };
+  const second=buildRenderChapterPlan({manifest:changed,preset:'source',crf:20});
+  const changedIndexes=first
+    .map((chapter,index)=>chapter.contentHash===second[index].contentHash?null:index)
+    .filter((index):index is number=>index!==null);
+  assert.deepEqual(changedIndexes,[3]);
+
+  const elapsedMs=performance.now()-started;
+  assert.ok(elapsedMs<5000,'60-minute render plan exceeded 5s: '+elapsedMs.toFixed(0)+'ms');
 });
