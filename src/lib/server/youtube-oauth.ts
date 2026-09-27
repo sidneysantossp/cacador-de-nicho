@@ -438,6 +438,22 @@ export async function loadLinkedYouTubeConnection(projectId:string,youtubeChanne
   };
 }
 
+export async function loadLinkedYouTubeConnectionSecret(connectionId:string){
+  const row=checked(await db().from('radar_youtube_channels')
+    .select('id,youtube_channel_id,status,refresh_token_ciphertext,token_aad')
+    .eq('id',connectionId).maybeSingle());
+  if(!row)throw new HttpError('Canal YouTube conectado não encontrado.',404);
+  if(row.status!=='connected')throw new HttpError('Conexão YouTube precisa ser reautorizada.',409);
+  return {
+    id:String(row.id),
+    youtubeChannelId:String(row.youtube_channel_id),
+    refreshToken:decryptYouTubeRefreshToken(
+      String(row.refresh_token_ciphertext),
+      String(row.token_aad)
+    )
+  };
+}
+
 async function saveIndependentYouTubeChannel(input:{
   channelId:string;
   refreshToken:string;
