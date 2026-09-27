@@ -1808,6 +1808,26 @@ export type RenderJobPayload = {
  };
  manifest: RenderManifest;
 };
+export type RenderWorkerStatus = 'online' | 'busy' | 'draining' | 'offline';
+export type RenderWorkerNode = {
+ id: string;
+ status: RenderWorkerStatus;
+ versionSha: string;
+ memoryBytes?: number;
+ nanoCpus?: number;
+ minFreeDiskBytes?: number;
+ freeDiskBytes?: number;
+ currentJobId?: string;
+ lastSeenAt: string;
+ startedAt: string;
+ updatedAt: string;
+ completedJobs: number;
+ failedJobs: number;
+ totalFinishedMinutes: number;
+ totalWallHours: number;
+ avgRealTimeFactor?: number;
+ lastJobAt?: string;
+};
 export type RenderJob = {
  id: string;
  channelId: string;
@@ -1818,6 +1838,7 @@ export type RenderJob = {
  progress: number;
  stage: string;
  attempts: number;
+ workerId?: string;
  outputPath?: string;
  outputBytes?: number;
  outputSignedUrl?: string | null;

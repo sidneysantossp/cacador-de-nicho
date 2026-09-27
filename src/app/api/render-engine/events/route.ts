@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { authenticated, errorResponse, HttpError } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
-import { listRenderJobs } from '@/lib/server/render-engine';
+import { listRenderJobs, listRenderWorkerNodes } from '@/lib/server/render-engine';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -33,14 +33,24 @@ export async function GET(request:Request){
           let keepaliveAt=Date.now();
           controller.enqueue(encoder.encode('retry: 2500\n\n'));
           while(!stopped){
-            const jobs=await listRenderJobs(channelId);
-            const signature=JSON.stringify(jobs.map(job=>[
-              job.id,job.status,job.progress,job.stage,job.attempts,
-              job.outputPath??'',job.outputBytes??0,job.error??'',job.updatedAt
-            ]));
+            const [jobs,workers]=await Promise.all([
+              listRenderJobs(channelId),
+              listRenderWorkerNodes()
+            ]);
+            const signature=JSON.stringify({
+              jobs:jobs.map(job=>[
+                job.id,job.status,job.progress,job.stage,job.attempts,job.workerId??'',
+                job.outputPath??'',job.outputBytes??0,job.error??'',job.updatedAt
+              ]),
+              workers:workers.map(worker=>[
+                worker.id,worker.status,worker.versionSha,worker.currentJobId??'',
+                worker.freeDiskBytes??0,worker.lastSeenAt,worker.completedJobs,worker.failedJobs,
+                worker.avgRealTimeFactor??null
+              ])
+            });
             if(signature!==previous){
               previous=signature;
-              controller.enqueue(encoder.encode('event: jobs\ndata: '+JSON.stringify({jobs})+'\n\n'));
+              controller.enqueue(encoder.encode('event: jobs\ndata: '+JSON.stringify({jobs,workers})+'\n\n'));
               keepaliveAt=Date.now();
             }else if(Date.now()-keepaliveAt>=15000){
               controller.enqueue(encoder.encode(': keepalive\n\n'));

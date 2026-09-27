@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Download, Film, LoaderCircle, RefreshCw,
   RotateCcw, Sparkles, Square, XCircle
 } from 'lucide-react';
-import type { ManagedChannel, RenderJob, RenderPreset, VideoEditListItem } from '@/lib/types';
+import type { ManagedChannel, RenderJob, RenderPreset, RenderWorkerNode, VideoEditListItem } from '@/lib/types';
 
 function when(value?:string){
   if(!value)return '—';
@@ -24,6 +24,7 @@ function duration(value:number){
 
 export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}){
   const [jobs,setJobs]=useState<RenderJob[]>([]);
+  const [workers,setWorkers]=useState<RenderWorkerNode[]>([]);
   const [edits,setEdits]=useState<VideoEditListItem[]>([]);
   const [videoEditId,setVideoEditId]=useState('');
   const [preset,setPreset]=useState<RenderPreset>('source');
@@ -36,6 +37,9 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
 
   const selectedEdit=useMemo(()=>edits.find(edit=>edit.id===videoEditId)??null,[edits,videoEditId]);
   const active=useMemo(()=>jobs.some(job=>job.status==='queued'||job.status==='processing'),[jobs]);
+  const onlineWorkers=useMemo(()=>workers.filter(worker=>worker.status!=='offline'),[workers]);
+  const totalNanoCpus=useMemo(()=>onlineWorkers.reduce((sum,worker)=>sum+(worker.nanoCpus??0),0),[onlineWorkers]);
+  const totalMemoryBytes=useMemo(()=>onlineWorkers.reduce((sum,worker)=>sum+(worker.memoryBytes??0),0),[onlineWorkers]);
 
   async function load(silent=false){
     if(!silent)setLoading(true);
@@ -46,6 +50,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
       const nextJobs=(body.jobs??[]) as RenderJob[];
       const nextEdits=(body.videoEdits??[]) as VideoEditListItem[];
       setJobs(nextJobs);
+      setWorkers((body.workers??[]) as RenderWorkerNode[]);
       setEdits(nextEdits);
       setVideoEditId(prev=>prev&&nextEdits.some(edit=>edit.id===prev)?prev:(nextEdits[0]?.id??''));
     }catch(error){
@@ -61,8 +66,9 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     const source=new EventSource('/api/render-engine/events?channelId='+encodeURIComponent(channel.id));
     const onJobs=(event:Event)=>{
       try{
-        const body=JSON.parse((event as MessageEvent<string>).data) as {jobs?:RenderJob[]};
+        const body=JSON.parse((event as MessageEvent<string>).data) as {jobs?:RenderJob[];workers?:RenderWorkerNode[]};
         if(Array.isArray(body.jobs))setJobs(body.jobs);
+        if(Array.isArray(body.workers))setWorkers(body.workers);
       }catch{}
     };
     source.addEventListener('jobs',onJobs);
@@ -104,6 +110,25 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     <section className="render-hero">
       <div><span>RENDER ENGINE</span><h2>Transforme o projeto aprovado em MP4 final.</h2><p>O job captura um manifest imutável, roda em worker FFmpeg separado e continua mesmo se você fechar esta tela.</p></div>
       <Film size={34}/>
+    </section>
+
+    <section className="render-workers">
+      <div className="render-section-head">
+        <div><span>RENDER NODES · SCALE-OUT READY</span><h3>{onlineWorkers.length} online · {(totalNanoCpus/1e9).toFixed(1)} CPU · {bytes(totalMemoryBytes)}</h3><p>A fila usa SKIP LOCKED; cada job é atribuído a um único nó e o cache v4 continua compartilhado via R2.</p></div>
+      </div>
+      <div className="render-worker-grid">{workers.map(worker=><article key={worker.id} className={worker.status}>
+        <div><strong>{worker.id}</strong><span>{worker.status}</span></div>
+        <p>SHA {worker.versionSha?worker.versionSha.slice(0,7):'—'} · {worker.nanoCpus?Number(worker.nanoCpus/1e9).toFixed(1)+' CPU':'—'} · {bytes(worker.memoryBytes)}</p>
+        <p>Disco livre {bytes(worker.freeDiskBytes)} · visto {when(worker.lastSeenAt)}</p>
+        <div className="render-worker-stats">
+          <span><b>{worker.completedJobs}</b> concluídos/7d</span>
+          <span><b>{worker.failedJobs}</b> falhas/7d</span>
+          <span><b>{worker.avgRealTimeFactor===undefined?'—':worker.avgRealTimeFactor.toFixed(2)+'×'}</b> RTF médio</span>
+          <span><b>{worker.totalFinishedMinutes.toFixed(0)}m</b> entregues/7d</span>
+        </div>
+        {worker.currentJobId&&<small>job atual {worker.currentJobId.slice(0,8)}</small>}
+      </article>)}</div>
+      {!workers.length&&<div className="render-worker-empty">Nenhum render node registrou heartbeat ainda.</div>}
     </section>
 
     <section className="render-create">

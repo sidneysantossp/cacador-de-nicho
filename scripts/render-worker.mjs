@@ -12,6 +12,12 @@ const BUCKET='cacadores-media';
 const POLL_MS=Math.max(2000,Number(process.env.RENDER_WORKER_POLL_MS||5000));
 const MIN_FREE_DISK_BYTES=Math.max(4,Number(process.env.RENDER_MIN_FREE_DISK_GB||10))*1024*1024*1024;
 const LEASE_SECONDS=900;
+const WORKER_ID=(process.env.RENDER_WORKER_ID||os.hostname()||randomUUID()).trim().slice(0,160);
+const WORKER_SHA=(process.env.APP_COMMIT_SHA||'').trim().slice(0,80);
+const WORKER_MEMORY_BYTES=Math.max(0,Number(process.env.RENDER_WORKER_MEMORY_BYTES||0));
+const WORKER_NANO_CPUS=Math.max(0,Number(process.env.RENDER_WORKER_NANO_CPUS||0));
+const WORKER_HEARTBEAT_MS=Math.max(10000,Number(process.env.RENDER_WORKER_HEARTBEAT_MS||30000));
+let lastWorkerHeartbeatAt=0;
 
 function renderDiskReady(){
   try{
@@ -64,6 +70,41 @@ async function rpc(name,args){
   });
 }
 
+async function touchRenderWorker(status='online',currentJobId=null,force=false){
+  const now=Date.now();
+  if(!force&&now-lastWorkerHeartbeatAt<WORKER_HEARTBEAT_MS)return;
+  lastWorkerHeartbeatAt=now;
+  const disk=renderDiskReady();
+  try{
+    await rest('/rest/v1/radar_render_workers?on_conflict=id',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        Prefer:'resolution=merge-duplicates,return=minimal'
+      },
+      body:JSON.stringify({
+        id:WORKER_ID,
+        status,
+        version_sha:WORKER_SHA,
+        memory_bytes:WORKER_MEMORY_BYTES||null,
+        nano_cpus:WORKER_NANO_CPUS||null,
+        min_free_disk_bytes:MIN_FREE_DISK_BYTES,
+        free_disk_bytes:disk.freeBytes||0,
+        current_job_id:currentJobId,
+        last_seen_at:new Date().toISOString(),
+        updated_at:new Date().toISOString(),
+        payload:{pollMs:POLL_MS,leaseSeconds:LEASE_SECONDS}
+      })
+    });
+  }catch(error){
+    console.error(JSON.stringify({
+      event:'render-worker-registry-error',
+      workerId:WORKER_ID,
+      error:safeError(error)
+    }));
+  }
+}
+
 async function queryJob(jobId){
   const rows=await rest('/rest/v1/radar_render_jobs?id=eq.'+encodeURIComponent(jobId)+'&select=id,status,worker_token,payload,channel_id,episode_id,video_edit_id,video_edit_version');
   return Array.isArray(rows)?rows[0]??null:null;
@@ -95,6 +136,7 @@ async function heartbeat(jobId,token,progress,stage){
     p_lease_seconds:LEASE_SECONDS
   });
   if(ok!==true)throw new Error('Render lease lost for '+jobId);
+  await touchRenderWorker('busy',String(jobId));
 }
 
 async function assertActive(jobId,token){
@@ -1082,15 +1124,21 @@ async function processJob(jobId,token){
     console.error(JSON.stringify({event:'render-failed',jobId,error:message}));
   }finally{
     await rm(root,{recursive:true,force:true}).catch(()=>{});
+    await touchRenderWorker('online',null,true);
   }
 }
 
 async function loop(){
-  console.log(JSON.stringify({event:'render-worker-started',pollMs:POLL_MS}));
+  console.log(JSON.stringify({
+    event:'render-worker-started',pollMs:POLL_MS,workerId:WORKER_ID,
+    versionSha:WORKER_SHA,memoryBytes:WORKER_MEMORY_BYTES,nanoCpus:WORKER_NANO_CPUS
+  }));
+  await touchRenderWorker('online',null,true);
   while(true){
     try{
       const disk=renderDiskReady();
       if(!disk.ready){
+        await touchRenderWorker('draining',null,true);
         console.error(JSON.stringify({
           event:'render-worker-low-disk',
           freeGb:Math.round(disk.freeBytes/1024/1024/1024*100)/100,
@@ -1102,11 +1150,14 @@ async function loop(){
       const token=randomUUID();
       const jobId=await rpc('claim_render_job',{
         p_worker_token:token,
+        p_worker_id:WORKER_ID,
         p_lease_seconds:LEASE_SECONDS
       });
       if(jobId){
+        await touchRenderWorker('busy',String(jobId),true);
         await processJob(String(jobId),token);
       }else{
+        await touchRenderWorker('online',null);
         await sleep(POLL_MS);
       }
     }catch(error){

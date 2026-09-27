@@ -101,3 +101,33 @@ test('Script Engine server lists current and historical scripts without payload 
   assert.match(source,/loadEpisodeScriptHistoryVersion/);
   assert.match(source,/radar_episode_script_versions/);
 });
+
+
+test('Render scale-out registry is service-role only and keeps worker attribution durable',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const start=sql.indexOf('create table if not exists public.radar_render_workers(');
+  const end=sql.indexOf('create table if not exists public.radar_render_chapters(',start);
+  assert.ok(start>=0&&end>start,'render worker registry missing');
+  const block=sql.slice(start,end);
+  assert.match(block,/current_job_id uuid references public\.radar_render_jobs\(id\) on delete set null/);
+  assert.match(block,/foreign key\(worker_id\) references public\.radar_render_workers\(id\) on delete set null/);
+  assert.match(block,/create or replace view public\.radar_render_worker_stats/);
+  assert.match(block,/with \(security_invoker=true\)/);
+  assert.match(block,/grant select on table public\.radar_render_worker_stats to service_role/);
+  assert.match(sql,/'radar_render_jobs','radar_render_workers','radar_render_chapters'/);
+});
+
+test('Render queue claims worker identity atomically with skip-locked ownership',()=>{
+  const sql=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const start=sql.indexOf('create or replace function public.claim_render_job(');
+  const end=sql.indexOf('create or replace function public.heartbeat_render_job(',start);
+  assert.ok(start>=0&&end>start,'render claim functions missing');
+  const block=sql.slice(start,end);
+  assert.match(block,/for update skip locked\s+limit 1/i);
+  assert.match(block,/p_worker_id text/);
+  assert.match(block,/worker_token=p_worker_token,worker_id=p_worker_id/);
+  assert.match(block,/worker_token=null,worker_id=null,lease_until=null/);
+  assert.match(block,/render worker not registered/);
+  assert.match(block,/grant execute on function public\.claim_render_job\(uuid,text,int\) to service_role/);
+  assert.match(block,/grant execute on function public\.claim_render_job\(uuid,int\) to service_role/);
+});
