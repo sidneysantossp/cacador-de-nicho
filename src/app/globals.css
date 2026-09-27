@@ -1100,3 +1100,21 @@
 @media(max-width:1050px){.youtube-linked-grid{grid-template-columns:1fr}.youtube-portfolio-head{align-items:flex-start;flex-direction:column}.youtube-connect-controls{justify-content:flex-start}}
 @media(max-width:680px){.youtube-portfolio{padding:16px}.youtube-connect-controls{width:100%;display:grid;grid-template-columns:1fr 1fr}.youtube-connect-controls label{grid-column:1/-1}.youtube-connect-controls select{width:100%;max-width:none}.youtube-linked-metrics{grid-template-columns:repeat(2,1fr)}.youtube-linked-card>footer .button{flex:1;justify-content:center}}
 
+.youtube-link-confirmation{margin:4px 0 16px;border:1px solid #e5c49f;border-radius:12px;padding:16px;background:#fff9f1}
+.youtube-confirm-kicker{font-size:8px;letter-spacing:1px;font-weight:800;color:#b56d2f;margin-bottom:10px}
+.youtube-confirm-route{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.2fr);align-items:center;gap:14px}
+.youtube-confirm-route>div:first-child{display:grid;gap:4px}
+.youtube-confirm-route span{font-size:8px;letter-spacing:.8px;color:#9a896f;font-weight:750}
+.youtube-confirm-route strong{font-size:15px}
+.youtube-confirm-route>svg{color:#ba702c}
+.youtube-confirm-channel{display:flex;align-items:center;gap:10px;min-width:0}
+.youtube-confirm-channel>img{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:0 0 44px}
+.youtube-confirm-channel>div{display:grid;gap:2px;min-width:0}
+.youtube-confirm-channel strong,.youtube-confirm-channel small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.youtube-confirm-channel small{font-size:10px;color:#8d967f}
+.youtube-confirm-metrics{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.youtube-confirm-metrics span{font-size:10px;background:#f3eee5;border-radius:999px;padding:6px 9px;color:#746958}
+.youtube-link-confirmation>p{font-size:11px;color:#7d7568;line-height:1.6;margin:10px 0}
+.youtube-confirm-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:680px){.youtube-confirm-route{grid-template-columns:1fr}.youtube-confirm-route>svg{transform:rotate(90deg)}}
+
