@@ -12,8 +12,7 @@ const TOKEN_ENDPOINT=(process.env.YOUTUBE_TOKEN_ENDPOINT??'https://oauth2.google
 
 export const YOUTUBE_OAUTH_SCOPES=[
   'https://www.googleapis.com/auth/youtube.upload',
-  'https://www.googleapis.com/auth/youtube.readonly',
-  'https://www.googleapis.com/auth/yt-analytics.readonly'
+  'https://www.googleapis.com/auth/youtube.readonly'
 ] as const;
 
 type OAuthStatePayload={channelId:string;nonce:string;exp:number};
