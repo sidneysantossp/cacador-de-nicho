@@ -107,10 +107,10 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     </section>
 
     <section className="render-create">
-      <div className="render-section-head"><div><span>NEW RENDER · V4</span><h3>Capítulos cacheáveis + master incremental.</h3><p>Novos jobs usam render-v4: um capítulo por vez, cache por conteúdo, concatenação sem reencode e áudio aplicado no master.</p></div></div>
+      <div className="render-section-head"><div><span>NEW RENDER · V4</span><h3>Capítulos cacheáveis + master incremental.</h3><p>Novos jobs usam render-v4: capítulos cacheáveis e master incremental. Draft 720p usa encoder ultrafast para revisão; Source/1080p mantêm preset medium para entrega final.</p></div></div>
       <div className="render-grid four">
         <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.width}×{edit.height}</option>)}</select></label>
-        <label>Preset<select value={preset} onChange={e=>setPreset(e.target.value as RenderPreset)}><option value="source">Source</option><option value="hd-1080p30">HD 1080p · 30 fps</option><option value="draft-720p30">Draft 720p · 30 fps</option></select></label>
+        <label>Preset<select value={preset} onChange={e=>setPreset(e.target.value as RenderPreset)}><option value="source">Source</option><option value="hd-1080p30">HD 1080p · 30 fps</option><option value="draft-720p30">Draft rápido · 720p · 30 fps</option></select></label>
         <label>Qualidade CRF<input type="number" min="18" max="30" step="1" value={crf} onChange={e=>setCrf(Number(e.target.value))}/><small>18 = maior qualidade/arquivo · 30 = menor arquivo</small></label>
         <label>Áudio AAC<input type="number" min="96" max="320" step="16" value={audioBitrateKbps} onChange={e=>setAudioBitrateKbps(Number(e.target.value))}/><small>kbps</small></label>
       </div>
@@ -137,7 +137,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
 
         <div className="render-job-details">
           <span>{job.payload.compilerVersion}</span>
-          <span>{job.payload.preset??'source'}</span>
+          <span>{job.payload.preset??'source'} · {job.payload.encoderPreset??(job.payload.preset==='draft-720p30'?'ultrafast':'medium')}</span>
           <span>CRF {job.payload.crf}</span>
           <span>AAC {job.payload.audioBitrateKbps} kbps</span>
           <span>{(job.payload.outputFormat??job.payload.manifest.format).width}×{(job.payload.outputFormat??job.payload.manifest.format).height}</span>
