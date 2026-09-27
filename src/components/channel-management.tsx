@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { BrainCircuit, Check, CircleDot, ExternalLink, Film, FolderKanban, Layers3, Link2, Plus, RefreshCw, Sparkles, Youtube } from 'lucide-react';
+import { BrainCircuit, Check, CircleDot, ExternalLink, Film, FolderKanban, Layers3, Link2, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import type { AutopilotReadiness, Channel, ChannelBrain, LinkedYouTubeChannel, ManagedChannel, NextEpisodePlan, Opportunity } from '@/lib/types';
 import AutopilotControlPlane from './autopilot-control-plane';
 import {
@@ -176,17 +176,17 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
        {items.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
      </label>
-     <button className="button primary" disabled={!connectProjectId} onClick={connectYoutube}><Youtube size={16}/>Conectar canal</button>
+     <button className="button primary" disabled={!connectProjectId} onClick={connectYoutube}><Play size={16}/>Conectar canal</button>
      <button className="button subtle small" disabled={youtubeLoading} onClick={()=>void refreshYouTubeChannels()}><RefreshCw size={14} className={youtubeLoading?'spin':''}/>Atualizar</button>
     </div>
    </div>
    {youtubeLoading&&<div className="youtube-portfolio-empty">Carregando canais conectados…</div>}
-   {!youtubeLoading&&!youtubeChannels.length&&<div className="youtube-portfolio-empty"><Youtube size={24}/><strong>Nenhum canal YouTube conectado.</strong><span>Escolha um projeto acima e conecte o primeiro destino real de publicação.</span></div>}
+   {!youtubeLoading&&!youtubeChannels.length&&<div className="youtube-portfolio-empty"><Play size={24}/><strong>Nenhum canal YouTube conectado.</strong><span>Escolha um projeto acima e conecte o primeiro destino real de publicação.</span></div>}
    {!!youtubeChannels.length&&<div className="youtube-linked-grid">{youtubeChannels.map(linked=>{
     const project=items.find(item=>item.id===linked.projectId);
     return <article className={'youtube-linked-card '+linked.status} key={linked.id}>
      <header>
-      {linked.youtubeThumbnail?<img src={linked.youtubeThumbnail} alt=""/>:<span className="youtube-linked-avatar"><Youtube size={22}/></span>}
+      {linked.youtubeThumbnail?<img src={linked.youtubeThumbnail} alt=""/>:<span className="youtube-linked-avatar"><Play size={22}/></span>}
       <div className="youtube-linked-identity">
        <div><strong>{linked.youtubeTitle}</strong>{linked.isPrimary&&<span className="youtube-primary-badge">PRINCIPAL</span>}</div>
        <span>{linked.youtubeHandle||linked.youtubeChannelId}</span>
@@ -208,7 +208,7 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
       <button className="button subtle small" disabled={!project} onClick={()=>project&&onOpenBrain(project)}><BrainCircuit size={14}/>Abrir projeto</button>
       <button className="button subtle small" disabled={youtubeBusy===linked.id} onClick={()=>void validateLinkedChannel(linked)}><RefreshCw size={14} className={youtubeBusy===linked.id?'spin':''}/>Validar</button>
       <a className="button subtle small" href={'https://www.youtube.com/channel/'+encodeURIComponent(linked.youtubeChannelId)} target="_blank" rel="noreferrer"><ExternalLink size={14}/>YouTube</a>
-      <a className="button subtle small" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(linked.projectId)}><Youtube size={14}/>Reconectar</a>
+      <a className="button subtle small" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(linked.projectId)}><Play size={14}/>Reconectar</a>
      </footer>
     </article>;
    })}</div>}
