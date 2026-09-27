@@ -106,8 +106,18 @@ async function queryJob(jobId){
 }
 
 async function queryConnection(connectionId){
-  const select='id,channel_id,youtube_channel_id,status,refresh_token_ciphertext';
-  const rows=await rest('/rest/v1/radar_youtube_connections?id=eq.'+encodeURIComponent(connectionId)+'&select='+encodeURIComponent(select));
+  const select='id,youtube_channel_id,status,refresh_token_ciphertext,token_aad';
+  const rows=await rest('/rest/v1/radar_youtube_channels?id=eq.'+encodeURIComponent(connectionId)+'&select='+encodeURIComponent(select));
+  return Array.isArray(rows)?rows[0]??null:null;
+}
+
+async function queryProjectLink(connectionId,projectId){
+  const select='id,project_id,youtube_channel_id,is_primary';
+  const rows=await rest(
+    '/rest/v1/radar_project_youtube_channels?youtube_channel_id=eq.'+encodeURIComponent(connectionId)+
+    '&project_id=eq.'+encodeURIComponent(projectId)+
+    '&select='+encodeURIComponent(select)
+  );
   return Array.isArray(rows)?rows[0]??null:null;
 }
 
@@ -149,7 +159,7 @@ async function updateOwned(jobId,token,fields){
 }
 
 async function updateConnection(connectionId,fields){
-  await rest('/rest/v1/radar_youtube_connections?id=eq.'+encodeURIComponent(connectionId),{
+  await rest('/rest/v1/radar_youtube_channels?id=eq.'+encodeURIComponent(connectionId),{
     method:'PATCH',
     headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
     body:JSON.stringify({...fields,updated_at:new Date().toISOString()})
@@ -242,7 +252,7 @@ async function downloadStorage(storagePath,destination){
 async function refreshAccessToken(connection){
   let refreshToken;
   try{
-    refreshToken=decryptSecret(connection.refresh_token_ciphertext,connection.channel_id);
+    refreshToken=decryptSecret(connection.refresh_token_ciphertext,connection.token_aad);
   }catch(error){
     error.code='AUTH_REQUIRED';
     throw error;
@@ -557,13 +567,14 @@ async function processJob(jobId,token){
   let job=await assertActive(jobId,token);
   const connection=await queryConnection(job.connection_id);
   if(!connection)throw new Error('YouTube connection disappeared.');
+  const projectLink=await queryProjectLink(job.connection_id,job.channel_id);
+  if(!projectLink)throw new Error('YouTube channel is no longer linked to this project.');
   if(connection.status!=='connected'){
     const error=new Error('YouTube connection requires reauthorization.');
     error.code='AUTH_REQUIRED';
     throw error;
   }
-  if(connection.channel_id!==job.channel_id||
-     connection.youtube_channel_id!==job.payload.youtubeChannelId){
+  if(connection.youtube_channel_id!==job.payload.youtubeChannelId){
     throw new Error('YouTube connection channel no longer matches publication snapshot.');
   }
 
