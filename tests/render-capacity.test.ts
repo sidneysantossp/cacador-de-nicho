@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { RenderJob } from '../src/lib/types';
-import { renderCapacityForecast, renderCapacityProfiles } from '../src/lib/render-capacity-policy';
+import { renderCapacityForecast, renderCapacityProfiles, renderFleetSizing } from '../src/lib/render-capacity-policy';
 
 function job(input:{
   id:string;
@@ -127,4 +127,64 @@ test('Capacity forecast returns zero throughput when no render node is online',(
   const [row]=renderCapacityForecast({profile,durationsMinutes:[60],onlineWorkers:0});
   assert.equal(row.singleJobMinutes,180);
   assert.equal(row.fleetVideosPerDay,0);
+});
+
+
+test('Fleet sizing converts observed RTF into nodes required for a daily target',()=>{
+  const profile={
+    preset:'hd-1080p30' as const,
+    mode:'cold' as const,
+    sampleCount:1,
+    medianRealTimeFactor:7.36,
+    minRealTimeFactor:7.36,
+    maxRealTimeFactor:7.36
+  };
+  const [row]=renderFleetSizing({
+    profile,
+    durationsMinutes:[60],
+    targetVideosPerDay:12,
+    onlineWorkers:1,
+    utilization:.8
+  });
+  assert.equal(row.requiredWorkers,5);
+  assert.equal(row.additionalWorkers,4);
+  assert.ok(row.currentSafeVideosPerDay>2.6&&row.currentSafeVideosPerDay<2.7);
+});
+
+test('Fleet sizing distinguishes full utilization from a safer operating envelope',()=>{
+  const profile={
+    preset:'draft-720p30' as const,
+    mode:'cold' as const,
+    sampleCount:2,
+    medianRealTimeFactor:2.44,
+    minRealTimeFactor:2.35,
+    maxRealTimeFactor:2.54
+  };
+  const [full]=renderFleetSizing({
+    profile,durationsMinutes:[60],targetVideosPerDay:12,onlineWorkers:1,utilization:1
+  });
+  const [safe]=renderFleetSizing({
+    profile,durationsMinutes:[60],targetVideosPerDay:12,onlineWorkers:1,utilization:.8
+  });
+  assert.equal(full.requiredWorkers,2);
+  assert.equal(safe.requiredWorkers,2);
+  assert.ok(full.currentSafeVideosPerDay>safe.currentSafeVideosPerDay);
+});
+
+test('Fleet sizing clamps utilization and handles an empty fleet',()=>{
+  const profile={
+    preset:'source' as const,
+    mode:'cold' as const,
+    sampleCount:1,
+    medianRealTimeFactor:4,
+    minRealTimeFactor:4,
+    maxRealTimeFactor:4
+  };
+  const [row]=renderFleetSizing({
+    profile,durationsMinutes:[30],targetVideosPerDay:6,onlineWorkers:0,utilization:5
+  });
+  assert.equal(row.utilization,1);
+  assert.equal(row.currentSafeVideosPerDay,0);
+  assert.equal(row.requiredWorkers,1);
+  assert.equal(row.additionalWorkers,1);
 });
