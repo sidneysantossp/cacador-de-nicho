@@ -21,6 +21,7 @@ function pkg():PublicationPackage{
     renderJobId:'55555555-5555-4555-8555-555555555555',
     renderOutputPath:'channels/x/final.mp4',
     renderOutputBytes:5*1024*1024*1024,
+    targetYouTubeChannelId:'UC_TEST_CHANNEL',
     metadata:{
       title:'Will AI Change What It Means to Be Human?',
       description:'Description',
