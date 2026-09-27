@@ -916,3 +916,14 @@ Correção:
 - Universe/Market, que seguem outra política de agendamento e permanecem pausados, não foram alterados.
 
 Objetivo: impedir timers aparentemente ativos porém sem próximo disparo após disable/re-enable ou atualização de unit files.
+
+
+## FASE 40 — Timer Liveness Self-Healing — 27/09/2026
+
+O diagnóstico da FASE 39 mostrou uma lacuna adicional: `systemctl is-active` considera um timer `active (elapsed)` como ativo, mesmo quando ele não possui próximo disparo. Por isso o health-watch não corrigia automaticamente render/episode sync presos nesse estado.
+
+Hardening:
+- para cada timer operacional gerenciado, o health-watch continua validando enabled + active;
+- quando `SubState=elapsed`, o timer é reiniciado para ser rearmado;
+- timers deliberadamente excluídos pelo modo `assisted-manual` continuam fora do conjunto gerenciado;
+- nenhuma produção, render ou publicação é enfileirada por essa correção; ela só restaura a recorrência dos sincronizadores permitidos.
