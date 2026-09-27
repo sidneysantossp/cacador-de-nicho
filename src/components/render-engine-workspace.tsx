@@ -6,6 +6,7 @@ import {
   RotateCcw, Sparkles, Square, XCircle
 } from 'lucide-react';
 import type { ManagedChannel, RenderJob, RenderPreset, RenderWorkerNode, VideoEditListItem } from '@/lib/types';
+import { renderCapacityForecast, renderCapacityProfiles } from '@/lib/render-capacity-policy';
 
 function when(value?:string){
   if(!value)return '—';
@@ -20,6 +21,13 @@ function duration(value:number){
   const m=Math.floor(value/60);
   const s=Math.round(value%60).toString().padStart(2,'0');
   return m+':'+s;
+}
+function forecastTime(valueMinutes:number){
+  if(!Number.isFinite(valueMinutes)||valueMinutes<0)return '—';
+  const total=Math.round(valueMinutes);
+  const h=Math.floor(total/60);
+  const m=total%60;
+  return h?h+'h '+String(m).padStart(2,'0')+'m':m+' min';
 }
 
 export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}){
@@ -40,6 +48,18 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
   const onlineWorkers=useMemo(()=>workers.filter(worker=>worker.status!=='offline'),[workers]);
   const totalNanoCpus=useMemo(()=>onlineWorkers.reduce((sum,worker)=>sum+(worker.nanoCpus??0),0),[onlineWorkers]);
   const totalMemoryBytes=useMemo(()=>onlineWorkers.reduce((sum,worker)=>sum+(worker.memoryBytes??0),0),[onlineWorkers]);
+  const capacityProfiles=useMemo(()=>renderCapacityProfiles(jobs),[jobs]);
+  const coldCapacity=useMemo(()=>capacityProfiles.find(
+    profile=>profile.preset===preset&&profile.mode==='cold'
+  )??null,[capacityProfiles,preset]);
+  const cachedCapacity=useMemo(()=>capacityProfiles.find(
+    profile=>profile.preset===preset&&profile.mode==='cached'
+  )??null,[capacityProfiles,preset]);
+  const coldForecast=useMemo(()=>coldCapacity?renderCapacityForecast({
+    profile:coldCapacity,
+    durationsMinutes:[20,30,40,50,60],
+    onlineWorkers:onlineWorkers.length
+  }):[],[coldCapacity,onlineWorkers.length]);
 
   async function load(silent=false){
     if(!silent)setLoading(true);
@@ -129,6 +149,33 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
         {worker.currentJobId&&<small>job atual {worker.currentJobId.slice(0,8)}</small>}
       </article>)}</div>
       {!workers.length&&<div className="render-worker-empty">Nenhum render node registrou heartbeat ainda.</div>}
+    </section>
+
+    <section className="render-capacity">
+      <div className="render-section-head">
+        <div>
+          <span>CAPACITY FORECAST · DADOS OBSERVADOS</span>
+          <h3>{preset} · {coldCapacity?coldCapacity.medianRealTimeFactor.toFixed(2)+'× RTF cold':'sem amostra cold'}</h3>
+          <p>Tempo de um vídeo usa a mediana dos renders frios do mesmo preset. Mais nodes aumentam throughput da fila; um único vídeo continua em um único node.</p>
+        </div>
+        <div className="render-capacity-samples">
+          <span>{coldCapacity?.sampleCount??0} cold sample(s)</span>
+          <span>{cachedCapacity?.sampleCount??0} cache sample(s)</span>
+        </div>
+      </div>
+      {coldCapacity?<div className="render-capacity-table">
+        <div className="head"><span>Duração final</span><span>1 job / 1 node</span><span>Frota atual</span></div>
+        {coldForecast.map(row=><div key={row.durationMinutes}>
+          <strong>{row.durationMinutes} min</strong>
+          <span>{forecastTime(row.singleJobMinutes)}</span>
+          <span>{onlineWorkers.length?row.fleetVideosPerDay.toFixed(1)+' vídeos/dia':'0 nodes online'}</span>
+        </div>)}
+      </div>:<div className="render-capacity-empty">Ainda não há render frio concluído para este preset. A previsão aparecerá após a primeira amostra real.</div>}
+      {cachedCapacity&&<div className="render-capacity-cache">
+        <strong>Revisão 100% cacheada observada</strong>
+        <span>{cachedCapacity.medianRealTimeFactor.toFixed(2)}× RTF · {cachedCapacity.sampleCount} amostra(s)</span>
+      </div>}
+      {coldCapacity&&<small className="render-capacity-note">Faixa observada cold: {coldCapacity.minRealTimeFactor.toFixed(2)}×–{coldCapacity.maxRealTimeFactor.toFixed(2)}× RTF. A previsão é operacional, não promessa de duração: densidade de clips, captions, transições e cache alteram o tempo.</small>}
     </section>
 
     <section className="render-create">
