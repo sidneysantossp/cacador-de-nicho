@@ -3,7 +3,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import type {
   RenderChapter, RenderChapterPlan, RenderJob, RenderJobPayload, RenderManifest,
-  RenderManifestVisualClip, RenderPreset, SceneAsset, VideoEdit
+  RenderManifestVisualClip, RenderPreset, RenderWorkerNode, SceneAsset, VideoEdit
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -27,7 +27,7 @@ import {
 type Row={
   id:string;channel_id:string;episode_id:string;video_edit_id:string;video_edit_version:number;
   status:RenderJob['status'];progress:number;stage:string;attempts:number;
-  output_path:string|null;output_bytes:number|string|null;error:string|null;payload:unknown;
+  worker_id:string|null;output_path:string|null;output_bytes:number|string|null;error:string|null;payload:unknown;
   created_at:string;started_at:string|null;completed_at:string|null;updated_at:string;
 };
 
@@ -100,6 +100,7 @@ async function normalizeRow(row:Row,chapters?:RenderChapter[]):Promise<RenderJob
     progress:Number(row.progress),
     stage:row.stage,
     attempts:Number(row.attempts),
+    workerId:row.worker_id??undefined,
     outputPath:row.output_path??undefined,
     outputBytes:row.output_bytes===null?undefined:Number(row.output_bytes),
     outputSignedUrl:await signedOutput(row.output_path),
@@ -113,7 +114,7 @@ async function normalizeRow(row:Row,chapters?:RenderChapter[]):Promise<RenderJob
   };
 }
 
-const selection='id,channel_id,episode_id,video_edit_id,video_edit_version,status,progress,stage,attempts,output_path,output_bytes,error,payload,created_at,started_at,completed_at,updated_at';
+const selection='id,channel_id,episode_id,video_edit_id,video_edit_version,status,progress,stage,attempts,worker_id,output_path,output_bytes,error,payload,created_at,started_at,completed_at,updated_at';
 
 export async function listRenderJobs(channelId:string):Promise<RenderJob[]>{
   const rows=checked(await db().from('radar_render_jobs')
@@ -474,13 +475,46 @@ export async function retryRenderChapter(jobId:string,chapterId:string){
   return retryRenderJob(jobId);
 }
 
+export async function listRenderWorkerNodes():Promise<RenderWorkerNode[]>{
+  const rows=checked(await db().from('radar_render_worker_stats')
+    .select('id,status,version_sha,memory_bytes,nano_cpus,min_free_disk_bytes,free_disk_bytes,current_job_id,last_seen_at,started_at,updated_at,completed_jobs,failed_jobs,total_finished_minutes,total_wall_hours,avg_real_time_factor,last_job_at')
+    .order('last_seen_at',{ascending:false})
+    .limit(100));
+  const now=Date.now();
+  return (rows??[]).map(row=>{
+    const lastSeen=String(row.last_seen_at);
+    const stale=now-new Date(lastSeen).getTime()>90000;
+    return {
+      id:String(row.id),
+      status:stale?'offline':row.status as RenderWorkerNode['status'],
+      versionSha:String(row.version_sha??''),
+      memoryBytes:row.memory_bytes===null?undefined:Number(row.memory_bytes),
+      nanoCpus:row.nano_cpus===null?undefined:Number(row.nano_cpus),
+      minFreeDiskBytes:row.min_free_disk_bytes===null?undefined:Number(row.min_free_disk_bytes),
+      freeDiskBytes:row.free_disk_bytes===null?undefined:Number(row.free_disk_bytes),
+      currentJobId:row.current_job_id??undefined,
+      lastSeenAt:lastSeen,
+      startedAt:String(row.started_at),
+      updatedAt:String(row.updated_at),
+      completedJobs:Number(row.completed_jobs??0),
+      failedJobs:Number(row.failed_jobs??0),
+      totalFinishedMinutes:Number(row.total_finished_minutes??0),
+      totalWallHours:Number(row.total_wall_hours??0),
+      avgRealTimeFactor:row.avg_real_time_factor===null?undefined:Number(row.avg_real_time_factor),
+      lastJobAt:row.last_job_at??undefined
+    };
+  });
+}
+
 export async function renderEngineChannelState(channelId:string){
-  const [jobs,edits]=await Promise.all([
+  const [jobs,edits,workers]=await Promise.all([
     listRenderJobs(channelId),
-    listVideoEdits(channelId)
+    listVideoEdits(channelId),
+    listRenderWorkerNodes()
   ]);
   return {
     jobs,
+    workers,
     videoEdits:edits.filter(edit=>edit.status==='approved')
   };
 }
