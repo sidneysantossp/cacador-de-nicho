@@ -104,21 +104,45 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
    onMessage(error instanceof Error?error.message:'Falha ao carregar canais YouTube.');
   }finally{setYoutubeLoading(false);}
  }
- async function validateLinkedChannel(channel:LinkedYouTubeChannel){
-  setYoutubeBusy(channel.id);
+ async function youtubeChannelAction(payload:Record<string,unknown>,key:string){
+  setYoutubeBusy(key);
   try{
    const response=await fetch('/api/youtube-channels',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action:'validate',youtubeChannelId:channel.id})
+    body:JSON.stringify(payload)
    });
    const body=await response.json().catch(()=>({}));
-   if(!response.ok)throw new Error(body.message??'Falha ao validar canal YouTube.');
-   onMessage('Conexão YouTube validada.');
+   if(!response.ok)throw new Error(body.message??'Falha ao atualizar canal YouTube.');
+   onMessage(body.message??'Canal YouTube atualizado.');
    await refreshYouTubeChannels();
+   return true;
   }catch(error){
-   onMessage(error instanceof Error?error.message:'Falha ao validar canal YouTube.');
+   onMessage(error instanceof Error?error.message:'Falha ao atualizar canal YouTube.');
+   return false;
   }finally{setYoutubeBusy('');}
+ }
+ async function validateLinkedChannel(channel:LinkedYouTubeChannel){
+  await youtubeChannelAction(
+   {action:'validate',youtubeChannelId:channel.id},
+   'validate:'+channel.id
+  );
+ }
+ async function setPrimaryLinkedChannel(channel:LinkedYouTubeChannel){
+  await youtubeChannelAction(
+   {action:'set-primary',youtubeChannelId:channel.id},
+   'primary:'+channel.id
+  );
+ }
+ async function moveLinkedChannel(channel:LinkedYouTubeChannel,projectId:string){
+  if(!projectId||projectId===channel.projectId)return;
+  const target=items.find(item=>item.id===projectId);
+  if(!target)return;
+  if(!window.confirm('Mover '+channel.youtubeTitle+' de '+channel.projectName+' para '+target.name+'? A operação será bloqueada se este canal já tiver histórico de publicação.'))return;
+  await youtubeChannelAction(
+   {action:'move',youtubeChannelId:channel.id,projectId},
+   'move:'+channel.id
+  );
  }
  function connectYoutube(){
   if(!connectProjectId){onMessage('Escolha primeiro o projeto que receberá este canal YouTube.');return;}
@@ -149,7 +173,7 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
    onMessage(error instanceof Error?error.message:'Falha ao concluir confirmação do canal YouTube.');
   }finally{setPendingYoutubeBusy('');}
  }
- function save(event:React.FormEvent){event.preventDefault();if(!draft.name.trim()){onMessage('Dê um nome ao canal antes de salvar.');return;}const now=new Date().toISOString();onSave({id:crypto.randomUUID(),...draft,name:draft.name.trim(),description:draft.description.trim(),createdAt:now,updatedAt:now});setDraft(empty());setShowForm(false);}
+ function save(event:React.FormEvent){event.preventDefault();if(!draft.name.trim()){onMessage('Dê um nome ao projeto antes de salvar.');return;}const now=new Date().toISOString();onSave({id:crypto.randomUUID(),...draft,name:draft.name.trim(),description:draft.description.trim(),createdAt:now,updatedAt:now});setDraft(empty());setShowForm(false);}
  function addFromOpportunity(channel:Channel,opportunity:Opportunity){const now=new Date().toISOString();onSave({id:crypto.randomUUID(),name:opportunity.name,niche:channel.niche,format:channel.format.split(' · ')[1]??channel.format,stage:'idea',priority:'normal',description:opportunity.lens,sourceChannelId:channel.id,opportunityId:opportunity.id,createdAt:now,updatedAt:now});}
  async function loadAutopilotPreview(channelId:string){
   setPreviewBusy(channelId);
@@ -268,14 +292,19 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
       <div><span>VIEWS</span><strong>{compactMetric(linked.viewCount)}</strong></div>
       <div><span>STATUS</span><strong>{linked.status==='connected'?'OK':linked.status==='needs-reauth'?'REAUTH':'OFF'}</strong></div>
      </div>
-     <div className="youtube-project-link">
-      <Link2 size={14}/><span>VINCULADO AO PROJETO</span><strong>{linked.projectName}</strong>
+     <div className="youtube-project-link youtube-project-link-edit">
+      <Link2 size={14}/>
+      <span>VINCULADO AO PROJETO</span>
+      <select aria-label={'Projeto vinculado a '+linked.youtubeTitle} value={linked.projectId} disabled={youtubeBusy==='move:'+linked.id} onChange={event=>void moveLinkedChannel(linked,event.target.value)}>
+       {items.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
      </div>
      {linked.lastValidatedAt&&<small className="youtube-linked-validated">Validado em {new Date(linked.lastValidatedAt).toLocaleString('pt-BR')}</small>}
      {linked.error&&<p className="youtube-linked-error">{linked.error}</p>}
      <footer>
       <button className="button subtle small" disabled={!project} onClick={()=>project&&onOpenBrain(project)}><BrainCircuit size={14}/>Abrir projeto</button>
-      <button className="button subtle small" disabled={youtubeBusy===linked.id} onClick={()=>void validateLinkedChannel(linked)}><RefreshCw size={14} className={youtubeBusy===linked.id?'spin':''}/>Validar</button>
+      <button className="button subtle small" disabled={youtubeBusy==='validate:'+linked.id} onClick={()=>void validateLinkedChannel(linked)}><RefreshCw size={14} className={youtubeBusy==='validate:'+linked.id?'spin':''}/>Validar</button>
+      {!linked.isPrimary&&<button className="button subtle small" disabled={youtubeBusy==='primary:'+linked.id} onClick={()=>void setPrimaryLinkedChannel(linked)}><Check size={14}/>Definir principal</button>}
       <a className="button subtle small" href={'https://www.youtube.com/channel/'+encodeURIComponent(linked.youtubeChannelId)} target="_blank" rel="noreferrer"><ExternalLink size={14}/>YouTube</a>
       <a className="button subtle small" href={'/api/youtube-oauth/start?channelId='+encodeURIComponent(linked.projectId)}><Play size={14}/>Reconectar</a>
      </footer>
