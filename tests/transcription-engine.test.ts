@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { TranscriptPayload, VoiceAlignment } from '../src/lib/types';
 import {
   formatTranscriptTimestamp, normalizeTranscriptPayload, parseSrtOrVtt,
@@ -123,4 +125,19 @@ test('Transcript mismatch can be explicitly overridden by operator review',()=>{
   const p=normalizeTranscriptPayload(payload(),'Completely different narration about a rocket ship.');
   const issues=transcriptApprovalIssues({...p,review:{scriptMismatchOverride:true,notes:'Intentional adaptation.'}},2);
   assert.equal(issues.includes('script-mismatch'),false);
+});
+
+
+test('Long-form Scribe sends a signed source URL instead of materializing audio bytes',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/transcription-engine.ts'),'utf8');
+  const start=source.indexOf('export async function transcribeWithScribe');
+  const end=source.indexOf('export async function importTranscriptFile',start);
+  assert.ok(start>=0&&end>start);
+  const block=source.slice(start,end);
+  assert.match(block,/signedMediaUrl\(/);
+  assert.match(block,/form\.set\('source_url',signedUrl\)/);
+  assert.doesNotMatch(block,/downloadVoiceAsset/);
+  assert.doesNotMatch(block,/new Blob\(\[bytes\]/);
+  assert.match(block,/SCRIBE_LONG_FORM_TIMEOUT_MS/);
+  assert.match(block,/Math\.min\(1800000/);
 });
