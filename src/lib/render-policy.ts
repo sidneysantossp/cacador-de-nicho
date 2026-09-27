@@ -5,6 +5,7 @@ import type {
 } from '@/lib/types';
 
 export const DEFAULT_RENDER_CRF=20;
+export const DEFAULT_DRAFT_RENDER_CRF=28;
 export const DEFAULT_RENDER_AUDIO_KBPS=192;
 
 export function renderPresetOutput(
@@ -25,6 +26,10 @@ export function renderPresetOutput(
 
 export function renderEncoderPreset(preset:RenderPreset):RenderEncoderPreset{
   return preset==='draft-720p30'?'ultrafast':'medium';
+}
+
+export function renderPresetDefaultCrf(preset:RenderPreset){
+  return preset==='draft-720p30'?DEFAULT_DRAFT_RENDER_CRF:DEFAULT_RENDER_CRF;
 }
 
 export function validRenderCrf(value:number){
