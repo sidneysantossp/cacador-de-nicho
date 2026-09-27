@@ -10,7 +10,7 @@ import { transcriptPayloadSchema } from '@/lib/server/validation';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=300;
+export const maxDuration=1200;
 
 const jsonSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('alignment'),voiceAssetId:z.string().uuid()}).strict(),
