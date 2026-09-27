@@ -166,7 +166,7 @@ PYMODE
   for FILE in "$ROOT"/ops/self-hosted/systemd/*.timer; do
     [[ -f "$FILE" ]] || continue
     TIMER="$(basename "$FILE")"
-    if [[ "$OPERATION_MODE" == "assisted-manual" ]] && [[ "$TIMER" == "cacadores-universe-cycle.timer" || "$TIMER" == "cacadores-market-intelligence.timer" ]]; then
+    if [[ "$OPERATION_MODE" == "assisted-manual" ]] && [[ "$TIMER" == "cacadores-universe-cycle.timer" || "$TIMER" == "cacadores-market-intelligence.timer" || "$TIMER" == "cacadores-youtube-publish-worker-sync.timer" ]]; then
       systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
       continue
     fi
