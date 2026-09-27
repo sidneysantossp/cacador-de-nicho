@@ -12,7 +12,7 @@ import { loadPublicationPackage } from './publication-package';
 import { loadProductionQualityReport } from './production-quality';
 import { loadRenderJob } from './render-engine';
 import {
-  loadYouTubeConnection, loadYouTubeConnectionSecret, refreshYouTubeAccessToken
+  loadLinkedYouTubeConnection, loadLinkedYouTubeConnectionSecret, refreshYouTubeAccessToken
 } from './youtube-oauth';
 
 const ANALYTICS_SCOPE='https://www.googleapis.com/auth/yt-analytics.readonly';
@@ -270,12 +270,14 @@ export async function collectYouTubePerformance(
     throw new HttpError('Somente vídeos já publicados podem alimentar o Performance Analyst.',409);
   }
 
-  const [pkg,connection]=await Promise.all([
-    loadPublicationPackage(String(jobRow.package_id)),
-    loadYouTubeConnection(String(jobRow.channel_id))
-  ]);
+  const pkg=await loadPublicationPackage(String(jobRow.package_id));
   if(!pkg)throw new HttpError('Publication Package da publicação não foi encontrado.',404);
+  if(!pkg.targetYouTubeChannelId)throw new HttpError('A publicação não possui canal YouTube de destino registrado.',409);
+  const connection=await loadLinkedYouTubeConnection(String(jobRow.channel_id),pkg.targetYouTubeChannelId);
   if(!connection||connection.status!=='connected')throw new HttpError('Conexão YouTube precisa ser reautorizada.',409);
+  if(connection.id!==String(jobRow.connection_id)){
+    throw new HttpError('O canal YouTube da publicação não corresponde ao destino imutável do package.',409);
+  }
   if(!connection.scopes.includes(ANALYTICS_SCOPE)){
     throw new HttpError('Reconecte o canal para conceder acesso ao YouTube Analytics.',409);
   }
@@ -293,7 +295,7 @@ export async function collectYouTubePerformance(
     }
   }
 
-  const secret=await loadYouTubeConnectionSecret(String(jobRow.connection_id));
+  const secret=await loadLinkedYouTubeConnectionSecret(String(jobRow.connection_id));
   const token=await refreshYouTubeAccessToken(secret.refreshToken);
   const accessToken=token.access_token!;
   const videoId=String(jobRow.youtube_video_id);
