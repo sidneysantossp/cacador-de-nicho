@@ -1150,10 +1150,10 @@ async function loop(){
       const token=randomUUID();
       const jobId=await rpc('claim_render_job',{
         p_worker_token:token,
+        p_worker_id:WORKER_ID,
         p_lease_seconds:LEASE_SECONDS
       });
       if(jobId){
-        await updateOwned(String(jobId),token,{worker_id:WORKER_ID});
         await touchRenderWorker('busy',String(jobId),true);
         await processJob(String(jobId),token);
       }else{
