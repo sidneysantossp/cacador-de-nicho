@@ -6,7 +6,7 @@ import {
   RotateCcw, Sparkles, Square, XCircle
 } from 'lucide-react';
 import type { ManagedChannel, RenderJob, RenderPreset, RenderWorkerNode, VideoEditListItem } from '@/lib/types';
-import { renderCapacityForecast, renderCapacityProfiles } from '@/lib/render-capacity-policy';
+import { renderCapacityForecast, renderCapacityProfiles, renderFleetSizing } from '@/lib/render-capacity-policy';
 
 function when(value?:string){
   if(!value)return '—';
@@ -42,6 +42,8 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
+  const [targetVideosPerDay,setTargetVideosPerDay]=useState(12);
+  const [fleetUtilizationPercent,setFleetUtilizationPercent]=useState(80);
 
   const selectedEdit=useMemo(()=>edits.find(edit=>edit.id===videoEditId)??null,[edits,videoEditId]);
   const active=useMemo(()=>jobs.some(job=>job.status==='queued'||job.status==='processing'),[jobs]);
@@ -55,11 +57,19 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
   const cachedCapacity=useMemo(()=>capacityProfiles.find(
     profile=>profile.preset===preset&&profile.mode==='cached'
   )??null,[capacityProfiles,preset]);
+  const forecastDurations=[20,30,40,50,60];
   const coldForecast=useMemo(()=>coldCapacity?renderCapacityForecast({
     profile:coldCapacity,
-    durationsMinutes:[20,30,40,50,60],
+    durationsMinutes:forecastDurations,
     onlineWorkers:onlineWorkers.length
   }):[],[coldCapacity,onlineWorkers.length]);
+  const fleetSizing=useMemo(()=>coldCapacity?renderFleetSizing({
+    profile:coldCapacity,
+    durationsMinutes:forecastDurations,
+    targetVideosPerDay,
+    onlineWorkers:onlineWorkers.length,
+    utilization:fleetUtilizationPercent/100
+  }):[],[coldCapacity,targetVideosPerDay,onlineWorkers.length,fleetUtilizationPercent]);
 
   async function load(silent=false){
     if(!silent)setLoading(true);
@@ -171,6 +181,23 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
           <span>{onlineWorkers.length?row.fleetVideosPerDay.toFixed(1)+' vídeos/dia':'0 nodes online'}</span>
         </div>)}
       </div>:<div className="render-capacity-empty">Ainda não há render frio concluído para este preset. A previsão aparecerá após a primeira amostra real.</div>}
+      {coldCapacity&&<div className="render-fleet-planner">
+        <div className="render-fleet-controls">
+          <label>Meta diária<input type="number" min="1" max="100" step="1" value={targetVideosPerDay} onChange={e=>setTargetVideosPerDay(Math.max(1,Math.min(100,Number(e.target.value)||1)))}/><small>vídeos/dia</small></label>
+          <label>Utilização segura<input type="number" min="50" max="100" step="5" value={fleetUtilizationPercent} onChange={e=>setFleetUtilizationPercent(Math.max(50,Math.min(100,Number(e.target.value)||80)))}/><small>% do dia disponível para render</small></label>
+          <div><strong>{onlineWorkers.length}</strong><small>node(s) online agora</small></div>
+          <div><strong>{coldCapacity.sampleCount<3?'baixa':'observada'}</strong><small>confiança · {coldCapacity.sampleCount} amostra(s)</small></div>
+        </div>
+        <div className="render-fleet-table">
+          <div className="head"><span>Duração</span><span>Capacidade segura atual</span><span>Nodes p/ meta</span><span>Adicionar</span></div>
+          {fleetSizing.map(row=><div key={row.durationMinutes}>
+            <strong>{row.durationMinutes} min</strong>
+            <span>{row.currentSafeVideosPerDay.toFixed(1)} vídeos/dia</span>
+            <span>{row.requiredWorkers} node(s)</span>
+            <span>{row.additionalWorkers>0?'+'+row.additionalWorkers:'nenhum'}</span>
+          </div>)}
+        </div>
+      </div>}
       {cachedCapacity&&<div className="render-capacity-cache">
         <strong>Revisão 100% cacheada observada</strong>
         <span>{cachedCapacity.medianRealTimeFactor.toFixed(2)}× RTF · {cachedCapacity.sampleCount} amostra(s)</span>
