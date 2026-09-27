@@ -16,10 +16,14 @@ export function youtubePublishReadinessIssues(
     if(pkg.metadata.syntheticMediaDisclosure==='review')issues.push('synthetic-disclosure-unconfirmed');
     if(!pkg.metadata.title.trim())issues.push('title-missing');
     if(!pkg.metadata.categoryId.trim())issues.push('category-missing');
+    if(!pkg.targetYouTubeChannelId?.trim())issues.push('youtube-target-missing');
   }
   if(!connection)issues.push('youtube-not-connected');
   else if(connection.status!=='connected')issues.push('youtube-reauth-required');
-  else if(pkg&&connection.channelId!==pkg.channelId)issues.push('youtube-channel-mismatch');
+  else if(pkg&&(
+    connection.channelId!==pkg.channelId||
+    connection.youtubeChannelId!==pkg.targetYouTubeChannelId
+  ))issues.push('youtube-channel-mismatch');
   return [...new Set(issues)];
 }
 
