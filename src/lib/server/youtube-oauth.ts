@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import type { YouTubeConnection } from '@/lib/types';
+import type { LinkedYouTubeChannel, YouTubeConnection } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import {
@@ -32,6 +32,12 @@ type ChannelListResponse={
       title?:string;
       customUrl?:string;
       thumbnails?:Record<string,{url?:string}>;
+    };
+    statistics?:{
+      viewCount?:string;
+      subscriberCount?:string;
+      videoCount?:string;
+      hiddenSubscriberCount?:boolean;
     };
   }>;
   error?:{message?:string};
@@ -132,9 +138,14 @@ export async function refreshYouTubeAccessToken(refreshToken:string){
   }));
 }
 
+function optionalCount(value:string|undefined){
+  const parsed=Number(value);
+  return Number.isFinite(parsed)&&parsed>=0?parsed:undefined;
+}
+
 export async function fetchOwnYouTubeChannel(accessToken:string){
   const url=new URL('https://www.googleapis.com/youtube/v3/channels');
-  url.searchParams.set('part','id,snippet');
+  url.searchParams.set('part','id,snippet,statistics');
   url.searchParams.set('mine','true');
   const response=await fetch(url,{
     headers:{Authorization:'Bearer '+accessToken},
@@ -150,7 +161,10 @@ export async function fetchOwnYouTubeChannel(accessToken:string){
     youtubeChannelId:item.id,
     youtubeTitle:item.snippet?.title?.trim()||item.id,
     youtubeHandle:item.snippet?.customUrl?.trim()||undefined,
-    youtubeThumbnail:thumb
+    youtubeThumbnail:thumb,
+    subscriberCount:item.statistics?.hiddenSubscriberCount?undefined:optionalCount(item.statistics?.subscriberCount),
+    videoCount:optionalCount(item.statistics?.videoCount),
+    viewCount:optionalCount(item.statistics?.viewCount)
   };
 }
 
