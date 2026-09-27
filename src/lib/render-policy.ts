@@ -1,4 +1,8 @@
-import type { RenderManifest, RenderOutputFormat, RenderPreset, VideoEdit, Timeline, Transcript } from '@/lib/types';
+import { createHash } from 'node:crypto';
+import type {
+  RenderChapterPlan, RenderManifest, RenderOutputFormat, RenderPreset,
+  VideoEdit, Timeline, Transcript
+} from '@/lib/types';
 
 export const DEFAULT_RENDER_CRF=20;
 export const DEFAULT_RENDER_AUDIO_KBPS=192;
@@ -25,6 +29,95 @@ export function validRenderCrf(value:number){
 
 export function validRenderAudioBitrate(value:number){
   return Number.isInteger(value)&&value>=96&&value<=320;
+}
+
+function relativeRenderSeconds(value:number,start:number){
+  return Math.max(0,Math.round((value-start)*1000)/1000);
+}
+
+function renderChapterHash(value:unknown){
+  return createHash('sha256').update(JSON.stringify(value),'utf8').digest('hex');
+}
+
+export function buildRenderChapterPlan(input:{
+  manifest:RenderManifest;
+  preset:RenderPreset;
+  crf:number;
+}):RenderChapterPlan[]{
+  const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
+  const chapters=input.manifest.chapters?.length
+    ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
+    :[{
+      id:input.manifest.timelineId,
+      sequence:1,
+      label:'Chapter 01',
+      startSeconds:0,
+      endSeconds:input.manifest.durationSeconds,
+      durationSeconds:input.manifest.durationSeconds,
+      sceneIds:input.manifest.visualClips.map(clip=>clip.sceneId)
+    }];
+
+  return chapters.map(chapter=>{
+    const sceneIds=new Set(chapter.sceneIds);
+    const clips=input.manifest.visualClips
+      .filter(clip=>sceneIds.has(clip.sceneId))
+      .map(clip=>({
+        ...clip,
+        startSeconds:relativeRenderSeconds(clip.startSeconds,chapter.startSeconds),
+        endSeconds:relativeRenderSeconds(clip.endSeconds,chapter.startSeconds)
+      }));
+    const captions=input.manifest.captions.cues
+      .filter(cue=>cue.endSeconds>chapter.startSeconds&&cue.startSeconds<chapter.endSeconds)
+      .map(cue=>({
+        ...cue,
+        startSeconds:relativeRenderSeconds(
+          Math.max(chapter.startSeconds,cue.startSeconds),chapter.startSeconds
+        ),
+        endSeconds:relativeRenderSeconds(
+          Math.min(chapter.endSeconds,cue.endSeconds),chapter.startSeconds
+        ),
+        words:cue.words.map(word=>({
+          ...word,
+          startSeconds:relativeRenderSeconds(
+            Math.max(chapter.startSeconds,word.startSeconds),chapter.startSeconds
+          ),
+          endSeconds:relativeRenderSeconds(
+            Math.min(chapter.endSeconds,word.endSeconds),chapter.startSeconds
+          )
+        }))
+      }));
+    const overlays=input.manifest.overlays
+      .filter(item=>item.endSeconds>chapter.startSeconds&&item.startSeconds<chapter.endSeconds)
+      .map(item=>({
+        ...item,
+        startSeconds:relativeRenderSeconds(
+          Math.max(chapter.startSeconds,item.startSeconds),chapter.startSeconds
+        ),
+        endSeconds:relativeRenderSeconds(
+          Math.min(chapter.endSeconds,item.endSeconds),chapter.startSeconds
+        )
+      }));
+    const contentHash=renderChapterHash({
+      compilerVersion:'render-v4',
+      outputFormat,
+      videoCodec:'libx264',
+      fallbackVideoCodecs:['mpeg4'],
+      crf:input.crf,
+      durationSeconds:chapter.durationSeconds,
+      clips,
+      captions:{
+        enabled:input.manifest.captions.enabled,
+        position:input.manifest.captions.position,
+        fontSize:input.manifest.captions.fontSize,
+        maxLines:input.manifest.captions.maxLines,
+        backgroundOpacity:input.manifest.captions.backgroundOpacity,
+        style:input.manifest.captions.style,
+        cues:captions
+      },
+      overlays
+    });
+    return {...chapter,contentHash};
+  });
 }
 
 export function renderOutputPath(input:{
