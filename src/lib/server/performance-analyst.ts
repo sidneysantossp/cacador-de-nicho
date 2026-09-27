@@ -12,7 +12,7 @@ import { loadPublicationPackage } from './publication-package';
 import { loadProductionQualityReport } from './production-quality';
 import { loadRenderJob } from './render-engine';
 import {
-  loadLinkedYouTubeConnection, loadLinkedYouTubeConnectionSecret, refreshYouTubeAccessToken
+  listLinkedYouTubeChannels, loadLinkedYouTubeConnection, loadLinkedYouTubeConnectionSecret, refreshYouTubeAccessToken
 } from './youtube-oauth';
 
 const ANALYTICS_SCOPE='https://www.googleapis.com/auth/yt-analytics.readonly';
@@ -425,7 +425,7 @@ export async function approvePerformanceReport(input:{
 }
 
 export async function performanceAnalystChannelState(channelId:string){
-  const [observations,reports,published,connection]=await Promise.all([
+  const [observations,reports,published,allLinkedChannels]=await Promise.all([
     listPerformanceObservations(channelId),
     listPerformanceReports(channelId),
     db().from('radar_youtube_publish_jobs')
@@ -435,9 +435,25 @@ export async function performanceAnalystChannelState(channelId:string){
       .not('youtube_video_id','is',null)
       .order('completed_at',{ascending:false})
       .limit(100),
-    loadYouTubeConnection(channelId)
+    listLinkedYouTubeChannels()
   ]);
-  const jobs=checked(published)??[];
+  const jobs=(checked(published)??[]) as Array<Record<string,unknown>>;
+  const linkedChannels=allLinkedChannels.filter(item=>item.projectId===channelId);
+  const primary=linkedChannels.find(item=>item.isPrimary)??linkedChannels[0]??null;
+  const connection=primary?{
+    id:primary.id,
+    channelId:primary.projectId,
+    youtubeChannelId:primary.youtubeChannelId,
+    youtubeTitle:primary.youtubeTitle,
+    youtubeHandle:primary.youtubeHandle,
+    youtubeThumbnail:primary.youtubeThumbnail,
+    scopes:primary.scopes,
+    status:primary.status,
+    lastValidatedAt:primary.lastValidatedAt,
+    error:primary.error,
+    createdAt:primary.createdAt,
+    updatedAt:primary.updatedAt
+  }:null;
   return {
     observations,
     reports,
@@ -461,7 +477,8 @@ export async function performanceAnalystChannelState(channelId:string){
       completedAt:row.completed_at?String(row.completed_at):undefined,
       updatedAt:String(row.updated_at)
     } as YouTubePublishJob)),
-    analyticsScopeGranted:Boolean(connection?.scopes.includes(ANALYTICS_SCOPE)),
-    connection
+    analyticsScopeGranted:linkedChannels.some(item=>item.status==='connected'&&item.scopes.includes(ANALYTICS_SCOPE)),
+    connection,
+    linkedChannels
   };
 }
