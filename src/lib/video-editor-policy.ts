@@ -229,14 +229,13 @@ function fallbackWords(
 }
 
 function segmentWords(
-  transcript:Transcript,
+  wordById:Map<string,Transcript['words'][number]>,
   segment:Transcript['segments'][number],
   end:number,
   options:CaptionBuildOptions
 ){
-  const byId=new Map(transcript.words.filter(word=>word.type==='word').map(word=>[word.id,word]));
   const source=segment.wordIds
-    .map(id=>byId.get(id))
+    .map(id=>wordById.get(id))
     .filter((word):word is Transcript['words'][number]=>!!word)
     .sort((a,b)=>a.startSeconds-b.startSeconds);
   const tokens=source.map(word=>word.text);
@@ -293,12 +292,15 @@ export function buildCaptionCues(
 ):VideoEditCaptionCue[]{
   const configuredMax=Math.max(2,Math.min(24,options.maxWordsPerCaption??12));
   const segments=[...transcript.segments].sort((a,b)=>a.startSeconds-b.startSeconds);
+  const wordById=new Map(
+    transcript.words.filter(word=>word.type==='word').map(word=>[word.id,word])
+  );
   const cues:VideoEditCaptionCue[]=[];
 
   segments.forEach((segment,index)=>{
     const end=captionEnd(segment,segments[index+1],duration);
     if(!segment.text.trim()||end<=segment.startSeconds)return;
-    const words=segmentWords(transcript,segment,end,options);
+    const words=segmentWords(wordById,segment,end,options);
     const maxWords=adaptiveCaptionLimit(words,configuredMax,options);
     const chunks=chunkWords(words,maxWords);
     if(!chunks.length){
