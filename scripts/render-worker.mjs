@@ -33,13 +33,19 @@ const R2_MULTIPART_PART_BYTES=Math.max(
 )*1024*1024;
 let lastWorkerHeartbeatAt=0;
 
-function renderDiskReady(){
+function renderDiskReady(requiredAdditionalBytes=0){
   try{
     const fs=statfsSync(os.tmpdir());
     const freeBytes=Number(fs.bavail)*Number(fs.bsize);
-    return {ready:freeBytes>=MIN_FREE_DISK_BYTES,freeBytes};
+    const extra=Math.max(0,Number(requiredAdditionalBytes)||0);
+    const requiredBytes=MIN_FREE_DISK_BYTES+extra;
+    return {ready:freeBytes>=requiredBytes,freeBytes,requiredBytes};
   }catch(error){
-    return {ready:false,freeBytes:0,error:safeError(error)};
+    return {
+      ready:false,freeBytes:0,
+      requiredBytes:MIN_FREE_DISK_BYTES+Math.max(0,Number(requiredAdditionalBytes)||0),
+      error:safeError(error)
+    };
   }
 }
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
@@ -940,9 +946,22 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
   }
 
   await assertActive(jobId,token);
+  const chapterBytes=(await Promise.all(chapterPaths.map(async file=>{
+    const info=await stat(file);
+    return info.size;
+  }))).reduce((sum,size)=>sum+size,0);
+  const concatDisk=renderDiskReady(chapterBytes);
+  if(!concatDisk.ready){
+    throw new Error(
+      'insufficient-render-disk-for-concat free='+concatDisk.freeBytes+
+      ' required='+concatDisk.requiredBytes
+    );
+  }
   await heartbeat(jobId,token,82,'concatenating-chapters');
   const visualMaster=path.join(root,'visual-master.mp4');
   await concatChapterVideos(chapterPaths,visualMaster,root,payload);
+  const visualMasterInfo=await stat(visualMaster);
+  await rm(chapterDir,{recursive:true,force:true});
 
   await assertActive(jobId,token);
   await heartbeat(jobId,token,88,'downloading-audio');
@@ -958,6 +977,13 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
   });
 
   await assertActive(jobId,token);
+  const muxDisk=renderDiskReady(visualMasterInfo.size);
+  if(!muxDisk.ready){
+    throw new Error(
+      'insufficient-render-disk-for-mux free='+muxDisk.freeBytes+
+      ' required='+muxDisk.requiredBytes
+    );
+  }
   await heartbeat(jobId,token,92,'mixing-master-audio');
   const finalPath=path.join(root,'render.mp4');
   const muxManifest={
@@ -965,6 +991,8 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
     format:{...renderOutputFormat(payload,manifest),aspectRatio:manifest.format.aspectRatio}
   };
   await muxAudio(muxManifest,visualMaster,audioPaths,finalPath,payload);
+  await rm(visualMaster,{force:true});
+  await rm(inputDir,{recursive:true,force:true});
 
   await assertActive(jobId,token);
   await heartbeat(jobId,token,97,'uploading-output');
@@ -985,7 +1013,11 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
     secondsPerFinishedMinute:rounded(wallSeconds/finishedMinutes),
     realTimeFactor:rounded(wallSeconds/Math.max(.001,Number(manifest.durationSeconds))),
     cacheHits,
-    renderedChapters
+    renderedChapters,
+    scratch:{
+      chapterBytes,
+      visualMasterBytes:visualMasterInfo.size
+    }
   };
 
   await assertActive(jobId,token);

@@ -450,3 +450,27 @@ test('Render worker uses bounded R2 multipart uploads and lease keepalive for lo
   assert.match(source,/downloading-cache-chapter-/);
   assert.match(source,/uploading-output/);
 });
+
+
+test('Render-v4 frees chapter and visual intermediates before the next heavy copy',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  const concat=source.indexOf('await concatChapterVideos(chapterPaths,visualMaster,root,payload);');
+  const removeChapters=source.indexOf("await rm(chapterDir,{recursive:true,force:true});",concat);
+  const mux=source.indexOf('await muxAudio(muxManifest,visualMaster,audioPaths,finalPath,payload);',removeChapters);
+  const removeVisual=source.indexOf("await rm(visualMaster,{force:true});",mux);
+  const upload=source.indexOf("jobId,token,97,'uploading-output'",removeVisual);
+  assert.ok(concat>=0&&removeChapters>concat,'chapter scratch must be removed after concat');
+  assert.ok(mux>removeChapters,'mux must start after chapter cleanup');
+  assert.ok(removeVisual>mux,'visual master must be removed after mux');
+  assert.ok(upload>removeVisual,'final upload must begin after visual scratch cleanup');
+});
+
+test('Render-v4 reserves free disk for the next intermediate file',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/function renderDiskReady\(requiredAdditionalBytes=0\)/);
+  assert.match(source,/const requiredBytes=MIN_FREE_DISK_BYTES\+extra/);
+  assert.match(source,/renderDiskReady\(chapterBytes\)/);
+  assert.match(source,/renderDiskReady\(visualMasterInfo\.size\)/);
+  assert.match(source,/insufficient-render-disk-for-concat/);
+  assert.match(source,/insufficient-render-disk-for-mux/);
+});
