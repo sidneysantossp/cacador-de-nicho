@@ -2,7 +2,7 @@
 Description=Watch Caçadores production health
 
 [Timer]
-OnBootSec=3min
+OnActiveSec=3min
 OnUnitActiveSec=2min
 AccuracySec=15s
 Persistent=true
