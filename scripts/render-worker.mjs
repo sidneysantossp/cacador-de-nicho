@@ -785,13 +785,20 @@ async function concatChapterVideos(paths,outputPath,root,payload){
   }
 }
 
-async function downloadItems(items,inputDir,paths){
+async function downloadItems(items,inputDir,paths,lease=null){
   const dedup=[...new Map(items.map(item=>[item.id,item])).values()];
   for(let i=0;i<dedup.length;i++){
     const item=dedup[i];
     const ext=path.extname(item.storagePath)||'.bin';
     const dest=path.join(inputDir,item.id+ext);
-    await downloadStorage(item.storagePath,dest);
+    const task=()=>downloadStorage(item.storagePath,dest);
+    if(lease){
+      await withLeaseHeartbeat(
+        lease.jobId,lease.token,lease.progress,lease.stage,task
+      );
+    }else{
+      await task();
+    }
     paths.set(item.id,dest);
   }
 }
@@ -801,7 +808,12 @@ async function renderV4Chapter(jobId,token,job,payload,master,row,plan,chapterDi
   const finalLocal=path.join(chapterDir,String(plan.sequence).padStart(3,'0')+'.mp4');
   if(row.status==='completed'&&cachedPath){
     try{
-      await downloadStorage(cachedPath,finalLocal);
+      await withLeaseHeartbeat(
+        jobId,token,
+        5+Math.round(chapterIndex/Math.max(1,total)*70),
+        'downloading-cache-chapter-'+plan.sequence,
+        ()=>downloadStorage(cachedPath,finalLocal)
+      );
       return {path:finalLocal,cacheHit:true,renderSeconds:Number(row.render_seconds??0)};
     }catch(error){
       console.error(JSON.stringify({
@@ -828,7 +840,11 @@ async function renderV4Chapter(jobId,token,job,payload,master,row,plan,chapterDi
     const paths=new Map();
     await downloadItems(
       manifest.visualClips.map(clip=>({id:clip.assetId,storagePath:clip.storagePath})),
-      inputDir,paths
+      inputDir,paths,{
+        jobId,token,
+        progress:5+Math.round((chapterIndex+.08)/Math.max(1,total)*70),
+        stage:'downloading-chapter-'+plan.sequence
+      }
     );
     await updateChapter(row.id,{progress:12});
 
@@ -865,7 +881,12 @@ async function renderV4Chapter(jobId,token,job,payload,master,row,plan,chapterDi
       'channels',job.channel_id,'episodes',job.episode_id,'render-cache','v4',
       plan.contentHash+'.mp4'
     ].join('/');
-    const uploaded=await uploadStorage(cacheKey,finalLocal);
+    const uploaded=await withLeaseHeartbeat(
+      jobId,token,
+      5+Math.round((chapterIndex+.95)/Math.max(1,total)*70),
+      'uploading-cache-chapter-'+plan.sequence,
+      ()=>uploadStorage(cacheKey,finalLocal)
+    );
     const renderSeconds=(Date.now()-started)/1000;
     await updateChapter(row.id,{
       status:'completed',progress:100,cache_hit:false,
@@ -932,7 +953,9 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
     {id:manifest.voice.assetId,storagePath:manifest.voice.storagePath},
     ...(manifest.music?[{id:manifest.music.assetId,storagePath:manifest.music.storagePath}]:[]),
     ...(manifest.sfxEvents??[]).map(item=>({id:item.assetId,storagePath:item.storagePath}))
-  ],inputDir,audioPaths);
+  ],inputDir,audioPaths,{
+    jobId,token,progress:88,stage:'downloading-audio'
+  });
 
   await assertActive(jobId,token);
   await heartbeat(jobId,token,92,'mixing-master-audio');
@@ -950,7 +973,10 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
     job.video_edit_id,'v'+String(job.video_edit_version).padStart(4,'0'),
     job.id+'.mp4'
   ].join('/');
-  const uploadedOutput=await uploadStorage(outputPath,finalPath);
+  const uploadedOutput=await withLeaseHeartbeat(
+    jobId,token,97,'uploading-output',
+    ()=>uploadStorage(outputPath,finalPath)
+  );
   const wallSeconds=(Date.now()-wallStarted)/1000;
   const finishedMinutes=Math.max(.001,Number(manifest.durationSeconds)/60);
   const metrics={
@@ -1140,9 +1166,13 @@ async function processJob(jobId,token){
       const item=dedup[i];
       const ext=path.extname(item.storagePath)||'.bin';
       const dest=path.join(inputDir,item.id+ext);
-      await downloadStorage(item.storagePath,dest);
+      const downloadProgress=3+Math.round((i+1)/dedup.length*17);
+      await withLeaseHeartbeat(
+        jobId,token,downloadProgress,'downloading-sources',
+        ()=>downloadStorage(item.storagePath,dest)
+      );
       paths.set(item.id,dest);
-      await heartbeat(jobId,token,3+Math.round((i+1)/dedup.length*17),'downloading-sources');
+      await heartbeat(jobId,token,downloadProgress,'downloading-sources');
     }
 
     const segmentPaths=[];
@@ -1180,7 +1210,10 @@ async function processJob(jobId,token){
       job.video_edit_id,'v'+String(job.video_edit_version).padStart(4,'0'),
       job.id+'.mp4'
     ].join('/');
-    const uploadedOutput=await uploadStorage(outputPath,finalPath);
+    const uploadedOutput=await withLeaseHeartbeat(
+      jobId,token,96,'uploading-output',
+      ()=>uploadStorage(outputPath,finalPath)
+    );
 
     await assertActive(jobId,token);
     await updateOwned(jobId,token,{
