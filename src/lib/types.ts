@@ -1999,6 +1999,7 @@ export type PublicationPackagePayload = {
  renderJobId: string;
  renderOutputPath: string;
  renderOutputBytes?: number;
+ targetYouTubeChannelId?: string;
  metadata: {
   title: string;
   description: string;
@@ -2138,6 +2139,7 @@ export type PublicationPackageIssue = {
   | 'tags-too-long'
   | 'language-missing'
   | 'category-missing'
+  | 'youtube-target-missing'
   | 'audience-unconfirmed'
   | 'synthetic-disclosure-unconfirmed'
   | 'thumbnail-missing'

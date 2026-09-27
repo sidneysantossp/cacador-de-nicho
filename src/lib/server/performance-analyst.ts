@@ -12,7 +12,7 @@ import { loadPublicationPackage } from './publication-package';
 import { loadProductionQualityReport } from './production-quality';
 import { loadRenderJob } from './render-engine';
 import {
-  loadYouTubeConnection, loadYouTubeConnectionSecret, refreshYouTubeAccessToken
+  listLinkedYouTubeChannels, loadLinkedYouTubeConnection, loadLinkedYouTubeConnectionSecret, refreshYouTubeAccessToken
 } from './youtube-oauth';
 
 const ANALYTICS_SCOPE='https://www.googleapis.com/auth/yt-analytics.readonly';
@@ -270,12 +270,14 @@ export async function collectYouTubePerformance(
     throw new HttpError('Somente vídeos já publicados podem alimentar o Performance Analyst.',409);
   }
 
-  const [pkg,connection]=await Promise.all([
-    loadPublicationPackage(String(jobRow.package_id)),
-    loadYouTubeConnection(String(jobRow.channel_id))
-  ]);
+  const pkg=await loadPublicationPackage(String(jobRow.package_id));
   if(!pkg)throw new HttpError('Publication Package da publicação não foi encontrado.',404);
+  if(!pkg.targetYouTubeChannelId)throw new HttpError('A publicação não possui canal YouTube de destino registrado.',409);
+  const connection=await loadLinkedYouTubeConnection(String(jobRow.channel_id),pkg.targetYouTubeChannelId);
   if(!connection||connection.status!=='connected')throw new HttpError('Conexão YouTube precisa ser reautorizada.',409);
+  if(connection.id!==String(jobRow.connection_id)){
+    throw new HttpError('O canal YouTube da publicação não corresponde ao destino imutável do package.',409);
+  }
   if(!connection.scopes.includes(ANALYTICS_SCOPE)){
     throw new HttpError('Reconecte o canal para conceder acesso ao YouTube Analytics.',409);
   }
@@ -293,7 +295,7 @@ export async function collectYouTubePerformance(
     }
   }
 
-  const secret=await loadYouTubeConnectionSecret(String(jobRow.connection_id));
+  const secret=await loadLinkedYouTubeConnectionSecret(String(jobRow.connection_id));
   const token=await refreshYouTubeAccessToken(secret.refreshToken);
   const accessToken=token.access_token!;
   const videoId=String(jobRow.youtube_video_id);
@@ -423,7 +425,7 @@ export async function approvePerformanceReport(input:{
 }
 
 export async function performanceAnalystChannelState(channelId:string){
-  const [observations,reports,published,connection]=await Promise.all([
+  const [observations,reports,published,allLinkedChannels]=await Promise.all([
     listPerformanceObservations(channelId),
     listPerformanceReports(channelId),
     db().from('radar_youtube_publish_jobs')
@@ -433,9 +435,25 @@ export async function performanceAnalystChannelState(channelId:string){
       .not('youtube_video_id','is',null)
       .order('completed_at',{ascending:false})
       .limit(100),
-    loadYouTubeConnection(channelId)
+    listLinkedYouTubeChannels()
   ]);
-  const jobs=checked(published)??[];
+  const jobs=(checked(published)??[]) as Array<Record<string,unknown>>;
+  const linkedChannels=allLinkedChannels.filter(item=>item.projectId===channelId);
+  const primary=linkedChannels.find(item=>item.isPrimary)??linkedChannels[0]??null;
+  const connection=primary?{
+    id:primary.id,
+    channelId:primary.projectId,
+    youtubeChannelId:primary.youtubeChannelId,
+    youtubeTitle:primary.youtubeTitle,
+    youtubeHandle:primary.youtubeHandle,
+    youtubeThumbnail:primary.youtubeThumbnail,
+    scopes:primary.scopes,
+    status:primary.status,
+    lastValidatedAt:primary.lastValidatedAt,
+    error:primary.error,
+    createdAt:primary.createdAt,
+    updatedAt:primary.updatedAt
+  }:null;
   return {
     observations,
     reports,
@@ -459,7 +477,8 @@ export async function performanceAnalystChannelState(channelId:string){
       completedAt:row.completed_at?String(row.completed_at):undefined,
       updatedAt:String(row.updated_at)
     } as YouTubePublishJob)),
-    analyticsScopeGranted:Boolean(connection?.scopes.includes(ANALYTICS_SCOPE)),
-    connection
+    analyticsScopeGranted:linkedChannels.some(item=>item.status==='connected'&&item.scopes.includes(ANALYTICS_SCOPE)),
+    connection,
+    linkedChannels
   };
 }

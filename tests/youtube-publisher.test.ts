@@ -21,6 +21,7 @@ function pkg():PublicationPackage{
     renderJobId:'55555555-5555-4555-8555-555555555555',
     renderOutputPath:'channels/x/final.mp4',
     renderOutputBytes:5*1024*1024*1024,
+    targetYouTubeChannelId:'UC_TEST_CHANNEL',
     metadata:{
       title:'Will AI Change What It Means to Be Human?',
       description:'Description',
@@ -202,5 +203,36 @@ test('project management makes the pending project to channel link visible befor
   assert.match(source,/CANAL IDENTIFICADO PELO GOOGLE/);
   assert.match(source,/Confirmar vínculo/);
   assert.match(source,/Cancelar/);
+});
+
+test('Publication Packages pin an explicit linked YouTube destination before enqueue',()=>{
+  const types=readFileSync(resolve(process.cwd(),'src/lib/types.ts'),'utf8');
+  const policy=readFileSync(resolve(process.cwd(),'src/lib/youtube-publisher-policy.ts'),'utf8');
+  const packaging=readFileSync(resolve(process.cwd(),'src/components/publication-package-workspace.tsx'),'utf8');
+  assert.match(types,/targetYouTubeChannelId\?: string/);
+  assert.match(policy,/youtube-target-missing/);
+  assert.match(policy,/connection\.youtubeChannelId!==pkg\.targetYouTubeChannelId/);
+  assert.match(packaging,/Canal YouTube de destino/);
+  assert.match(packaging,/targetYouTubeChannelId/);
+});
+
+test('YouTube publish jobs and worker bind to the independent channel plus project link',()=>{
+  const schema=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const worker=readFileSync(resolve(process.cwd(),'scripts/youtube-publish-worker.mjs'),'utf8');
+  assert.match(schema,/connection_id uuid not null references public\.radar_youtube_channels\(id\) on delete restrict/);
+  assert.match(schema,/join public\.radar_youtube_channels c on c\.id=j\.connection_id/);
+  assert.match(worker,/\/rest\/v1\/radar_youtube_channels/);
+  assert.match(worker,/\/rest\/v1\/radar_project_youtube_channels/);
+  assert.match(worker,/connection\.token_aad/);
+  assert.match(worker,/YouTube channel is no longer linked to this project/);
+  assert.doesNotMatch(worker,/\/rest\/v1\/radar_youtube_connections/);
+});
+
+test('Performance Analyst follows the immutable publication destination credentials',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/performance-analyst.ts'),'utf8');
+  assert.match(source,/loadLinkedYouTubeConnection/);
+  assert.match(source,/loadLinkedYouTubeConnectionSecret/);
+  assert.match(source,/pkg\.targetYouTubeChannelId/);
+  assert.match(source,/connection\.id!==String\(jobRow\.connection_id\)/);
 });
 

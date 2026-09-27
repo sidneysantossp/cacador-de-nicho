@@ -1118,3 +1118,9 @@
 .youtube-confirm-actions{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:680px){.youtube-confirm-route{grid-template-columns:1fr}.youtube-confirm-route>svg{transform:rotate(90deg)}}
 
+.publication-target{margin:0 0 16px;padding:14px;border:1px solid #dfd9ca;border-radius:10px;background:#fafbf6}
+.publication-target label{display:grid;gap:7px;font-size:10px;font-weight:700;color:#69745d}
+.publication-target select{width:100%}
+.publication-target p{margin:8px 0 0;font-size:11px;line-height:1.55;color:#a66e3e}
+.publication-target small{display:block;margin-top:8px;font-size:9px;color:#879172;word-break:break-all}
+

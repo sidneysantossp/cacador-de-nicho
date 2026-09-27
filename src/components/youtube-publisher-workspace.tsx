@@ -6,18 +6,19 @@ import {
   Play, RefreshCw, RotateCcw, Send, ShieldCheck, Unplug
 } from 'lucide-react';
 import type {
-  ManagedChannel, PublicationPackage, YouTubeConnection, YouTubePublishJob
+  LinkedYouTubeChannel, ManagedChannel, PublicationPackage, YouTubeConnection, YouTubePublishJob
 } from '@/lib/types';
 
 type State={
   configured:boolean;
   missing:string[];
   connection:YouTubeConnection|null;
+  linkedChannels:LinkedYouTubeChannel[];
   jobs:YouTubePublishJob[];
   readyPackages:PublicationPackage[];
 };
 
-const EMPTY:State={configured:false,missing:[],connection:null,jobs:[],readyPackages:[]};
+const EMPTY:State={configured:false,missing:[],connection:null,linkedChannels:[],jobs:[],readyPackages:[]};
 
 function when(value:string){
   return new Date(value).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});
@@ -45,6 +46,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
         configured:Boolean(body.configured),
         missing:Array.isArray(body.missing)?body.missing:[],
         connection:body.connection??null,
+        linkedChannels:Array.isArray(body.linkedChannels)?body.linkedChannels:[],
         jobs:body.jobs??[],
         readyPackages:body.readyPackages??[]
       });
@@ -168,13 +170,13 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
         <div><span>APPROVED PACKAGES</span><h3>Prontos para entrar na fila.</h3><p>O package vira um snapshot imutável no momento do enqueue.</p></div>
       </div>
       <div className="youtube-ready-list">
-        {state.readyPackages.map(pkg=><article key={pkg.id}>
-          <div><strong>{pkg.metadata.title}</strong><span>Package v{pkg.version} · {pkg.metadata.visibility} · {pkg.thumbnail.width}×{pkg.thumbnail.height}</span></div>
-          <button className="button primary small" disabled={!connected||busy==='queue:'+pkg.id} onClick={()=>void publisherAction({action:'queue',packageId:pkg.id},'queue:'+pkg.id)}>
+        {state.readyPackages.map(pkg=>{const target=state.linkedChannels.find(item=>item.youtubeChannelId===pkg.targetYouTubeChannelId);const targetReady=target?.status==='connected';return <article key={pkg.id}>
+          <div><strong>{pkg.metadata.title}</strong><span>Package v{pkg.version} · {pkg.metadata.visibility} · destino: {target?.youtubeTitle??pkg.targetYouTubeChannelId??'não definido'}{target?.youtubeHandle?' · '+target.youtubeHandle:''}</span></div>
+          <button className="button primary small" disabled={!targetReady||busy==='queue:'+pkg.id} onClick={()=>void publisherAction({action:'queue',packageId:pkg.id},'queue:'+pkg.id)}>
             {busy==='queue:'+pkg.id?<LoaderCircle className="spin" size={13}/>:<Send size={13}/>}
             Enfileirar
           </button>
-        </article>)}
+        </article>;})}
         {!state.readyPackages.length&&<div className="youtube-empty-inline">Nenhum Publication Package aprovado aguardando envio.</div>}
       </div>
     </section>
@@ -201,7 +203,7 @@ export default function YouTubePublisherWorkspace({channel}:{channel:ManagedChan
             </div>
             <div>
               {(job.status==='queued'||job.status==='processing')&&<button className="button subtle small danger" disabled={busy==='cancel:'+job.id} onClick={()=>void publisherAction({action:'cancel',jobId:job.id},'cancel:'+job.id)}>Cancelar</button>}
-              {(job.status==='failed'||job.status==='cancelled')&&<button className="button subtle small" disabled={!connected||busy==='retry:'+job.id} onClick={()=>void publisherAction({action:'retry',jobId:job.id},'retry:'+job.id)}><RotateCcw size={13}/>Retry</button>}
+              {(job.status==='failed'||job.status==='cancelled')&&<button className="button subtle small" disabled={state.linkedChannels.find(item=>item.youtubeChannelId===job.payload.youtubeChannelId)?.status!=='connected'||busy==='retry:'+job.id} onClick={()=>void publisherAction({action:'retry',jobId:job.id},'retry:'+job.id)}><RotateCcw size={13}/>Retry</button>}
             </div>
           </footer>
         </article>)}

@@ -79,6 +79,7 @@ function pkg():PublicationPackagePayload{
     language:'en',
     thumbnailConcept:'Dino looking at a humanoid robot.'
   });
+  value.targetYouTubeChannelId='UC_TEST_CHANNEL';
   value.metadata.audience='not-made-for-kids';
   value.metadata.syntheticMediaDisclosure='yes';
   value.thumbnail={
@@ -128,6 +129,13 @@ test('Publication Package blocks stale QA and changed render output',()=>{
   const issues=publicationPackageIssues(value,{qualityReport:stale,renderJob:changed});
   assert.ok(issues.some(issue=>issue.code==='quality-version-stale'&&issue.level==='blocker'));
   assert.ok(issues.some(issue=>issue.code==='render-output-mismatch'&&issue.level==='blocker'));
+});
+
+test('Publication Package requires an explicit YouTube destination',()=>{
+  const value=pkg();
+  delete value.targetYouTubeChannelId;
+  const issues=publicationPackageIssues(value,{qualityReport:quality,renderJob:render});
+  assert.ok(issues.some(issue=>issue.code==='youtube-target-missing'&&issue.level==='blocker'));
 });
 
 test('Publication Package requires explicit compliance selections',()=>{

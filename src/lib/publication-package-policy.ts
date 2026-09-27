@@ -166,6 +166,7 @@ export function publicationPackageIssues(
 
   if(!pkg.metadata.language.trim())add('language-missing','blocker','Defina o idioma do vídeo.');
   if(!pkg.metadata.categoryId.trim())add('category-missing','blocker','Defina a categoria do YouTube.');
+  if(!pkg.targetYouTubeChannelId?.trim())add('youtube-target-missing','blocker','Escolha o canal YouTube de destino antes da aprovação.');
   if(pkg.metadata.audience==='unset'){
     add('audience-unconfirmed','blocker','Confirme se o vídeo é ou não destinado a crianças.');
   }

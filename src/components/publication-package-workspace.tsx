@@ -6,7 +6,7 @@ import {
   LoaderCircle, RefreshCw, Save, ShieldCheck, Sparkles, Upload
 } from 'lucide-react';
 import type {
-  ManagedChannel, PublicationPackage, PublicationPackagePayload,
+  LinkedYouTubeChannel, ManagedChannel, PublicationPackage, PublicationPackagePayload,
   ProductionQualityReport, RenderJob
 } from '@/lib/types';
 import {
@@ -31,6 +31,7 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
   const [qualityReports,setQualityReports]=useState<ProductionQualityReport[]>([]);
   const [eligible,setEligible]=useState<ProductionQualityReport[]>([]);
   const [renders,setRenders]=useState<RenderJob[]>([]);
+  const [youtubeChannels,setYoutubeChannels]=useState<LinkedYouTubeChannel[]>([]);
   const [drafts,setDrafts]=useState<Record<string,PublicationPackagePayload>>({});
   const [busy,setBusy]=useState('');
   const [loading,setLoading]=useState(true);
@@ -44,9 +45,15 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
   async function load(silent=false){
     if(!silent)setLoading(true);
     try{
-      const res=await fetch('/api/publication-package?channelId='+encodeURIComponent(channel.id),{cache:'no-store'});
+      const [res,youtubeRes]=await Promise.all([
+        fetch('/api/publication-package?channelId='+encodeURIComponent(channel.id),{cache:'no-store'}),
+        fetch('/api/youtube-channels',{cache:'no-store'})
+      ]);
       const body=await res.json().catch(()=>({}));
+      const youtubeBody=await youtubeRes.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao carregar Publication Packaging.');
+      if(!youtubeRes.ok)throw new Error(youtubeBody.message??'Falha ao carregar canais YouTube vinculados.');
+      setYoutubeChannels(((youtubeBody.channels??[]) as LinkedYouTubeChannel[]).filter(item=>item.projectId===channel.id));
       const nextPackages=(body.packages??[]) as PublicationPackage[];
       const nextQuality=(body.qualityReports??[]) as ProductionQualityReport[];
       const nextEligible=(body.eligibleQualityReports??[]) as ProductionQualityReport[];
@@ -156,6 +163,17 @@ export default function PublicationPackageWorkspace({channel}:{channel:ManagedCh
             </div>
             <div className={'publication-status '+pkg.status}>{pkg.status.toUpperCase()}</div>
           </header>
+
+          <div className="publication-target">
+            <label>Canal YouTube de destino
+              <select disabled={approved} value={draft.targetYouTubeChannelId??''} onChange={e=>update(pkg.id,p=>({...p,targetYouTubeChannelId:e.target.value||undefined}))}>
+                <option value="">Selecione o canal que receberá este vídeo</option>
+                {youtubeChannels.map(item=><option key={item.id} value={item.youtubeChannelId} disabled={item.status!=='connected'}>{item.youtubeTitle}{item.youtubeHandle?' · '+item.youtubeHandle:''}{item.isPrimary?' · principal':''}{item.status!=='connected'?' · requer reautorização':''}</option>)}
+              </select>
+            </label>
+            {!youtubeChannels.length&&<p>Nenhum canal YouTube está vinculado a este projeto. Conecte o destino na Gestão de projetos antes de aprovar o package.</p>}
+            {!!draft.targetYouTubeChannelId&&<small>Destino imutável após a aprovação: {draft.targetYouTubeChannelId}</small>}
+          </div>
 
           <div className="publication-grid two">
             <label>Título <em>{draft.metadata.title.length}/100</em>
