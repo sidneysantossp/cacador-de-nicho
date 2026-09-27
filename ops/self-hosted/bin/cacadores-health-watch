@@ -27,7 +27,7 @@ UNITS=(
   cacadores-verified-stock-worker-sync.timer
 )
 if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
-  UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer)
+  UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer cacadores-youtube-publish-worker-sync.timer)
 fi
 for UNIT in "${UNITS[@]}"; do
   if ! systemctl is-enabled --quiet "$UNIT"; then
