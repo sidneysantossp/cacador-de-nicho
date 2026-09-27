@@ -657,6 +657,53 @@ create index if not exists radar_next_episode_plans_channel_updated on public.ra
 create table if not exists public.radar_next_episode_plan_versions(id bigint generated always as identity primary key,plan_id uuid not null references public.radar_next_episode_plans(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('review','accepted','superseded')),payload jsonb not null,created_at timestamptz not null default now(),unique(plan_id,version));
 create table if not exists public.radar_youtube_connections(id uuid primary key,channel_id text not null unique references public.radar_managed_channels(id) on delete cascade,youtube_channel_id text not null,youtube_title text not null default '',youtube_handle text,youtube_thumbnail text,scopes text[] not null default '{}',refresh_token_ciphertext text not null,status text not null default 'connected' check(status in ('connected','needs-reauth','disconnected')),last_validated_at timestamptz,error text,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_youtube_connections_status_updated on public.radar_youtube_connections(status,updated_at desc);
+-- External YouTube channels are independent from editorial projects.
+-- radar_youtube_connections remains as a compatibility bridge for the current publisher
+-- until all publish jobs are migrated to explicit project/channel targets.
+create table if not exists public.radar_youtube_channels(
+ id uuid primary key,
+ youtube_channel_id text not null unique,
+ youtube_title text not null default '',
+ youtube_handle text,
+ youtube_thumbnail text,
+ subscriber_count bigint check(subscriber_count is null or subscriber_count>=0),
+ video_count bigint check(video_count is null or video_count>=0),
+ view_count bigint check(view_count is null or view_count>=0),
+ scopes text[] not null default '{}',
+ refresh_token_ciphertext text not null,
+ token_aad text not null,
+ status text not null default 'connected' check(status in ('connected','needs-reauth','disconnected')),
+ last_validated_at timestamptz,
+ error text,
+ created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now()
+);
+create index if not exists radar_youtube_channels_status_updated on public.radar_youtube_channels(status,updated_at desc);
+create table if not exists public.radar_project_youtube_channels(
+ id uuid primary key default gen_random_uuid(),
+ project_id text not null references public.radar_managed_channels(id) on delete cascade,
+ youtube_channel_id uuid not null unique references public.radar_youtube_channels(id) on delete cascade,
+ is_primary boolean not null default false,
+ created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now(),
+ unique(project_id,youtube_channel_id)
+);
+create index if not exists radar_project_youtube_channels_project_updated on public.radar_project_youtube_channels(project_id,updated_at desc);
+create unique index if not exists radar_project_youtube_channels_one_primary on public.radar_project_youtube_channels(project_id) where is_primary;
+insert into public.radar_youtube_channels(
+ id,youtube_channel_id,youtube_title,youtube_handle,youtube_thumbnail,scopes,
+ refresh_token_ciphertext,token_aad,status,last_validated_at,error,created_at,updated_at
+)
+select
+ c.id,c.youtube_channel_id,c.youtube_title,c.youtube_handle,c.youtube_thumbnail,c.scopes,
+ c.refresh_token_ciphertext,c.channel_id,c.status,c.last_validated_at,c.error,c.created_at,c.updated_at
+from public.radar_youtube_connections c
+on conflict (youtube_channel_id) do nothing;
+insert into public.radar_project_youtube_channels(project_id,youtube_channel_id,is_primary,created_at,updated_at)
+select c.channel_id,y.id,true,c.created_at,c.updated_at
+from public.radar_youtube_connections c
+join public.radar_youtube_channels y on y.youtube_channel_id=c.youtube_channel_id
+on conflict (youtube_channel_id) do nothing;
 create table if not exists public.radar_youtube_publish_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,package_id uuid not null unique references public.radar_publication_packages(id) on delete cascade,package_version int not null check(package_version>=1),connection_id uuid not null references public.radar_youtube_connections(id) on delete cascade,status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,youtube_video_id text,youtube_url text,actual_privacy_status text,error text,payload jsonb not null,resumable_uri_ciphertext text,upload_bytes bigint not null default 0 check(upload_bytes>=0),upload_total_bytes bigint check(upload_total_bytes is null or upload_total_bytes>=0),created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
 create index if not exists radar_youtube_publish_jobs_channel_created on public.radar_youtube_publish_jobs(channel_id,created_at desc);
 create index if not exists radar_youtube_publish_jobs_queue on public.radar_youtube_publish_jobs(status,created_at) where status in ('queued','processing');
@@ -697,7 +744,7 @@ grant execute on function public.claim_radar_universe_queue(int) to service_role
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_voice_generation_chunks','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_embeddings','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_render_workers','radar_render_chapters','radar_production_quality_chapters','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_voice_generation_chunks','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_embeddings','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_render_workers','radar_render_chapters','radar_production_quality_chapters','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_youtube_connections','radar_youtube_channels','radar_project_youtube_channels','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
 revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
 grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
 revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;

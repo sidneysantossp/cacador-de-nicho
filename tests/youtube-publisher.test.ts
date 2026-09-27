@@ -154,3 +154,27 @@ test('YouTube OAuth callback redirects to the configured public origin, not the 
   assert.doesNotMatch(source,/new URL\('\/',request\.url\)/);
 });
 
+test('YouTube channels are modeled independently from editorial projects',()=>{
+  const schema=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  assert.match(schema,/create table if not exists public\.radar_youtube_channels\(/);
+  assert.match(schema,/create table if not exists public\.radar_project_youtube_channels\(/);
+  assert.match(schema,/youtube_channel_id uuid not null unique references public\.radar_youtube_channels/);
+  assert.match(schema,/radar_project_youtube_channels_one_primary/);
+});
+
+test('OAuth persists external YouTube identity separately and guards cross-project reuse',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-oauth.ts'),'utf8');
+  assert.match(source,/radar_youtube_channels/);
+  assert.match(source,/radar_project_youtube_channels/);
+  assert.match(source,/já está vinculado a outro projeto/);
+  assert.match(source,/part','id,snippet,statistics'/);
+});
+
+test('project management exposes a global connected YouTube channel portfolio',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/components/channel-management.tsx'),'utf8');
+  assert.match(source,/CANAIS YOUTUBE CONECTADOS/);
+  assert.match(source,/Destinos reais de publicação/);
+  assert.match(source,/\/api\/youtube-channels/);
+  assert.match(source,/VINCULADO AO PROJETO/);
+});
+
