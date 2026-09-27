@@ -6,6 +6,10 @@ export function createSession(now = Date.now()) { const payload = `${now + 12*36
 export function validSession(token: string | undefined, now = Date.now()) { if (!authConfigured() || !token) return false; const parts=token.split('.'); if(parts.length!==3 || !/^\d+$/.test(parts[0]) || Number(parts[0])<=now || Number(parts[0])>now+12*3600000) return false; return equal(parts[2],createHmac('sha256',process.env.SESSION_SECRET!+':'+process.env.APP_PASSWORD!).update(parts.slice(0,2).join('.')).digest('hex')); }
 export function authenticated(request: Request) { const token=request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith(`${cookieName}=`))?.slice(cookieName.length+1); return validSession(token); }
 
+export function sessionCookie(value:string,maxAge=43200){
+  return `${cookieName}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${process.env.NODE_ENV==='production'?'; Secure':''}`;
+}
+
 function firstForwarded(value:string|null){
   return value?.split(',')[0]?.trim()||null;
 }
