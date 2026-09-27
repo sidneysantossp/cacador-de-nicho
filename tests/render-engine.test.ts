@@ -404,3 +404,21 @@ test('Render presets choose lean draft quality without changing final quality',(
   assert.equal(renderPresetDefaultCrf('hd-1080p30'),20);
   assert.equal(validRenderCrf(renderPresetDefaultCrf('draft-720p30')),true);
 });
+
+
+test('Render worker registers a stable node identity without replacing skip-locked claiming',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/RENDER_WORKER_ID/);
+  assert.match(source,/radar_render_workers\?on_conflict=id/);
+  assert.match(source,/worker_id:WORKER_ID/);
+  assert.match(source,/rpc\('claim_render_job'/);
+  assert.match(source,/touchRenderWorker\('busy'/);
+});
+
+test('Self-hosted render sync propagates stable node identity and declared capacity',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-render-worker-sync'),'utf8');
+  assert.match(source,/WORKER_ID=.*hostname -s/);
+  assert.match(source,/RENDER_WORKER_ID=\$WORKER_ID/);
+  assert.match(source,/RENDER_WORKER_MEMORY_BYTES=\$TARGET_MEMORY/);
+  assert.match(source,/auditseo\.render\.worker-id=\$WORKER_ID/);
+});
