@@ -1805,6 +1805,10 @@ export type RenderJobPayload = {
   realTimeFactor: number;
   cacheHits: number;
   renderedChapters: number;
+  scratch?: {
+   chapterBytes: number;
+   visualMasterBytes: number;
+  };
  };
  manifest: RenderManifest;
 };
