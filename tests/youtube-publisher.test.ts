@@ -138,3 +138,12 @@ test('Assisted-manual mode does not auto-enable the YouTube publish worker timer
   assert.match(health,/cacadores-youtube-publish-worker-sync\.timer/);
   assert.match(health,/OPERATION_MODE.*assisted-manual/s);
 });
+
+
+test('YouTube publishing OAuth requests only the scopes needed for connection and upload',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-oauth.ts'),'utf8');
+  const scopeBlock=source.match(/export const YOUTUBE_OAUTH_SCOPES=\[([\s\S]*?)\] as const;/)?.[1]??'';
+  assert.match(scopeBlock,/youtube\.upload/);
+  assert.match(scopeBlock,/youtube\.readonly/);
+  assert.doesNotMatch(scopeBlock,/yt-analytics/);
+});
