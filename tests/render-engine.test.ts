@@ -474,3 +474,31 @@ test('Render-v4 reserves free disk for the next intermediate file',()=>{
   assert.match(source,/insufficient-render-disk-for-concat/);
   assert.match(source,/insufficient-render-disk-for-mux/);
 });
+
+
+test('Portable render node bootstrap is syntax-valid and render-only',()=>{
+  const file=resolve(process.cwd(),'ops/self-hosted/bin/cacadores-render-node-bootstrap');
+  execFileSync('bash',['-n',file],{stdio:'pipe'});
+  const source=readFileSync(file,'utf8');
+  assert.match(source,/SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source,/CACADORES_RENDER_WORKER_ID/);
+  assert.match(source,/CACADORES_RENDER_REF/);
+  assert.match(source,/CACADORES_RENDER_IMAGE/);
+  assert.match(source,/CACADORES_RENDER_SHA is required/);
+  assert.match(source,/HOST_MIN_MEMORY_GB/);
+  assert.match(source,/HOST_MIN_CPUS/);
+  assert.match(source,/HOST_MIN_FREE_DISK_GB/);
+  assert.match(source,/RENDER_MIN_FREE_DISK_GB/);
+  assert.match(source,/node scripts\/render-worker\.mjs/);
+  assert.doesNotMatch(source,/server\.js/);
+  assert.doesNotMatch(source,/episode-automation-worker/);
+  assert.doesNotMatch(source,/verified-stock-worker/);
+});
+
+test('Portable render node documentation never embeds service-role credentials',()=>{
+  const source=readFileSync(resolve(process.cwd(),'docs/render-node-bootstrap.md'),'utf8');
+  assert.match(source,/SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source,/R2 credentials are not copied/);
+  assert.doesNotMatch(source,/eyJ[a-zA-Z0-9_-]{20,}/);
+  assert.match(source,/exact-git-sha/);
+});

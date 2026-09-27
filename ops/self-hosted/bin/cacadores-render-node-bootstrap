@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${CACADORES_RENDER_REPO_URL:-https://github.com/sidneysantossp/cacador-de-nicho.git}"
+REF="${CACADORES_RENDER_REF:-master}"
+ENV_FILE="${CACADORES_RENDER_ENV_FILE:-/etc/cacadores/render-worker.env}"
+WORKER_ID="${CACADORES_RENDER_WORKER_ID:-$(hostname -s)}"
+CONTAINER="${CACADORES_RENDER_CONTAINER:-cacador-render-${WORKER_ID}}"
+WORK_DIR="${CACADORES_RENDER_WORK_DIR:-/var/lib/cacadores/render-${WORKER_ID}}"
+SOURCE_DIR="${CACADORES_RENDER_SOURCE_DIR:-/opt/cacadores-render-source}"
+IMAGE="${CACADORES_RENDER_IMAGE:-}"
+SHA="${CACADORES_RENDER_SHA:-}"
+MEMORY_BYTES="${CACADORES_RENDER_MEMORY_BYTES:-2147483648}"
+NANO_CPUS="${CACADORES_RENDER_NANO_CPUS:-1500000000}"
+CPUS="${CACADORES_RENDER_CPUS:-1.5}"
+HOST_MIN_MEMORY_GB="${CACADORES_RENDER_HOST_MIN_MEMORY_GB:-4}"
+HOST_MIN_CPUS="${CACADORES_RENDER_HOST_MIN_CPUS:-2}"
+HOST_MIN_FREE_DISK_GB="${CACADORES_RENDER_HOST_MIN_FREE_DISK_GB:-20}"
+RENDER_MIN_FREE_DISK_GB="${RENDER_MIN_FREE_DISK_GB:-10}"
+
+fail(){ echo "ERROR: $*" >&2; exit 1; }
+need(){ command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
+
+need docker
+need awk
+need df
+need grep
+need nproc
+
+[[ -f "$ENV_FILE" ]] || fail "env file not found: $ENV_FILE"
+for key in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+  grep -q "^${key}=." "$ENV_FILE" || fail "$key is missing from $ENV_FILE"
+done
+
+mkdir -p "$WORK_DIR"
+TOTAL_MEM_KB="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
+MIN_MEM_KB="$((HOST_MIN_MEMORY_GB*1024*1024))"
+[[ "${TOTAL_MEM_KB:-0}" -ge "$MIN_MEM_KB" ]] || fail "host needs at least ${HOST_MIN_MEMORY_GB} GB RAM"
+CPU_COUNT="$(nproc)"
+[[ "$CPU_COUNT" -ge "$HOST_MIN_CPUS" ]] || fail "host needs at least ${HOST_MIN_CPUS} CPUs"
+FREE_KB="$(df -Pk "$WORK_DIR" | awk 'NR==2 {print $4}')"
+MIN_FREE_KB="$((HOST_MIN_FREE_DISK_GB*1024*1024))"
+[[ "${FREE_KB:-0}" -ge "$MIN_FREE_KB" ]] || fail "host needs at least ${HOST_MIN_FREE_DISK_GB} GB free on render work volume"
+
+if [[ -z "$IMAGE" ]]; then
+  need git
+  if [[ ! -d "$SOURCE_DIR/.git" ]]; then
+    rm -rf "$SOURCE_DIR"
+    git clone --filter=blob:none "$REPO_URL" "$SOURCE_DIR"
+  fi
+  git -C "$SOURCE_DIR" fetch --prune origin "$REF"
+  SHA="$(git -C "$SOURCE_DIR" rev-parse FETCH_HEAD)"
+  git -C "$SOURCE_DIR" checkout --detach "$SHA"
+  IMAGE="auditseo/cacadores-render-node:${SHA:0:12}"
+  docker build -t "$IMAGE" "$SOURCE_DIR"
+else
+  [[ -n "$SHA" ]] || fail "CACADORES_RENDER_SHA is required when CACADORES_RENDER_IMAGE is supplied"
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    docker pull "$IMAGE"
+  fi
+fi
+
+docker image inspect "$IMAGE" >/dev/null 2>&1 || fail "render image unavailable: $IMAGE"
+
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker run -d \
+  --name "$CONTAINER" \
+  --restart unless-stopped \
+  --env-file "$ENV_FILE" \
+  --memory "$MEMORY_BYTES" \
+  --cpus "$CPUS" \
+  --pids-limit 512 \
+  -e "APP_COMMIT_SHA=$SHA" \
+  -e "RENDER_WORKER_ID=$WORKER_ID" \
+  -e "RENDER_WORKER_MEMORY_BYTES=$MEMORY_BYTES" \
+  -e "RENDER_WORKER_NANO_CPUS=$NANO_CPUS" \
+  -e "RENDER_MIN_FREE_DISK_GB=$RENDER_MIN_FREE_DISK_GB" \
+  -v "$WORK_DIR:/tmp" \
+  --label auditseo.role=render-worker \
+  --label "auditseo.render.sha=$SHA" \
+  --label "auditseo.render.worker-id=$WORKER_ID" \
+  "$IMAGE" node scripts/render-worker.mjs >/dev/null
+
+for _ in $(seq 1 40); do
+  RUNNING="$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)"
+  [[ "$RUNNING" == "true" ]] && break
+  sleep .5
+done
+[[ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] || {
+  docker logs "$CONTAINER" --tail 120 || true
+  fail "render worker did not start"
+}
+
+sleep 2
+docker exec "$CONTAINER" node --check scripts/render-worker.mjs >/dev/null
+docker logs "$CONTAINER" --tail 30 2>&1 || true
+
+cat <<EOF
+RENDER_NODE_READY
+worker_id=$WORKER_ID
+sha=$SHA
+image=$IMAGE
+container=$CONTAINER
+work_dir=$WORK_DIR
+memory_bytes=$MEMORY_BYTES
+cpus=$CPUS
+render_min_free_disk_gb=$RENDER_MIN_FREE_DISK_GB
+EOF
