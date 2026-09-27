@@ -1809,6 +1809,11 @@ export type RenderJobPayload = {
    chapterBytes: number;
    visualMasterBytes: number;
   };
+  complexity?: {
+   chapterCount: number;
+   visualClipCount: number;
+   captionCueCount: number;
+  };
  };
  manifest: RenderManifest;
 };
