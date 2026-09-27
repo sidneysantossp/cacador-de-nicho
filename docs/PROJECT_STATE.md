@@ -887,3 +887,18 @@ Implementado wiring operacional do `scripts/youtube-publish-worker.mjs` para a V
 - nenhuma publicação é criada ou enfileirada automaticamente por esta fase.
 
 Próximo gate externo: configurar o OAuth real do Google/YouTube, conectar um canal e executar o primeiro E2E com package `private`.
+
+
+## FASE 38 — Least-Privilege YouTube OAuth — 27/09/2026
+
+O consentimento inicial do YouTube Publisher foi reduzido aos escopos necessários para o fluxo atual:
+- `youtube.upload` para upload/gestão de vídeos;
+- `youtube.readonly` para identificar e validar o canal conectado;
+- `yt-analytics.readonly` foi removido do consentimento de publicação.
+
+Motivo:
+- separar publicação de Analytics;
+- reduzir permissões no primeiro consentimento;
+- seguir autorização incremental e evitar transformar a futura camada de Analytics em bloqueio para upload.
+
+Nenhuma flag de Analytics foi habilitada por esta fase.
