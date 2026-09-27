@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { BrainCircuit, Check, CircleDot, ExternalLink, Film, FolderKanban, Layers3, Link2, Play, Plus, RefreshCw, Sparkles } from 'lucide-react';
-import type { AutopilotReadiness, Channel, ChannelBrain, LinkedYouTubeChannel, ManagedChannel, NextEpisodePlan, Opportunity } from '@/lib/types';
+import type { AutopilotReadiness, Channel, ChannelBrain, LinkedYouTubeChannel, ManagedChannel, NextEpisodePlan, Opportunity, PendingYouTubeLink } from '@/lib/types';
 import AutopilotControlPlane from './autopilot-control-plane';
 import {
  autopilotActivationReadinessIssues, autopilotActivationRequirement,
@@ -47,6 +47,8 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
  const [youtubeChannels,setYoutubeChannels]=useState<LinkedYouTubeChannel[]>([]);
  const [youtubeLoading,setYoutubeLoading]=useState(true);
  const [youtubeBusy,setYoutubeBusy]=useState('');
+ const [pendingYoutubeLink,setPendingYoutubeLink]=useState<PendingYouTubeLink|null>(null);
+ const [pendingYoutubeBusy,setPendingYoutubeBusy]=useState('');
  const [connectProjectId,setConnectProjectId]=useState(items[0]?.id??'');
  const visible=useMemo(()=>filter==='all'?items:items.filter(item=>item.stage===filter),[filter,items]);
  const brainByChannel=useMemo(()=>new Map(brains.map(brain=>[brain.channelId,brain])),[brains]);
@@ -66,6 +68,27 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
     if(active)onMessage(error instanceof Error?error.message:'Falha ao carregar canais YouTube.');
    }finally{
     if(active)setYoutubeLoading(false);
+   }
+  })();
+  return ()=>{active=false;};
+ },[]);
+ useEffect(()=>{
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('youtube')!=='pending')return;
+  const pendingId=params.get('pendingId')?.trim();
+  if(!pendingId)return;
+  let active=true;
+  void (async()=>{
+   try{
+    const response=await fetch('/api/youtube-oauth/pending?id='+encodeURIComponent(pendingId),{cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(body.message??'Falha ao carregar confirmação do canal YouTube.');
+    if(active){
+     setPendingYoutubeLink(body.pending as PendingYouTubeLink);
+     if(body.pending?.projectId)setConnectProjectId(String(body.pending.projectId));
+    }
+   }catch(error){
+    if(active)onMessage(error instanceof Error?error.message:'Falha ao carregar confirmação do canal YouTube.');
    }
   })();
   return ()=>{active=false;};
@@ -100,6 +123,31 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
  function connectYoutube(){
   if(!connectProjectId){onMessage('Escolha primeiro o projeto que receberá este canal YouTube.');return;}
   window.location.href='/api/youtube-oauth/start?channelId='+encodeURIComponent(connectProjectId);
+ }
+ function clearPendingQuery(){
+  const params=new URLSearchParams(window.location.search);
+  params.delete('youtube');params.delete('pendingId');params.delete('channelId');
+  const query=params.toString();
+  window.history.replaceState({},'',window.location.pathname+(query?'?'+query:''));
+ }
+ async function resolvePendingYoutube(action:'confirm'|'cancel'){
+  if(!pendingYoutubeLink)return;
+  setPendingYoutubeBusy(action);
+  try{
+   const response=await fetch('/api/youtube-oauth/pending',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action,pendingId:pendingYoutubeLink.id})
+   });
+   const body=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(body.message??'Falha ao concluir confirmação do canal YouTube.');
+   setPendingYoutubeLink(null);
+   clearPendingQuery();
+   if(action==='confirm')await refreshYouTubeChannels();
+   onMessage(body.message??(action==='confirm'?'Canal YouTube vinculado ao projeto.':'Conexão descartada.'));
+  }catch(error){
+   onMessage(error instanceof Error?error.message:'Falha ao concluir confirmação do canal YouTube.');
+  }finally{setPendingYoutubeBusy('');}
  }
  function save(event:React.FormEvent){event.preventDefault();if(!draft.name.trim()){onMessage('Dê um nome ao canal antes de salvar.');return;}const now=new Date().toISOString();onSave({id:crypto.randomUUID(),...draft,name:draft.name.trim(),description:draft.description.trim(),createdAt:now,updatedAt:now});setDraft(empty());setShowForm(false);}
  function addFromOpportunity(channel:Channel,opportunity:Opportunity){const now=new Date().toISOString();onSave({id:crypto.randomUUID(),name:opportunity.name,niche:channel.niche,format:channel.format.split(' · ')[1]??channel.format,stage:'idea',priority:'normal',description:opportunity.lens,sourceChannelId:channel.id,opportunityId:opportunity.id,createdAt:now,updatedAt:now});}
@@ -180,6 +228,27 @@ export default function ChannelManagement({items,brains,radarChannels,demo,onSav
      <button className="button subtle small" disabled={youtubeLoading} onClick={()=>void refreshYouTubeChannels()}><RefreshCw size={14} className={youtubeLoading?'spin':''}/>Atualizar</button>
     </div>
    </div>
+   {pendingYoutubeLink&&<article className="youtube-link-confirmation">
+    <div className="youtube-confirm-kicker">CONFIRME O VÍNCULO</div>
+    <div className="youtube-confirm-route">
+     <div><span>PROJETO</span><strong>{pendingYoutubeLink.projectName}</strong></div>
+     <Link2 size={22}/>
+     <div className="youtube-confirm-channel">
+      {pendingYoutubeLink.youtubeThumbnail?<img src={pendingYoutubeLink.youtubeThumbnail} alt=""/>:<span className="youtube-linked-avatar"><Play size={20}/></span>}
+      <div><span>CANAL IDENTIFICADO PELO GOOGLE</span><strong>{pendingYoutubeLink.youtubeTitle}</strong><small>{pendingYoutubeLink.youtubeHandle||pendingYoutubeLink.youtubeChannelId}</small></div>
+     </div>
+    </div>
+    <div className="youtube-confirm-metrics">
+     <span>{compactMetric(pendingYoutubeLink.subscriberCount)} inscritos</span>
+     <span>{compactMetric(pendingYoutubeLink.videoCount)} vídeos</span>
+     <span>{compactMetric(pendingYoutubeLink.viewCount)} views</span>
+    </div>
+    <p>Confirme somente se este é o canal que deve receber as publicações deste projeto. Se a mesma Conta Google administra vários canais e este não é o correto, cancele, altere o canal ativo/padrão no YouTube e conecte novamente.</p>
+    <div className="youtube-confirm-actions">
+     <button className="button primary" disabled={!!pendingYoutubeBusy} onClick={()=>void resolvePendingYoutube('confirm')}><Check size={15}/>{pendingYoutubeBusy==='confirm'?'Vinculando…':'Confirmar vínculo'}</button>
+     <button className="button subtle danger" disabled={!!pendingYoutubeBusy} onClick={()=>void resolvePendingYoutube('cancel')}>{pendingYoutubeBusy==='cancel'?'Cancelando…':'Cancelar'}</button>
+    </div>
+   </article>}
    {youtubeLoading&&<div className="youtube-portfolio-empty">Carregando canais conectados…</div>}
    {!youtubeLoading&&!youtubeChannels.length&&<div className="youtube-portfolio-empty"><Play size={24}/><strong>Nenhum canal YouTube conectado.</strong><span>Escolha um projeto acima e conecte o primeiro destino real de publicação.</span></div>}
    {!!youtubeChannels.length&&<div className="youtube-linked-grid">{youtubeChannels.map(linked=>{
