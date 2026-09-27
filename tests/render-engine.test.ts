@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
-  boundaryTransition, buildRenderChapterPlan, renderManifestIssues, renderOutputPath,
+  boundaryTransition, buildRenderChapterPlan, renderEncoderPreset, renderManifestIssues, renderOutputPath,
   renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
