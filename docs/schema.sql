@@ -764,22 +764,67 @@ revoke all on function public.save_autopilot_control(text,text,int,int,jsonb,int
 grant execute on function public.save_autopilot_control(text,text,int,int,jsonb,int) to service_role;
 
 create or replace function public.claim_render_job(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
-language plpgsql security invoker set search_path='' as $$
+language plpgsql security invoker set search_path='' as $
 declare picked uuid;
 begin
 if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid render lease';end if;
-update public.radar_render_jobs set status='queued',stage='requeued-after-lease',worker_token=null,lease_until=null,updated_at=now()
+update public.radar_render_jobs
+set status='queued',stage='requeued-after-lease',worker_token=null,worker_id=null,lease_until=null,updated_at=now()
 where status='processing' and lease_until is not null and lease_until<now();
-select id into picked from public.radar_render_jobs where status='queued' order by created_at asc for update skip locked limit 1;
+select id into picked
+from public.radar_render_jobs
+where status='queued'
+order by created_at asc
+for update skip locked
+limit 1;
 if picked is null then return null;end if;
 update public.radar_render_jobs
-set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,worker_token=p_worker_token,
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,
+worker_token=p_worker_token,worker_id=null,
 lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
 where id=picked;
 return picked;
-end $$;
+end $;
 revoke all on function public.claim_render_job(uuid,int) from public,anon,authenticated;
 grant execute on function public.claim_render_job(uuid,int) to service_role;
+
+create or replace function public.claim_render_job(
+  p_worker_token uuid,
+  p_worker_id text,
+  p_lease_seconds int default 900
+) returns uuid
+language plpgsql security invoker set search_path='' as $
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid render lease';end if;
+if coalesce(length(trim(p_worker_id)),0)<1 then raise exception 'invalid render worker id';end if;
+if not exists(
+  select 1 from public.radar_render_workers w where w.id=p_worker_id
+) then raise exception 'render worker not registered';end if;
+
+update public.radar_render_jobs
+set status='queued',stage='requeued-after-lease',worker_token=null,worker_id=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+
+select id into picked
+from public.radar_render_jobs
+where status='queued'
+order by created_at asc
+for update skip locked
+limit 1;
+
+if picked is null then return null;end if;
+
+update public.radar_render_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,
+worker_token=p_worker_token,worker_id=p_worker_id,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+
+return picked;
+end $;
+revoke all on function public.claim_render_job(uuid,text,int) from public,anon,authenticated;
+grant execute on function public.claim_render_job(uuid,text,int) to service_role;
 
 create or replace function public.heartbeat_render_job(p_job_id uuid,p_worker_token uuid,p_progress int,p_stage text,p_lease_seconds int default 900) returns boolean
 language plpgsql security invoker set search_path='' as $$
