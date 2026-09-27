@@ -147,3 +147,10 @@ test('YouTube publishing OAuth requests only the scopes needed for connection an
   assert.match(scopeBlock,/youtube\.readonly/);
   assert.doesNotMatch(scopeBlock,/yt-analytics/);
 });
+
+test('YouTube OAuth callback redirects to the configured public origin, not the container request URL',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/app/api/youtube-oauth/callback/route.ts'),'utf8');
+  assert.match(source,/youtubeOAuthConfig\(\)\.redirectUri/);
+  assert.doesNotMatch(source,/new URL\('\/',request\.url\)/);
+});
+
