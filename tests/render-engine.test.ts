@@ -410,8 +410,9 @@ test('Render worker registers a stable node identity without replacing skip-lock
   const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
   assert.match(source,/RENDER_WORKER_ID/);
   assert.match(source,/radar_render_workers\?on_conflict=id/);
-  assert.match(source,/worker_id:WORKER_ID/);
+  assert.match(source,/p_worker_id:WORKER_ID/);
   assert.match(source,/rpc\('claim_render_job'/);
+  assert.doesNotMatch(source,/updateOwned\(String\(jobId\),token,\{worker_id:WORKER_ID\}\)/);
   assert.match(source,/touchRenderWorker\('busy'/);
 });
 
