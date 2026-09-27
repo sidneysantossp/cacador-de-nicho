@@ -1017,6 +1017,11 @@ async function processJobV4(jobId,token,root,job,payload,manifest){
     scratch:{
       chapterBytes,
       visualMasterBytes:visualMasterInfo.size
+    },
+    complexity:{
+      chapterCount:plans.length,
+      visualClipCount:manifest.visualClips.length,
+      captionCueCount:manifest.captions?.cues?.length??0
     }
   };
 
