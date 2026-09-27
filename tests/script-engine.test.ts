@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { ContentFactCheck, EpisodeScriptPayload } from '../src/lib/types';
 import {
   combineScriptSections, countScriptWords, documentaryScriptClaimIssues, estimateScriptMinutes,
-  normalizeScriptPayload, scriptApprovalIssues
+  normalizeScriptPayload, scriptApprovalIssues, scriptGenerationIntegrityIssues
 } from '../src/lib/script-policy';
 import { episodeScriptPayloadSchema } from '../src/lib/server/validation';
 
@@ -229,4 +229,55 @@ test('Long-form Script AI uses bounded outline and section calls instead of one 
   assert.match(source,/Math\.max\(1800,Math\.min\(6500/);
   assert.match(source,/previous\.content\.slice\(-6000\)/);
   assert.match(source,/sections:z\.array\(outlineSectionSchema\)\.min\(3\)\.max\(24\)/);
+});
+
+
+test('Resumable Script generation detects a removed completed planned section',()=>{
+  const first='94444444-4444-4444-8444-444444444444';
+  const second='95555555-5555-4555-8555-555555555555';
+  const value=normalizeScriptPayload({
+    ...payload,
+    sections:[{
+      id:second,label:'Second',purpose:'Continue',content:'Second section.',claimIds:[]
+    }],
+    generation:{
+      stage:'sections',
+      targetWords:2000,
+      completedSections:2,
+      totalSections:2,
+      sectionPlans:[
+        {id:first,label:'First',purpose:'Open',targetWords:1000,claimIds:[]},
+        {id:second,label:'Second',purpose:'Continue',targetWords:1000,claimIds:[]}
+      ],
+      sectionSummaries:['First summary','Second summary'],
+      updatedAt:now
+    }
+  },150);
+  const issues=scriptGenerationIntegrityIssues(value);
+  assert.ok(issues.includes('script-generation-completed-section-missing:'+first));
+});
+
+test('Completed resumable Script requires every planned section id to exist',()=>{
+  const first='96666666-6666-4666-8666-666666666666';
+  const second='97777777-7777-4777-8777-777777777777';
+  const value=normalizeScriptPayload({
+    ...payload,
+    sections:[{
+      id:first,label:'First',purpose:'Open',content:'First section.',claimIds:[]
+    }],
+    generation:{
+      stage:'complete',
+      targetWords:2000,
+      completedSections:2,
+      totalSections:2,
+      sectionPlans:[
+        {id:first,label:'First',purpose:'Open',targetWords:1000,claimIds:[]},
+        {id:second,label:'Second',purpose:'Close',targetWords:1000,claimIds:[]}
+      ],
+      sectionSummaries:['First summary','Second summary'],
+      updatedAt:now
+    }
+  },150);
+  const issues=scriptApprovalIssues(value);
+  assert.ok(issues.includes('script-generation-planned-section-missing:'+second));
 });
