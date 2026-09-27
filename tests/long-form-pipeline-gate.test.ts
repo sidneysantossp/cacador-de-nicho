@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type {
   ProductionDNA, ScenePlan, Timeline, Transcript, TranscriptPayload,
   VisualPromptSet, VoiceAsset
@@ -201,8 +203,8 @@ test('Synthetic 60-minute pipeline compiles Transcript through Video Edit withou
 });
 
 test('Long-form Caption compiler builds one global word index, not one per segment',()=>{
-  const source=require('node:fs').readFileSync(
-    require('node:path').resolve(process.cwd(),'src/lib/video-editor-policy.ts'),
+  const source=readFileSync(
+    resolve(process.cwd(),'src/lib/video-editor-policy.ts'),
     'utf8'
   );
   const start=source.indexOf('export function buildCaptionCues');
