@@ -78,3 +78,46 @@ export function renderCapacityForecast(input:{
       };
     });
 }
+
+
+export type RenderFleetSizing={
+  durationMinutes:number;
+  targetVideosPerDay:number;
+  utilization:number;
+  singleJobMinutes:number;
+  currentSafeVideosPerDay:number;
+  requiredWorkers:number;
+  additionalWorkers:number;
+};
+
+export function renderFleetSizing(input:{
+  profile:RenderCapacityProfile;
+  durationsMinutes:number[];
+  targetVideosPerDay:number;
+  onlineWorkers:number;
+  utilization?:number;
+}):RenderFleetSizing[]{
+  const workers=Math.max(0,Math.floor(input.onlineWorkers));
+  const target=Math.max(0,Number(input.targetVideosPerDay)||0);
+  const utilization=Math.max(.1,Math.min(1,Number(input.utilization??.8)||.8));
+  const productiveMinutesPerWorker=1440*utilization;
+  return input.durationsMinutes
+    .filter(value=>Number.isFinite(value)&&value>0)
+    .map(durationMinutes=>{
+      const singleJobMinutes=durationMinutes*input.profile.medianRealTimeFactor;
+      const requiredWorkers=target>0
+        ?Math.ceil(target*singleJobMinutes/productiveMinutesPerWorker)
+        :0;
+      return {
+        durationMinutes,
+        targetVideosPerDay:target,
+        utilization,
+        singleJobMinutes,
+        currentSafeVideosPerDay:workers>0
+          ?workers*productiveMinutesPerWorker/singleJobMinutes
+          :0,
+        requiredWorkers,
+        additionalWorkers:Math.max(0,requiredWorkers-workers)
+      };
+    });
+}
