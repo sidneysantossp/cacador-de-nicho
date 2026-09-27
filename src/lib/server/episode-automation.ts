@@ -361,6 +361,9 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   const scriptPayload=script&&'payload' in script
     ?rowPayload<EpisodeScriptPayload>(script)
     :null;
+  const scriptGenerationIncomplete=Boolean(
+    scriptPayload?.generation&&scriptPayload.generation.stage!=='complete'
+  );
   const documentaryIssues=script?.status==='approved'
     ?[]
     :scriptPayload
@@ -376,6 +379,15 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   }else if(!script){
     steps.push(step('script','ready',{
       reason:'Content Project aprovado; roteiro pode ser gerado.',
+      requiresOperator:!run.policy.autoGenerateScript
+    }));
+  }else if(scriptGenerationIncomplete){
+    steps.push(step('script','ready',{
+      entityId:String(script.id),entityVersion:Number(script.version),
+      reason:'Geração do roteiro: '+
+        String(scriptPayload?.generation?.completedSections??0)+'/'+
+        String(scriptPayload?.generation?.totalSections??0)+
+        ' seções concluídas.',
       requiresOperator:!run.policy.autoGenerateScript
     }));
   }else if(script.status==='approved'&&!documentaryIssues.length){
@@ -1096,7 +1108,12 @@ async function executeAutomationTransition(
       if(current.status==='ready'){
         if(!run.policy.autoGenerateScript)throw new HttpError('Geração automática de roteiro está desativada.',409);
         const script=await generateScriptForProject(run.contentProjectId);
-        return 'Roteiro gerado como draft: '+script.id+'.';
+        const generation=script.generation;
+        return generation
+          ?'Roteiro avançou para '+
+            generation.completedSections+'/'+generation.totalSections+
+            ' seção(ões) · '+script.wordCount+' palavras.'
+          :'Roteiro gerado como draft: '+script.id+'.';
       }
       if(current.status==='waiting'){
         if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de roteiro está desativada.',409);

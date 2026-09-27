@@ -299,6 +299,21 @@ export const episodeScriptPayloadSchema=z.object({
  estimatedMinutes:z.number().min(0).max(600).nullable(),
  continuityNotes:shortList(100,1000),
  factCheckWarnings:shortList(100,1000),
+ generation:z.object({
+  stage:z.enum(['sections','complete']),
+  targetWords:z.number().int().min(1).max(50000),
+  completedSections:z.number().int().min(0).max(80),
+  totalSections:z.number().int().min(1).max(80),
+  sectionPlans:z.array(z.object({
+   id:z.string().uuid(),
+   label:z.string().trim().min(1).max(120),
+   purpose:z.string().trim().max(1000),
+   targetWords:z.number().int().min(100).max(4000),
+   claimIds:z.array(z.string().uuid()).max(100).optional()
+  }).strict()).min(1).max(80),
+  sectionSummaries:z.array(z.string().trim().max(1000)).max(80),
+  updatedAt:z.string().datetime()
+ }).strict().optional(),
  provenance:z.object({
   generatedBy:z.enum(['platform','chatgpt','codex','external','operator']),
   model:z.string().trim().max(120).optional()

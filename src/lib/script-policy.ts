@@ -86,11 +86,48 @@ export function documentaryScriptClaimIssues(input:{
   return [...new Set(issues)];
 }
 
+export function scriptGenerationIntegrityIssues(payload:EpisodeScriptPayload){
+  const generation=payload.generation;
+  if(!generation)return [] as string[];
+  const issues:string[]=[];
+  const planIds=generation.sectionPlans.map(item=>item.id);
+  const planIdSet=new Set(planIds);
+  const sectionIds=new Set(payload.sections.map(item=>item.id));
+  if(planIds.length!==planIdSet.size)issues.push('script-generation-duplicate-plan-id');
+  if(generation.totalSections!==generation.sectionPlans.length){
+    issues.push('script-generation-plan-count-mismatch');
+  }
+  if(
+    generation.completedSections<0||
+    generation.completedSections>generation.totalSections
+  ){
+    issues.push('script-generation-cursor-invalid');
+  }
+  for(const plan of generation.sectionPlans.slice(0,generation.completedSections)){
+    if(!sectionIds.has(plan.id)){
+      issues.push('script-generation-completed-section-missing:'+plan.id);
+    }
+  }
+  if(generation.stage==='complete'){
+    if(generation.completedSections!==generation.totalSections){
+      issues.push('script-generation-complete-cursor-mismatch');
+    }
+    for(const plan of generation.sectionPlans){
+      if(!sectionIds.has(plan.id)){
+        issues.push('script-generation-planned-section-missing:'+plan.id);
+      }
+    }
+  }
+  return [...new Set(issues)];
+}
+
 export function scriptApprovalIssues(
   payload:EpisodeScriptPayload,
   documentary?:{claims:ContentFactCheck[];documentaryMode:boolean}
 ){
   const issues:string[]=[];
+  issues.push(...scriptGenerationIntegrityIssues(payload));
+  if(payload.generation&&payload.generation.stage!=='complete')issues.push('script-generation-incomplete');
   if(!payload.sections.length)issues.push('no-sections');
   if(!payload.content.trim())issues.push('empty-content');
   if(payload.factCheckWarnings.length)issues.push('fact-check-warnings');
