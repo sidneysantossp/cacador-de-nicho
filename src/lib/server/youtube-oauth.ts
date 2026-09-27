@@ -417,6 +417,27 @@ export async function loadLinkedYouTubeChannel(id:string){
   return (await listLinkedYouTubeChannels()).find(item=>item.id===id)??null;
 }
 
+export async function loadLinkedYouTubeConnection(projectId:string,youtubeChannelId:string):Promise<YouTubeConnection|null>{
+  const linked=(await listLinkedYouTubeChannels()).find(item=>
+    item.projectId===projectId&&item.youtubeChannelId===youtubeChannelId
+  );
+  if(!linked)return null;
+  return {
+    id:linked.id,
+    channelId:linked.projectId,
+    youtubeChannelId:linked.youtubeChannelId,
+    youtubeTitle:linked.youtubeTitle,
+    youtubeHandle:linked.youtubeHandle,
+    youtubeThumbnail:linked.youtubeThumbnail,
+    scopes:linked.scopes,
+    status:linked.status,
+    lastValidatedAt:linked.lastValidatedAt,
+    error:linked.error,
+    createdAt:linked.createdAt,
+    updatedAt:linked.updatedAt
+  };
+}
+
 async function saveIndependentYouTubeChannel(input:{
   channelId:string;
   refreshToken:string;
