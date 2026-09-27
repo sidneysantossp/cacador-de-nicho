@@ -14,7 +14,9 @@ import { loadProductionDna } from './production-dna';
 import {
   generateOwnedPlannedSection, planOwnedChannelScript, regenerateOwnedScriptSection
 } from './script-ai';
-import { normalizeScriptPayload, scriptApprovalIssues } from '@/lib/script-policy';
+import {
+  normalizeScriptPayload, scriptApprovalIssues, scriptGenerationIntegrityIssues
+} from '@/lib/script-policy';
 
 function normalize(row:{
   id:string;
@@ -273,6 +275,14 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
   }
 
   const generation=existing.generation;
+  const integrityIssues=scriptGenerationIntegrityIssues(existing);
+  if(integrityIssues.length){
+    throw new HttpError(
+      'A geração resumível do roteiro ficou inconsistente: '+integrityIssues.join(' · ')+
+      '. Restaure a seção planejada removida antes de continuar.',
+      409
+    );
+  }
   const sectionIndex=Math.max(0,Math.min(
     generation.completedSections,
     generation.totalSections
