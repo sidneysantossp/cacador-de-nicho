@@ -2066,6 +2066,21 @@ export type LinkedYouTubeChannel = {
  createdAt: string;
  updatedAt: string;
 };
+export type PendingYouTubeLink = {
+ id: string;
+ projectId: string;
+ projectName: string;
+ youtubeChannelId: string;
+ youtubeTitle: string;
+ youtubeHandle?: string;
+ youtubeThumbnail?: string;
+ subscriberCount?: number;
+ videoCount?: number;
+ viewCount?: number;
+ scopes: string[];
+ expiresAt: string;
+ createdAt: string;
+};
 export type YouTubePublishJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type YouTubePublishPayload = {
  kind: 'youtube-publish-job';

@@ -178,3 +178,29 @@ test('project management exposes a global connected YouTube channel portfolio',(
   assert.match(source,/VINCULADO AO PROJETO/);
 });
 
+test('OAuth stages a channel link until the operator explicitly confirms it',()=>{
+  const schema=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const callback=readFileSync(resolve(process.cwd(),'src/app/api/youtube-oauth/callback/route.ts'),'utf8');
+  const pendingRoute=readFileSync(resolve(process.cwd(),'src/app/api/youtube-oauth/pending/route.ts'),'utf8');
+  assert.match(schema,/radar_youtube_oauth_pending/);
+  assert.match(callback,/createPendingYouTubeLink/);
+  assert.match(callback,/youtube','pending'/);
+  assert.doesNotMatch(callback,/saveYouTubeConnection/);
+  assert.match(pendingRoute,/confirmPendingYouTubeLink/);
+  assert.match(pendingRoute,/cancelPendingYouTubeLink/);
+});
+
+test('OAuth refuses to silently choose between multiple returned YouTube identities',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-oauth.ts'),'utf8');
+  assert.match(source,/items\.length>1/);
+  assert.match(source,/retornou mais de um canal YouTube/);
+});
+
+test('project management makes the pending project to channel link visible before persistence',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/components/channel-management.tsx'),'utf8');
+  assert.match(source,/CONFIRME O VÍNCULO/);
+  assert.match(source,/CANAL IDENTIFICADO PELO GOOGLE/);
+  assert.match(source,/Confirmar vínculo/);
+  assert.match(source,/Cancelar/);
+});
+

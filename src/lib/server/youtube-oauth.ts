@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import type { LinkedYouTubeChannel, YouTubeConnection } from '@/lib/types';
+import type { LinkedYouTubeChannel, PendingYouTubeLink, YouTubeConnection } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import {
@@ -153,7 +153,11 @@ export async function fetchOwnYouTubeChannel(accessToken:string){
   });
   const body=await response.json().catch(()=>({})) as ChannelListResponse;
   if(!response.ok)throw new HttpError('Falha ao identificar o canal do YouTube: '+(body.error?.message??response.statusText)+'.',502);
-  const item=body.items?.[0];
+  const items=body.items??[];
+  if(items.length>1){
+    throw new HttpError('A autorização retornou mais de um canal YouTube. Defina ou selecione o canal desejado na Conta Google e tente conectar novamente.',409);
+  }
+  const item=items[0];
   if(!item?.id)throw new HttpError('A conta Google autorizada não possui canal do YouTube disponível.',409);
   const thumbnails=item.snippet?.thumbnails??{};
   const thumb=thumbnails.high?.url??thumbnails.medium?.url??thumbnails.default?.url;
@@ -185,6 +189,14 @@ type ProjectYouTubeLinkRow={
   id:string;project_id:string;youtube_channel_id:string;is_primary:boolean;
   created_at:string;updated_at:string;
 };
+type PendingYouTubeLinkRow={
+  id:string;project_id:string;youtube_channel_id:string;youtube_title:string;
+  youtube_handle:string|null;youtube_thumbnail:string|null;subscriber_count:number|string|null;
+  video_count:number|string|null;view_count:number|string|null;scopes:string[]|null;
+  refresh_token_ciphertext?:string;token_aad?:string;
+  status:'pending'|'confirmed'|'cancelled'|'expired';expires_at:string;
+  created_at:string;updated_at:string;
+};
 
 function normalizeConnection(row:ConnectionRow):YouTubeConnection{
   return {
@@ -207,6 +219,130 @@ function countValue(value:number|string|null){
   if(value===null)return undefined;
   const parsed=Number(value);
   return Number.isFinite(parsed)&&parsed>=0?parsed:undefined;
+}
+
+async function pendingRow(id:string,withSecret=false){
+  const fields='id,project_id,youtube_channel_id,youtube_title,youtube_handle,youtube_thumbnail,subscriber_count,video_count,view_count,scopes,status,expires_at,created_at,updated_at'
+    +(withSecret?',refresh_token_ciphertext,token_aad':'');
+  return checked(await db().from('radar_youtube_oauth_pending').select(fields).eq('id',id).maybeSingle()) as PendingYouTubeLinkRow|null;
+}
+
+async function expirePending(row:PendingYouTubeLinkRow){
+  checked(await db().from('radar_youtube_oauth_pending').update({
+    status:'expired',
+    refresh_token_ciphertext:encryptYouTubeRefreshToken('expired',row.id),
+    token_aad:row.id,
+    updated_at:new Date().toISOString()
+  }).eq('id',row.id).eq('status','pending'));
+}
+
+export async function loadPendingYouTubeLink(id:string):Promise<PendingYouTubeLink|null>{
+  const row=await pendingRow(id,false);
+  if(!row)return null;
+  if(row.status!=='pending')throw new HttpError('Esta confirmação de canal YouTube não está mais pendente.',409);
+  if(new Date(row.expires_at).getTime()<=Date.now()){
+    await expirePending(row);
+    throw new HttpError('A confirmação do canal YouTube expirou. Inicie a conexão novamente.',410);
+  }
+  const project=checked(await db().from('radar_managed_channels').select('payload').eq('id',row.project_id).maybeSingle());
+  if(!project)throw new HttpError('Projeto de destino não encontrado.',404);
+  return {
+    id:row.id,
+    projectId:row.project_id,
+    projectName:String((project.payload as {name?:unknown}|null)?.name??'Projeto sem nome'),
+    youtubeChannelId:row.youtube_channel_id,
+    youtubeTitle:row.youtube_title,
+    youtubeHandle:row.youtube_handle??undefined,
+    youtubeThumbnail:row.youtube_thumbnail??undefined,
+    subscriberCount:countValue(row.subscriber_count),
+    videoCount:countValue(row.video_count),
+    viewCount:countValue(row.view_count),
+    scopes:row.scopes??[],
+    expiresAt:row.expires_at,
+    createdAt:row.created_at
+  };
+}
+
+export async function createPendingYouTubeLink(input:{
+  channelId:string;
+  refreshToken:string;
+  scopes:string[];
+  youtubeChannelId:string;
+  youtubeTitle:string;
+  youtubeHandle?:string;
+  youtubeThumbnail?:string;
+  subscriberCount?:number;
+  videoCount?:number;
+  viewCount?:number;
+}){
+  const project=checked(await db().from('radar_managed_channels').select('id').eq('id',input.channelId).maybeSingle());
+  if(!project)throw new HttpError('Projeto interno não encontrado.',404);
+  const id=crypto.randomUUID();
+  const now=new Date();
+  const expiresAt=new Date(now.getTime()+20*60*1000).toISOString();
+  checked(await db().from('radar_youtube_oauth_pending').insert({
+    id,
+    project_id:input.channelId,
+    youtube_channel_id:input.youtubeChannelId,
+    youtube_title:input.youtubeTitle,
+    youtube_handle:input.youtubeHandle??null,
+    youtube_thumbnail:input.youtubeThumbnail??null,
+    subscriber_count:input.subscriberCount??null,
+    video_count:input.videoCount??null,
+    view_count:input.viewCount??null,
+    scopes:[...new Set(input.scopes)].sort(),
+    refresh_token_ciphertext:encryptYouTubeRefreshToken(input.refreshToken,id),
+    token_aad:id,
+    status:'pending',
+    expires_at:expiresAt,
+    updated_at:now.toISOString()
+  }));
+  const pending=await loadPendingYouTubeLink(id);
+  if(!pending)throw new HttpError('Conexão identificada, mas a confirmação não pôde ser criada.',502);
+  return pending;
+}
+
+export async function confirmPendingYouTubeLink(id:string){
+  const row=await pendingRow(id,true);
+  if(!row)throw new HttpError('Confirmação de canal YouTube não encontrada.',404);
+  if(row.status!=='pending')throw new HttpError('Esta confirmação de canal YouTube não está mais pendente.',409);
+  if(new Date(row.expires_at).getTime()<=Date.now()){
+    await expirePending(row);
+    throw new HttpError('A confirmação do canal YouTube expirou. Inicie a conexão novamente.',410);
+  }
+  const refreshToken=decryptYouTubeRefreshToken(String(row.refresh_token_ciphertext),String(row.token_aad));
+  await saveYouTubeConnection({
+    channelId:row.project_id,
+    refreshToken,
+    scopes:row.scopes??[],
+    youtubeChannelId:row.youtube_channel_id,
+    youtubeTitle:row.youtube_title,
+    youtubeHandle:row.youtube_handle??undefined,
+    youtubeThumbnail:row.youtube_thumbnail??undefined,
+    subscriberCount:countValue(row.subscriber_count),
+    videoCount:countValue(row.video_count),
+    viewCount:countValue(row.view_count)
+  });
+  checked(await db().from('radar_youtube_oauth_pending').update({
+    status:'confirmed',
+    refresh_token_ciphertext:encryptYouTubeRefreshToken('confirmed',row.id),
+    token_aad:row.id,
+    updated_at:new Date().toISOString()
+  }).eq('id',row.id).eq('status','pending'));
+  return (await listLinkedYouTubeChannels()).find(item=>item.youtubeChannelId===row.youtube_channel_id)??null;
+}
+
+export async function cancelPendingYouTubeLink(id:string){
+  const row=await pendingRow(id,true);
+  if(!row)return null;
+  if(row.status!=='pending')return null;
+  checked(await db().from('radar_youtube_oauth_pending').update({
+    status:'cancelled',
+    refresh_token_ciphertext:encryptYouTubeRefreshToken('cancelled',row.id),
+    token_aad:row.id,
+    updated_at:new Date().toISOString()
+  }).eq('id',row.id).eq('status','pending'));
+  return {id:row.id,status:'cancelled' as const};
 }
 
 const selection='id,channel_id,youtube_channel_id,youtube_title,youtube_handle,youtube_thumbnail,scopes,status,last_validated_at,error,created_at,updated_at';

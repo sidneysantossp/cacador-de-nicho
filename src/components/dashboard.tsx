@@ -29,9 +29,15 @@ export default function Dashboard(){
  useEffect(()=>{void refresh();},[refresh]);
  useEffect(()=>{
   const params=new URLSearchParams(window.location.search);
-  if(params.get('youtube')!=='connected')return;
+  const youtube=params.get('youtube');
   const id=params.get('channelId')??'';
   if(!id||!data.managedChannels.some(channel=>channel.id===id))return;
+  if(youtube==='pending'){
+   setView('management');
+   setToast('Canal YouTube identificado. Confirme o vínculo antes de salvar a conexão.');
+   return;
+  }
+  if(youtube!=='connected')return;
   setChannelBrainId(id);
   setChannelBrainInitialTab('publish');
   setView('channelBrain');
