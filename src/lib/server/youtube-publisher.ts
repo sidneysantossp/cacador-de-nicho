@@ -6,7 +6,7 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadPublicationPackage, listPublicationPackages } from './publication-package';
-import { loadYouTubeConnection } from './youtube-oauth';
+import { listLinkedYouTubeChannels, loadLinkedYouTubeConnection, loadYouTubeConnection } from './youtube-oauth';
 import {
   buildYouTubePublishPayload, youtubePublishReadinessIssues, youtubeWatchUrl
 } from '@/lib/youtube-publisher-policy';
@@ -63,7 +63,9 @@ export async function loadYouTubePublishJob(jobId:string):Promise<YouTubePublish
 export async function queueYouTubePublication(packageId:string){
   const pkg=await loadPublicationPackage(packageId);
   if(!pkg)throw new HttpError('Publication Package não encontrado.',404);
-  const connection=await loadYouTubeConnection(pkg.channelId);
+  const connection=pkg.targetYouTubeChannelId
+    ?await loadLinkedYouTubeConnection(pkg.channelId,pkg.targetYouTubeChannelId)
+    :null;
   const issues=youtubePublishReadinessIssues(pkg,connection);
   if(issues.length){
     throw new HttpError('Publicação YouTube bloqueada: '+issues.join(' · ')+'.',409);
@@ -114,10 +116,10 @@ export async function retryYouTubePublication(jobId:string){
   if(job.status!=='failed'&&job.status!=='cancelled'){
     throw new HttpError('Somente publicações failed/cancelled podem ser reenfileiradas.',409);
   }
-  const [pkg,connection]=await Promise.all([
-    loadPublicationPackage(job.packageId),
-    loadYouTubeConnection(job.channelId)
-  ]);
+  const pkg=await loadPublicationPackage(job.packageId);
+  const connection=pkg?.targetYouTubeChannelId
+    ?await loadLinkedYouTubeConnection(job.channelId,pkg.targetYouTubeChannelId)
+    :null;
   const issues=youtubePublishReadinessIssues(pkg,connection);
   if(issues.length)throw new HttpError('Retry bloqueado: '+issues.join(' · ')+'.',409);
   if(pkg!.version!==job.packageVersion){
@@ -138,8 +140,9 @@ export async function retryYouTubePublication(jobId:string){
 }
 
 export async function youtubePublisherChannelState(channelId:string){
-  const [connection,jobs,packages]=await Promise.all([
+  const [connection,linkedChannels,jobs,packages]=await Promise.all([
     loadYouTubeConnection(channelId),
+    listLinkedYouTubeChannels(),
     listYouTubePublishJobs(channelId),
     listPublicationPackages(channelId)
   ]);
@@ -149,6 +152,7 @@ export async function youtubePublisherChannelState(channelId:string){
     configured:config.configured,
     missing:config.missing,
     connection,
+    linkedChannels:linkedChannels.filter(item=>item.projectId===channelId),
     jobs,
     readyPackages:packages.filter(pkg=>pkg.status==='approved'&&!jobPackages.has(pkg.id))
   };
