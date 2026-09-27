@@ -2,7 +2,7 @@
 Description=Keep Caçadores YouTube Publish worker on current Production image
 
 [Timer]
-OnBootSec=45s
+OnActiveSec=45s
 OnUnitActiveSec=60s
 AccuracySec=10s
 Persistent=true
