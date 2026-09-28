@@ -23,7 +23,7 @@ export async function GET(request:Request){
       redirectUri,
       challenge:pkce.challenge
     });
-    const response=Response.redirect(authorization.url,302);
+    const response=new Response(null,{status:302,headers:{Location:authorization.url}});
     response.headers.append(
       'Set-Cookie',
       'nexlev_pkce='+encodeURIComponent(pkce.verifier)+
