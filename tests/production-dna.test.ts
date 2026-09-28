@@ -123,3 +123,15 @@ test('Production DNA supports a versioned voice-only patch that preserves extens
   assert.match(server,/delete raw\.version/);
   assert.match(server,/voice:input\.voice/);
 });
+
+test('Production DNA character reference patch requires ready OWNED images and preserves extensions',()=>{
+  const route=readFileSync('src/app/api/production-dna/route.ts','utf8');
+  const server=readFileSync('src/lib/server/production-dna.ts','utf8');
+  assert.match(route,/action:z\.literal\('patchCharacterReferences'\)/);
+  assert.match(route,/\^owned:/);
+  assert.match(server,/patchProductionDnaCharacterReferences/);
+  assert.match(server,/radar_owned_media_assets/);
+  assert.match(server,/row\.status==='ready'&&row\.asset_kind==='image'/);
+  assert.match(server,/referenceStatus:referenceAssets\.length\?'locked':'needs-reference'/);
+  assert.match(server,/delete raw\.version/);
+});

@@ -15,6 +15,16 @@ export const googleVideoModels=[
 export type GoogleImageModel=typeof googleImageModels[number];
 export type GoogleVideoModel=typeof googleVideoModels[number];
 
+const ownedReferencePattern=/^owned:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+
+export function ownedReferenceAssetId(value:string){
+  return value.trim().match(ownedReferencePattern)?.[1]?.toLowerCase()??null;
+}
+
+export function ownedReferenceAssetIds(values:string[]){
+  return [...new Set(values.map(ownedReferenceAssetId).filter((value):value is string=>!!value))];
+}
+
 export function validVideoGeneration(modelId:string,resolution:string,durationSeconds:number){
   if(!googleVideoModels.includes(modelId as GoogleVideoModel))return false;
   if(!['720p','1080p','4k'].includes(resolution))return false;

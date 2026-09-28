@@ -7,7 +7,7 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
-import { putMedia, removeMedia, signedMediaUrl } from './media-storage';
+import { downloadMedia, putMedia, removeMedia, signedMediaUrl } from './media-storage';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
@@ -15,7 +15,7 @@ import { loadVoiceAsset } from './voice-engine';
 import { matchOwnedMediaSegments } from './owned-media-intelligence';
 import { libraryFirstMatchAccepted, libraryFirstSceneQuery } from '@/lib/media-library-policy';
 import {
-  assetIsStale, assetKindForMime, googleImageModels, googleVideoModels, sceneAssetOwnsStorage,
+  assetIsStale, assetKindForMime, googleImageModels, googleVideoModels, ownedReferenceAssetIds, sceneAssetOwnsStorage,
   type GoogleImageModel, type GoogleVideoModel, validVideoGeneration
 } from '@/lib/asset-factory-policy';
 
@@ -245,6 +245,42 @@ function findVideoUri(value:unknown):string|null{
     }
   }
   return null;
+}
+
+type ProviderReferenceImage={assetId:string;mimeType:string;data:string};
+
+async function providerReferenceImages(
+  dna:Awaited<ReturnType<typeof loadProductionDna>>,
+  visual:VisualScenePrompt,
+  limit:number
+):Promise<ProviderReferenceImage[]>{
+  if(!dna)return [];
+  const known=new Map(dna.characters.map(character=>[character.id,character]));
+  const requested=[...new Set(visual.characterIds.flatMap(characterId=>
+    ownedReferenceAssetIds(known.get(characterId)?.referenceAssets??[]).slice(0,1)
+  ))].slice(0,Math.max(0,limit));
+  if(!requested.length)return [];
+
+  const result=await db().from('radar_owned_media_assets')
+    .select('id,asset_kind,status,storage_path,mime_type')
+    .in('id',requested);
+  if(result.error)throw new HttpError('Falha ao carregar referências visuais do personagem.',502);
+  const byId=new Map((result.data??[]).map(row=>[String(row.id),row]));
+  const references:ProviderReferenceImage[]=[];
+  for(const assetId of requested){
+    const row=byId.get(assetId);
+    if(!row||row.status!=='ready'||row.asset_kind!=='image'||!String(row.storage_path??'')){
+      throw new HttpError('Uma referência visual do personagem ainda não está pronta no R2.',409);
+    }
+    const mimeType=String(row.mime_type??'').toLowerCase();
+    if(!/^image\/(?:png|jpeg|webp)$/.test(mimeType)){
+      throw new HttpError('Formato de referência visual não suportado.',409);
+    }
+    const bytes=await downloadMedia(String(row.storage_path));
+    if(!bytes.length)throw new HttpError('Uma referência visual do personagem está vazia.',409);
+    references.push({assetId,mimeType,data:bytes.toString('base64')});
+  }
+  return references;
 }
 
 export async function listSceneAssets(promptSetId:string){
@@ -582,10 +618,11 @@ export async function generateGoogleImage(input:{
   if(!googleImageModels.includes(modelId))throw new HttpError('Modelo de imagem Google AI não suportado.',400);
   const imageSize=input.imageSize??'2K';
   const key=await providerSecret('googleai');
+  const references=await providerReferenceImages(dna,visual,4);
 
   const metadata=metadataFor(promptSet,visual,{
     modelId,
-    generation:{aspectRatio:dna.format.aspectRatio,imageSize},
+    generation:{aspectRatio:dna.format.aspectRatio,imageSize,referenceAssetIds:references.map(item=>item.assetId)},
     license:{type:'provider-terms',label:'Google AI generated asset'},
     costUsd:null
   } as Partial<SceneAsset>);
@@ -602,7 +639,12 @@ export async function generateGoogleImage(input:{
       headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
       body:JSON.stringify({
         model:modelId,
-        input:visual.prompt,
+        input:references.length
+          ?[
+              {type:'text',text:visual.prompt},
+              ...references.map(reference=>({type:'image',mime_type:reference.mimeType,data:reference.data}))
+            ]
+          :visual.prompt,
         response_format:{
           type:'image',
           mime_type:'image/jpeg',
@@ -641,13 +683,20 @@ export async function startGoogleVideo(input:{
   const {promptSet,dna,visual}=await eligibleContext(input.promptSetId,input.sceneId);
   const modelId=input.modelId??'veo-3.1-fast-generate-preview';
   const resolution=input.resolution??'720p';
-  const durationSeconds=input.durationSeconds??4;
-  if(!validVideoGeneration(modelId,resolution,durationSeconds))throw new HttpError('Combinação Veo inválida para modelo, resolução ou duração.',400);
   const key=await providerSecret('googleai');
+  const references=await providerReferenceImages(dna,visual,3);
+  if(references.length&&modelId==='veo-3.1-lite-generate-preview'){
+    throw new HttpError('Veo 3.1 Lite não suporta imagens de referência; use Veo 3.1 ou Veo 3.1 Fast.',400);
+  }
+  const durationSeconds=input.durationSeconds??(references.length?8:4);
+  if(references.length&&durationSeconds!==8){
+    throw new HttpError('Veo 3.1 exige duração de 8 segundos quando imagens de referência são usadas.',400);
+  }
+  if(!validVideoGeneration(modelId,resolution,durationSeconds))throw new HttpError('Combinação Veo inválida para modelo, resolução ou duração.',400);
 
   const baseMetadata=metadataFor(promptSet,visual,{
     modelId,
-    generation:{aspectRatio:dna.format.aspectRatio,resolution,durationSeconds},
+    generation:{aspectRatio:dna.format.aspectRatio,resolution,durationSeconds,referenceAssetIds:references.map(item=>item.assetId)},
     license:{type:'provider-terms',label:'Google AI generated asset'},
     costUsd:null
   } as Partial<SceneAsset>);
@@ -663,7 +712,15 @@ export async function startGoogleVideo(input:{
       method:'POST',
       headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
       body:JSON.stringify({
-        instances:[{prompt:visual.prompt}],
+        instances:[{
+          prompt:visual.prompt,
+          ...(references.length?{
+            referenceImages:references.map(reference=>({
+              image:{inlineData:{mimeType:reference.mimeType,data:reference.data}},
+              referenceType:'asset'
+            }))
+          }:{})
+        }],
         parameters:{
           numberOfVideos:1,
           aspectRatio:dna.format.aspectRatio==='9:16'?'9:16':'16:9',

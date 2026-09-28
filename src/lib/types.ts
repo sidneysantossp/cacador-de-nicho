@@ -1244,6 +1244,7 @@ export type SceneAsset = {
   imageSize?: string;
   resolution?: string;
   durationSeconds?: number;
+  referenceAssetIds?: string[];
  };
  license: SceneAssetLicense;
  stock?: {
