@@ -68,6 +68,16 @@ function structured(result:unknown){
   const value=result as {structuredContent?:Record<string,unknown>}|null;
   return value?.structuredContent??{};
 }
+function toolFailure(tool:string,result:unknown){
+  const value=result as {isError?:boolean;content?:Array<{type?:string;text?:string}>}|null;
+  if(!value?.isError)return null;
+  const message=(value.content??[]).map(item=>item.text??'').filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  return {
+    tool,
+    message:(message||'NexLev tool returned an error.').slice(0,600),
+    rateLimited:/rate limit exceeded|used \d+\/\d+ calls/i.test(message)
+  };
+}
 function rows(result:unknown,keys:string[]){
   const data=structured(result);
   for(const key of keys){
@@ -182,6 +192,14 @@ export async function refreshNexLevEvidencePack(channelId:string):Promise<NexLev
     callNexLevTool('faceless_outliers_videos',videoArgs(profile.focused)),
     callNexLevTool('search_niche_finder_channels',channelArgs)
   ]);
+  const failures=[
+    toolFailure('faceless_outliers_videos:broad',broad),
+    toolFailure('faceless_outliers_videos:focused',focused),
+    toolFailure('search_niche_finder_channels',channels)
+  ].filter(Boolean) as Array<{tool:string;message:string;rateLimited:boolean}>;
+  if(failures.length===3){
+    throw new HttpError('NexLev não concluiu a varredura: '+failures.map(item=>item.message).join(' · '),failures.some(item=>item.rateLimited)?429:502);
+  }
 
   const items=uniqueItems([
     ...rows(broad,['videos']).map(row=>videoItem(row,'faceless_outliers_videos')).filter(Boolean),
@@ -201,12 +219,16 @@ export async function refreshNexLevEvidencePack(channelId:string):Promise<NexLev
     items:items.slice(0,24),
     conclusions:[
       items.length+' sinais normalizados foram preservados nesta rodada.',
-      best?'Maior sinal de vídeo: '+itemSummary(best):'Nenhum vídeo passou pelos filtros nesta rodada.'
+      best?'Maior sinal de vídeo: '+itemSummary(best):
+        failures.some(item=>item.tool.startsWith('faceless_outliers_videos'))
+          ?'A busca de vídeos ficou parcial por limite/erro do NexLev; não interpretar como ausência de vencedores.'
+          :'Nenhum vídeo passou pelos filtros nesta rodada.'
     ],
     limitations:[
       'NexLev é fonte de descoberta e sinal de mercado; não prova causalidade de performance.',
       'A conta conectada pode impor cotas por ferramenta e janela de renovação.',
-      'Resultados sem correspondência semântica suficiente não devem ser tratados como validação do tópico.'
+      'Resultados sem correspondência semântica suficiente não devem ser tratados como validação do tópico.',
+      ...failures.map(item=>'Falha parcial em '+item.tool+': '+item.message)
     ]
   };
   checked(await db().from('radar_nexlev_evidence_packs').insert({
