@@ -9,7 +9,7 @@ if [[ -z "$ENDPOINT" || "$ENDPOINT" != /api/* || -z "$BODY" ]]; then
   exit 64
 fi
 
-python3 - "$BODY" <<'PY' |
+NORMALIZED_JSON="$(python3 - "$BODY" <<'PY'
 import json,sys
 try:
     body=json.loads(sys.argv[1])
@@ -17,4 +17,6 @@ except Exception:
     raise SystemExit("invalid json body")
 sys.stdout.write(json.dumps(body,separators=(",",":")))
 PY
-  /srv/auditseo-deploy/bin/cacadores-agent-api POST "$ENDPOINT"
+)"
+
+/srv/auditseo-deploy/bin/cacadores-agent-api POST "$ENDPOINT" "$NORMALIZED_JSON"
