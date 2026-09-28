@@ -55,6 +55,7 @@ allowed=(
     "/api/audience-intelligence",
     "/api/asset-factory",
     "/api/audio-library",
+    "/api/autopilot-readiness",
     "/api/channel-brain",
     "/api/content-os",
     "/api/episode-automation",
@@ -67,7 +68,9 @@ allowed=(
     "/api/production-dna",
     "/api/production-quality",
     "/api/publication-package",
+    "/api/radar",
     "/api/render-engine",
+    "/api/render-engine/events",
     "/api/scene-timecode",
     "/api/script-engine",
     "/api/stock-media",
@@ -80,6 +83,7 @@ allowed=(
     "/api/youtube-channels",
     "/api/youtube-connection",
     "/api/youtube-publisher",
+    "/api/youtube-publisher/events",
 )
 pathname=path.split("?",1)[0]
 if not any(pathname==prefix or pathname.startswith(prefix+"/") for prefix in allowed):
