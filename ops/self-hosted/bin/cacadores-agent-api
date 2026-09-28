@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+ENV_FILE="$BASE/env/cacador-de-nicho.production.env"
+STATE_FILE="$BASE/state/cacador-de-nicho.json"
+
+METHOD="${1:-GET}"
+PATH_QUERY="${2:-}"
+
+if [[ -z "$PATH_QUERY" || "$PATH_QUERY" != /api/* ]]; then
+  echo "usage: cacadores-agent-api <GET|POST|DELETE> /api/<operational-path>[?query]" >&2
+  exit 64
+fi
+
+case "$METHOD" in
+  GET|POST|DELETE) ;;
+  *) echo "unsupported method: $METHOD" >&2; exit 64 ;;
+esac
+
+set -a
+source "$ENV_FILE"
+set +a
+
+AGENT_OPERATOR_SECRET="${AGENT_OPERATOR_SECRET:-}"
+export AGENT_OPERATOR_SECRET
+if [[ "${#AGENT_OPERATOR_SECRET}" -lt 32 ]]; then
+  echo "AGENT_OPERATOR_SECRET is missing or too short" >&2
+  exit 78
+fi
+
+PORT="$(python3 - "$STATE_FILE" <<'PYPORT'
+from pathlib import Path
+import json,sys
+state=json.loads(Path(sys.argv[1]).read_text())
+port=(state.get("production") or {}).get("port")
+if not port:
+    raise SystemExit("production port unavailable")
+print(port)
+PYPORT
+)"
+
+export CACADORES_AGENT_METHOD="$METHOD"
+export CACADORES_AGENT_PATH="$PATH_QUERY"
+export CACADORES_AGENT_PORT="$PORT"
+
+python3 - <<'PY'
+import os,sys,urllib.request,urllib.error
+
+method=os.environ["CACADORES_AGENT_METHOD"]
+path=os.environ["CACADORES_AGENT_PATH"]
+port=os.environ["CACADORES_AGENT_PORT"]
+secret=os.environ["AGENT_OPERATOR_SECRET"]
+
+allowed=(
+    "/api/actions",
+    "/api/audience-intelligence",
+    "/api/asset-factory",
+    "/api/audio-library",
+    "/api/autopilot-readiness",
+    "/api/channel-brain",
+    "/api/content-os",
+    "/api/episode-automation",
+    "/api/external-import",
+    "/api/media-library",
+    "/api/narrative",
+    "/api/next-episode",
+    "/api/owned-media",
+    "/api/performance-analyst",
+    "/api/production-dna",
+    "/api/production-quality",
+    "/api/publication-package",
+    "/api/radar",
+    "/api/render-engine",
+    "/api/render-engine/events",
+    "/api/scene-timecode",
+    "/api/script-engine",
+    "/api/stock-media",
+    "/api/timeline-engine",
+    "/api/transcription-engine",
+    "/api/video-editor",
+    "/api/visual-intelligence",
+    "/api/visual-prompt-engine",
+    "/api/voice-engine",
+    "/api/youtube-channels",
+    "/api/youtube-connection",
+    "/api/youtube-publisher",
+    "/api/youtube-publisher/events",
+)
+pathname=path.split("?",1)[0]
+if not any(pathname==prefix or pathname.startswith(prefix+"/") for prefix in allowed):
+    print("agent route is not allowed: "+pathname,file=sys.stderr)
+    raise SystemExit(77)
+
+body=None
+if method in ("POST","DELETE"):
+    raw=sys.stdin.buffer.read()
+    if raw:
+        body=raw
+
+headers={
+    "Accept":"application/json",
+    "x-cacadores-agent-secret":secret,
+}
+if body is not None:
+    headers["Content-Type"]="application/json"
+
+request=urllib.request.Request(
+    f"http://127.0.0.1:{port}{path}",
+    data=body,
+    headers=headers,
+    method=method,
+)
+try:
+    with urllib.request.urlopen(request,timeout=1800) as response:
+        payload=response.read().decode("utf-8","replace")
+        print(payload)
+        if not 200 <= response.status < 300:
+            raise SystemExit(22)
+except urllib.error.HTTPError as exc:
+    payload=exc.read().decode("utf-8","replace")
+    print(payload,file=sys.stderr)
+    raise SystemExit(22)
+except Exception as exc:
+    print(f"Agent API request failed: {exc}",file=sys.stderr)
+    raise SystemExit(1)
+PY
