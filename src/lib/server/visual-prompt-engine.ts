@@ -138,6 +138,107 @@ export async function createVisualPromptSet(scenePlanId:string):Promise<VisualPr
   return saveVisualPromptSet(buildInitialVisualPromptSet(plan,dna),'draft',0,false);
 }
 
+export async function operatorVisualPromptContext(scenePlanId:string){
+  const {plan,dna}=await eligibleContext(scenePlanId);
+  const currentSet=await loadVisualPromptSetByPlan(scenePlanId);
+  return {
+    scenePlanVersion:plan.version,
+    productionDnaVersion:dna.version,
+    setVersion:currentSet?.version??0,
+    scenePlan:plan,
+    productionDna:dna,
+    currentSet
+  };
+}
+
+export async function importOperatorVisualPrompts(input:{
+  scenePlanId:string;
+  expectedScenePlanVersion:number;
+  expectedProductionDnaVersion:number;
+  expectedSetVersion:number;
+  scenes:Array<{
+    sceneId:string;
+    direction:string;
+    characterIds?:string[];
+  }>;
+}):Promise<VisualPromptSet>{
+  const {plan,dna}=await eligibleContext(input.scenePlanId);
+  if(plan.version!==input.expectedScenePlanVersion){
+    throw new HttpError('O Scene Plan mudou. Recarregue o contexto antes de importar os prompts.',409);
+  }
+  if(dna.version!==input.expectedProductionDnaVersion){
+    throw new HttpError('O Production DNA mudou. Recarregue o contexto antes de importar os prompts.',409);
+  }
+
+  const existing=await loadVisualPromptSetByPlan(plan.id);
+  const currentVersion=existing?.version??0;
+  if(currentVersion!==input.expectedSetVersion){
+    throw new HttpError('O Visual Prompt Set mudou. Recarregue antes de importar uma nova versão.',409);
+  }
+
+  const sceneIds=new Set(plan.scenes.map(scene=>scene.id));
+  const inputIds=input.scenes.map(scene=>scene.sceneId);
+  if(new Set(inputIds).size!==inputIds.length){
+    throw new HttpError('A importação contém cenas duplicadas.',400);
+  }
+  if(inputIds.length!==plan.scenes.length||inputIds.some(id=>!sceneIds.has(id))){
+    throw new HttpError('A importação precisa conter exatamente uma direção para cada cena do Scene Plan.',400);
+  }
+
+  const knownCharacters=new Set(dna.characters.map(character=>character.id));
+  const byScene=new Map(input.scenes.map(scene=>[scene.sceneId,scene]));
+  const drafts=plan.scenes.map(scene=>{
+    const draft=byScene.get(scene.id)!;
+    const characterIds=draft.characterIds?.length?[...new Set(draft.characterIds)]:[...scene.characterIds];
+    for(const id of characterIds){
+      if(!knownCharacters.has(id))throw new HttpError('Personagem desconhecido no prompt visual: '+id+'.',400);
+    }
+    return {sceneId:scene.id,characterIds,direction:draft.direction.trim()};
+  });
+
+  const recurring=recurringCharacterIds(drafts);
+  const readyByCharacter=new Map((existing?.characterReferences??[]).map(ref=>[ref.characterId,ref.assetReady]));
+  const characterReferences=recurring.flatMap(characterId=>{
+    const character=dna.characters.find(item=>item.id===characterId);
+    if(!character)return [];
+    const ref=compileCharacterReference(
+      character,dna,drafts.filter(item=>item.characterIds.includes(characterId)).map(item=>item.sceneId)
+    );
+    return [{...ref,assetReady:readyByCharacter.get(characterId)??false}];
+  });
+
+  const scenePrompts=plan.scenes.map(scene=>{
+    const draft=drafts.find(item=>item.sceneId===scene.id)!;
+    const compiled=compileScenePrompt(scene,dna,draft.characterIds,draft.direction,recurring);
+    return {...compiled,direction:draft.direction,characterIds:draft.characterIds};
+  });
+
+  const now=new Date().toISOString();
+  const base=existing??buildInitialVisualPromptSet(plan,dna);
+  const next:VisualPromptSetPayload={
+    ...base,
+    id:existing?.id??base.id,
+    channelId:plan.channelId,
+    episodeId:plan.episodeId,
+    scenePlanId:plan.id,
+    scenePlanVersion:plan.version,
+    productionDnaVersion:dna.version,
+    styleLock:dna.visual.basePrompt.trim(),
+    aiPlanning:{
+      completedScenes:plan.scenes.length,
+      totalScenes:plan.scenes.length,
+      batchSize:40,
+      updatedAt:now
+    },
+    characterReferences,
+    scenePrompts,
+    review:{notes:existing?.review.notes||'Imported by ChatGPT operator.'},
+    createdAt:existing?.createdAt??base.createdAt,
+    updatedAt:now
+  };
+  return saveVisualPromptSet(next,'draft',currentVersion,false);
+}
+
 export async function generateVisualPromptDrafts(
   setId:string,
   options:{maxScenes?:number}={}
