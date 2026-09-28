@@ -483,6 +483,45 @@ export async function uploadVoiceAsset(scriptId:string,file:File){
   return persistAudio(script,reservation,bytes,mimeType,file.name,metadata);
 }
 
+export async function getElevenLabsVoice(voiceId:string):Promise<ElevenVoiceOption>{
+  const id=voiceId.trim();
+  if(!id)throw new HttpError('Voice ID da ElevenLabs inválido.',400);
+  const key=await providerSecret('elevenlabs');
+  let response:Response;
+  try{
+    response=await fetch(
+      'https://api.elevenlabs.io/v1/voices/'+encodeURIComponent(id),
+      {
+        headers:{'xi-api-key':key},
+        signal:AbortSignal.timeout(20000),
+        cache:'no-store'
+      }
+    );
+  }catch{
+    throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);
+  }
+  if(!response.ok){
+    const raw=await response.text().catch(()=>'');
+    if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
+    if(response.status===403)throw new HttpError('A nova credencial não tem acesso a esta voz ElevenLabs.',403);
+    if(response.status===404||response.status===422){
+      throw new HttpError('Esta voz ElevenLabs não está disponível para a credencial atual.',404);
+    }
+    if(response.status===429)throw new HttpError('A ElevenLabs atingiu o limite de uso da conta.',429);
+    const safe=raw.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
+    throw new HttpError('A ElevenLabs não conseguiu consultar esta voz'+(safe?': '+safe:'')+'.',502);
+  }
+  const item=await response.json() as Record<string,unknown>;
+  return {
+    voiceId:String(item.voice_id??id),
+    name:String(item.name??'Unnamed voice'),
+    category:String(item.category??''),
+    description:String(item.description??''),
+    previewUrl:String(item.preview_url??''),
+    labels:item.labels&&typeof item.labels==='object'?item.labels as Record<string,string>:{}
+  };
+}
+
 export async function listElevenLabsVoices():Promise<ElevenVoiceOption[]>{
   const key=await providerSecret('elevenlabs');
   let response:Response;

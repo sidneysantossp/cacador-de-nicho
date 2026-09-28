@@ -118,3 +118,12 @@ test('Voice Engine surfaces only sanitized ElevenLabs 401 detail',()=>{
   assert.match(source,/slice\(0,220\)/);
 });
 
+
+test('Voice Engine can validate an exact ElevenLabs voice id without generating audio',()=>{
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  assert.match(route,/getElevenLabsVoice/);
+  assert.match(route,/searchParams\.get\('voiceId'\)/);
+  assert.match(server,/\/v1\/voices\/'\+encodeURIComponent\(id\)/);
+  assert.match(server,/não está disponível para a credencial atual/);
+});
