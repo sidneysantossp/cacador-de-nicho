@@ -63,3 +63,10 @@ test('host agent helper allowlists NexLev operational APIs',()=>{
   assert.match(source,/\/api\/nexlev-mcp/);
 });
 
+test('host-side agent helper exposes NexLev intelligence but not connection mutation',()=>{
+  const helper=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
+  assert.match(helper,/\/api\/nexlev-intelligence/);
+  assert.doesNotMatch(helper,/\/api\/nexlev-connection/);
+  assert.doesNotMatch(helper,/\/api\/nexlev-mcp/);
+});
+
