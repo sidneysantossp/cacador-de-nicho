@@ -609,11 +609,13 @@ export async function getElevenLabsVoice(voiceId:string):Promise<ElevenVoiceOpti
   };
 }
 
-export async function listElevenLabsVoices():Promise<ElevenVoiceOption[]>{
+export async function listElevenLabsVoices(search=''):Promise<ElevenVoiceOption[]>{
   const key=await providerSecret('elevenlabs');
+  const params=new URLSearchParams({page_size:'100',include_total_count:'false'});
+  if(search.trim())params.set('search',search.trim());
   let response:Response;
   try{
-    response=await fetch('https://api.elevenlabs.io/v2/voices?page_size=100&include_total_count=false',{
+    response=await fetch('https://api.elevenlabs.io/v2/voices?'+params.toString(),{
       headers:{'xi-api-key':key},
       signal:AbortSignal.timeout(20000),
       cache:'no-store'
