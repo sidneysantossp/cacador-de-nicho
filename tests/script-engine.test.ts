@@ -295,3 +295,9 @@ test('assisted-manual Script Engine imports ChatGPT output without provider gene
   assert.match(server,/expectedBrainVersion/);
   assert.match(server,/expectedScriptVersion/);
 });
+
+test('Script Engine accepts legacy DB-approved Content Projects without embedded approval payload',()=>{
+  const server=readFileSync('src/lib/server/episode-script.ts','utf8');
+  assert.match(server,/project\.status==='approved'&&\(!approval\|\|approval\.status==='approved'\)/);
+  assert.match(server,/project\.research\?\.factChecks\?\?\[\]/);
+});
