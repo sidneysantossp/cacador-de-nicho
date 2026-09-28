@@ -2391,6 +2391,7 @@ export type NextEpisodePlanPayload = {
  channelId: string;
  brainVersion: number;
  generatedAt: string;
+ generationSource?: 'openai-api' | 'operator-chatgpt';
  context: {
   learningRefs: string[];
   threadRefs: string[];

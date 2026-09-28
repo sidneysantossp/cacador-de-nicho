@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type {
   ChannelBrain, ManagedChannel, NarrativeBundle
 } from '../src/lib/types';
@@ -292,4 +294,16 @@ test('Strong audience and performance learnings avoid false data limitations',()
   assert.ok(!plan.limitations.some(item=>item.includes('learnings de audiência')));
   assert.ok(!plan.limitations.some(item=>item.includes('learnings de performance')));
   assert.ok(!plan.limitations.some(item=>item.includes('opportunityId')));
+});
+
+test('assisted-manual Next Episode supports ChatGPT operator import without provider generation',()=>{
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/next-episode/route.ts'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/next-episode.ts'),'utf8');
+  const types=readFileSync(resolve(process.cwd(),'src/lib/types.ts'),'utf8');
+  assert.match(route,/import-operator-plan/);
+  assert.match(route,/context.*operator/);
+  assert.match(server,/nextEpisodeOperatorContext/);
+  assert.match(server,/importOperatorNextEpisodePlan/);
+  assert.match(server,/generationSource:'operator-chatgpt'/);
+  assert.match(types,/operator-chatgpt/);
 });
