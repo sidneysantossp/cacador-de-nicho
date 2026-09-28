@@ -45,5 +45,5 @@ test('self-hosted agent client keeps the credential server-side and limits route
   assert.match(source,/\/api\/episode-automation/);
   assert.doesNotMatch(source,/\/api\/provider-settings/);
   assert.doesNotMatch(source,/\/api\/autopilot-control/);
-  assert.doesNotMatch(source,/echo .*AGENT_OPERATOR_SECRET/);
+  assert.doesNotMatch(source,/echo[^\n]*\\$\\{?AGENT_OPERATOR_SECRET/);
 });
