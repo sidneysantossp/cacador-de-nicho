@@ -494,13 +494,11 @@ export async function discoverElevenLabsSharedVoice(voiceId:string):Promise<Elev
   const key=await providerSecret('elevenlabs');
   const params=new URLSearchParams({
     page_size:'100',
-    include_total_count:'false',
-    voice_type:'community',
-    voice_ids:id
+    search:id
   });
   let response:Response;
   try{
-    response=await fetch('https://api.elevenlabs.io/v2/voices?'+params.toString(),{
+    response=await fetch('https://api.elevenlabs.io/v1/shared-voices?'+params.toString(),{
       headers:{'xi-api-key':key},
       signal:AbortSignal.timeout(20000),
       cache:'no-store'
@@ -510,23 +508,21 @@ export async function discoverElevenLabsSharedVoice(voiceId:string):Promise<Elev
   }
   if(!response.ok){
     if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
+    if(response.status===403)throw new HttpError('O plano ElevenLabs atual não permite consultar a Voice Library via API.',403);
     if(response.status===429)throw new HttpError('A ElevenLabs atingiu o limite de uso da conta.',429);
     throw new HttpError('A ElevenLabs não conseguiu pesquisar a Voice Library.',502);
   }
   const body=await response.json() as {voices?:Array<Record<string,unknown>>};
   const item=(body.voices??[]).find(row=>String(row.voice_id??'')===id)??body.voices?.[0];
   if(!item)return null;
-  const sharing=item.sharing&&typeof item.sharing==='object'
-    ?item.sharing as Record<string,unknown>
-    :{};
-  const publicOwnerId=String(sharing.public_owner_id??'').trim();
-  const originalVoiceId=String(sharing.original_voice_id??item.voice_id??id).trim();
+  const publicOwnerId=String(item.public_owner_id??'').trim();
+  const originalVoiceId=String(item.voice_id??id).trim();
   if(!publicOwnerId||!originalVoiceId)return null;
   return {
-    voiceId:String(item.voice_id??id),
-    name:String(item.name??sharing.name??'Unnamed voice'),
-    category:String(item.category??sharing.category??''),
-    description:String(item.description??sharing.description??''),
+    voiceId:originalVoiceId,
+    name:String(item.name??'Unnamed voice'),
+    category:String(item.category??''),
+    description:String(item.description??''),
     previewUrl:String(item.preview_url??''),
     labels:item.labels&&typeof item.labels==='object'?item.labels as Record<string,string>:{},
     publicOwnerId,
