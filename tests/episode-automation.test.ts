@@ -271,3 +271,12 @@ test('Automation keeps resumable Script generation actionable until all sections
   assert.match(source,/generation\.totalSections/);
   assert.match(source,/generateScriptForProject\(run\.contentProjectId\)/);
 });
+
+test('Episode Automation cannot call provider AI in operator-first mode',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/process\.env\.CACADORES_AI_AUTORUN==='1'/);
+  assert.match(source,/requiresOperator:!providerAiAutorun\(\)\|\|!run\.policy\.autoGenerateScript/);
+  assert.match(source,/requiresOperator:!providerAiAutorun\(\)\|\|!run\.policy\.autoGenerateVisualPrompts/);
+  assert.match(source,/Operator-first ativo: importe o roteiro produzido pelo ChatGPT/);
+  assert.match(source,/Operator-first ativo: importe as direções visuais produzidas pelo ChatGPT/);
+});

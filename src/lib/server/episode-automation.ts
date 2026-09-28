@@ -66,6 +66,8 @@ const visualBudgetConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_BU
 const VISUAL_ASSET_BATCH_BUDGET_MS=Number.isFinite(visualBudgetConfigured)
   ?Math.max(30000,Math.min(240000,Math.floor(visualBudgetConfigured)))
   :210000;
+const providerAiAutorun=()=>process.env.CACADORES_AI_AUTORUN==='1';
+
 const visualPromptBatchConfigured=Number(process.env.AUTOMATION_VISUAL_PROMPT_BATCH_SIZE??40);
 const VISUAL_PROMPT_BATCH_SIZE=Number.isFinite(visualPromptBatchConfigured)
   ?Math.max(1,Math.min(40,Math.floor(visualPromptBatchConfigured)))
@@ -379,7 +381,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   }else if(!script){
     steps.push(step('script','ready',{
       reason:'Content Project aprovado; roteiro pode ser gerado.',
-      requiresOperator:!run.policy.autoGenerateScript
+      requiresOperator:!providerAiAutorun()||!run.policy.autoGenerateScript
     }));
   }else if(scriptGenerationIncomplete){
     steps.push(step('script','ready',{
@@ -388,7 +390,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
         String(scriptPayload?.generation?.completedSections??0)+'/'+
         String(scriptPayload?.generation?.totalSections??0)+
         ' seções concluídas.',
-      requiresOperator:!run.policy.autoGenerateScript
+      requiresOperator:!providerAiAutorun()||!run.policy.autoGenerateScript
     }));
   }else if(script.status==='approved'&&!documentaryIssues.length){
     steps.push(step('script','completed',{entityId:String(script.id),entityVersion:Number(script.version)}));
@@ -485,7 +487,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       reason:'Planejamento visual IA: '+
         String(promptPayload.aiPlanning?.completedScenes??0)+'/'+
         String(promptPayload.aiPlanning?.totalScenes??0)+' cenas concluídas.',
-      requiresOperator:!run.policy.autoGenerateVisualPrompts
+      requiresOperator:!providerAiAutorun()||!run.policy.autoGenerateVisualPrompts
     }));
   }else if(promptSet){
     steps.push(step('visual-prompts','waiting',{
@@ -496,7 +498,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   }else{
     steps.push(step('visual-prompts','ready',{
       reason:'Scene Plan e Production DNA prontos para direção visual.',
-      requiresOperator:!run.policy.autoGenerateVisualPrompts
+      requiresOperator:!providerAiAutorun()||!run.policy.autoGenerateVisualPrompts
     }));
   }
 
@@ -1106,6 +1108,7 @@ async function executeAutomationTransition(
 
     case 'script':{
       if(current.status==='ready'){
+        if(!providerAiAutorun())throw new HttpError('Operator-first ativo: importe o roteiro produzido pelo ChatGPT antes de avançar.',409);
         if(!run.policy.autoGenerateScript)throw new HttpError('Geração automática de roteiro está desativada.',409);
         const script=await generateScriptForProject(run.contentProjectId);
         const generation=script.generation;
@@ -1178,6 +1181,7 @@ async function executeAutomationTransition(
 
     case 'visual-prompts':{
       if(current.status==='ready'){
+        if(!providerAiAutorun())throw new HttpError('Operator-first ativo: importe as direções visuais produzidas pelo ChatGPT antes de avançar.',409);
         if(!run.policy.autoGenerateVisualPrompts)throw new HttpError('Geração automática de prompts visuais está desativada.',409);
         const scenePlanId=automationStep(run,'scenes')?.entityId;
         if(!scenePlanId)throw new HttpError('Scene Plan aprovado não identificado.',409);
