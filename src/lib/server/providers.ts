@@ -146,19 +146,40 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
   if(provider==='elevenlabs'){
     let response:Response;
     try{
-      response=await fetch('https://api.elevenlabs.io/v2/voices?page_size=1&include_total_count=false',{
+      response=await fetch('https://api.elevenlabs.io/v2/voices?page_size=10&include_total_count=false',{
         headers:{'xi-api-key':key},
         signal:AbortSignal.timeout(15000),
         cache:'no-store'
       });
     }catch{throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);}
-    if(response.status===401){
-      throw new HttpError('A ElevenLabs recusou a nova chave. Confira se ela foi copiada por completo e continua ativa.',422);
+    if(!response.ok){
+      const raw=await response.text().catch(()=>'');
+      let status='';
+      let message='';
+      try{
+        const parsed=JSON.parse(raw) as {detail?:{status?:unknown;message?:unknown}};
+        status=typeof parsed.detail?.status==='string'?parsed.detail.status:'';
+        message=typeof parsed.detail?.message==='string'?parsed.detail.message:'';
+      }catch{}
+      if(status==='missing_permissions'||response.status===403){
+        throw new HttpError('A nova chave não possui Voices: Read. Edite a API key na ElevenLabs e habilite leitura de vozes.',422);
+      }
+      if(status==='invalid_api_key'||response.status===401){
+        throw new HttpError('A ElevenLabs recusou a nova chave. Confira se ela foi copiada por completo e continua ativa.',422);
+      }
+      if(response.status===429){
+        throw new HttpError('A ElevenLabs limitou temporariamente a validação da nova chave. Aguarde alguns segundos e tente novamente.',429);
+      }
+      const safeStatus=status.replace(/[^a-zA-Z0-9_.-]/g,'').slice(0,80);
+      const safeMessage=message.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,220);
+      throw new HttpError(
+        'A ElevenLabs não conseguiu listar as vozes'+
+        (safeStatus?' ['+safeStatus+']':'')+
+        (safeMessage?': '+safeMessage:'')+
+        ' (HTTP '+response.status+').',
+        422
+      );
     }
-    if(response.status===403){
-      throw new HttpError('A nova chave não possui Voices: Read. Edite a API key na ElevenLabs e habilite leitura de vozes.',422);
-    }
-    if(!response.ok)throw new HttpError('A ElevenLabs não conseguiu validar a leitura de vozes agora.',502);
 
     const voices=await response.json().catch(()=>({})) as {voices?:Array<{voice_id?:unknown}>};
     const voiceId=voices.voices?.map(item=>String(item.voice_id??'').trim()).find(Boolean);

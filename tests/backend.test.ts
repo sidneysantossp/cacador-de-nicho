@@ -59,3 +59,12 @@ test('ElevenLabs replacement key UI and validation use the same minimum and real
   assert.match(providers,/payment_issue/);
 });
 
+test('ElevenLabs key validation surfaces safe voice-list diagnostics',()=>{
+  const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
+  assert.match(providers,/page_size=10/);
+  assert.match(providers,/não conseguiu listar as vozes/);
+  assert.match(providers,/HTTP '\+response\.status/);
+  assert.match(providers,/missing_permissions/);
+  assert.match(providers,/invalid_api_key/);
+});
+
