@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  deleteVoiceAsset, generateElevenLabsVoice, listElevenLabsVoices,
+  deleteVoiceAsset, generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
   listVoiceAssets, loadVoiceAsset, selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
 import {
@@ -45,6 +45,10 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     if(url.searchParams.get('voices')==='elevenlabs'){
       return Response.json({voices:await listElevenLabsVoices()},{headers:{'Cache-Control':'no-store'}});
+    }
+    const voiceId=url.searchParams.get('voiceId')?.trim();
+    if(voiceId){
+      return Response.json({voice:await getElevenLabsVoice(voiceId)},{headers:{'Cache-Control':'no-store'}});
     }
     const scriptId=url.searchParams.get('scriptId')?.trim();
     if(!scriptId||!z.string().uuid().safeParse(scriptId).success)throw new HttpError('Roteiro inválido.',400);
