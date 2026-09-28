@@ -247,8 +247,8 @@ async function masterProbeAndAudio(job:RenderJob){
       '-f','null','-'
     ],180000);
     audioOk=analysis.code===0;
-    silenceSeconds=sumMatches(analysis.stderr,/silence_duration:\\s*([0-9.]+)/g);
-    const maxMatch=analysis.stderr.match(/max_volume:\\s*(-?[0-9.]+)\\s*dB/i);
+    silenceSeconds=sumMatches(analysis.stderr,/silence_duration:\s*([0-9.]+)/g);
+    const maxMatch=analysis.stderr.match(/max_volume:\s*(-?[0-9.]+)\s*dB/i);
     maxVolumeDb=maxMatch?numeric(maxMatch[1]):null;
   }
 
@@ -307,8 +307,8 @@ async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechn
   const analysis=await runCapture(FFMPEG,analysisArgs,180000);
   const diagnostics=analysis.stderr;
   const blackSeconds=sumMatches(diagnostics,/black_duration:([0-9.]+)/g);
-  const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\\s*([0-9.]+)/g):0;
-  const maxMatch=diagnostics.match(/max_volume:\\s*(-?[0-9.]+)\\s*dB/i);
+  const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\s*([0-9.]+)/g):0;
+  const maxMatch=diagnostics.match(/max_volume:\s*(-?[0-9.]+)\s*dB/i);
   const maxVolumeDb=maxMatch?numeric(maxMatch[1]):null;
 
   return {
@@ -499,21 +499,21 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
     await saveChapterQa(job.id,technical);
   }
 
-  let boundariesOk=true;
-  for(const chapter of chapters.slice(0,-1)){
-    const start=Math.max(0,chapter.endSeconds-.5);
-    const boundary=await runCapture(FFMPEG,[
-      '-hide_banner','-loglevel','error','-ss',String(start),
-      '-i',masterUrl,'-t','1.0','-map','0:v:0','-an','-f','null','-'
-    ],30000);
-    if(boundary.code!==0)boundariesOk=false;
-  }
+  const masterDecode=await runCapture(FFMPEG,[
+    '-hide_banner','-loglevel','error',
+    '-i',masterUrl,
+    '-map','0:v:0','-an',
+    '-f','null','-'
+  ],180000);
 
   const blackValues=results.map(item=>item.blackSeconds);
   const blackSeconds=blackValues.every((value):value is number=>value!==null)
     ?blackValues.reduce((sum,value)=>sum+value,0)
     :null;
-  const decodeOk=master.decodeOk&&boundariesOk&&results.every(item=>item.decodeOk);
+  const decodeOk=
+    master.decodeOk&&
+    masterDecode.code===0&&
+    results.every(item=>item.decodeOk);
   return {
     technical:{
       ...master,
