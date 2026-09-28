@@ -10,6 +10,7 @@ import { defaultSettings } from '@/lib/types';
 type Provider='openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 type Status={provider:Provider;configured:boolean;source:'vault'|'environment'|null;last4:string|null};
 type Model={id:string;name:string;description:string};
+type NexLevStatus={configured:boolean;status:'connected'|'needs-reauth'|'disconnected';toolCount:number;scopes?:string[];lastValidatedAt?:string;error?:string};
 type Payload={providers:Status[];models:readonly Model[];selection:{analysisModel:string;scriptModel:string};message?:string};
 
 export default function ProviderSettings({
@@ -45,17 +46,40 @@ export default function ProviderSettings({
  const [r2Bucket,setR2Bucket]=useState('cacadores-media');
  const [r2PublicUrl,setR2PublicUrl]=useState('');
  const [busy,setBusy]=useState('');
+ const [nexlev,setNexlev]=useState<NexLevStatus>({configured:false,status:'disconnected',toolCount:0});
 
  async function load(){
    if(!authenticated||!supabaseConfigured)return;
    try{
-     const response=await fetch('/api/provider-settings',{cache:'no-store'});
-     const body=await response.json();
-     if(!response.ok)throw new Error(body.message??'Não foi possível abrir o cofre.');
+     const [providerResponse,nexlevResponse]=await Promise.all([
+       fetch('/api/provider-settings',{cache:'no-store'}),
+       fetch('/api/nexlev-connection',{cache:'no-store'})
+     ]);
+     const body=await providerResponse.json();
+     if(!providerResponse.ok)throw new Error(body.message??'Não foi possível abrir o cofre.');
      apply(body);
+     const nexlevBody=await nexlevResponse.json().catch(()=>({}));
+     if(nexlevResponse.ok&&nexlevBody.connection)setNexlev(nexlevBody.connection);
    }catch(error){onMessage(error instanceof Error?error.message:'Não foi possível abrir o cofre.');}
  }
  useEffect(()=>{void load();},[authenticated,supabaseConfigured]);
+
+ async function sendNexLev(action:'validate'|'disconnect'){
+   setBusy('nexlev-'+action);
+   try{
+     const response=await fetch('/api/nexlev-connection',{
+       method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({action})
+     });
+     const result=await response.json();
+     if(!response.ok)throw new Error(result.message??'Não foi possível atualizar o NexLev.');
+     setNexlev(result.connection);onMessage(result.message);onSaved();return true;
+   }catch(error){
+     onMessage(error instanceof Error?error.message:'Não foi possível atualizar o NexLev.');
+     return false;
+   }finally{setBusy('');}
+ }
  function apply(body:Payload){
    setProviders(body.providers);
    setModels(body.models);
@@ -94,6 +118,14 @@ export default function ProviderSettings({
   {!ready&&<div className="config-gate"><KeyRound size={19}/><div><strong>{authenticated?'Supabase ainda não configurado':'Entre na operação para configurar'}</strong><p>{authenticated?'A base privada precisa estar ativa antes de receber chaves.':'As credenciais só podem ser vistas e alteradas depois do login.'}</p></div></div>}
 
   <div className="provider-grid">
+   <NexLevCard
+     status={nexlev}
+     disabled={!ready}
+     busy={busy}
+     onConnect={()=>{window.location.href='/api/nexlev-oauth/start';}}
+     onValidate={()=>void sendNexLev('validate')}
+     onDisconnect={()=>void sendNexLev('disconnect')}
+   />
    <CredentialCard provider="openai" title="OpenAI API" description="Pesquisa, anatomia, crítica e roteiros." status={openai} value={openaiKey} onChange={setOpenaiKey} disabled={!ready} busy={busy} icon={<BrainCircuit size={20}/>} placeholder="sk-…" onSave={async()=>{if(await send({action:'saveSecret',provider:'openai',key:openaiKey},'openai-save'))setOpenaiKey('');}} onTest={()=>void send({action:'test',provider:'openai'},'openai-test')} onRemove={()=>void send({action:'removeSecret',provider:'openai'},'openai-remove')}/>
    <CredentialCard provider="youtube" title="YouTube Data API" description="Descoberta e estatísticas públicas dos canais." status={youtube} value={youtubeKey} onChange={setYoutubeKey} disabled={!ready} busy={busy} icon={<Play size={20}/>} placeholder="AIza…" onSave={async()=>{if(await send({action:'saveSecret',provider:'youtube',key:youtubeKey},'youtube-save'))setYoutubeKey('');}} onTest={()=>void send({action:'test',provider:'youtube'},'youtube-test')} onRemove={()=>void send({action:'removeSecret',provider:'youtube'},'youtube-remove')}/>
    <CredentialCard provider="elevenlabs" title="ElevenLabs" description="Narração e vozes do Voice Engine. A chave precisa de Text to Speech: Access + Voices: Read." status={elevenlabs} value={elevenlabsKey} onChange={setElevenlabsKey} disabled={!ready} busy={busy} icon={<Mic2 size={20}/>} placeholder="sk_…" minLength={8} onSave={async()=>{if(await send({action:'saveSecret',provider:'elevenlabs',key:elevenlabsKey},'elevenlabs-save'))setElevenlabsKey('');}} onTest={()=>void send({action:'test',provider:'elevenlabs'},'elevenlabs-test')} onRemove={()=>void send({action:'removeSecret',provider:'elevenlabs'},'elevenlabs-remove')}/>
@@ -156,6 +188,37 @@ export default function ProviderSettings({
    <div className="model-actions"><a href="https://developers.openai.com/api/docs/models" target="_blank" rel="noreferrer">Ver catálogo oficial <ExternalLink size={13}/></a><button className="button primary" disabled={!ready||!!busy} onClick={()=>void send({action:'saveModels',analysisModel,scriptModel},'models')}><Check size={16}/>{busy==='models'?'Salvando…':'Salvar modelos'}</button></div>
   </div>
  </section>;
+}
+
+function NexLevCard({
+ status,disabled,busy,onConnect,onValidate,onDisconnect
+}:{
+ status:NexLevStatus;disabled:boolean;busy:string;
+ onConnect:()=>void;onValidate:()=>void;onDisconnect:()=>void;
+}){
+ const connected=status.configured&&status.status==='connected';
+ return <article className="credential-card">
+  <div className="credential-head">
+   <span className="integration-icon nexlev"><BrainCircuit size={20}/></span>
+   <div><h3>NexLev Intelligence</h3><p>Outliers, canais recém-criados, vídeos virais, similares, transcripts e sinais de nicho via OAuth da sua conta NexLev.</p></div>
+   <span className={`tag ${connected?'green':''}`}>{connected?`Conectado · ${status.toolCount} ferramentas`:status.status==='needs-reauth'?'Reconectar':'Pendente'}</span>
+  </div>
+  <p className="credential-note">
+   {connected
+     ?'OAuth ativo. As cotas e permissões são as da conta NexLev autenticada; nenhum token retorna ao navegador.'
+     :'Conecte a mesma conta NexLev paga usada no dashboard. Não é necessário copiar API key.'}
+  </p>
+  {status.error&&<p className="credential-note">{status.error}</p>}
+  <div className="credential-actions">
+   <button className="button primary small" disabled={disabled||!!busy} onClick={onConnect}>
+    {status.configured?'Reconectar NexLev':'Conectar NexLev'}
+   </button>
+   <button className="button subtle small" disabled={disabled||!connected||!!busy} onClick={onValidate}>
+    {busy==='nexlev-validate'?'Validando…':'Validar conexão'}
+   </button>
+   {status.configured&&<button className="icon-button danger" aria-label="Desconectar NexLev" disabled={!!busy} onClick={onDisconnect}><Trash2 size={17}/></button>}
+  </div>
+ </article>;
 }
 
 function CredentialCard({
