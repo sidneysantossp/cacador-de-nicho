@@ -66,6 +66,28 @@ export async function putMedia(
   return key;
 }
 
+export async function signedMediaPutUrl(
+  path:string,
+  contentType:string,
+  expiresSeconds=600
+){
+  if(!path||!isR2Path(path))return null;
+  const target=await r2();
+  if(!target)return null;
+  try{
+    return await getSignedUrl(
+      target.client,
+      new PutObjectCommand({
+        Bucket:target.config.bucket,
+        Key:r2Key(path),
+        ContentType:contentType,
+        CacheControl:'31536000'
+      }),
+      {expiresIn:Math.max(60,Math.min(expiresSeconds,900))}
+    );
+  }catch{return null;}
+}
+
 export async function signedMediaUrl(path:string,expiresSeconds=3600){
   if(!path)return null;
   if(isR2Path(path)){

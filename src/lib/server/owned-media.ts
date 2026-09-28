@@ -5,7 +5,10 @@ import { normalizeOwnedMediaDuplicateName, ownedMediaKind, ownedMediaSearchText,
 import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia, signedMediaUrl } from './media-storage';
+import {
+  headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia,
+  signedMediaPutUrl, signedMediaUrl
+} from './media-storage';
 import { probeStoredVideo } from './media-probe';
 import { searchOwnedMediaEmbeddings } from './media-embeddings';
 
@@ -233,7 +236,14 @@ export async function prepareOwnedMediaUpload(input:{
       contentFingerprint:contentFingerprint||null
     }
   }));
-  return {assetId:id,uploadUrl:'/api/owned-media/upload?assetId='+encodeURIComponent(id),storagePath,parsed};
+  const directUploadUrl=await signedMediaPutUrl(storagePath,mimeType,600);
+  return {
+    assetId:id,
+    uploadUrl:'/api/owned-media/upload?assetId='+encodeURIComponent(id),
+    directUploadUrl,
+    storagePath,
+    parsed
+  };
 }
 
 
