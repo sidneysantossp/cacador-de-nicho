@@ -125,8 +125,13 @@ async function managedChannel(channelId:string):Promise<ManagedChannel>{
   return payload;
 }
 
+function contentProjectApproved(project:ContentProject){
+  const approval=(project as ContentProject & {approval?:{status?:string}}).approval;
+  return project.status==='approved'&&(!approval||approval.status==='approved');
+}
+
 async function scriptContext(project:ContentProject){
-  if(project.status!=='approved'||project.approval.status!=='approved'){
+  if(!contentProjectApproved(project)){
     throw new HttpError('Aprove o Content Project antes de gerar o roteiro.',409);
   }
   const [channel,brain,bundle,productionDna]=await Promise.all([
@@ -149,7 +154,7 @@ export async function saveEpisodeScript(
   if(!project||project.channelId!==payload.channelId||project.episodeId!==payload.episodeId){
     throw new HttpError('Content Project incompatível com o roteiro.',409);
   }
-  if(project.status!=='approved'||project.approval.status!=='approved'){
+  if(!contentProjectApproved(project)){
     throw new HttpError('O Content Project precisa estar aprovado antes de salvar o roteiro.',409);
   }
 
@@ -162,7 +167,7 @@ export async function saveEpisodeScript(
 
   if(status==='approved'){
     const issues=scriptApprovalIssues(normalized,{
-      claims:project.research.factChecks,
+      claims:project.research?.factChecks??[],
       documentaryMode:Boolean(
         productionDna?.research?.documentaryMode||
         productionDna?.research?.requireClaimLedger
