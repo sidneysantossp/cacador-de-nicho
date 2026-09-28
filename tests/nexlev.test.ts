@@ -57,9 +57,10 @@ test('Settings exposes OAuth connect without asking for a NexLev API key',()=>{
   assert.match(ui,/Não é necessário copiar API key/);
 });
 
-test('host agent helper allowlists NexLev operational APIs',()=>{
-  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
-  assert.match(source,/\/api\/nexlev-connection/);
-  assert.match(source,/\/api\/nexlev-mcp/);
+test('host-side agent helper exposes NexLev intelligence but not connection mutation',()=>{
+  const helper=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
+  assert.match(helper,/\/api\/nexlev-intelligence/);
+  assert.doesNotMatch(helper,/\/api\/nexlev-connection/);
+  assert.doesNotMatch(helper,/\/api\/nexlev-mcp/);
 });
 
