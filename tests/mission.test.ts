@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { compareMissionCandidates, hydrateMissionBriefUniverse, productionReadiness } from '../src/lib/mission';
 import type { Channel, MissionBrief, OpportunityReport, UniverseCompetitor, UniverseMarketIntelligence } from '../src/lib/types';
 
@@ -276,4 +277,14 @@ test('Mission Control counts every actionable Universe gap while rendering only 
   assert.equal(hydrated.market.universeActionableGaps,7);
   assert.equal(hydrated.universeOpportunities.length,5);
   assert.deepEqual(hydrated.universeOpportunities.slice(0,2).map(item=>item.readiness),['pilot-ready','pilot-ready']);
+});
+
+test('Mission Control defaults to ChatGPT operator-first and never auto-spends OpenAI',()=>{
+  const source=readFileSync('src/lib/server/mission.ts','utf8');
+  assert.match(source,/CACADORES_AI_AUTORUN/);
+  assert.match(source,/process\.env\.CACADORES_AI_AUTORUN==='1'/);
+  assert.match(source,/Operator-first ativo/);
+  assert.match(source,/if\(aiAutorun&&health\.openai\)/);
+  assert.match(source,/if\(youtubeDataAvailable&&aiAutorun&&health\.openai/);
+  assert.doesNotMatch(source,/result\.blockers\.push\(error instanceof Error\?error\.message:'OpenAI indisponível/);
 });

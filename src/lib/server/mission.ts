@@ -15,6 +15,7 @@ import { YouTubeSearchBudgetError } from './youtube-search-budget';
 import { processUniverseImportQueue, refreshUniverseCompetitors, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeMarketIntelligenceState, universeQueueSummary, universeState } from './universe';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
+const providerAiAutorun=()=>process.env.CACADORES_AI_AUTORUN==='1';
 
 function isStudy(value:unknown):value is ChannelStudy{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='channel-study';
@@ -39,7 +40,6 @@ async function loadMissionState(){
 }
 
 async function providerHealth(){
-  const config=await settings();
   const result={youtube:false,openai:false,blockers:[] as string[]};
   try{
     const key=await providerSecret('youtube');
@@ -48,12 +48,15 @@ async function providerHealth(){
   }catch(error){
     result.blockers.push(error instanceof Error?error.message:'YouTube indisponível.');
   }
-  try{
-    const key=await providerSecret('openai');
-    await testProvider('openai',key,config.analysisModel);
-    result.openai=true;
-  }catch(error){
-    result.blockers.push(error instanceof Error?error.message:'OpenAI indisponível.');
+  if(providerAiAutorun()){
+    try{
+      const config=await settings();
+      const key=await providerSecret('openai');
+      await testProvider('openai',key,config.analysisModel);
+      result.openai=true;
+    }catch{
+      result.openai=false;
+    }
   }
   return result;
 }
@@ -171,6 +174,7 @@ export async function runMission():Promise<MissionBrief>{
   const startedMs=Date.now();
 
   try{
+    const aiAutorun=providerAiAutorun();
     const healthResult=await providerHealth();
     const health:MissionBrief['health']={
       supabase:true,
@@ -178,6 +182,10 @@ export async function runMission():Promise<MissionBrief>{
       openai:healthResult.openai,
       blockers:[...healthResult.blockers]
     };
+
+    if(!aiAutorun){
+      notes.push('Operator-first ativo: etapas interpretativas por IA não são executadas automaticamente pela Mission. O estado persistido continua disponível para o operador/ChatGPT.');
+    }
 
     let state=await loadMissionState();
     let universe=await universeState();
@@ -187,7 +195,7 @@ export async function runMission():Promise<MissionBrief>{
     let studiesGenerated=0;
 
     // Close the nearest-to-revenue gap first: a completed study without a fresh report.
-    if(health.openai){
+    if(aiAutorun&&health.openai){
       const pendingStudy=state.studies
         .filter(study=>{
           const report=state.reports.find(item=>item.channelStudyId===study.id);
@@ -234,7 +242,7 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    if(health.openai&&universe.length&&Date.now()-startedMs<140000){
+    if(aiAutorun&&health.openai&&universe.length&&Date.now()-startedMs<140000){
       try{
         const intelligence=await runUniverseIntelligence();
         if(intelligence.analyzed>0)workCompleted.push(intelligence.message);
@@ -244,7 +252,7 @@ export async function runMission():Promise<MissionBrief>{
       }
     }
 
-    if(health.openai&&Date.now()-startedMs<160000){
+    if(aiAutorun&&health.openai&&Date.now()-startedMs<160000){
       try{
         if(await shouldRefreshUniverseMarketIntelligence()){
           universeIntelligence=await runUniverseMarketIntelligence();
@@ -286,7 +294,7 @@ export async function runMission():Promise<MissionBrief>{
     // Open at most one new deep investigation per mission. A known channel can
     // still be analyzed when search.list is unavailable: Channel Study falls
     // back to the uploads playlist and marks the sample scope explicitly.
-    if(youtubeDataAvailable&&health.openai&&Date.now()-startedMs<195000){
+    if(youtubeDataAvailable&&aiAutorun&&health.openai&&Date.now()-startedMs<195000){
       const studiedIds=new Set(state.studies.map(study=>study.source.id));
       const candidate=state.channels.filter(channel=>!studiedIds.has(channel.id)).sort(compareMissionCandidates)[0];
       if(candidate){
