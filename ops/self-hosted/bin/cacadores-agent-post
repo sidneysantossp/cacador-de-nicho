@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENDPOINT="${1:-}"
+BODY="${2:-}"
+
+if [[ -z "$ENDPOINT" || "$ENDPOINT" != /api/* || -z "$BODY" ]]; then
+  echo "usage: cacadores-agent-post /api/<operational-path> '<json-body>'" >&2
+  exit 64
+fi
+
+python3 - "$BODY" <<'PY' |
+import json,sys
+try:
+    body=json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit("invalid json body")
+sys.stdout.write(json.dumps(body,separators=(",",":")))
+PY
+  /srv/auditseo-deploy/bin/cacadores-agent-api POST "$ENDPOINT"
