@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
-  RenderChapterPlan, RenderEncoderPreset, RenderManifest, RenderOutputFormat, RenderPreset,
+  RenderChapterPlan, RenderEncoderPreset, RenderManifest, RenderManifestChapter, RenderOutputFormat, RenderPreset,
   VideoEdit, Timeline, Transcript
 } from '@/lib/types';
 
