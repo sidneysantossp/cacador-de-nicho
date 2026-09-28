@@ -109,3 +109,12 @@ test('Voice Engine distinguishes ElevenLabs TTS permission and invalid-key failu
   assert.match(source,/ainda não possui permissão Text to Speech/);
   assert.match(source,/invalidada, revogada ou expirou/);
 });
+
+test('Voice Engine surfaces only sanitized ElevenLabs 401 detail',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  assert.match(source,/safeStatus/);
+  assert.match(source,/safeMessage/);
+  assert.match(source,/recusou a autenticação do Text to Speech/);
+  assert.match(source,/slice\(0,220\)/);
+});
+
