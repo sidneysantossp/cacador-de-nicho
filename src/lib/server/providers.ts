@@ -153,12 +153,60 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
       });
     }catch{throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);}
     if(response.status===401){
-      throw new HttpError('A ElevenLabs recusou a chave. Confira se a API key foi copiada por completo e ainda está ativa.',422);
+      throw new HttpError('A ElevenLabs recusou a nova chave. Confira se ela foi copiada por completo e continua ativa.',422);
     }
     if(response.status===403){
-      throw new HttpError('A chave ElevenLabs autenticou, mas não pode listar vozes. Habilite Voices: Read na chave e confira qualquer restrição de IP.',422);
+      throw new HttpError('A nova chave não possui Voices: Read. Edite a API key na ElevenLabs e habilite leitura de vozes.',422);
     }
-    if(!response.ok)throw new HttpError('A ElevenLabs não conseguiu validar a integração agora.',502);
+    if(!response.ok)throw new HttpError('A ElevenLabs não conseguiu validar a leitura de vozes agora.',502);
+
+    const voices=await response.json().catch(()=>({})) as {voices?:Array<{voice_id?:unknown}>};
+    const voiceId=voices.voices?.map(item=>String(item.voice_id??'').trim()).find(Boolean);
+    if(!voiceId){
+      throw new HttpError('A chave foi aceita, mas a conta ElevenLabs não retornou nenhuma voz disponível.',422);
+    }
+
+    let tts:Response;
+    try{
+      tts=await fetch(
+        'https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voiceId)+'/with-timestamps?output_format=mp3_44100_128',
+        {
+          method:'POST',
+          headers:{'xi-api-key':key,'Content-Type':'application/json'},
+          body:JSON.stringify({text:'teste',model_id:'eleven_flash_v2_5'}),
+          signal:AbortSignal.timeout(30000),
+          cache:'no-store'
+        }
+      );
+    }catch{throw new HttpError('A chave foi aceita, mas o endpoint Text to Speech da ElevenLabs não respondeu.',502);}
+
+    if(!tts.ok){
+      const raw=await tts.text().catch(()=>'');
+      let status='';
+      let message='';
+      try{
+        const parsed=JSON.parse(raw) as {detail?:{status?:unknown;message?:unknown}};
+        status=typeof parsed.detail?.status==='string'?parsed.detail.status:'';
+        message=typeof parsed.detail?.message==='string'?parsed.detail.message:'';
+      }catch{}
+      if(status==='missing_permissions'){
+        throw new HttpError('A nova chave não possui Text to Speech: Access. Habilite essa permissão na ElevenLabs antes de salvar.',422);
+      }
+      if(status==='payment_issue'){
+        throw new HttpError('A nova conta ElevenLabs possui uma pendência de pagamento e não pode gerar voz ainda.',422);
+      }
+      if(status==='invalid_api_key'||tts.status===401){
+        throw new HttpError('A ElevenLabs recusou a nova chave para Text to Speech. Verifique a chave, as permissões e a conta.',422);
+      }
+      if(tts.status===403){
+        throw new HttpError('Text to Speech foi bloqueado pela ElevenLabs. Verifique a permissão e qualquer restrição de IP.',422);
+      }
+      if(tts.status===429){
+        throw new HttpError('A nova conta ElevenLabs atingiu limite de uso, concorrência ou créditos.',429);
+      }
+      const safe=message.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
+      throw new HttpError('A ElevenLabs não conseguiu validar Text to Speech'+(safe?': '+safe:'')+'.',422);
+    }
     return;
   }
   if(provider==='googleai'){

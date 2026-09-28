@@ -47,3 +47,15 @@ test('self-hosted agent client keeps the credential server-side and limits route
   assert.doesNotMatch(source,/\/api\/autopilot-control/);
   assert.doesNotMatch(source,/echo[^\n]*\\$\\{?AGENT_OPERATOR_SECRET/);
 });
+
+test('ElevenLabs replacement key UI and validation use the same minimum and real TTS capability',()=>{
+  const ui=readFileSync(resolve(process.cwd(),'src/components/provider-settings.tsx'),'utf8');
+  const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
+  assert.match(ui,/provider="elevenlabs"[\s\S]*minLength=\{8\}/);
+  assert.match(ui,/Text to Speech: Access \+ Voices: Read/);
+  assert.match(providers,/\/v2\/voices\?page_size=1/);
+  assert.match(providers,/\/v1\/text-to-speech\//);
+  assert.match(providers,/missing_permissions/);
+  assert.match(providers,/payment_issue/);
+});
+
