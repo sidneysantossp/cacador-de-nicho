@@ -1,9 +1,11 @@
 import 'server-only';
 
 import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import { z } from 'zod';
 import { checked, db, list, put } from './db';
+import { HttpError } from './auth';
 import { collectUniverseCompetitor } from './youtube';
-import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, UNIVERSE_DNA_MODEL } from './ai';
+import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, universeChannelDnaSchema, universeCurvesGapsSchema, UNIVERSE_DNA_MODEL } from './ai';
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
@@ -187,7 +189,98 @@ export async function backfillUniverseSourceClusters(maxRefresh=25){
   };
 }
 
+export async function operatorUniverseDnaContext(ids?:string[]){
+  const all=await universeState();
+  const selected=ids?.length
+    ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
+    :selectUniverseDnaBootstrapBatch(all,await universeMarketIntelligenceState(),5,2);
+  return {
+    selected:selected.map(item=>({
+      competitor:item,
+      expectedLastMonitoredAt:item.lastMonitoredAt
+    })),
+    ready:all.filter(item=>!!item.dna).length,
+    total:all.length
+  };
+}
+
+export async function importOperatorUniverseDNA(input:{
+  items:Array<{
+    expectedLastMonitoredAt:string;
+    dna:z.infer<typeof universeChannelDnaSchema>;
+  }>;
+}){
+  const all=await universeState();
+  const byChannel=new Map(all.map(item=>[item.channelId,item]));
+  const now=new Date().toISOString();
+  const updated:string[]=[];
+
+  for(const item of input.items){
+    const dna=universeChannelDnaSchema.parse(item.dna);
+    const competitor=byChannel.get(dna.channelId);
+    if(!competitor)throw new Error('Concorrente do Universe não encontrado: '+dna.channelId);
+    if(competitor.lastMonitoredAt!==item.expectedLastMonitoredAt){
+      throw new Error('O snapshot do concorrente '+competitor.name+' mudou. Recarregue o contexto antes de importar o DNA.');
+    }
+    const nextDna={
+      generatedAt:now,
+      summary:dna.summary,
+      primaryNiche:dna.primaryNiche,
+      subniche:dna.subniche,
+      audienceIntent:dna.audienceIntent,
+      editorialPromise:dna.editorialPromise,
+      formatSignature:dna.formatSignature,
+      contentPillars:dna.contentPillars,
+      recurringEntities:dna.recurringEntities,
+      titlePatterns:dna.titlePatterns,
+      curiosityMechanisms:dna.curiosityMechanisms,
+      emotionalDrivers:dna.emotionalDrivers,
+      differentiationSignals:dna.differentiationSignals,
+      limitations:dna.limitations,
+      provenance:{
+        schemaVersion:1,
+        generatedBy:'chatgpt',
+        model:'chatgpt-operator',
+        sourceVideoCount:Math.min(20,competitor.recentUploads.length),
+        sourceSignalCount:competitor.signalDetails?.length??competitor.signals.length,
+        observedAt:competitor.lastMonitoredAt
+      }
+    };
+    const dnaTags=[
+      nextDna.primaryNiche,
+      nextDna.subniche,
+      nextDna.formatSignature,
+      ...nextDna.curiosityMechanisms.slice(0,2)
+    ].filter(Boolean).slice(0,5);
+    await put('radar_managed_channels',competitor.id,{
+      ...competitor,
+      sourceCluster:competitor.sourceCluster??competitor.cluster,
+      cluster:nextDna.primaryNiche||competitor.cluster,
+      subniche:nextDna.subniche||competitor.subniche,
+      format:nextDna.formatSignature||competitor.format,
+      dna:nextDna,
+      dnaAttempts:(competitor.dnaAttempts??0)+1,
+      lastDnaAttemptAt:now,
+      lastDnaError:undefined,
+      dnaTags,
+      updatedAt:now
+    });
+    updated.push(competitor.name);
+  }
+
+  const after=await universeState();
+  const ready=after.filter(item=>!!item.dna).length;
+  return {
+    analyzed:updated.length,
+    updated,
+    total:after.length,
+    ready,
+    remaining:Math.max(0,after.length-ready)
+  };
+}
+
 export async function runUniverseIntelligence(ids?:string[]){
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
   const all=await universeState();
   const selected=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
@@ -287,6 +380,7 @@ export async function runUniverseIntelligence(ids?:string[]){
 }
 
 export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120_000){
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
   const cap=Math.max(1,Math.min(maxCompetitors,25));
   const budget=Math.max(30_000,Math.min(timeBudgetMs,180_000));
   const startedAt=Date.now();
@@ -364,6 +458,7 @@ export async function runUniverseBootstrapCycle(){
 }
 
 export async function runUniverseCycle(){
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
   const {bootstrap,intelligence,evidence,queue}=await runUniverseBootstrapCycle();
   let market:UniverseMarketIntelligence|null=null;
   let marketError:string|null=null;
@@ -412,7 +507,164 @@ export async function shouldRefreshUniverseMarketIntelligence(){
   return (await universeMarketRefreshState()).run;
 }
 
+export async function operatorUniverseMarketContext(){
+  const all=await universeState();
+  const withDna=all.filter(item=>!!item.dna);
+  const sample=selectUniverseCurveEvidence(withDna,40,8);
+  if(sample.length<2)throw new Error('O Universe precisa de Channel DNA em pelo menos 2 concorrentes antes de extrair curvas.');
+  return {
+    snapshot:sample.map(item=>({
+      channelId:item.channelId,
+      expectedLastMonitoredAt:item.lastMonitoredAt,
+      expectedDnaGeneratedAt:item.dna?.generatedAt??null
+    })),
+    competitors:sample,
+    currentMarket:await universeMarketIntelligenceState()
+  };
+}
+
+export async function importOperatorUniverseMarket(input:{
+  snapshot:Array<{
+    channelId:string;
+    expectedLastMonitoredAt:string;
+    expectedDnaGeneratedAt:string|null;
+  }>;
+  raw:z.infer<typeof universeCurvesGapsSchema>;
+}):Promise<UniverseMarketIntelligence>{
+  const raw=universeCurvesGapsSchema.parse(input.raw);
+  const all=await universeState();
+  const withDna=all.filter(item=>!!item.dna);
+  const byChannel=new Map(withDna.map(item=>[item.channelId,item]));
+  const sample:UniverseCompetitor[]=[];
+
+  for(const expected of input.snapshot){
+    const current=byChannel.get(expected.channelId);
+    if(!current)throw new Error('Concorrente do snapshot de mercado não encontrado: '+expected.channelId);
+    if(current.lastMonitoredAt!==expected.expectedLastMonitoredAt||
+       (current.dna?.generatedAt??null)!==expected.expectedDnaGeneratedAt){
+      throw new Error('O snapshot de mercado mudou para '+current.name+'. Recarregue o contexto antes de importar.');
+    }
+    sample.push(current);
+  }
+  if(sample.length<2)throw new Error('O snapshot importado precisa conter pelo menos 2 concorrentes com DNA.');
+
+  const previous=await universeMarketIntelligenceState();
+  const olderPrevious=await universePreviousMarketIntelligenceState();
+  const validIds=new Set(sample.map(item=>item.channelId));
+  const byId=new Map(sample.map(item=>[item.channelId,item]));
+
+  const curves=raw.curves.flatMap((candidate,index)=>{
+    const support=[...new Set(candidate.supportingChannelIds.filter(id=>validIds.has(id)))];
+    if(!support.length)return [];
+    const classification=universeCurveClassification(support);
+    const key=universeKey(candidate.key||candidate.name||'curve-'+String(index+1));
+    const clusters=[...new Set(support.map(id=>byId.get(id)?.cluster).filter((value):value is string=>!!value))];
+    return [{
+      id:'universe-curve:'+key,
+      key,
+      name:candidate.name,
+      thesis:candidate.thesis,
+      mechanismSteps:candidate.mechanismSteps,
+      supportingChannelIds:support,
+      independentCreators:new Set(support).size,
+      classification,
+      clusters,
+      evidence:candidate.evidence,
+      counterEvidence:candidate.counterEvidence,
+      recurringTitlePatterns:candidate.recurringTitlePatterns,
+      transferableVariables:candidate.transferableVariables,
+      limitations:candidate.limitations
+    }];
+  });
+
+  const curveByKey=new Map(curves.map(curve=>[curve.key,curve]));
+  const gaps=raw.gaps.flatMap((candidate,index)=>{
+    const key=universeKey(candidate.curveKey);
+    const curve=curveByKey.get(key);
+    if(!curve)return [];
+    const resolvedEvidence=resolveUniverseGapEvidence(
+      withDna,
+      candidate,
+      candidate.targetEvidenceChannelIds.filter(id=>validIds.has(id))
+    );
+    const targetIds=resolvedEvidence.channelIds;
+    const demandStatus=universeGapDemandStatus(curve.classification,targetIds);
+    return [{
+      id:'universe-gap:'+curve.key+':'+universeKey(candidate.targetSpace||candidate.title||String(index+1)),
+      curveId:curve.id,
+      title:candidate.title,
+      targetSpace:candidate.targetSpace,
+      targetKeywords:candidate.targetKeywords,
+      preservedMechanism:candidate.preservedMechanism,
+      changedVariable:candidate.changedVariable,
+      demandStatus,
+      targetEvidenceChannelIds:targetIds,
+      demandEvidence:[...candidate.demandEvidence,...resolvedEvidence.evidence].slice(0,8),
+      sampleSaturation:candidate.sampleSaturation,
+      rationale:candidate.rationale,
+      risks:candidate.risks,
+      firstTests:candidate.firstTests
+    }];
+  });
+
+  const gapEvidenceIds=[...new Set(gaps.flatMap(gap=>gap.targetEvidenceChannelIds))];
+  const baseReport:UniverseMarketIntelligence={
+    kind:'universe-market-intelligence',
+    id:'universe-market-intelligence:latest',
+    generatedAt:new Date().toISOString(),
+    sourceCompetitorIds:[...new Set([...sample.map(item=>item.channelId),...gapEvidenceIds])],
+    dnaCount:withDna.length,
+    curves,
+    gaps,
+    limitations:[
+      ...raw.limitations,
+      'Classificações de curva são recalculadas no backend por criadores independentes: 1=hypothesis, 2=emerging, 3+=structural.',
+      'Saturação descreve apenas a amostra do Competitor Universe analisada; não representa todo o YouTube.',
+      'Gaps sem evidência explícita no targetSpace permanecem hypothesis, mesmo quando a curva de origem é estrutural.',
+      'Curvas foram importadas pelo ChatGPT operador e revalidadas deterministicamente contra o snapshot persistido.',
+      'Target evidence dos gaps foi revalidada deterministicamente contra todos os '+String(withDna.length)+' canais com Channel DNA.'
+    ]
+  };
+
+  const report=preserveUniverseMarketContinuity(
+    baseReport,
+    [previous,olderPrevious],
+    all
+  );
+  if(previous){
+    await put('radar_analyses','universe-market-intelligence:previous',{
+      ...previous,
+      id:'universe-market-intelligence:previous'
+    });
+  }
+  await put('radar_analyses',report.id,report);
+
+  for(const competitor of sample){
+    const supported=curves.filter(curve=>curve.supportingChannelIds.includes(competitor.channelId));
+    const strongest=supported.sort((a,b)=>{
+      const rank={hypothesis:1,emerging:2,structural:3};
+      return rank[b.classification]-rank[a.classification];
+    })[0];
+    if(!strongest)continue;
+    const desired=strongest.classification==='structural'
+      ?'structural-curve'
+      :strongest.classification==='emerging'
+        ?'emerging-curve'
+        :competitor.status;
+    if(UNIVERSE_STATUS_RANK[desired]>UNIVERSE_STATUS_RANK[competitor.status]){
+      await put('radar_managed_channels',competitor.id,{
+        ...competitor,
+        status:desired,
+        updatedAt:new Date().toISOString()
+      });
+    }
+  }
+
+  return report;
+}
+
 export async function runUniverseMarketIntelligence():Promise<UniverseMarketIntelligence>{
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
   const all=await universeState();
   const previous=await universeMarketIntelligenceState();
   const olderPrevious=await universePreviousMarketIntelligenceState();

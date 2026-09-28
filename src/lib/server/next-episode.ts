@@ -119,6 +119,7 @@ async function savePlan(
 }
 
 export async function generateNextEpisodePlan(channelId:string){
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   const [managed,brain,bundle,plans,marketEvidence]=await Promise.all([
     channel(channelId),
     loadChannelBrain(channelId),

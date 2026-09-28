@@ -14,6 +14,7 @@ import { visualPromptSetPayloadSchema } from '@/lib/server/validation';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
+const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: importe direções visuais do ChatGPT em vez da geração OpenAI.',409);};
 
 const operatorScene=z.object({
   sceneId:z.string().uuid(),
@@ -102,7 +103,7 @@ export async function POST(request:Request){
     let promptSet;
     if(body.action==='create')promptSet=await createVisualPromptSet(body.scenePlanId);
     else if(body.action==='importOperatorPrompts')promptSet=await importOperatorVisualPrompts(body);
-    else if(body.action==='generate')promptSet=await generateVisualPromptDrafts(body.setId);
+    else if(body.action==='generate'){assertProviderAiAllowed();promptSet=await generateVisualPromptDrafts(body.setId);}
     else promptSet=await saveVisualPromptSet(body.promptSet,body.status,body.expectedVersion);
 
     return Response.json({

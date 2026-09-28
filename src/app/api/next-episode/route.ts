@@ -10,6 +10,7 @@ import {
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=120;
+const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: use a importação do ChatGPT em vez da geração OpenAI.',409);};
 
 const operatorCandidate=z.object({
   workingTitle:z.string().min(1).max(250),
@@ -95,6 +96,7 @@ export async function POST(request:Request){
     const body=parsed.data;
 
     if(body.action==='generate'){
+      assertProviderAiAllowed();
       const result=await generateNextEpisodePlan(body.channelId);
       return Response.json({
         message:result.created

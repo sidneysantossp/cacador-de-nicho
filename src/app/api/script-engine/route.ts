@@ -12,6 +12,7 @@ import { loadProductionDna } from '@/lib/server/production-dna';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
+const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: use importOperatorScript em vez da geração OpenAI.',409);};
 
 const operatorSection=z.object({
   label:z.string().trim().min(1).max(120),
@@ -100,9 +101,9 @@ export async function POST(request:Request){
     const body=parsed.data;
 
     let script;
-    if(body.action==='generate')script=await generateScriptForProject(body.projectId);
+    if(body.action==='generate'){assertProviderAiAllowed();script=await generateScriptForProject(body.projectId);}
     else if(body.action==='importOperatorScript')script=await importOperatorScript(body);
-    else if(body.action==='regenerateSection')script=await regenerateScriptSection(body.scriptId,body.sectionId);
+    else if(body.action==='regenerateSection'){assertProviderAiAllowed();script=await regenerateScriptSection(body.scriptId,body.sectionId);}
     else script=await saveEpisodeScript(body.script,body.status,body.expectedVersion);
 
     const [history,project,productionDna]=await Promise.all([
