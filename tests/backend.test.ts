@@ -53,7 +53,7 @@ test('ElevenLabs replacement key UI and validation use the same minimum and real
   const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
   assert.match(ui,/provider="elevenlabs"[\s\S]*minLength=\{8\}/);
   assert.match(ui,/Text to Speech: Access \+ Voices: Read/);
-  assert.match(providers,/\/v2\/voices\?page_size=1/);
+  assert.match(providers,/\/v2\/voices\?page_size=10/);
   assert.match(providers,/\/v1\/text-to-speech\//);
   assert.match(providers,/missing_permissions/);
   assert.match(providers,/payment_issue/);
@@ -87,5 +87,48 @@ test('Production QA does not conflate audio diagnostics with video decode integr
   const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
   assert.match(source,/decodeOk:probe\.code===0/);
   assert.doesNotMatch(source,/decodeOk:probe\.code===0&&audioOk/);
+});
+
+test('NexLev OAuth uses PKCE, encrypted token storage and official MCP endpoint',()=>{
+  const oauth=readFileSync(resolve(process.cwd(),'src/lib/server/nexlev.ts'),'utf8');
+  const secrets=readFileSync(resolve(process.cwd(),'src/lib/server/nexlev-secrets.ts'),'utf8');
+  const start=readFileSync(resolve(process.cwd(),'src/app/api/nexlev-oauth/start/route.ts'),'utf8');
+  const callback=readFileSync(resolve(process.cwd(),'src/app/api/nexlev-oauth/callback/route.ts'),'utf8');
+
+  assert.match(oauth,/\/api\/mcp\/oauth\/authorize/);
+  assert.match(oauth,/\/api\/mcp\/oauth\/token/);
+  assert.match(oauth,/\/api\/mcp\/oauth\/register/);
+  assert.match(oauth,/\/api\/codex-mcp/);
+  assert.match(oauth,/code_challenge_method','S256'/);
+  assert.match(oauth,/grant_type:'refresh_token'/);
+  assert.match(secrets,/aes-256-gcm/);
+  assert.match(start,/nexlev_pkce/);
+  assert.match(callback,/exchangeNexLevCode/);
+  assert.match(callback,/saveNexLevConnection/);
+  assert.doesNotMatch(callback,/access_token.*searchParams/);
+});
+
+test('NexLev connection table is private and operator intelligence is agent-readable without exposing connection mutation',()=>{
+  const schema=readFileSync(resolve(process.cwd(),'docs/schema.sql'),'utf8');
+  const auth=readFileSync(resolve(process.cwd(),'src/lib/server/auth.ts'),'utf8');
+  const intelligence=readFileSync(resolve(process.cwd(),'src/app/api/nexlev-intelligence/route.ts'),'utf8');
+
+  assert.match(schema,/create table if not exists public\.radar_nexlev_connections\(/);
+  assert.match(schema,/access_token_ciphertext text not null/);
+  assert.match(schema,/refresh_token_ciphertext text/);
+  assert.match(schema,/radar_nexlev_connections.*enable row level security/s);
+  assert.match(auth,/\/api\/nexlev-intelligence/);
+  assert.doesNotMatch(auth,/\/api\/nexlev-connection/);
+  assert.match(intelligence,/listNexLevTools/);
+  assert.match(intelligence,/callNexLevTool/);
+  assert.match(intelligence,/ferramenta NexLev solicitada não está disponível nesta conta/);
+});
+
+test('NexLev settings card connects by OAuth and never asks for an API key',()=>{
+  const ui=readFileSync(resolve(process.cwd(),'src/components/provider-settings.tsx'),'utf8');
+  assert.match(ui,/NexLev Intelligence/);
+  assert.match(ui,/\/api\/nexlev-oauth\/start/);
+  assert.match(ui,/Não é necessário copiar API key/);
+  assert.match(ui,/Validar conexão/);
 });
 
