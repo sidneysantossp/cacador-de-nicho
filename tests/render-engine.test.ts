@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { RenderManifest, Timeline, Transcript, VideoEdit } from '../src/lib/types';
 import {
-  boundaryTransition, buildRenderChapterPlan, renderEncoderPreset, renderManifestIssues, renderOutputPath,
+  boundaryTransition, buildRenderChapterPlan, MAX_RENDER_CLIPS_PER_UNIT, renderEncoderPreset, renderManifestIssues, renderOutputPath,
   renderPresetDefaultCrf, renderPresetOutput, validRenderAudioBitrate, validRenderCrf
 } from '../src/lib/render-policy';
 
@@ -349,7 +349,7 @@ function longRenderManifest():{
   return {manifest:value,edit:longEdit,timeline:longTimeline,transcript:longTranscript};
 }
 
-test('Render-v4 compiles a 60-minute 600-clip chapter plan with stable incremental hashes',()=>{
+test('Render-v4 compiles a 60-minute 600-clip plan into memory-bounded stable render units',()=>{
   const started=performance.now();
   const fixture=longRenderManifest();
   assert.deepEqual(
@@ -357,9 +357,11 @@ test('Render-v4 compiles a 60-minute 600-clip chapter plan with stable increment
     []
   );
   const first=buildRenderChapterPlan({manifest:fixture.manifest,preset:'source',crf:20});
-  assert.equal(first.length,6);
-  assert.ok(first.every(chapter=>chapter.durationSeconds===600));
+  assert.equal(first.length,60);
+  assert.ok(first.every(chapter=>chapter.sceneIds.length<=MAX_RENDER_CLIPS_PER_UNIT));
+  assert.ok(first.every(chapter=>chapter.durationSeconds<=60.001));
   assert.ok(first.every(chapter=>/^[a-f0-9]{64}$/.test(chapter.contentHash)));
+  assert.ok(first.every(chapter=>/^[a-f0-9-]{36}$/.test(chapter.id)));
 
   const changed=structuredClone(fixture.manifest);
   changed.visualClips[350]={
@@ -371,12 +373,36 @@ test('Render-v4 compiles a 60-minute 600-clip chapter plan with stable increment
   const changedIndexes=first
     .map((chapter,index)=>chapter.contentHash===second[index].contentHash?null:index)
     .filter((index):index is number=>index!==null);
-  assert.deepEqual(changedIndexes,[3]);
+  assert.deepEqual(changedIndexes,[35]);
 
   const elapsedMs=performance.now()-started;
   assert.ok(elapsedMs<5000,'60-minute render plan exceeded 5s: '+elapsedMs.toFixed(0)+'ms');
 });
 
+
+test('Render-v4 splits an oversized editorial chapter without changing small chapters',()=>{
+  const fixture=longRenderManifest();
+  const oversized={...fixture.manifest,chapters:[{
+    id:'8fffffff-1111-4111-8111-111111111111',
+    sequence:1,label:'One editorial chapter',
+    startSeconds:0,endSeconds:fixture.manifest.durationSeconds,
+    durationSeconds:fixture.manifest.durationSeconds,
+    sceneIds:fixture.manifest.visualClips.map(clip=>clip.sceneId)
+  }]};
+  const units=buildRenderChapterPlan({manifest:oversized,preset:'source',crf:20});
+  assert.equal(units.length,60);
+  assert.ok(units.every(unit=>unit.sceneIds.length<=10));
+
+  const small={...fixture.manifest,visualClips:fixture.manifest.visualClips.slice(0,5),chapters:[{
+    id:'8eeeeeee-1111-4111-8111-111111111111',
+    sequence:1,label:'Small chapter',
+    startSeconds:0,endSeconds:30,durationSeconds:30,
+    sceneIds:fixture.manifest.visualClips.slice(0,5).map(clip=>clip.sceneId)
+  }]};
+  const smallUnits=buildRenderChapterPlan({manifest:small,preset:'source',crf:20});
+  assert.equal(smallUnits.length,1);
+  assert.equal(smallUnits[0].id,'8eeeeeee-1111-4111-8111-111111111111');
+});
 
 test('Draft render uses an ultrafast encoder profile while final presets stay medium',()=>{
   assert.equal(renderEncoderPreset('draft-720p30'),'ultrafast');
