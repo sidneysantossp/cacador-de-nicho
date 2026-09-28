@@ -114,7 +114,7 @@ export function nextEpisodeAutoAcceptIssues(
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;
-      type:'learning'|'thread'|'concept'|'arc'|'episode';
+      type:'learning'|'thread'|'concept'|'arc'|'episode'|'market';
       confidence?:'low'|'medium'|'high';
     }>};
   }
@@ -174,7 +174,7 @@ export function autopilotDecisionPreview(
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;
-      type:'learning'|'thread'|'concept'|'arc'|'episode';
+      type:'learning'|'thread'|'concept'|'arc'|'episode'|'market';
       confidence?:'low'|'medium'|'high';
     }>};
   }|null

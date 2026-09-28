@@ -17,6 +17,7 @@ import {
   autopilotDecisionPreview, startAcceptedEpisodeAutopilot
 } from '@/lib/channel-autopilot-policy';
 import { loadAutopilotOperationalIssues } from './autopilot-operational';
+import { latestNexLevEvidenceSources } from './nexlev-evidence';
 
 type Row={
   id:string;channel_id:string;brain_version:number;version:number;
@@ -116,18 +117,19 @@ async function savePlan(
 }
 
 export async function generateNextEpisodePlan(channelId:string){
-  const [managed,brain,bundle,plans]=await Promise.all([
+  const [managed,brain,bundle,plans,marketEvidence]=await Promise.all([
     channel(channelId),
     loadChannelBrain(channelId),
     loadNarrativeBundle(channelId),
-    listNextEpisodePlans(channelId)
+    listNextEpisodePlans(channelId),
+    latestNexLevEvidenceSources(channelId)
   ]);
   if(!brain)throw new HttpError('Crie e salve o Channel Brain antes de planejar o próximo episódio.',409);
 
   const reusable=plans.find(plan=>plan.status==='review'&&plan.brainVersion===brain.version);
   if(reusable)return {plan:reusable,created:false};
 
-  const generated=await generateNextEpisodeStrategy({channel:managed,brain,bundle});
+  const generated=await generateNextEpisodeStrategy({channel:managed,brain,bundle,marketEvidence});
   let payload:NextEpisodePlanPayload;
   try{
     payload=compileNextEpisodePlan({
@@ -135,7 +137,8 @@ export async function generateNextEpisodePlan(channelId:string){
       channel:managed,
       brain,
       bundle,
-      model:generated.result
+      model:generated.result,
+      marketEvidence
     });
   }catch(error){
     throw new HttpError(

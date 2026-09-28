@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, BrainCircuit, CheckCircle2, Clapperboard, Clock3, FolderUp, History, Plus, Save,
-  ShieldCheck, Sparkles, Trash2, UserRound, Workflow
+  Search, ShieldCheck, Sparkles, Trash2, UserRound, Workflow
 } from 'lucide-react';
 import type {
   ChannelBrain, ChannelBrainCharacter, ChannelBrainLearning, ChannelBrainPayload,
@@ -31,8 +31,9 @@ import PerformanceAnalystWorkspace from './performance-analyst-workspace';
 import AudienceIntelligenceWorkspace from './audience-intelligence-workspace';
 import NextEpisodeStrategistWorkspace from './next-episode-strategist-workspace';
 import EpisodeAutomationWorkspace from './episode-automation-workspace';
+import NexLevEvidenceWorkspace from './nexlev-evidence-workspace';
 
-type Tab='constitution'|'narrative'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'quality'|'package'|'publish'|'performance'|'audience'|'strategy'|'automation'|'production'|'characters'|'learnings'|'history';
+type Tab='constitution'|'narrative'|'market'|'arcs'|'content'|'scripts'|'voice'|'transcription'|'scenes'|'visual'|'assets'|'stock'|'external'|'library'|'timeline'|'video'|'render'|'quality'|'package'|'publish'|'performance'|'audience'|'strategy'|'automation'|'production'|'characters'|'learnings'|'history';
 
 function blankBrain(channel:ManagedChannel):ChannelBrainPayload{
   const now=new Date().toISOString();
@@ -181,6 +182,7 @@ export default function ChannelBrainPage({
   const tabs:Array<{id:Tab;label:string;icon:React.ReactNode;count?:number}>=[
     {id:'constitution',label:'Constituição',icon:<ShieldCheck size={15}/>},
     {id:'narrative',label:'Narrative State',icon:<Workflow size={15}/>},
+    {id:'market',label:'Market Evidence',icon:<Search size={15}/>},
     {id:'arcs',label:'Arcos & Progressão',icon:<BrainCircuit size={15}/>},
     {id:'content',label:'Content OS',icon:<Sparkles size={15}/>},
     {id:'scripts',label:'Script Engine',icon:<BrainCircuit size={15}/>},
@@ -267,6 +269,7 @@ export default function ChannelBrainPage({
       <ListField label="PRÓXIMOS CONCEITOS POSSÍVEIS" value={draft.narrative.nextConcepts} onChange={v=>narrative('nextConcepts',v)}/>
     </div>}
 
+    {tab==='market'&&<NexLevEvidenceWorkspace channel={channel}/>}
     {tab==='arcs'&&<NarrativeStrategy channel={channel} brain={current}/>}
 
     {tab==='content'&&<ContentOsWorkspace channel={channel} brain={current}/>}

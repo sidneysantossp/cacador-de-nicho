@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { ChannelBrain, ManagedChannel, NarrativeBundle } from '@/lib/types';
 import {
-  buildNextEpisodeEvidenceContext, type NextEpisodeModelResult
+  buildNextEpisodeEvidenceContext, type NextEpisodeMarketEvidenceSource, type NextEpisodeModelResult
 } from '@/lib/next-episode-policy';
 import { settings } from './db';
 import { providerSecret } from './providers';
@@ -75,6 +75,7 @@ const instructions=[
   'Do not claim audience demand unless an audience learning explicitly supports it.',
   'Do not claim performance patterns unless a performance learning explicitly supports it.',
   'Do not claim market demand merely because marketSignal says linked-opportunity; the opportunity details are not supplied.',
+  'NexLev market evidence may support recent demand signals, but it does not prove why a video performed or that copying its topic will work.',
   'Respect constitution, doNotRepeat, narrative state, existing concepts and recent episodes.',
   'Prefer progression over repetition. A sequel must advance the thesis, not retell the previous video.',
   'Each candidate must be concrete enough to create a Content Project: theme, thesis, angle, promise, thumbnail concept, target audience and objective.',
@@ -87,9 +88,10 @@ export async function generateNextEpisodeStrategy(input:{
   channel:ManagedChannel;
   brain:ChannelBrain;
   bundle:NarrativeBundle;
+  marketEvidence?:NextEpisodeMarketEvidenceSource[];
 }):Promise<{model:string;result:NextEpisodeModelResult}>{
   const config=await settings();
-  const context=buildNextEpisodeEvidenceContext(input.channel,input.brain,input.bundle);
+  const context=buildNextEpisodeEvidenceContext(input.channel,input.brain,input.bundle,input.marketEvidence??[]);
 
   try{
     const response=await (await client()).responses.parse({

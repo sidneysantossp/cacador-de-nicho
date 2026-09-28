@@ -2397,10 +2397,10 @@ export type NextEpisodePlanPayload = {
   conceptRefs: string[];
   arcRefs: string[];
   recentEpisodeRefs: string[];
-  marketSignal: 'linked-opportunity' | 'unavailable';
+  marketSignal: 'nexlev-evidence' | 'linked-opportunity' | 'unavailable';
   evidenceSnapshot: Array<{
    ref: string;
-   type: 'learning' | 'thread' | 'concept' | 'arc' | 'episode';
+   type: 'learning' | 'thread' | 'concept' | 'arc' | 'episode' | 'market';
    summary: string;
    confidence?: 'low' | 'medium' | 'high';
   }>;
