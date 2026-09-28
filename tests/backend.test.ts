@@ -43,6 +43,7 @@ test('self-hosted agent client keeps the credential server-side and limits route
   assert.match(source,/x-cacadores-agent-secret/);
   assert.match(source,/127\.0\.0\.1/);
   assert.match(source,/\/api\/episode-automation/);
+  assert.match(source,/\/api\/operator-analysis/);
   assert.doesNotMatch(source,/\/api\/provider-settings/);
   assert.doesNotMatch(source,/\/api\/autopilot-control/);
   assert.doesNotMatch(source,/echo[^\n]*\\$\\{?AGENT_OPERATOR_SECRET/);
