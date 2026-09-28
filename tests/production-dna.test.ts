@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ProductionDnaPayload } from '../src/lib/types';
 import { buildProductionPrompt, productionDnaFormatIssues } from '../src/lib/production-dna-policy';
 import { productionDnaPayloadSchema } from '../src/lib/server/validation';
@@ -112,4 +113,13 @@ test('Production DNA schema accepts documentary research policy',()=>{
   const parsed=productionDnaPayloadSchema.parse(documentary);
   assert.equal(parsed.research?.documentaryMode,true);
   assert.equal(parsed.research?.requireClaimLedger,true);
+});
+
+test('Production DNA supports a versioned voice-only patch that preserves extensions',()=>{
+  const route=readFileSync('src/app/api/production-dna/route.ts','utf8');
+  const server=readFileSync('src/lib/server/production-dna.ts','utf8');
+  assert.match(route,/action:z\.literal\('patchVoice'\)/);
+  assert.match(server,/patchProductionDnaVoice/);
+  assert.match(server,/delete raw\.version/);
+  assert.match(server,/voice:input\.voice/);
 });
