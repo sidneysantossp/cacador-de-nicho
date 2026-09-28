@@ -268,7 +268,10 @@ async function masterProbeAndAudio(job:RenderJob){
       silenceRatio:audio&&silenceSeconds!==null?clampRatio(silenceSeconds,duration):null,
       blackSeconds:null,
       blackRatio:null,
-      decodeOk:probe.code===0&&audioOk
+      // Video decode integrity must not depend on the optional audio diagnostics pass.
+      // If silencedetect/volumedetect fails transiently, downstream audio checks can remain
+      // manual-review, but a healthy probed video stream must not be mislabeled as corrupt.
+      decodeOk:probe.code===0
     } satisfies ProductionQualityTechnical
   };
 }
