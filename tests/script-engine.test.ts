@@ -301,3 +301,10 @@ test('Script Engine accepts legacy DB-approved Content Projects without embedded
   assert.match(server,/project\.status==='approved'&&\(!approval\|\|approval\.status==='approved'\)/);
   assert.match(server,/project\.research\?\.factChecks\?\?\[\]/);
 });
+
+test('legacy approved scripts expose script text as modern content for Voice Engine',()=>{
+  const server=readFileSync('src/lib/server/episode-script.ts','utf8');
+  assert.match(server,/typeof raw\.script==='string'\?raw\.script:''/);
+  assert.match(server,/content,/);
+  assert.match(server,/provenance:raw\.provenance\?\?\{generatedBy:'operator'\}/);
+});

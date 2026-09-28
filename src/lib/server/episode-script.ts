@@ -29,17 +29,46 @@ function normalize(row:{
   created_at:string;
   updated_at:string;
 }):EpisodeScript{
-  const payload=row.payload as EpisodeScriptPayload;
+  const raw=row.payload as Partial<EpisodeScriptPayload>&{
+    script?:unknown;
+    reviewNotes?:unknown;
+    estimatedDurationMinutesAt140Wpm?:unknown;
+  };
+  const content=typeof raw.content==='string'&&raw.content.trim()
+    ?raw.content
+    :typeof raw.script==='string'?raw.script:'';
+  const wordCount=typeof raw.wordCount==='number'&&Number.isFinite(raw.wordCount)
+    ?raw.wordCount
+    :(content.trim()?content.trim().split(/\s+/).length:0);
+  const estimatedMinutes=typeof raw.estimatedMinutes==='number'
+    ?raw.estimatedMinutes
+    :typeof raw.estimatedDurationMinutesAt140Wpm==='number'
+      ?raw.estimatedDurationMinutesAt140Wpm
+      :null;
+  const continuityNotes=Array.isArray(raw.continuityNotes)
+    ?raw.continuityNotes.map(String)
+    :Array.isArray(raw.reviewNotes)?raw.reviewNotes.map(String):[];
+  const factCheckWarnings=Array.isArray(raw.factCheckWarnings)?raw.factCheckWarnings.map(String):[];
   return {
-    ...payload,
+    ...(raw as EpisodeScriptPayload),
+    kind:'episode-script',
     id:row.id,
     channelId:row.channel_id,
     episodeId:row.episode_id,
     contentProjectId:row.content_project_id,
+    title:String(raw.title??'Untitled episode'),
+    language:String(raw.language??'en'),
+    sections:Array.isArray(raw.sections)?raw.sections:[],
+    content,
+    wordCount,
+    estimatedMinutes,
+    continuityNotes,
+    factCheckWarnings,
+    provenance:raw.provenance??{generatedBy:'operator'},
     version:Number(row.version),
     status:row.status,
-    createdAt:payload.createdAt??String(row.created_at),
-    updatedAt:payload.updatedAt??String(row.updated_at)
+    createdAt:raw.createdAt??String(row.created_at),
+    updatedAt:raw.updatedAt??String(row.updated_at)
   };
 }
 
