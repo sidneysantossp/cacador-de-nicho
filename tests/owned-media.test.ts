@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { normalizeOwnedMediaDuplicateName, ownedMediaDuplicateNameKey, ownedMediaKind, ownedMediaSearchText, parseOwnedMediaFilename } from '../src/lib/owned-media-policy';
 import { scoreVisualIntent, visualSemanticSearchText } from '../src/lib/media-library-policy';
 import { ownedVisualRetryPolicy } from '../src/lib/owned-media-worker-policy';
@@ -204,4 +205,14 @@ test('Owned Visual worker preserves provider backoff rules',()=>{
   const unavailable=ownedVisualRetryPolicy({status:503,message:'high demand',attempts:2});
   assert.equal(unavailable.retry,true);
   assert.equal(unavailable.delaySeconds,120);
+});
+
+test('Owned Media can issue a short-lived R2 PUT URL without exposing provider credentials',()=>{
+  const storage=readFileSync('src/lib/server/media-storage.ts','utf8');
+  const owned=readFileSync('src/lib/server/owned-media.ts','utf8');
+  assert.match(storage,/signedMediaPutUrl/);
+  assert.match(storage,/new PutObjectCommand/);
+  assert.match(storage,/expiresIn:Math\.max\(60,Math\.min\(expiresSeconds,900\)\)/);
+  assert.match(owned,/directUploadUrl/);
+  assert.match(owned,/signedMediaPutUrl\(storagePath,mimeType,600\)/);
 });
