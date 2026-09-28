@@ -14,6 +14,7 @@ const agentOperatorPaths=[
   '/api/episode-automation',
   '/api/external-import',
   '/api/media-library',
+  '/api/nexlev-intelligence',
   '/api/narrative',
   '/api/nexlev-connection',
   '/api/nexlev-mcp',
