@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ProductionDNA, ScenePlan } from '../src/lib/types';
 import {
   buildInitialVisualPromptSet, compileScenePrompt, recurringCharacterIds,
@@ -162,4 +163,19 @@ test('Visual approval blocks while resumable AI planning is incomplete',()=>{
   assert.ok(issues.includes('ai-planning-incomplete'));
   set.aiPlanning={completedScenes:plan.scenes.length,totalScenes:plan.scenes.length,batchSize:40,updatedAt:now};
   assert.equal(visualPromptIssues(set,plan,dna,true).includes('ai-planning-incomplete'),false);
+});
+
+test('assisted-manual Visual Prompt Engine imports ChatGPT directions and compiles server-side',()=>{
+  const route=readFileSync('src/app/api/visual-prompt-engine/route.ts','utf8');
+  const server=readFileSync('src/lib/server/visual-prompt-engine.ts','utf8');
+  assert.match(route,/importOperatorPrompts/);
+  assert.match(route,/context.*operator/);
+  assert.match(server,/operatorVisualPromptContext/);
+  assert.match(server,/importOperatorVisualPrompts/);
+  assert.match(server,/compileScenePrompt/);
+  assert.match(server,/compileCharacterReference/);
+  assert.match(server,/expectedScenePlanVersion/);
+  assert.match(server,/expectedProductionDnaVersion/);
+  assert.match(server,/expectedSetVersion/);
+  assert.match(server,/Imported by ChatGPT operator/);
 });

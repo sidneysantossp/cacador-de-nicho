@@ -3,8 +3,9 @@ import { longFormJsonLimit } from '@/lib/long-form-capacity';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  createVisualPromptSet, generateVisualPromptDrafts, listVisualPromptSets,
-  loadVisualPromptSet, loadVisualPromptSetHistory, loadVisualPromptSetHistoryVersion, saveVisualPromptSet
+  createVisualPromptSet, generateVisualPromptDrafts, importOperatorVisualPrompts, listVisualPromptSets,
+  loadVisualPromptSet, loadVisualPromptSetHistory, loadVisualPromptSetHistoryVersion,
+  operatorVisualPromptContext, saveVisualPromptSet
 } from '@/lib/server/visual-prompt-engine';
 import { listScenePlans, loadScenePlan } from '@/lib/server/scene-timecode';
 import { loadProductionDna } from '@/lib/server/production-dna';
@@ -14,8 +15,22 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=300;
 
+const operatorScene=z.object({
+  sceneId:z.string().uuid(),
+  direction:z.string().trim().min(1).max(10000),
+  characterIds:z.array(z.string().trim().min(1).max(120)).max(50).optional()
+}).strict();
+
 const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('create'),scenePlanId:z.string().uuid()}).strict(),
+  z.object({
+    action:z.literal('importOperatorPrompts'),
+    scenePlanId:z.string().uuid(),
+    expectedScenePlanVersion:z.number().int().min(1).max(100000),
+    expectedProductionDnaVersion:z.number().int().min(1).max(100000),
+    expectedSetVersion:z.number().int().min(0).max(100000),
+    scenes:z.array(operatorScene).min(1).max(5000)
+  }).strict(),
   z.object({action:z.literal('generate'),setId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('save'),
@@ -33,6 +48,7 @@ export async function GET(request:Request){
     const setId=url.searchParams.get('setId')?.trim();
     const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
     const channelId=url.searchParams.get('channelId')?.trim();
+    const scenePlanId=url.searchParams.get('scenePlanId')?.trim();
 
     if(setId){
       if(!z.string().uuid().safeParse(setId).success)throw new HttpError('Visual Prompt Set inválido.',400);
@@ -55,6 +71,11 @@ export async function GET(request:Request){
         loadProductionDna(promptSet.channelId)
       ]);
       return Response.json({promptSet,history,scenePlan,productionDna},{headers:{'Cache-Control':'no-store'}});
+    }
+
+    if(scenePlanId&&url.searchParams.get('context')==='operator'){
+      if(!z.string().uuid().safeParse(scenePlanId).success)throw new HttpError('Scene Plan inválido.',400);
+      return Response.json(await operatorVisualPromptContext(scenePlanId),{headers:{'Cache-Control':'no-store'}});
     }
 
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
@@ -80,12 +101,15 @@ export async function POST(request:Request){
 
     let promptSet;
     if(body.action==='create')promptSet=await createVisualPromptSet(body.scenePlanId);
+    else if(body.action==='importOperatorPrompts')promptSet=await importOperatorVisualPrompts(body);
     else if(body.action==='generate')promptSet=await generateVisualPromptDrafts(body.setId);
     else promptSet=await saveVisualPromptSet(body.promptSet,body.status,body.expectedVersion);
 
     return Response.json({
       message:body.action==='create'
         ?'Visual Prompt Set criado.'
+        :body.action==='importOperatorPrompts'
+          ?'Direções visuais do ChatGPT operador compiladas com Style Lock e salvas como draft.'
         :body.action==='generate'
           ?promptSet.aiPlanning
             ?'Planejamento visual IA: '+promptSet.aiPlanning.completedScenes+'/'+promptSet.aiPlanning.totalScenes+' cenas concluídas.'
