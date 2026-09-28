@@ -22,6 +22,8 @@ set -a
 source "$ENV_FILE"
 set +a
 
+AGENT_OPERATOR_SECRET="${AGENT_OPERATOR_SECRET:-}"
+export AGENT_OPERATOR_SECRET
 if [[ "${#AGENT_OPERATOR_SECRET}" -lt 32 ]]; then
   echo "AGENT_OPERATOR_SECRET is missing or too short" >&2
   exit 78
