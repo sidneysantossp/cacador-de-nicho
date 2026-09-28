@@ -29,6 +29,17 @@ These files mirror the production scheduler/watchdog artifacts installed on the 
 
 The Universe and Market wrappers source `CRON_SECRET` from the production environment and call the currently promoted port over loopback. The secret is never embedded in these repository files and is not placed in the process command line.
 
+`AGENT_OPERATOR_SECRET` is a separate 32+ character server-only credential for machine/operator access. It does not replace `APP_PASSWORD`: browser users keep the normal session + same-origin flow. The application accepts the agent credential only on an explicit allowlist of operational APIs and writes an `agent-operator-api` event to application logs for each write.
+
+`cacadores-agent-api` is the supported host-side client. It reads the secret from the protected production env, resolves the currently promoted loopback port, and sends the credential in `x-cacadores-agent-secret`. The secret is never passed on the command line or printed. Example:
+
+```bash
+printf '%s' '{"action":"reconcile","runId":"<uuid>"}' |
+  /srv/auditseo-deploy/bin/cacadores-agent-api POST /api/episode-automation
+```
+
+Sensitive control-plane endpoints such as `/api/auth`, `/api/provider-settings`, `/api/autopilot-control`, and the interactive OAuth flow are intentionally outside the agent allowlist.
+
 ## Install / reconcile
 
 Copy the files under `bin/` to `/srv/auditseo-deploy/bin/` with mode `0750`, and the files under `systemd/` to `/etc/systemd/system/` with mode `0644`. Then run `systemctl daemon-reload` and enable the timers required by the environment.
