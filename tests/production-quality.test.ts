@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type {
   ProductionQualityReport, ProductionQualityTechnical, RenderJob
 } from '../src/lib/types';
@@ -404,3 +406,18 @@ test('Media Intelligence requires review when OWNED clips are not fully embedded
     'manual-review'
   );
 });
+
+test('Production QA v4 decodes the master sequentially instead of random HTTP boundary seeks',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
+  assert.match(source,/const masterDecode=await runCapture\(FFMPEG/);
+  assert.match(source,/masterDecode\.code===0/);
+  assert.doesNotMatch(source,/chapter\.endSeconds-\.5/);
+  assert.doesNotMatch(source,/'-ss',String\(start\)/);
+});
+
+test('Production QA parses FFmpeg silence and peak-volume metrics with whitespace regexes',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
+  assert.match(source,/silence_duration:\\s\*\(\[0-9\.\]\+\)/);
+  assert.match(source,/max_volume:\\s\*\(-\?\[0-9\.\]\+\)\\s\*dB/);
+});
+
