@@ -226,6 +226,7 @@ export async function importOperatorAudienceIntelligence(input:{
 }
 
 export async function createAudienceIntelligence(performanceReportId:string){
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   const performance=await loadPerformanceReport(performanceReportId);
   if(!performance)throw new HttpError('Performance Report não encontrado.',404);
 

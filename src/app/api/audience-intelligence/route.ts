@@ -13,6 +13,7 @@ import {
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=120;
+const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: importe a análise do ChatGPT em vez da geração OpenAI.',409);};
 
 const intentSchema=z.enum([
   'praise','question','confusion','request','objection','follow-up','topic','debate'
@@ -100,6 +101,7 @@ export async function POST(request:Request){
     const body=parsed.data;
 
     if(body.action==='generate'){
+      assertProviderAiAllowed();
       const result=await createAudienceIntelligence(body.performanceReportId);
       return Response.json({
         message:result.created

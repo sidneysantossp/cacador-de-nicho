@@ -55,7 +55,7 @@ async function structured<T extends z.ZodType>(schema:T,name:string,task:string,
   throw openAIHttpError(error,name.replaceAll('_',' '));
  }
 }
-const channelNicheProfile=z.object({
+export const channelNicheProfileSchema=z.object({
  primaryNiche:z.string(),
  subniche:z.string(),
  audienceIntent:z.string(),
@@ -65,7 +65,7 @@ const channelNicheProfile=z.object({
  searchQueries:z.array(z.string()).min(2).max(5),
  formatSignature:z.string()
 });
-const channelStudyAnatomy=z.object({
+export const channelStudyAnatomySchema=z.object({
  executiveSummary:z.string(),
  viralPatterns:z.array(z.string()).min(3).max(10),
  titlePatterns:z.array(z.string()).min(2).max(8),
@@ -102,7 +102,7 @@ const channelStudyAnatomy=z.object({
  weakVideoContrasts:z.array(z.string()).max(10),
  limitations:z.array(z.string()).min(1).max(12)
 });
-const universeChannelDNA=z.object({
+export const universeChannelDnaSchema=z.object({
  channelId:z.string(),
  summary:z.string(),
  primaryNiche:z.string(),
@@ -142,7 +142,7 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
  }));
  if(!sample.length)return [];
  const result=await structured(
-  z.object({channels:z.array(universeChannelDNA).min(1).max(5)}),
+  z.object({channels:z.array(universeChannelDnaSchema).min(1).max(5)}),
   'universe_channel_dna',
   'Para cada concorrente, extraia um Channel DNA SOMENTE dos metadados fornecidos. primaryNiche e subniche devem ser rótulos curtos e estáveis em INGLÊS para permitir clustering entre canais. summary, audienceIntent, editorialPromise, differentiationSignals e limitations devem ser em português para o operador. formatSignature pode ser um rótulo curto em inglês. Content pillars, recurring entities, title patterns, curiosity mechanisms e emotional drivers descrevem padrões observáveis nos títulos/descrição; não afirme que assistiu vídeos, não infira CTR, retenção, receita ou causalidade. Diferencie repetição editorial de um único outlier. Se a amostra não sustentar uma conclusão, registre a limitação explicitamente.',
   {competitors:sample},
@@ -175,7 +175,7 @@ export async function analyzeUniverseCompetitorDNA(competitors:UniverseCompetito
  }));
 }
 
-const universeCurveCandidate=z.object({
+export const universeCurveCandidateSchema=z.object({
  key:z.string(),
  name:z.string(),
  thesis:z.string(),
@@ -188,7 +188,7 @@ const universeCurveCandidate=z.object({
  transferableVariables:z.array(z.string()).min(1).max(8),
  limitations:z.array(z.string()).min(1).max(8)
 });
-const universeGapCandidate=z.object({
+export const universeGapCandidateSchema=z.object({
  curveKey:z.string(),
  title:z.string(),
  targetSpace:z.string(),
@@ -201,6 +201,12 @@ const universeGapCandidate=z.object({
  rationale:z.string(),
  risks:z.array(z.string()).max(8),
  firstTests:z.array(z.string()).min(3).max(5)
+});
+
+export const universeCurvesGapsSchema=z.object({
+  curves:z.array(universeCurveCandidateSchema).min(1).max(8),
+  gaps:z.array(universeGapCandidateSchema).max(10),
+  limitations:z.array(z.string()).min(1).max(12)
 });
 
 export async function analyzeUniverseCurvesAndGaps(competitors:UniverseCompetitor[]){
@@ -224,11 +230,7 @@ export async function analyzeUniverseCurvesAndGaps(competitors:UniverseCompetito
  }));
  if(sample.length<2)throw new HttpError('O Universe ainda precisa de Channel DNA em pelo menos 2 concorrentes para comparar curvas.',409);
  return structured(
-  z.object({
-   curves:z.array(universeCurveCandidate).min(1).max(8),
-   gaps:z.array(universeGapCandidate).max(10),
-   limitations:z.array(z.string()).min(1).max(12)
-  }),
+  universeCurvesGapsSchema,
   'universe_curves_gaps',
   'Compare os concorrentes como evidência de mercado. CURVA significa um mecanismo editorial repetível compartilhado entre canais: combinação de promessa, ângulo, curiosidade, estrutura ou payoff. Não agrupe canais somente porque pertencem ao mesmo tema. Cada supportingChannelId e targetEvidenceChannelId deve existir exatamente na evidência recebida; nunca invente IDs, canais ou vídeos. A classificação hipótese/emergente/estrutural será calculada pelo backend, então NÃO tente classificá-la. GAPS devem preservar uma curva observada e alterar deliberadamente uma variável (tema, perspectiva, público, entidade, formato ou contexto). Para cada gap, targetSpace DEVE ser uma frase nominal curta EM INGLÊS que descreva exclusivamente o DOMÍNIO DE CONTEÚDO do alvo — assunto, entidades, objetos, instituições, ambiente ou prática — e NÃO a fórmula do título, mecanismo de curiosidade ou packaging. targetKeywords DEVE conter de 3 a 8 termos ou frases nominais curtas EM INGLÊS que identifiquem o conteúdo do target; use substantivos específicos do domínio e exclua palavras de packaging como weird, side, every, why, then, now, day, iconic, explained e equivalentes. targetEvidenceChannelIds só pode incluir um canal quando os títulos fornecidos contêm evidência observável do DOMÍNIO target, não apenas da curva ou do formato de título. sampleSaturation descreve apenas a amostra fornecida, nunca o YouTube inteiro. demandEvidence precisa citar evidência realmente fornecida; se não houver evidência no targetSpace, deixe targetEvidenceChannelIds vazio e trate como hipótese na justificativa. title e firstTests são títulos destinados ao público e devem ser em INGLÊS. targetSpace e targetKeywords também devem ser em INGLÊS. Explicações, tese, preservedMechanism, changedVariable, rationale, riscos e limitações devem ser em português. Não infira CTR, retenção, receita, RPM, causalidade ou demanda fora da amostra.',
   {competitors:sample},
@@ -241,7 +243,7 @@ export async function analyzeUniverseCurvesAndGaps(competitors:UniverseCompetito
  );
 }
 
-const channelThumbnailAnalysis=z.object({
+export const channelThumbnailAnalysisSchema=z.object({
  inspected:z.boolean(),
  hitPatterns:z.array(z.string()).max(10),
  weakPatterns:z.array(z.string()).max(10),
@@ -280,12 +282,12 @@ export async function analyzeChannelThumbnails(
    store:false,
    instructions:instructions+'\nAnalise visualmente apenas as imagens realmente fornecidas nesta solicitação.',
    input:[{role:'user',content:content as never}],
-   text:{format:zodTextFormat(channelThumbnailAnalysis,'channel_thumbnail_anatomy')},
+   text:{format:zodTextFormat(channelThumbnailAnalysisSchema,'channel_thumbnail_anatomy')},
    max_output_tokens:3500,
    prompt_cache_options:{mode:'explicit'}
   });
   if(!response.output_parsed)throw new Error('thumbnail analysis incomplete');
-  return {...channelThumbnailAnalysis.parse(response.output_parsed),inspected:true};
+  return {...channelThumbnailAnalysisSchema.parse(response.output_parsed),inspected:true};
  }catch{
   return {inspected:false,hitPatterns:[],weakPatterns:[],visualContrasts:[],compositionPatterns:[],textUsage:[],recurringSubjects:[],visualHooks:[],consistencySignals:[],limitations:['A inspeção visual das thumbnails falhou nesta execução. Reexecute a análise para tentar novamente.']};
  }
@@ -324,13 +326,13 @@ export async function analyzeChannelStudyEvidence(input:{
  }));
  const evidence={...input,topVideos:compactVideos,weakRecentVideos:weakVideos};
  const nicheProfile=await structured(
-  channelNicheProfile,
+  channelNicheProfileSchema,
   'channel_niche_lock',
   'Defina o NICHE LOCK deste canal usando somente as evidências fornecidas. O objetivo é impedir desvio de nicho na busca de canais similares. primaryNiche deve ser específico; subniche ainda mais específico. anchorTerms devem representar conceitos que precisam reaparecer nos candidatos. excludedAdjacentTopics deve listar mercados que parecem próximos mas mudariam a intenção central. searchQueries devem ser em INGLÊS, curtas e extremamente focadas no mesmo nicho/subnicho. Não use consultas genéricas como explained, documentary, animation, history ou education sozinhas.',
   evidence
  );
  const anatomy=await structured(
-  channelStudyAnatomy,
+  channelStudyAnatomySchema,
   'channel_study_anatomy',
   'Extraia a anatomia editorial do canal comparando os 10 vídeos com mais views contra a amostra explícita de vídeos long form recentes de menor desempenho. Use também sequências antes/depois dos principais hits, concentração Top 3, mediana dos hits, relação hits/fracos e velocidade SOMENTE quando houver pelo menos dois snapshots reais. Gere Topic Genome com entidades vencedoras, ângulos recorrentes, mecanismos de curiosidade, tokens de títulos e contrastes dos vídeos fracos. Gere Sustainability de 0-100 como diagnóstico explicável, não como verdade absoluta: repeatable exige múltiplos hits e padrões repetidos; fragile deve refletir concentração excessiva ou um único outlier. Faça Comment Demand Mining SOMENTE a partir dos comentários fornecidos: pedidos de temas, perguntas repetidas, pontos de confusão, gatilhos emocionais expressos e objeções/debates. Não trate ausência de comentário como ausência de demanda. Não afirme ter assistido aos vídeos nem analisado visualmente thumbnails nesta etapa textual; URL de thumbnail não equivale a inspeção visual. Não invente retenção, CTR, RPM, velocidade sem histórico ou causalidade.',
   {evidence,nicheProfile}
@@ -377,7 +379,7 @@ export async function reviewSimilarChannelCandidates(
 }
 
 const opportunitySignal=z.object({level:z.enum(['low','medium','high','uncertain']),rationale:z.string()});
-const opportunityReportBody=z.object({
+export const opportunityReportBodySchema=z.object({
  title:z.string(),
  thesis:z.string(),
  curve:z.object({
@@ -469,7 +471,7 @@ export async function generateOpportunityReport(study:ChannelStudy):Promise<Oppo
   collection:{scannedVideos:study.scannedVideos,totalPublicVideos:study.totalPublicVideos,scanTruncated:study.scanTruncated,comparisonSampleSize:study.comparisonSampleSize}
  };
  const body=await structured(
-  opportunityReportBody,
+  opportunityReportBodySchema,
   'opportunity_report',
   'Transforme esta anatomia em um RELATÓRIO EXECUTIVO DE OPORTUNIDADE. Princípio central: NÃO COPIE O NICHO; EXTRAIA A CURVA. Primeiro abstraia a curva que conecta assunto, promessa, ângulo, mecanismo narrativo, mecanismo visual e driver emocional. Depois avalie se ela é apenas hipótese, emergente ou estrutural. structural exige pelo menos 3 criadores independentes na evidência fornecida; emerging exige pelo menos 2; com apenas o canal de origem use hypothesis. Não invente criadores, vídeos, views, demanda, saturação ou evidências. Saturação deve ser uncertain quando a amostra não sustentar uma conclusão. Viral DNA deve usar níveis explicados, não um score agregado. Gere exatamente 3 transferências que PRESERVEM o mecanismo e alterem deliberadamente uma variável. Para cada transferência, observed só é permitido se houver evidência explícita fornecida para aquele alvo; partial quando há analogia observável mas evidência incompleta; hypothesis quando é uma extensão criativa sem validação externa. Títulos e nomes destinados ao público devem ser em INGLÊS. A explicação para o operador deve ser em português. O conceito final de canal deve ser original e executável, com 10 episódios iniciais. Separe fatos observados de inferências em todas as seções.',
   evidence

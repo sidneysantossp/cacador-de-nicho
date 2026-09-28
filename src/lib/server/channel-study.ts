@@ -1,11 +1,86 @@
 import 'server-only';
 
-import type { ChannelStudy, SimilarChannelMatch } from '@/lib/types';
-import { put, settings } from './db';
+import type { ChannelNicheProfile, ChannelStudy, ChannelStudyAnatomy, ChannelStudyThumbnailAnalysis, SimilarChannelMatch } from '@/lib/types';
+import { list, put, settings } from './db';
+import { HttpError } from './auth';
 import { analyzeChannelStudyEvidence, analyzeChannelThumbnails, reviewSimilarChannelCandidates } from './ai';
 import { collectChannelStudyEvidence, findNicheLockedSimilarCandidates } from './youtube';
 
+type OperatorChannelStudyContext={
+  kind:'channel-study-operator-context';
+  id:string;
+  input:string;
+  sourceId:string;
+  evidence:Awaited<ReturnType<typeof collectChannelStudyEvidence>>;
+  createdAt:string;
+};
+
+function isOperatorContext(value:unknown):value is OperatorChannelStudyContext{
+  return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='channel-study-operator-context';
+}
+
+export async function operatorChannelStudyContext(input:string){
+  const evidence=await collectChannelStudyEvidence(input);
+  const context:OperatorChannelStudyContext={
+    kind:'channel-study-operator-context',
+    id:'channel-study-operator-context:'+evidence.source.id,
+    input,
+    sourceId:evidence.source.id,
+    evidence,
+    createdAt:new Date().toISOString()
+  };
+  await put('radar_analyses',context.id,context);
+  return context;
+}
+
+export async function importOperatorChannelStudy(input:{
+  contextId:string;
+  expectedCreatedAt:string;
+  nicheProfile:ChannelNicheProfile;
+  anatomy:ChannelStudyAnatomy;
+  thumbnailAnalysis:ChannelStudyThumbnailAnalysis;
+}):Promise<ChannelStudy>{
+  const analyses=await list<unknown>('radar_analyses',500);
+  const context=analyses.find((item):item is OperatorChannelStudyContext=>
+    isOperatorContext(item)&&item.id===input.contextId
+  );
+  if(!context)throw new HttpError('Contexto de Channel Study não encontrado. Recolete a evidência.',404);
+  if(context.createdAt!==input.expectedCreatedAt){
+    throw new HttpError('A evidência do Channel Study mudou. Recarregue o contexto antes de importar.',409);
+  }
+  const evidence=context.evidence;
+  const limitation='Canais similares não foram inferidos por provider AI. Use Universe/NexLev e revisão do operador para enriquecer a validação estrutural.';
+  const study:ChannelStudy={
+    kind:'channel-study',
+    id:'channel-study:'+evidence.source.id,
+    input:context.input,
+    source:evidence.source,
+    topSampleScope:evidence.topSampleScope,
+    scannedVideos:evidence.scannedVideos,
+    totalPublicVideos:evidence.totalPublicVideos,
+    scanTruncated:evidence.scanTruncated,
+    topVideos:evidence.topVideos,
+    thumbnailAnalysis:input.thumbnailAnalysis,
+    weakRecentVideos:evidence.weakRecentVideos,
+    sequences:evidence.sequences,
+    comparisonSampleSize:evidence.comparisonSampleSize,
+    commentSampleSize:evidence.commentSampleSize,
+    commentsAvailableVideos:evidence.commentsAvailableVideos,
+    nicheProfile:input.nicheProfile,
+    anatomy:{
+      ...input.anatomy,
+      limitations:[...input.anatomy.limitations,limitation]
+    },
+    similarCandidates:[],
+    metrics:evidence.metrics,
+    createdAt:new Date().toISOString()
+  };
+  await put('radar_analyses',study.id,study);
+  return study;
+}
+
 export async function runChannelStudy(input:string):Promise<ChannelStudy>{
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   // Core path: public YouTube evidence + textual anatomy. If either fails, surface the
   // real error to the operator instead of saving a misleading partial study.
   const evidence=await collectChannelStudyEvidence(input);

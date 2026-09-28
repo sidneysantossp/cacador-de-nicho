@@ -36,7 +36,7 @@ export async function runRadar(cron=false,allowAutoAnalyze=true){
 
   try{
     const count=await scan(config);
-    if(allowAutoAnalyze&&config.autoAnalyze&&await providerAvailable('openai')){
+    if(allowAutoAnalyze&&process.env.CACADORES_AI_AUTORUN==='1'&&config.autoAnalyze&&await providerAvailable('openai')){
       const candidates=(await list<Channel>('radar_channels',1000))
         .filter(c=>c.discoverySource==='reference-adjacent'&&!c.analysis&&qualifiesOpportunityCandidate(c,config))
         .slice(0,config.maxAnalysesPerRun);

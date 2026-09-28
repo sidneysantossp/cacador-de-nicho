@@ -243,6 +243,7 @@ export async function generateVisualPromptDrafts(
   setId:string,
   options:{maxScenes?:number}={}
 ):Promise<VisualPromptSet>{
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   const current=await loadVisualPromptSet(setId);
   if(!current)throw new HttpError('Visual Prompt Set não encontrado.',404);
   const {plan,dna}=await eligibleContext(current.scenePlanId);

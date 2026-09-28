@@ -287,6 +287,7 @@ export async function importOperatorScript(input:{
 }
 
 export async function generateScriptForProject(projectId:string):Promise<EpisodeScript>{
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   const project=await loadContentProject(projectId);
   if(!project)throw new HttpError('Content Project não encontrado.',404);
   const context=await scriptContext(project);
@@ -433,6 +434,7 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
 }
 
 export async function regenerateScriptSection(scriptId:string,sectionId:string):Promise<EpisodeScript>{
+  if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use a importação do ChatGPT.',409);
   const script=await loadEpisodeScript(scriptId);
   if(!script)throw new HttpError('Roteiro não encontrado.',404);
   const project=await loadContentProject(script.contentProjectId);
