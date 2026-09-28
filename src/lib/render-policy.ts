@@ -7,6 +7,7 @@ import type {
 export const DEFAULT_RENDER_CRF=20;
 export const DEFAULT_DRAFT_RENDER_CRF=28;
 export const DEFAULT_RENDER_AUDIO_KBPS=192;
+export const MAX_RENDER_CLIPS_PER_UNIT=10;
 
 export function renderPresetOutput(
   preset:RenderPreset,
@@ -48,6 +49,55 @@ function renderChapterHash(value:unknown){
   return createHash('sha256').update(JSON.stringify(value),'utf8').digest('hex');
 }
 
+function deterministicRenderUnitId(parentId:string,index:number){
+  const hex=createHash('sha256')
+    .update(parentId+':render-unit:'+String(index),'utf8')
+    .digest('hex')
+    .slice(0,32)
+    .split('');
+  hex[12]='4';
+  hex[16]=['8','9','a','b'][parseInt(hex[16],16)%4];
+  const value=hex.join('');
+  return value.slice(0,8)+'-'+value.slice(8,12)+'-'+value.slice(12,16)+'-'+
+    value.slice(16,20)+'-'+value.slice(20);
+}
+
+function boundedRenderUnits(
+  chapters:RenderManifestChapter[],
+  clips:RenderManifest['visualClips']
+):RenderManifestChapter[]{
+  const ordered=[...clips].sort((a,b)=>a.startSeconds-b.startSeconds||a.endSeconds-b.endSeconds);
+  const units:RenderManifestChapter[]=[];
+
+  for(const chapter of chapters){
+    const sceneIds=new Set(chapter.sceneIds);
+    const chapterClips=ordered.filter(clip=>sceneIds.has(clip.sceneId));
+    if(chapterClips.length<=MAX_RENDER_CLIPS_PER_UNIT){
+      units.push({...chapter});
+      continue;
+    }
+
+    for(let offset=0,part=0;offset<chapterClips.length;offset+=MAX_RENDER_CLIPS_PER_UNIT,part++){
+      const group=chapterClips.slice(offset,offset+MAX_RENDER_CLIPS_PER_UNIT);
+      const start=Math.max(chapter.startSeconds,group[0].startSeconds);
+      const end=Math.min(chapter.endSeconds,group.at(-1)!.endSeconds);
+      units.push({
+        id:deterministicRenderUnitId(chapter.id,part),
+        sequence:0,
+        label:chapter.label+' · Part '+String(part+1).padStart(2,'0'),
+        startSeconds:start,
+        endSeconds:end,
+        durationSeconds:Math.max(.001,end-start),
+        sceneIds:group.map(clip=>clip.sceneId)
+      });
+    }
+  }
+
+  return units
+    .sort((a,b)=>a.startSeconds-b.startSeconds||a.endSeconds-b.endSeconds)
+    .map((unit,index)=>({...unit,sequence:index+1}));
+}
+
 export function buildRenderChapterPlan(input:{
   manifest:RenderManifest;
   preset:RenderPreset;
@@ -55,7 +105,7 @@ export function buildRenderChapterPlan(input:{
 }):RenderChapterPlan[]{
   const outputFormat=renderPresetOutput(input.preset,input.manifest.format);
   const encoderPreset=renderEncoderPreset(input.preset);
-  const chapters=input.manifest.chapters?.length
+  const editorialChapters=input.manifest.chapters?.length
     ?[...input.manifest.chapters].sort((a,b)=>a.sequence-b.sequence)
     :[{
       id:input.manifest.timelineId,
@@ -66,6 +116,7 @@ export function buildRenderChapterPlan(input:{
       durationSeconds:input.manifest.durationSeconds,
       sceneIds:input.manifest.visualClips.map(clip=>clip.sceneId)
     }];
+  const chapters=boundedRenderUnits(editorialChapters,input.manifest.visualClips);
 
   return chapters.map(chapter=>{
     const sceneIds=new Set(chapter.sceneIds);
