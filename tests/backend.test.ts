@@ -68,3 +68,18 @@ test('ElevenLabs key validation surfaces safe voice-list diagnostics',()=>{
   assert.match(providers,/invalid_api_key/);
 });
 
+test('agent API accepts JSON write bodies as an explicit third argument',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
+  assert.match(source,/BODY_JSON="\$\{3:-\}"/);
+  assert.match(source,/CACADORES_AGENT_BODY/);
+  assert.match(source,/json body/);
+  assert.doesNotMatch(source,/sys\.stdin\.buffer\.read\(\)/);
+});
+
+test('agent POST wrapper forwards normalized JSON as the third argument',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-post'),'utf8');
+  assert.match(source,/NORMALIZED_JSON/);
+  assert.match(source,/cacadores-agent-api POST "\$ENDPOINT" "\$NORMALIZED_JSON"/);
+  assert.doesNotMatch(source,/cacadores-agent-api POST "\$ENDPOINT"\s*$/m);
+});
+
