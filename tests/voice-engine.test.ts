@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { EpisodeScript, VoiceAlignment, VoiceAsset } from '../src/lib/types';
 import {
   estimatedVoiceChunkCount, maxLongFormVoiceCharacters, mergeVoiceAlignments, splitVoiceText,
@@ -97,4 +99,13 @@ test('Voice UI can estimate chunk count from lightweight script character count'
     estimatedVoiceChunkCount(12000,'eleven_multilingual_v2')>
     estimatedVoiceChunkCount(12000,'eleven_flash_v2_5')
   );
+});
+
+
+test('Voice Engine distinguishes ElevenLabs TTS permission and invalid-key failures',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  assert.match(source,/missing_permissions/);
+  assert.match(source,/invalid_api_key/);
+  assert.match(source,/ainda não possui permissão Text to Speech/);
+  assert.match(source,/invalidada, revogada ou expirou/);
 });
