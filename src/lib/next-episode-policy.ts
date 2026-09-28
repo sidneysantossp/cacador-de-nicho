@@ -8,7 +8,14 @@ import {
 
 export type NextEpisodeEvidenceSource = {
   ref:string;
-  type:'learning'|'thread'|'concept'|'arc'|'episode';
+  type:'learning'|'thread'|'concept'|'arc'|'episode'|'market';
+  summary:string;
+  confidence?:'low'|'medium'|'high';
+};
+
+export type NextEpisodeMarketEvidenceSource={
+  ref:string;
+  type:'market';
   summary:string;
   confidence?:'low'|'medium'|'high';
 };
@@ -49,9 +56,11 @@ function unique(values:string[]){return [...new Set(values.map(v=>v.trim()).filt
 export function buildNextEpisodeEvidenceContext(
   channel:ManagedChannel,
   brain:ChannelBrain,
-  bundle:NarrativeBundle
+  bundle:NarrativeBundle,
+  marketEvidence:NextEpisodeMarketEvidenceSource[]=[]
 ){
   const sources:NextEpisodeEvidenceSource[]=[];
+  sources.push(...marketEvidence.slice(0,24).map(item=>({...item})));
 
   const learnings=[...brain.learnings]
     .sort((a,b)=>confidenceRank(b.confidence)-confidenceRank(a.confidence)||
@@ -107,7 +116,8 @@ export function buildNextEpisodeEvidenceContext(
 
   return {
     sources,
-    marketSignal:channel.opportunityId?'linked-opportunity' as const:'unavailable' as const,
+    marketSignal:marketEvidence.length?'nexlev-evidence' as const:
+      channel.opportunityId?'linked-opportunity' as const:'unavailable' as const,
     channel:{
       name:channel.name,
       niche:channel.niche,
@@ -168,8 +178,9 @@ export function compileNextEpisodePlan(input:{
   brain:ChannelBrain;
   bundle:NarrativeBundle;
   model:NextEpisodeModelResult;
+  marketEvidence?:NextEpisodeMarketEvidenceSource[];
 }):NextEpisodePlanPayload{
-  const context=buildNextEpisodeEvidenceContext(input.channel,input.brain,input.bundle);
+  const context=buildNextEpisodeEvidenceContext(input.channel,input.brain,input.bundle,input.marketEvidence??[]);
   const sources=sourceMap(context.sources);
 
   if(input.model.candidates.length<2||input.model.candidates.length>5){
@@ -246,7 +257,10 @@ export function compileNextEpisodePlan(input:{
     limitations.push('O Concept Graph está vazio; o gate narrativo consegue proteger repetição, mas não dependências conceituais.');
   }
   if(context.marketSignal==='unavailable'){
-    limitations.push('Nenhum opportunityId está vinculado ao canal; sinal de mercado não foi usado como evidência.');
+    limitations.push('Nenhum Evidence Pack NexLev nem opportunityId está disponível; sinal de mercado não foi usado como evidência.');
+  }
+  if(context.marketSignal==='nexlev-evidence'){
+    limitations.push('Sinais NexLev sustentam descoberta recente, mas não demonstram causalidade de views, CTR, retenção ou receita.');
   }
 
   const now=new Date().toISOString();

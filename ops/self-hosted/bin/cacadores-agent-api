@@ -66,6 +66,7 @@ allowed=(
     "/api/external-import",
     "/api/media-library",
     "/api/narrative",
+    "/api/nexlev-evidence",
     "/api/nexlev-intelligence",
     "/api/next-episode",
     "/api/owned-media",
