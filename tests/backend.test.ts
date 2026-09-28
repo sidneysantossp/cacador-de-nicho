@@ -83,3 +83,9 @@ test('agent POST wrapper forwards normalized JSON as the third argument',()=>{
   assert.doesNotMatch(source,/cacadores-agent-api POST "\$ENDPOINT"\s*$/m);
 });
 
+test('Production QA does not conflate audio diagnostics with video decode integrity',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
+  assert.match(source,/decodeOk:probe\.code===0/);
+  assert.doesNotMatch(source,/decodeOk:probe\.code===0&&audioOk/);
+});
+
