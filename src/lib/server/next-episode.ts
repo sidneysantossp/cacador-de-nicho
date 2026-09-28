@@ -9,7 +9,9 @@ import { HttpError } from './auth';
 import { loadChannelBrain } from './channel-brain';
 import { loadNarrativeBundle, saveChannelEpisode } from './narrative';
 import { generateNextEpisodeStrategy } from './next-episode-ai';
-import { compileNextEpisodePlan } from '@/lib/next-episode-policy';
+import {
+  buildNextEpisodeEvidenceContext, compileNextEpisodePlan, type NextEpisodeModelResult
+} from '@/lib/next-episode-policy';
 import { episodeNarrativeReadiness } from '@/lib/narrative-policy';
 import { loadContentProject, saveContentProject } from './content-os';
 import { createEpisodeAutomationRun } from './episode-automation';
@@ -132,14 +134,14 @@ export async function generateNextEpisodePlan(channelId:string){
   const generated=await generateNextEpisodeStrategy({channel:managed,brain,bundle,marketEvidence});
   let payload:NextEpisodePlanPayload;
   try{
-    payload=compileNextEpisodePlan({
+    payload={...compileNextEpisodePlan({
       id:crypto.randomUUID(),
       channel:managed,
       brain,
       bundle,
       model:generated.result,
       marketEvidence
-    });
+    }),generationSource:'openai-api'};
   }catch(error){
     throw new HttpError(
       'O Next Episode Strategist devolveu referências incompatíveis com o contexto. Nenhum plano foi salvo. '+
@@ -148,6 +150,63 @@ export async function generateNextEpisodePlan(channelId:string){
     );
   }
 
+  return {plan:await savePlan(payload,'review',0),created:true};
+}
+
+export async function nextEpisodeOperatorContext(channelId:string){
+  const [managed,brain,bundle,marketEvidence,plans]=await Promise.all([
+    channel(channelId),
+    loadChannelBrain(channelId),
+    loadNarrativeBundle(channelId),
+    latestNexLevEvidenceSources(channelId),
+    listNextEpisodePlans(channelId)
+  ]);
+  if(!brain)throw new HttpError('Crie e salve o Channel Brain antes de planejar o próximo episódio.',409);
+  return {
+    channelId,
+    brainVersion:brain.version,
+    activePlan:plans.find(plan=>plan.status==='review')??null,
+    context:buildNextEpisodeEvidenceContext(managed,brain,bundle,marketEvidence)
+  };
+}
+
+export async function importOperatorNextEpisodePlan(input:{
+  channelId:string;
+  expectedBrainVersion:number;
+  model:NextEpisodeModelResult;
+}){
+  const [managed,brain,bundle,marketEvidence,plans]=await Promise.all([
+    channel(input.channelId),
+    loadChannelBrain(input.channelId),
+    loadNarrativeBundle(input.channelId),
+    latestNexLevEvidenceSources(input.channelId),
+    listNextEpisodePlans(input.channelId)
+  ]);
+  if(!brain)throw new HttpError('Crie e salve o Channel Brain antes de planejar o próximo episódio.',409);
+  if(brain.version!==input.expectedBrainVersion){
+    throw new HttpError('O Channel Brain mudou. Recarregue o contexto antes de importar o plano.',409);
+  }
+
+  const reusable=plans.find(plan=>plan.status==='review'&&plan.brainVersion===brain.version);
+  if(reusable)return {plan:reusable,created:false};
+
+  let payload:NextEpisodePlanPayload;
+  try{
+    payload={...compileNextEpisodePlan({
+      id:crypto.randomUUID(),
+      channel:managed,
+      brain,
+      bundle,
+      model:input.model,
+      marketEvidence
+    }),generationSource:'operator-chatgpt'};
+  }catch(error){
+    throw new HttpError(
+      'O plano do operador contém referências incompatíveis com o contexto atual. Nenhum plano foi salvo. '+
+      (error instanceof Error?error.message:''),
+      400
+    );
+  }
   return {plan:await savePlan(payload,'review',0),created:true};
 }
 

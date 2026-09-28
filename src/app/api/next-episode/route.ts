@@ -2,18 +2,51 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  acceptNextEpisodeCandidate, generateNextEpisodePlan,
-  loadNextEpisodePlan, loadNextEpisodePlanHistory, nextEpisodeChannelState
+  acceptNextEpisodeCandidate, generateNextEpisodePlan, importOperatorNextEpisodePlan,
+  loadNextEpisodePlan, loadNextEpisodePlanHistory, nextEpisodeChannelState,
+  nextEpisodeOperatorContext
 } from '@/lib/server/next-episode';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=120;
 
+const operatorCandidate=z.object({
+  workingTitle:z.string().min(1).max(250),
+  theme:z.string().min(1).max(1000),
+  thesis:z.string().min(1).max(2000),
+  angle:z.string().min(1).max(2000),
+  promise:z.string().min(1).max(2000),
+  thumbnailConcept:z.string().min(1).max(2000),
+  targetAudience:z.string().min(1).max(1200),
+  objective:z.string().min(1).max(2000),
+  previousEpisodeConnection:z.string().max(2000),
+  arcRef:z.string().nullable(),
+  prerequisiteConceptRefs:z.array(z.string()).max(15),
+  introducesConceptRefs:z.array(z.string()).max(15),
+  reinforcesConceptRefs:z.array(z.string()).max(15),
+  opensThreads:z.array(z.string().min(1).max(600)).max(15),
+  resolvesThreadRefs:z.array(z.string()).max(15),
+  repetitionKeys:z.array(z.string().min(1).max(300)).max(20),
+  evidenceRefs:z.array(z.string()).min(1).max(20),
+  rationale:z.string().min(1).max(2500),
+  risks:z.array(z.string().min(1).max(800)).max(12)
+}).strict();
+
 const schema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('generate'),
     channelId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('import-operator-plan'),
+    channelId:z.string().uuid(),
+    expectedBrainVersion:z.number().int().min(1),
+    model:z.object({
+      candidates:z.array(operatorCandidate).length(3),
+      recommendedIndex:z.number().int().min(0).max(2),
+      recommendationRationale:z.string().min(1).max(2500)
+    }).strict()
   }).strict(),
   z.object({
     action:z.literal('accept'),
@@ -42,6 +75,11 @@ export async function GET(request:Request){
 
     const channelId=url.searchParams.get('channelId')?.trim();
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
+    if(url.searchParams.get('context')==='operator'){
+      return Response.json(await nextEpisodeOperatorContext(channelId),{
+        headers:{'Cache-Control':'no-store'}
+      });
+    }
     return Response.json(await nextEpisodeChannelState(channelId),{
       headers:{'Cache-Control':'no-store'}
     });
@@ -62,6 +100,14 @@ export async function POST(request:Request){
         message:result.created
           ?'Next Episode Plan gerado com evidências do Channel Brain.'
           :'O Brain não mudou; o plano ativo existente foi reutilizado.',
+        ...result
+      });
+    }
+
+    if(body.action==='import-operator-plan'){
+      const result=await importOperatorNextEpisodePlan(body);
+      return Response.json({
+        message:'Next Episode Plan criado pelo operador/ChatGPT e validado contra o contexto atual.',
         ...result
       });
     }
