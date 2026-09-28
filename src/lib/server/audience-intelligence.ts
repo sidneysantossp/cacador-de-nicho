@@ -138,6 +138,93 @@ async function sourceForPerformanceReport(performance:PerformanceReport){
   return observation;
 }
 
+export async function audienceOperatorContext(performanceReportId:string){
+  const performance=await loadPerformanceReport(performanceReportId);
+  if(!performance)throw new HttpError('Performance Report não encontrado.',404);
+  const observation=await sourceForPerformanceReport(performance);
+  const sample=buildAudienceCommentSample(observation,50);
+  if(!sample.length)throw new HttpError('Nenhum comentário utilizável foi encontrado na amostra.',409);
+  const existing=checked(await db().from('radar_audience_intelligence_reports')
+    .select('id').eq('performance_report_id',performanceReportId).maybeSingle());
+  return {
+    performanceReportId:performance.id,
+    performanceReportVersion:performance.version,
+    observationId:observation.id,
+    videoTitle:await episodeTitle(performance.episodeId),
+    sample,
+    existingReport:existing
+      ?await loadAudienceIntelligenceReport(String(existing.id))
+      :null
+  };
+}
+
+export async function importOperatorAudienceIntelligence(input:{
+  performanceReportId:string;
+  expectedPerformanceReportVersion:number;
+  expectedObservationId:string;
+  model:import('@/lib/audience-intelligence-policy').AudienceModelResult;
+}){
+  const performance=await loadPerformanceReport(input.performanceReportId);
+  if(!performance)throw new HttpError('Performance Report não encontrado.',404);
+  if(performance.version!==input.expectedPerformanceReportVersion){
+    throw new HttpError('O Performance Report mudou. Recarregue a amostra antes de importar a análise.',409);
+  }
+
+  const existing=checked(await db().from('radar_audience_intelligence_reports')
+    .select('id').eq('performance_report_id',performance.id).maybeSingle());
+  if(existing){
+    const report=await loadAudienceIntelligenceReport(String(existing.id));
+    if(report)return {report,created:false};
+  }
+
+  const observation=await sourceForPerformanceReport(performance);
+  if(observation.id!==input.expectedObservationId){
+    throw new HttpError('A Performance Observation mudou. Recarregue a amostra antes de importar a análise.',409);
+  }
+  const sample=buildAudienceCommentSample(observation,50);
+  if(!sample.length)throw new HttpError('Nenhum comentário utilizável foi encontrado na amostra.',409);
+
+  let compiled;
+  try{
+    compiled=compileAudienceModelResult(sample,input.model);
+  }catch(error){
+    throw new HttpError(
+      'A análise do operador contém referências incompatíveis com a amostra. Nenhum report foi salvo. '+
+      (error instanceof Error?error.message:''),
+      400
+    );
+  }
+  if(!compiled.classifications.length){
+    throw new HttpError('A análise não classificou nenhum comentário da amostra. Nenhum report foi salvo.',400);
+  }
+
+  const now=new Date().toISOString();
+  const payload:AudienceIntelligencePayload={
+    kind:'audience-intelligence',
+    id:crypto.randomUUID(),
+    channelId:performance.channelId,
+    episodeId:performance.episodeId,
+    performanceReportId:performance.id,
+    performanceReportVersion:performance.version,
+    observationId:observation.id,
+    externalVideoId:observation.externalVideoId,
+    sampleSize:sample.length,
+    analyzedCommentRefs:compiled.analyzedCommentRefs,
+    sentimentSampleCounts:compiled.sentimentSampleCounts,
+    classifications:compiled.classifications,
+    themes:compiled.themes,
+    limitations:compiled.limitations,
+    provenance:{
+      model:'chatgpt-operator',
+      sourceLabel:observation.provenance.sourceLabel??'Performance Observation '+observation.id
+    },
+    review:{notes:''},
+    createdAt:now,
+    updatedAt:now
+  };
+  return {report:await saveReport(payload,'review',0),created:true};
+}
+
 export async function createAudienceIntelligence(performanceReportId:string){
   const performance=await loadPerformanceReport(performanceReportId);
   if(!performance)throw new HttpError('Performance Report não encontrado.',404);

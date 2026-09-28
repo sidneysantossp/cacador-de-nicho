@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type {
   AudienceIntelligenceReport, ChannelBrainPayload, PerformanceObservation
 } from '../src/lib/types';
@@ -177,4 +178,17 @@ test('Audience Learning Loop merge is idempotent and preserves channel constitut
   assert.equal(second.added.length,0);
   assert.deepEqual(second.brain.constitution,constitution);
   assert.equal(second.brain.learnings.length,1);
+});
+
+test('assisted-manual Audience Intelligence imports ChatGPT classifications without provider AI',()=>{
+  const route=readFileSync('src/app/api/audience-intelligence/route.ts','utf8');
+  const server=readFileSync('src/lib/server/audience-intelligence.ts','utf8');
+  assert.match(route,/import-operator-analysis/);
+  assert.match(route,/context.*operator/);
+  assert.match(server,/audienceOperatorContext/);
+  assert.match(server,/importOperatorAudienceIntelligence/);
+  assert.match(server,/compileAudienceModelResult/);
+  assert.match(server,/chatgpt-operator/);
+  assert.match(server,/expectedPerformanceReportVersion/);
+  assert.match(server,/expectedObservationId/);
 });
