@@ -7,9 +7,10 @@ STATE_FILE="$BASE/state/cacador-de-nicho.json"
 
 METHOD="${1:-GET}"
 PATH_QUERY="${2:-}"
+BODY_JSON="${3:-}"
 
 if [[ -z "$PATH_QUERY" || "$PATH_QUERY" != /api/* ]]; then
-  echo "usage: cacadores-agent-api <GET|POST|DELETE> /api/<operational-path>[?query]" >&2
+  echo "usage: cacadores-agent-api <GET|POST|DELETE> /api/<operational-path>[?query] [json-body]" >&2
   exit 64
 fi
 
@@ -43,6 +44,7 @@ PYPORT
 export CACADORES_AGENT_METHOD="$METHOD"
 export CACADORES_AGENT_PATH="$PATH_QUERY"
 export CACADORES_AGENT_PORT="$PORT"
+export CACADORES_AGENT_BODY="$BODY_JSON"
 
 python3 - <<'PY'
 import os,sys,urllib.request,urllib.error
@@ -94,9 +96,14 @@ if not any(pathname==prefix or pathname.startswith(prefix+"/") for prefix in all
 
 body=None
 if method in ("POST","DELETE"):
-    raw=sys.stdin.buffer.read()
-    if raw:
-        body=raw
+    inline=os.environ.get("CACADORES_AGENT_BODY","").strip()
+    if inline:
+        try:
+            parsed=__import__("json").loads(inline)
+        except Exception:
+            print("invalid json body",file=sys.stderr)
+            raise SystemExit(65)
+        body=__import__("json").dumps(parsed,separators=(",",":")).encode("utf-8")
 
 headers={
     "Accept":"application/json",
