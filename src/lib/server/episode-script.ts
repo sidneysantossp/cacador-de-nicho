@@ -203,6 +203,84 @@ export async function saveEpisodeScript(
   return {...normalized,version,status};
 }
 
+export async function operatorScriptContext(projectId:string){
+  const project=await loadContentProject(projectId);
+  if(!project)throw new HttpError('Content Project não encontrado.',404);
+  const context=await scriptContext(project);
+  const existingScript=await loadEpisodeScriptByProject(project.id);
+  return {
+    projectVersion:project.version,
+    brainVersion:context.brain?.version??0,
+    channel:context.channel,
+    brain:context.brain,
+    episode:context.episode,
+    project:context.project,
+    productionDna:context.productionDna,
+    existingScript
+  };
+}
+
+export async function importOperatorScript(input:{
+  projectId:string;
+  expectedProjectVersion:number;
+  expectedBrainVersion:number;
+  expectedScriptVersion:number;
+  title:string;
+  language:string;
+  sections:Array<{
+    label:string;
+    purpose:string;
+    content:string;
+    claimIds?:string[];
+  }>;
+  continuityNotes:string[];
+  factCheckWarnings:string[];
+}):Promise<EpisodeScript>{
+  const project=await loadContentProject(input.projectId);
+  if(!project)throw new HttpError('Content Project não encontrado.',404);
+  if(project.version!==input.expectedProjectVersion){
+    throw new HttpError('O Content Project mudou. Recarregue o contexto antes de importar o roteiro.',409);
+  }
+  const context=await scriptContext(project);
+  const brainVersion=context.brain?.version??0;
+  if(brainVersion!==input.expectedBrainVersion){
+    throw new HttpError('O Channel Brain mudou. Recarregue o contexto antes de importar o roteiro.',409);
+  }
+
+  const existing=await loadEpisodeScriptByProject(project.id);
+  const currentVersion=existing?.version??0;
+  if(currentVersion!==input.expectedScriptVersion){
+    throw new HttpError('O roteiro mudou. Recarregue antes de importar uma nova versão.',409);
+  }
+
+  const now=new Date().toISOString();
+  const payload:EpisodeScriptPayload={
+    kind:'episode-script',
+    id:existing?.id??crypto.randomUUID(),
+    channelId:project.channelId,
+    episodeId:project.episodeId,
+    contentProjectId:project.id,
+    title:input.title,
+    language:input.language,
+    sections:input.sections.map(section=>({
+      id:crypto.randomUUID(),
+      label:section.label,
+      purpose:section.purpose,
+      content:section.content,
+      claimIds:section.claimIds??[]
+    })),
+    content:'',
+    wordCount:1,
+    estimatedMinutes:null,
+    continuityNotes:input.continuityNotes,
+    factCheckWarnings:input.factCheckWarnings,
+    provenance:{generatedBy:'chatgpt',model:'chatgpt-operator'},
+    createdAt:existing?.createdAt??now,
+    updatedAt:now
+  };
+  return saveEpisodeScript(payload,'draft',currentVersion);
+}
+
 export async function generateScriptForProject(projectId:string):Promise<EpisodeScript>{
   const project=await loadContentProject(projectId);
   if(!project)throw new HttpError('Content Project não encontrado.',404);

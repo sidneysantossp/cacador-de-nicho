@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  generateScriptForProject, loadEpisodeScript, loadEpisodeScriptHistory,
-  loadEpisodeScriptHistoryVersion, loadEpisodeScripts, regenerateScriptSection, saveEpisodeScript
+  generateScriptForProject, importOperatorScript, loadEpisodeScript, loadEpisodeScriptHistory,
+  loadEpisodeScriptHistoryVersion, loadEpisodeScripts, operatorScriptContext,
+  regenerateScriptSection, saveEpisodeScript
 } from '@/lib/server/episode-script';
 import { episodeScriptPayloadSchema } from '@/lib/server/validation';
 import { loadContentProject } from '@/lib/server/content-os';
@@ -12,8 +13,27 @@ import { loadProductionDna } from '@/lib/server/production-dna';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
+const operatorSection=z.object({
+  label:z.string().trim().min(1).max(120),
+  purpose:z.string().trim().max(1000),
+  content:z.string().trim().min(1).max(40000),
+  claimIds:z.array(z.string().uuid()).max(100).optional()
+}).strict();
+
 const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('generate'),projectId:z.string().uuid()}).strict(),
+  z.object({
+    action:z.literal('importOperatorScript'),
+    projectId:z.string().uuid(),
+    expectedProjectVersion:z.number().int().min(1).max(100000),
+    expectedBrainVersion:z.number().int().min(0).max(100000),
+    expectedScriptVersion:z.number().int().min(0).max(100000),
+    title:z.string().trim().min(1).max(300),
+    language:z.string().trim().min(2).max(80),
+    sections:z.array(operatorSection).min(1).max(80),
+    continuityNotes:z.array(z.string().trim().max(1000)).max(100).default([]),
+    factCheckWarnings:z.array(z.string().trim().max(1000)).max(100).default([])
+  }).strict(),
   z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
@@ -34,6 +54,7 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     const channelId=url.searchParams.get('channelId')?.trim();
     const scriptId=url.searchParams.get('scriptId')?.trim();
+    const projectId=url.searchParams.get('projectId')?.trim();
     const historyVersionRaw=url.searchParams.get('historyVersion')?.trim();
 
     if(scriptId){
@@ -59,6 +80,11 @@ export async function GET(request:Request){
       return Response.json({script,history,project,productionDna},{headers:{'Cache-Control':'no-store'}});
     }
 
+    if(projectId&&url.searchParams.get('context')==='operator'){
+      if(!z.string().uuid().safeParse(projectId).success)throw new HttpError('Content Project inválido.',400);
+      return Response.json(await operatorScriptContext(projectId),{headers:{'Cache-Control':'no-store'}});
+    }
+
     if(!channelId||!z.string().uuid().safeParse(channelId).success)throw new HttpError('Canal inválido.',400);
     return Response.json({scripts:await loadEpisodeScripts(channelId)},{headers:{'Cache-Control':'no-store'}});
   }catch(e){return errorResponse(e);}
@@ -75,6 +101,7 @@ export async function POST(request:Request){
 
     let script;
     if(body.action==='generate')script=await generateScriptForProject(body.projectId);
+    else if(body.action==='importOperatorScript')script=await importOperatorScript(body);
     else if(body.action==='regenerateSection')script=await regenerateScriptSection(body.scriptId,body.sectionId);
     else script=await saveEpisodeScript(body.script,body.status,body.expectedVersion);
 
@@ -84,7 +111,9 @@ export async function POST(request:Request){
       loadProductionDna(script.channelId)
     ]);
     return Response.json({
-      message:body.action==='generate'
+      message:body.action==='importOperatorScript'
+        ?'Roteiro criado pelo ChatGPT operador, validado e salvo como draft.'
+        :body.action==='generate'
         ?script.generation
           ?script.generation.stage==='complete'
             ?'Roteiro concluído: '+script.generation.completedSections+'/'+script.generation.totalSections+' seções geradas.'
