@@ -54,3 +54,10 @@ test('Provider AI entry points are opt-in only',()=>{
     assert.match(source,/CACADORES_AI_AUTORUN/,'missing provider AI gate in '+file);
   }
 });
+
+test('Operator Analysis is exposed through the scoped host-side agent channel',()=>{
+  const helper=readFileSync('ops/self-hosted/bin/cacadores-agent-api','utf8');
+  const auth=readFileSync('src/lib/server/auth.ts','utf8');
+  assert.match(helper,/\/api\/operator-analysis/);
+  assert.match(auth,/\/api\/operator-analysis/);
+});

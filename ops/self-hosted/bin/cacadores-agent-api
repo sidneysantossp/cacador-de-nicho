@@ -69,6 +69,7 @@ allowed=(
     "/api/nexlev-evidence",
     "/api/nexlev-intelligence",
     "/api/next-episode",
+    "/api/operator-analysis",
     "/api/owned-media",
     "/api/performance-analyst",
     "/api/production-dna",
