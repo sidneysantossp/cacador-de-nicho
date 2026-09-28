@@ -119,6 +119,7 @@ test('NexLev connection table is private and operator intelligence is agent-read
   assert.match(schema,/radar_nexlev_connections.*enable row level security/s);
   assert.match(auth,/\/api\/nexlev-intelligence/);
   assert.doesNotMatch(auth,/\/api\/nexlev-connection/);
+  assert.doesNotMatch(auth,/\/api\/nexlev-mcp/);
   assert.match(intelligence,/listNexLevTools/);
   assert.match(intelligence,/callNexLevTool/);
   assert.match(intelligence,/ferramenta NexLev solicitada não está disponível nesta conta/);
