@@ -179,3 +179,11 @@ test('assisted-manual Visual Prompt Engine imports ChatGPT directions and compil
   assert.match(server,/expectedSetVersion/);
   assert.match(server,/Imported by ChatGPT operator/);
 });
+
+test('Visual Prompt Engine only marks DNA OWNED references ready when library rows are ready images',()=>{
+  const server=readFileSync('src/lib/server/visual-prompt-engine.ts','utf8');
+  assert.match(server,/ownedReferenceAssetIds/);
+  assert.match(server,/radar_owned_media_assets/);
+  assert.match(server,/row\.status==='ready'&&row\.asset_kind==='image'/);
+  assert.match(server,/dnaReady/);
+});

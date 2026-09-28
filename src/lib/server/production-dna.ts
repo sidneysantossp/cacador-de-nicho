@@ -3,6 +3,7 @@ import 'server-only';
 import type { ManagedChannel, ProductionDNA, ProductionDnaPayload, ProductionDnaVersion } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { ownedReferenceAssetIds } from '@/lib/asset-factory-policy';
 
 export function createDefaultProductionDna(channel:ManagedChannel):ProductionDnaPayload{
   const now=new Date().toISOString();
@@ -120,6 +121,75 @@ export async function patchProductionDnaVoice(input:{
     if(message.includes('production dna version conflict'))throw new HttpError('Production DNA desatualizado. Recarregue antes de salvar novamente.',409);
     if(message.includes('managed channel not found'))throw new HttpError('Canal não encontrado na Gestão de Canais.',404);
     throw new HttpError('Falha ao atualizar a voz do Production DNA no Supabase.',502);
+  }
+  const version=Number(result.data);
+  if(!Number.isFinite(version)||version<1)throw new HttpError('Falha ao versionar o Production DNA.',502);
+  return {...normalized,version} as ProductionDNA;
+}
+
+export async function patchProductionDnaCharacterReferences(input:{
+  channelId:string;
+  expectedVersion:number;
+  references:Array<{characterId:string;referenceAssets:string[]}>;
+}):Promise<ProductionDNA>{
+  const current=await loadProductionDna(input.channelId);
+  if(!current)throw new HttpError('Production DNA não encontrado para este canal.',404);
+  if(current.version!==input.expectedVersion){
+    throw new HttpError('Production DNA desatualizado. Recarregue antes de salvar novamente.',409);
+  }
+  const uniqueCharacters=new Set(input.references.map(item=>item.characterId));
+  if(uniqueCharacters.size!==input.references.length){
+    throw new HttpError('A atualização contém personagens duplicados.',400);
+  }
+
+  const requestedAssetIds=[...new Set(input.references.flatMap(item=>ownedReferenceAssetIds(item.referenceAssets)))];
+  if(requestedAssetIds.length){
+    const rows=checked(await db().from('radar_owned_media_assets')
+      .select('id,asset_kind,status')
+      .in('id',requestedAssetIds));
+    const readyImages=new Set((rows??[])
+      .filter(row=>row.status==='ready'&&row.asset_kind==='image')
+      .map(row=>String(row.id)));
+    const missing=requestedAssetIds.filter(id=>!readyImages.has(id));
+    if(missing.length){
+      throw new HttpError('Finalize as imagens de referência na Biblioteca antes de travar o Production DNA.',409);
+    }
+  }
+
+  const raw={...(current as unknown as Record<string,unknown>)};
+  delete raw.version;
+  const sourceCharacters=Array.isArray(raw.characters)?raw.characters:[];
+  const updates=new Map(input.references.map(item=>[item.characterId,item.referenceAssets]));
+  for(const characterId of updates.keys()){
+    const exists=sourceCharacters.some(character=>
+      !!character&&typeof character==='object'&&String((character as Record<string,unknown>).id??'')===characterId
+    );
+    if(!exists)throw new HttpError('Personagem não encontrado no Production DNA: '+characterId+'.',404);
+  }
+  const characters=sourceCharacters.map(character=>{
+    if(!character||typeof character!=='object')return character;
+    const item=character as Record<string,unknown>;
+    const characterId=String(item.id??'');
+    const referenceAssets=updates.get(characterId);
+    if(referenceAssets===undefined)return character;
+    return {
+      ...item,
+      referenceAssets:[...referenceAssets],
+      referenceStatus:referenceAssets.length?'locked':'needs-reference'
+    };
+  });
+  const now=new Date().toISOString();
+  const normalized={...raw,characters,channelId:input.channelId,updatedAt:now};
+  const result=await db().rpc('save_production_dna',{
+    p_channel_id:input.channelId,
+    p_payload:normalized,
+    p_expected_version:input.expectedVersion
+  });
+  if(result.error){
+    const message=String(result.error.message??'');
+    if(message.includes('production dna version conflict'))throw new HttpError('Production DNA desatualizado. Recarregue antes de salvar novamente.',409);
+    if(message.includes('managed channel not found'))throw new HttpError('Canal não encontrado na Gestão de Canais.',404);
+    throw new HttpError('Falha ao atualizar referências do Production DNA no Supabase.',502);
   }
   const version=Number(result.data);
   if(!Number.isFinite(version)||version<1)throw new HttpError('Falha ao versionar o Production DNA.',502);

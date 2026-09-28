@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
-import { loadProductionDna, loadProductionDnaHistory, patchProductionDnaVoice, saveProductionDna } from '@/lib/server/production-dna';
+import { loadProductionDna, loadProductionDnaHistory, patchProductionDnaCharacterReferences, patchProductionDnaVoice, saveProductionDna } from '@/lib/server/production-dna';
 import { productionDnaPayloadSchema } from '@/lib/server/validation';
 
 export const runtime='nodejs';
@@ -29,7 +29,17 @@ const patchVoiceSchema=z.object({
   voice:voiceSchema
 }).strict();
 
-const saveSchema=z.union([fullSaveSchema,patchVoiceSchema]);
+const patchCharacterReferencesSchema=z.object({
+  action:z.literal('patchCharacterReferences'),
+  channelId:z.string().uuid(),
+  expectedVersion:z.number().int().min(1).max(100000),
+  references:z.array(z.object({
+    characterId:z.string().trim().min(1).max(120),
+    referenceAssets:z.array(z.string().regex(/^owned:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)).max(3)
+  }).strict()).min(1).max(30)
+}).strict();
+
+const saveSchema=z.union([fullSaveSchema,patchVoiceSchema,patchCharacterReferencesSchema]);
 
 export async function GET(request:Request){
   try{
@@ -52,12 +62,21 @@ export async function POST(request:Request){
     if(Number(request.headers.get('content-length')??0)>180000)throw new HttpError('Production DNA muito extenso.',413);
     const parsed=saveSchema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os campos do Production DNA e tente novamente.',400);
-    const patch=patchVoiceSchema.safeParse(parsed.data);
-    if(patch.success){
-      const dna=await patchProductionDnaVoice(patch.data);
+    const voicePatch=patchVoiceSchema.safeParse(parsed.data);
+    if(voicePatch.success){
+      const dna=await patchProductionDnaVoice(voicePatch.data);
       const history=await loadProductionDnaHistory(dna.channelId,20);
       return Response.json({
         message:`Voz do Production DNA atualizada na versão ${dna.version}.`,
+        dna,history
+      });
+    }
+    const referencePatch=patchCharacterReferencesSchema.safeParse(parsed.data);
+    if(referencePatch.success){
+      const dna=await patchProductionDnaCharacterReferences(referencePatch.data);
+      const history=await loadProductionDnaHistory(dna.channelId,20);
+      return Response.json({
+        message:`Referências de personagem atualizadas na versão ${dna.version}.`,
         dna,history
       });
     }

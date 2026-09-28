@@ -15,6 +15,7 @@ import {
   normalizeVisualPromptSet, recurringCharacterIds, visualPromptIssues,
   visualPromptPlanningBatch
 } from '@/lib/visual-prompt-policy';
+import { ownedReferenceAssetIds } from '@/lib/asset-factory-policy';
 
 function normalizeRow(row:{
   id:string;channel_id:string;episode_id:string;scene_plan_id:string;
@@ -198,13 +199,24 @@ export async function importOperatorVisualPrompts(input:{
 
   const recurring=recurringCharacterIds(drafts);
   const readyByCharacter=new Map((existing?.characterReferences??[]).map(ref=>[ref.characterId,ref.assetReady]));
+  const referenceIds=[...new Set(dna.characters.flatMap(character=>ownedReferenceAssetIds(character.referenceAssets)))];
+  const readyReferenceIds=new Set<string>();
+  if(referenceIds.length){
+    const rows=checked(await db().from('radar_owned_media_assets')
+      .select('id,asset_kind,status')
+      .in('id',referenceIds));
+    for(const row of rows??[]){
+      if(row.status==='ready'&&row.asset_kind==='image')readyReferenceIds.add(String(row.id));
+    }
+  }
   const characterReferences=recurring.flatMap(characterId=>{
     const character=dna.characters.find(item=>item.id===characterId);
     if(!character)return [];
     const ref=compileCharacterReference(
       character,dna,drafts.filter(item=>item.characterIds.includes(characterId)).map(item=>item.sceneId)
     );
-    return [{...ref,assetReady:readyByCharacter.get(characterId)??false}];
+    const dnaReady=ownedReferenceAssetIds(character.referenceAssets).some(id=>readyReferenceIds.has(id));
+    return [{...ref,assetReady:readyByCharacter.get(characterId)===true||dnaReady}];
   });
 
   const scenePrompts=plan.scenes.map(scene=>{
@@ -284,6 +296,16 @@ export async function generateVisualPromptDrafts(
     }))
   );
   const existingReady=new Map(current.characterReferences.map(ref=>[ref.characterId,ref.assetReady]));
+  const referenceIds=[...new Set(dna.characters.flatMap(character=>ownedReferenceAssetIds(character.referenceAssets)))];
+  const readyReferenceIds=new Set<string>();
+  if(referenceIds.length){
+    const rows=checked(await db().from('radar_owned_media_assets')
+      .select('id,asset_kind,status')
+      .in('id',referenceIds));
+    for(const row of rows??[]){
+      if(row.status==='ready'&&row.asset_kind==='image')readyReferenceIds.add(String(row.id));
+    }
+  }
 
   const references=recurring.flatMap(characterId=>{
     const character=dna.characters.find(item=>item.id===characterId);
@@ -295,7 +317,8 @@ export async function generateVisualPromptDrafts(
         .filter(item=>item.characterIds.includes(characterId))
         .map(item=>item.sceneId)
     );
-    return [{...ref,assetReady:existingReady.get(characterId)??false}];
+    const dnaReady=ownedReferenceAssetIds(character.referenceAssets).some(id=>readyReferenceIds.has(id));
+    return [{...ref,assetReady:existingReady.get(characterId)===true||dnaReady}];
   });
 
   const scenePrompts=plan.scenes.map(scene=>{

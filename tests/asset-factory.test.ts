@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { SceneAsset, VisualScenePrompt } from '../src/lib/types';
 import {
   assetIsStale, assetKindForMime, generationLabel, googleImageModels, googleVideoModels,
-  ownedSceneAssetTrim, sceneAssetOwnsStorage, validVideoGeneration, verifiedStockSceneAssetTrim
+  ownedReferenceAssetId, ownedReferenceAssetIds, ownedSceneAssetTrim, sceneAssetOwnsStorage,
+  validVideoGeneration, verifiedStockSceneAssetTrim
 } from '../src/lib/asset-factory-policy';
 
 test('Asset Factory exposes supported Google image and video model families',()=>{
@@ -99,4 +101,26 @@ test('Unverified stock has no deterministic trim override',()=>{
     sourceType:'stock',
     verifiedStock:undefined
   } as Pick<SceneAsset,'sourceType'|'verifiedStock'>),null);
+});
+
+test('Character reference assets use explicit owned UUIDs only',()=>{
+  assert.equal(
+    ownedReferenceAssetId('owned:aa53d486-886f-47a2-be39-91496392a2a9'),
+    'aa53d486-886f-47a2-be39-91496392a2a9'
+  );
+  assert.equal(ownedReferenceAssetId('file_00000000149481fa9409f65c53559a79'),null);
+  assert.deepEqual(ownedReferenceAssetIds([
+    'owned:aa53d486-886f-47a2-be39-91496392a2a9',
+    'owned:aa53d486-886f-47a2-be39-91496392a2a9'
+  ]),['aa53d486-886f-47a2-be39-91496392a2a9']);
+});
+
+test('Google generation sends real character reference images to Gemini and Veo',()=>{
+  const server=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  assert.match(server,/providerReferenceImages/);
+  assert.match(server,/type:'image',mime_type:reference\.mimeType,data:reference\.data/);
+  assert.match(server,/referenceImages:references\.map/);
+  assert.match(server,/inlineData:\{mimeType:reference\.mimeType,data:reference\.data\}/);
+  assert.match(server,/references\.length&&durationSeconds!==8/);
+  assert.match(server,/modelId==='veo-3\.1-lite-generate-preview'/);
 });
