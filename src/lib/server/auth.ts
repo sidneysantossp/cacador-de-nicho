@@ -8,6 +8,7 @@ const agentOperatorPaths=[
   '/api/audience-intelligence',
   '/api/asset-factory',
   '/api/audio-library',
+  '/api/autopilot-readiness',
   '/api/channel-brain',
   '/api/content-os',
   '/api/episode-automation',
@@ -20,7 +21,9 @@ const agentOperatorPaths=[
   '/api/production-dna',
   '/api/production-quality',
   '/api/publication-package',
+  '/api/radar',
   '/api/render-engine',
+  '/api/render-engine/events',
   '/api/scene-timecode',
   '/api/script-engine',
   '/api/stock-media',
@@ -32,7 +35,8 @@ const agentOperatorPaths=[
   '/api/voice-engine',
   '/api/youtube-channels',
   '/api/youtube-connection',
-  '/api/youtube-publisher'
+  '/api/youtube-publisher',
+  '/api/youtube-publisher/events'
 ] as const;
 
 export const authConfigured = () =>
