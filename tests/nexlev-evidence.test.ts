@@ -30,3 +30,11 @@ test('Next Episode Strategist accepts market evidence without weakening auto-acc
   assert.match(autopilot,/no-strong-learning-evidence/);
   assert.match(autopilot,/item\?\.type==='learning'/);
 });
+
+test('NexLev evidence distinguishes provider quota from an empty market result',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/nexlev-evidence.ts'),'utf8');
+  assert.match(source,/value\?\.isError/);
+  assert.match(source,/rate limit exceeded/);
+  assert.match(source,/não interpretar como ausência de vencedores/);
+  assert.match(source,/Falha parcial em/);
+});
