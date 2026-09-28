@@ -259,7 +259,23 @@ async function generateElevenLabsChunk(input:{
 
     lastStatus=response.status;
     lastBody=await response.text().catch(()=>'');
-    if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
+    if(response.status===401){
+      let status='';
+      try{
+        const parsed=JSON.parse(lastBody) as {detail?:{status?:unknown}};
+        status=typeof parsed.detail?.status==='string'?parsed.detail.status:'';
+      }catch{}
+      if(status==='missing_permissions'){
+        throw new HttpError('A chave ElevenLabs é válida, mas ainda não possui permissão Text to Speech.',422);
+      }
+      if(status==='invalid_api_key'){
+        throw new HttpError('A chave ElevenLabs usada pela plataforma foi invalidada, revogada ou expirou.',422);
+      }
+      throw new HttpError('A ElevenLabs recusou a autenticação do Text to Speech.',422);
+    }
+    if(response.status===403){
+      throw new HttpError('A ElevenLabs bloqueou o Text to Speech por permissão ou restrição de IP.',422);
+    }
     if(response.status===422)throw new HttpError('A ElevenLabs recusou a voz, o modelo ou um trecho do texto enviado.',422);
     if(response.status!==429&&response.status<500)break;
     if(attempt<2){
