@@ -483,6 +483,93 @@ export async function uploadVoiceAsset(scriptId:string,file:File){
   return persistAudio(script,reservation,bytes,mimeType,file.name,metadata);
 }
 
+export type ElevenSharedVoiceCandidate=ElevenVoiceOption&{
+  publicOwnerId:string;
+  originalVoiceId:string;
+};
+
+export async function discoverElevenLabsSharedVoice(voiceId:string):Promise<ElevenSharedVoiceCandidate|null>{
+  const id=voiceId.trim();
+  if(!id)throw new HttpError('Voice ID da ElevenLabs inválido.',400);
+  const key=await providerSecret('elevenlabs');
+  const params=new URLSearchParams({
+    page_size:'100',
+    include_total_count:'false',
+    voice_type:'community',
+    voice_ids:id
+  });
+  let response:Response;
+  try{
+    response=await fetch('https://api.elevenlabs.io/v2/voices?'+params.toString(),{
+      headers:{'xi-api-key':key},
+      signal:AbortSignal.timeout(20000),
+      cache:'no-store'
+    });
+  }catch{
+    throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);
+  }
+  if(!response.ok){
+    if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
+    if(response.status===429)throw new HttpError('A ElevenLabs atingiu o limite de uso da conta.',429);
+    throw new HttpError('A ElevenLabs não conseguiu pesquisar a Voice Library.',502);
+  }
+  const body=await response.json() as {voices?:Array<Record<string,unknown>>};
+  const item=(body.voices??[]).find(row=>String(row.voice_id??'')===id)??body.voices?.[0];
+  if(!item)return null;
+  const sharing=item.sharing&&typeof item.sharing==='object'
+    ?item.sharing as Record<string,unknown>
+    :{};
+  const publicOwnerId=String(sharing.public_owner_id??'').trim();
+  const originalVoiceId=String(sharing.original_voice_id??item.voice_id??id).trim();
+  if(!publicOwnerId||!originalVoiceId)return null;
+  return {
+    voiceId:String(item.voice_id??id),
+    name:String(item.name??sharing.name??'Unnamed voice'),
+    category:String(item.category??sharing.category??''),
+    description:String(item.description??sharing.description??''),
+    previewUrl:String(item.preview_url??''),
+    labels:item.labels&&typeof item.labels==='object'?item.labels as Record<string,string>:{},
+    publicOwnerId,
+    originalVoiceId
+  };
+}
+
+export async function addElevenLabsSharedVoice(input:{
+  originalVoiceId:string;
+  publicOwnerId:string;
+  name:string;
+}){
+  const key=await providerSecret('elevenlabs');
+  let response:Response;
+  try{
+    response=await fetch(
+      'https://api.elevenlabs.io/v1/voices/add/'+encodeURIComponent(input.publicOwnerId)+'/'+encodeURIComponent(input.originalVoiceId),
+      {
+        method:'POST',
+        headers:{'xi-api-key':key,'Content-Type':'application/json'},
+        body:JSON.stringify({new_name:input.name.trim()||'Lax',bookmarked:true}),
+        signal:AbortSignal.timeout(20000),
+        cache:'no-store'
+      }
+    );
+  }catch{
+    throw new HttpError('Não foi possível alcançar a API da ElevenLabs.',502);
+  }
+  const raw=await response.text().catch(()=>'');
+  if(!response.ok){
+    if(response.status===401)throw new HttpError('A ElevenLabs recusou a credencial configurada.',422);
+    if(response.status===403)throw new HttpError('A credencial atual não pode adicionar esta voz compartilhada.',403);
+    if(response.status===429)throw new HttpError('A ElevenLabs atingiu o limite de uso da conta.',429);
+    const safe=raw.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
+    throw new HttpError('A ElevenLabs não conseguiu adicionar a voz compartilhada'+(safe?': '+safe:'')+'.',422);
+  }
+  let parsed:{voice_id?:unknown}={};
+  try{parsed=JSON.parse(raw) as {voice_id?:unknown};}catch{}
+  const voiceId=String(parsed.voice_id??'').trim();
+  if(!voiceId)throw new HttpError('A ElevenLabs adicionou a voz sem retornar um novo Voice ID.',502);
+  return getElevenLabsVoice(voiceId);
+}
+
 export async function getElevenLabsVoice(voiceId:string):Promise<ElevenVoiceOption>{
   const id=voiceId.trim();
   if(!id)throw new HttpError('Voice ID da ElevenLabs inválido.',400);

@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  deleteVoiceAsset, generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
+  addElevenLabsSharedVoice, deleteVoiceAsset, discoverElevenLabsSharedVoice,
+  generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
   listVoiceAssets, loadVoiceAsset, selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
 import {
@@ -14,6 +15,12 @@ export const dynamic='force-dynamic';
 export const maxDuration=1800;
 
 const jsonSchema=z.discriminatedUnion('action',[
+  z.object({
+    action:z.literal('addSharedVoice'),
+    originalVoiceId:z.string().trim().min(1).max(200),
+    publicOwnerId:z.string().trim().min(1).max(300),
+    name:z.string().trim().min(1).max(250)
+  }).strict(),
   z.object({
     action:z.literal('generate'),
     scriptId:z.string().uuid(),
@@ -45,6 +52,10 @@ export async function GET(request:Request){
     const url=new URL(request.url);
     if(url.searchParams.get('voices')==='elevenlabs'){
       return Response.json({voices:await listElevenLabsVoices()},{headers:{'Cache-Control':'no-store'}});
+    }
+    const discoverVoiceId=url.searchParams.get('discoverVoiceId')?.trim();
+    if(discoverVoiceId){
+      return Response.json({voice:await discoverElevenLabsSharedVoice(discoverVoiceId)},{headers:{'Cache-Control':'no-store'}});
     }
     const voiceId=url.searchParams.get('voiceId')?.trim();
     if(voiceId){
@@ -79,6 +90,10 @@ export async function POST(request:Request){
     if(!parsed.success)throw new HttpError('Revise os campos do Voice Engine.',400);
     const body=parsed.data;
 
+    if(body.action==='addSharedVoice'){
+      const voice=await addElevenLabsSharedVoice(body);
+      return Response.json({message:'Voz compartilhada adicionada ao workspace ElevenLabs.',voice});
+    }
     if(body.action==='generate'){
       const asset=await generateElevenLabsVoice(body);
       const chunks=asset.generationChunks?.length??1;

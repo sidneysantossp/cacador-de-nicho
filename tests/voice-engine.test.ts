@@ -127,3 +127,14 @@ test('Voice Engine can validate an exact ElevenLabs voice id without generating 
   assert.match(server,/\/v1\/voices\/'\+encodeURIComponent\(id\)/);
   assert.match(server,/não está disponível para a credencial atual/);
 });
+
+test('Voice Engine can discover and restore a shared ElevenLabs voice',()=>{
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  assert.match(route,/discoverVoiceId/);
+  assert.match(route,/addSharedVoice/);
+  assert.match(server,/voice_type:'community'/);
+  assert.match(server,/voice_ids:id/);
+  assert.match(server,/public_owner_id/);
+  assert.match(server,/\/v1\/voices\/add\//);
+});
