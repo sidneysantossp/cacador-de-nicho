@@ -32,19 +32,20 @@ test('NexLev callback stores tokens server-side and never returns them to browse
 });
 
 test('NexLev MCP proxy discovers available tools before invoking a tool',()=>{
-  const route=readFileSync(resolve(process.cwd(),'src/app/api/nexlev-mcp/route.ts'),'utf8');
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/nexlev-intelligence/route.ts'),'utf8');
   const server=readFileSync(resolve(process.cwd(),'src/lib/server/nexlev.ts'),'utf8');
   assert.match(route,/listNexLevTools/);
   assert.match(route,/callNexLevTool/);
-  assert.match(route,/Ferramenta NexLev não disponível nesta conta/);
+  assert.match(route,/ferramenta NexLev solicitada não está disponível nesta conta/);
   assert.match(server,/tools\/list/);
   assert.match(server,/tools\/call/);
 });
 
-test('NexLev operator APIs are agent-accessible but OAuth remains interactive',()=>{
+test('NexLev intelligence is agent-accessible while connection management and OAuth remain interactive',()=>{
   const auth=readFileSync(resolve(process.cwd(),'src/lib/server/auth.ts'),'utf8');
-  assert.match(auth,/\/api\/nexlev-connection/);
-  assert.match(auth,/\/api\/nexlev-mcp/);
+  assert.match(auth,/\/api\/nexlev-intelligence/);
+  assert.doesNotMatch(auth,/\/api\/nexlev-connection/);
+  assert.doesNotMatch(auth,/\/api\/nexlev-mcp/);
   assert.doesNotMatch(auth,/\/api\/nexlev-oauth/);
 });
 
