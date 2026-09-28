@@ -51,7 +51,8 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Voice Engine.',503);
     const url=new URL(request.url);
     if(url.searchParams.get('voices')==='elevenlabs'){
-      return Response.json({voices:await listElevenLabsVoices()},{headers:{'Cache-Control':'no-store'}});
+      const search=url.searchParams.get('search')?.trim()??'';
+      return Response.json({voices:await listElevenLabsVoices(search)},{headers:{'Cache-Control':'no-store'}});
     }
     const discoverVoiceId=url.searchParams.get('discoverVoiceId')?.trim();
     if(discoverVoiceId){
