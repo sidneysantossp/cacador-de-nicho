@@ -42,7 +42,7 @@ export async function GET(request:Request){
 
     const redirect=new URL('/',payload.redirectUri);
     redirect.searchParams.set('nexlev','connected');
-    const response=Response.redirect(redirect,302);
+    const response=new Response(null,{status:302,headers:{Location:redirect.toString()}});
     response.headers.append(
       'Set-Cookie',
       'nexlev_pkce=; HttpOnly; SameSite=Lax; Path=/api/nexlev-oauth; Max-Age=0'+
