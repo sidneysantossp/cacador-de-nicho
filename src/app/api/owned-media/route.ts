@@ -3,7 +3,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import { mediaTaxonomyCatalog } from '@/lib/media-taxonomy';
 import {
-  deleteOwnedMediaAsset, finalizeOwnedMediaUpload, listOwnedMediaAssets,
+  deleteOwnedMediaAsset, finalizeOwnedMediaUpload, generateOwnedCharacterReference, listOwnedMediaAssets,
   preflightOwnedMediaDuplicates, prepareOwnedMediaUpload, reclassifyOwnedMediaTaxonomy, updateOwnedMediaMetadata
 } from '@/lib/server/owned-media';
 
@@ -60,6 +60,13 @@ const semantic=z.object({
 
 const schema=z.discriminatedUnion('action',[
   z.object({
+    action:z.literal('generateCharacterReference'),
+    channelId:z.string().uuid(),
+    characterId:z.string().trim().min(1).max(120),
+    modelId:z.enum(['gemini-3.1-flash-image','gemini-3.1-flash-lite-image','gemini-3-pro-image']).optional(),
+    imageSize:z.enum(['1K','2K','4K']).optional()
+  }).strict(),
+  z.object({
     action:z.literal('prepare'),
     fileName:z.string().trim().min(1).max(255),
     mimeType:z.string().trim().min(1).max(120),
@@ -106,6 +113,10 @@ export async function POST(request:Request){
     const parsed=schema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Revise os dados enviados para a Biblioteca.',400);
 
+    if(parsed.data.action==='generateCharacterReference'){
+      const asset=await generateOwnedCharacterReference(parsed.data);
+      return Response.json({message:'Referência canônica do personagem gerada e salva no Owned Media.',asset});
+    }
     if(parsed.data.action==='preflight'){
       const results=await preflightOwnedMediaDuplicates(parsed.data.files);
       return Response.json({message:'Verificação de duplicidade concluída.',results});

@@ -216,3 +216,14 @@ test('Owned Media can issue a short-lived R2 PUT URL without exposing provider c
   assert.match(owned,/directUploadUrl/);
   assert.match(owned,/signedMediaPutUrl\(storagePath,mimeType,600\)/);
 });
+
+test('Owned Media can generate canonical character references from Production DNA',()=>{
+  const route=readFileSync('src/app/api/owned-media/route.ts','utf8');
+  const server=readFileSync('src/lib/server/owned-media.ts','utf8');
+  assert.match(route,/generateCharacterReference/);
+  assert.match(server,/generateOwnedCharacterReference/);
+  assert.match(server,/Create a canonical production character reference image/);
+  assert.match(server,/loadProductionDna/);
+  assert.match(server,/googleai-character-reference/);
+  assert.match(server,/generated-references/);
+});

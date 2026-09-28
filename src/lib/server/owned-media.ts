@@ -6,9 +6,11 @@ import { MEDIA_TAXONOMY_VERSION } from '@/lib/media-taxonomy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import {
-  headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, removeMedia,
+  headMedia, preferredMediaStorage, putMedia, putMediaStream, r2StoragePath, removeMedia,
   signedMediaPutUrl, signedMediaUrl
 } from './media-storage';
+import { providerSecret } from './providers';
+import { loadProductionDna } from './production-dna';
 import { probeStoredVideo } from './media-probe';
 import { searchOwnedMediaEmbeddings } from './media-embeddings';
 
@@ -168,6 +170,165 @@ export async function preflightOwnedMediaDuplicates(
   }
 
   return items.map(item=>result.get(item.clientId)??{clientId:item.clientId,duplicate:false});
+}
+
+function findGeneratedImage(value:unknown):{data:string;mimeType:string}|null{
+  if(!value||typeof value!=='object')return null;
+  const obj=value as Record<string,unknown>;
+  const direct=(obj.output_image??obj.outputImage) as Record<string,unknown>|undefined;
+  if(direct&&typeof direct.data==='string'){
+    return {data:direct.data,mimeType:String(direct.mime_type??direct.mimeType??'image/png')};
+  }
+  if(typeof obj.data==='string'){
+    const mime=String(obj.mime_type??obj.mimeType??'');
+    if(mime.startsWith('image/'))return {data:obj.data,mimeType:mime};
+  }
+  for(const child of Object.values(obj)){
+    if(child&&typeof child==='object'){
+      const found=findGeneratedImage(child);
+      if(found)return found;
+    }
+  }
+  return null;
+}
+
+function characterReferencePrompt(input:{
+  styleName:string;
+  styleDescription:string;
+  basePrompt:string;
+  negativePrompt:string;
+  characterName:string;
+  description:string;
+  visualRules:string[];
+  forbidden:string[];
+}){
+  return [
+    'Create a canonical production character reference image for a recurring YouTube animation character.',
+    'Show exactly one character, full body, head-to-toe, centered, neutral three-quarter standing pose, relaxed arms, readable silhouette.',
+    'Use a clean warm off-white studio-like background with no environment, no text, no labels, no border and no watermark.',
+    'This is a consistency master, not an action scene. Keep proportions, face, hair, clothing, materials and colors unambiguous.',
+    input.styleName?('CHANNEL STYLE: '+input.styleName+'.'):'',
+    input.styleDescription?('STYLE DESCRIPTION: '+input.styleDescription):'',
+    input.basePrompt?('STYLE LOCK: '+input.basePrompt):'',
+    'CHARACTER: '+input.characterName+'.',
+    input.description?('CHARACTER DESCRIPTION: '+input.description):'',
+    input.visualRules.length?('MANDATORY VISUAL RULES: '+input.visualRules.join('; ')+'.'):'',
+    input.forbidden.length?('CHARACTER FORBIDDEN: '+input.forbidden.join('; ')+'.'):'',
+    input.negativePrompt?('NEGATIVE RULES: '+input.negativePrompt):'',
+    'Output one polished reference frame suitable for reuse as an image reference in later image and video generation.'
+  ].filter(Boolean).join('\n');
+}
+
+export async function generateOwnedCharacterReference(input:{
+  channelId:string;
+  characterId:string;
+  modelId?:'gemini-3.1-flash-image'|'gemini-3.1-flash-lite-image'|'gemini-3-pro-image';
+  imageSize?:'1K'|'2K'|'4K';
+}){
+  const dna=await loadProductionDna(input.channelId);
+  if(!dna)throw new HttpError('Production DNA não encontrado para este canal.',404);
+  const character=dna.characters.find(item=>item.id===input.characterId);
+  if(!character)throw new HttpError('Personagem não encontrado no Production DNA.',404);
+
+  const modelId=input.modelId??'gemini-3.1-flash-image';
+  const imageSize=input.imageSize??'2K';
+  const key=await providerSecret('googleai');
+  const prompt=characterReferencePrompt({
+    styleName:dna.visual.styleName,
+    styleDescription:dna.visual.styleDescription,
+    basePrompt:dna.visual.basePrompt,
+    negativePrompt:dna.visual.negativePrompt,
+    characterName:character.name,
+    description:character.description,
+    visualRules:character.visualRules,
+    forbidden:character.forbidden
+  });
+
+  let response:Response;
+  try{
+    response=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{
+      method:'POST',
+      headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:modelId,
+        input:prompt,
+        response_format:{
+          type:'image',
+          mime_type:'image/jpeg',
+          aspect_ratio:'1:1',
+          image_size:imageSize
+        }
+      }),
+      signal:AbortSignal.timeout(180000),
+      cache:'no-store'
+    });
+  }catch{
+    throw new HttpError('A Google AI excedeu o tempo para gerar a referência do personagem.',504);
+  }
+
+  if(!response.ok){
+    const error=await response.text().catch(()=>'');
+    if(response.status===401||response.status===403)throw new HttpError('A Google AI recusou a credencial ou o modelo de imagem.',422);
+    if(response.status===429)throw new HttpError('A Google AI atingiu quota ou limite de geração.',429);
+    throw new HttpError('A Google AI falhou ao gerar a referência'+(error?' ('+error.slice(0,160)+')':'')+'.',502);
+  }
+
+  const body=await response.json();
+  const image=findGeneratedImage(body);
+  if(!image?.data)throw new HttpError('A Google AI não devolveu uma imagem de referência utilizável.',502);
+  const bytes=Buffer.from(image.data,'base64');
+  if(!bytes.length)throw new HttpError('A Google AI devolveu uma referência vazia.',502);
+
+  const id=crypto.randomUUID();
+  const fileName=safeName((character.name||character.id)+'-canonical-reference.jpg');
+  const keyPath=['library','owned','generated-references',input.channelId,character.id,id,fileName].join('/');
+  const storagePath=await putMedia(keyPath,bytes,image.mimeType||'image/jpeg',{cacheControl:'31536000'});
+  const semantic=normalizedSemantic({
+    subjects:[character.name,'character reference'],
+    people:[character.name],
+    scenes:['character reference'],
+    shotTypes:['full-body'],
+    moods:['neutral']
+  });
+  const title=(character.name||character.id)+' — Canonical Reference';
+  const tags=['character-reference','canonical',character.id,character.name]
+    .map(value=>String(value).trim().toLowerCase()).filter(Boolean).slice(0,50);
+  const searchText=ownedMediaSearchText({
+    title,originalName:fileName,tags,semantic,includeOriginalName:false
+  });
+  checked(await db().from('radar_owned_media_assets').insert({
+    id,
+    asset_kind:'image',
+    status:'ready',
+    storage_path:storagePath,
+    mime_type:image.mimeType||'image/jpeg',
+    original_name:fileName,
+    normalized_name:normalizeOwnedMediaDuplicateName(fileName),
+    content_fingerprint:null,
+    bytes:bytes.length,
+    width:null,
+    height:null,
+    duration_seconds:null,
+    title,
+    tags,
+    semantic,
+    search_text:searchText,
+    etag:null,
+    payload:{
+      source:'googleai-character-reference',
+      channelId:input.channelId,
+      characterId:character.id,
+      characterName:character.name,
+      modelId,
+      imageSize,
+      prompt
+    }
+  }));
+  const row=checked(await db().from('radar_owned_media_assets')
+    .select('id,asset_kind,status,storage_path,mime_type,original_name,normalized_name,content_fingerprint,bytes,width,height,duration_seconds,title,tags,semantic,search_text,etag,payload,created_at,updated_at')
+    .eq('id',id)
+    .single()) as Row;
+  return rowToAsset(row);
 }
 
 export async function prepareOwnedMediaUpload(input:{
