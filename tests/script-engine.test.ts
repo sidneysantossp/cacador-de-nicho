@@ -281,3 +281,17 @@ test('Completed resumable Script requires every planned section id to exist',()=
   const issues=scriptApprovalIssues(value);
   assert.ok(issues.includes('script-generation-planned-section-missing:'+second));
 });
+
+test('assisted-manual Script Engine imports ChatGPT output without provider generation',()=>{
+  const route=readFileSync('src/app/api/script-engine/route.ts','utf8');
+  const server=readFileSync('src/lib/server/episode-script.ts','utf8');
+  assert.match(route,/importOperatorScript/);
+  assert.match(route,/context.*operator/);
+  assert.match(server,/operatorScriptContext/);
+  assert.match(server,/importOperatorScript/);
+  assert.match(server,/generatedBy:'chatgpt'/);
+  assert.match(server,/chatgpt-operator/);
+  assert.match(server,/expectedProjectVersion/);
+  assert.match(server,/expectedBrainVersion/);
+  assert.match(server,/expectedScriptVersion/);
+});
