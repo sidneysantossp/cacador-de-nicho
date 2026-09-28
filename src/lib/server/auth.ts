@@ -43,8 +43,20 @@ export const authConfigured = () =>
   (process.env.APP_PASSWORD?.length ?? 0) >= 16 &&
   (process.env.SESSION_SECRET?.length ?? 0) >= 32;
 
-export const agentOperatorConfigured = () =>
-  (process.env.AGENT_OPERATOR_SECRET?.trim().length ?? 0) >= 32;
+function agentOperatorSecret(){
+  const explicit=process.env.AGENT_OPERATOR_SECRET?.trim()??'';
+  if(explicit.length>=32)return explicit;
+
+  const sessionSecret=process.env.SESSION_SECRET?.trim()??'';
+  const workerSecret=process.env.AUTOMATION_WORKER_SECRET?.trim()??'';
+  if(sessionSecret.length<32||workerSecret.length<32)return '';
+
+  return createHmac('sha256',sessionSecret)
+    .update('cacadores-agent-operator:v1:'+workerSecret)
+    .digest('base64url');
+}
+
+export const agentOperatorConfigured = () => agentOperatorSecret().length>=32;
 
 export function equal(a:string,b:string){
   const x=Buffer.from(a),y=Buffer.from(b);
@@ -83,7 +95,7 @@ function agentPathAllowed(request:Request){
 }
 
 export function agentAuthenticated(request:Request){
-  const expected=process.env.AGENT_OPERATOR_SECRET?.trim()??'';
+  const expected=agentOperatorSecret();
   const supplied=request.headers.get(agentOperatorHeader)?.trim()??'';
   if(expected.length<32||!supplied||!agentPathAllowed(request))return false;
   return equal(supplied,expected);
