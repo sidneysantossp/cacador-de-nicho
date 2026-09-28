@@ -55,3 +55,10 @@ test('Settings exposes OAuth connect without asking for a NexLev API key',()=>{
   assert.match(ui,/Conectar NexLev/);
   assert.match(ui,/Não é necessário copiar API key/);
 });
+
+test('host agent helper allowlists NexLev operational APIs',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
+  assert.match(source,/\/api\/nexlev-connection/);
+  assert.match(source,/\/api\/nexlev-mcp/);
+});
+
