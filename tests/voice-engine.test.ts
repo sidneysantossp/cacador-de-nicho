@@ -133,8 +133,8 @@ test('Voice Engine can discover and restore a shared ElevenLabs voice',()=>{
   const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
   assert.match(route,/discoverVoiceId/);
   assert.match(route,/addSharedVoice/);
-  assert.match(server,/voice_type:'community'/);
-  assert.match(server,/voice_ids:id/);
+  assert.match(server,/\/v1\/shared-voices\?/);
+  assert.match(server,/search:id/);
   assert.match(server,/public_owner_id/);
   assert.match(server,/\/v1\/voices\/add\//);
 });
