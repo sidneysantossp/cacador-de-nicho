@@ -91,6 +91,41 @@ export async function loadProductionDnaHistory(channelId:string,limit=20):Promis
   }));
 }
 
+export async function patchProductionDnaVoice(input:{
+  channelId:string;
+  expectedVersion:number;
+  voice:ProductionDnaPayload['voice'];
+}):Promise<ProductionDNA>{
+  const current=await loadProductionDna(input.channelId);
+  if(!current)throw new HttpError('Production DNA não encontrado para este canal.',404);
+  if(current.version!==input.expectedVersion){
+    throw new HttpError('Production DNA desatualizado. Recarregue antes de salvar novamente.',409);
+  }
+  const now=new Date().toISOString();
+  const raw={...(current as unknown as Record<string,unknown>)};
+  delete raw.version;
+  const normalized={
+    ...raw,
+    voice:input.voice,
+    channelId:input.channelId,
+    updatedAt:now
+  };
+  const result=await db().rpc('save_production_dna',{
+    p_channel_id:input.channelId,
+    p_payload:normalized,
+    p_expected_version:input.expectedVersion
+  });
+  if(result.error){
+    const message=String(result.error.message??'');
+    if(message.includes('production dna version conflict'))throw new HttpError('Production DNA desatualizado. Recarregue antes de salvar novamente.',409);
+    if(message.includes('managed channel not found'))throw new HttpError('Canal não encontrado na Gestão de Canais.',404);
+    throw new HttpError('Falha ao atualizar a voz do Production DNA no Supabase.',502);
+  }
+  const version=Number(result.data);
+  if(!Number.isFinite(version)||version<1)throw new HttpError('Falha ao versionar o Production DNA.',502);
+  return {...normalized,version} as ProductionDNA;
+}
+
 export async function saveProductionDna(
   payload:ProductionDnaPayload,
   expectedVersion:number|null
