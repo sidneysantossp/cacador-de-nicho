@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { agentAuthenticated, agentOperatorConfigured, authConfigured, createSession, validSession, sameOrigin, requireOperator, sessionCookie } from '../src/lib/server/auth';
 import { observedWithinWindow, settingsSchema } from '../src/lib/server/validation';
 const now=Date.parse('2026-09-22T12:00:00Z');
@@ -34,3 +36,14 @@ test('agent operator uses a separate scoped server secret without browser sessio
 });
 test('viral window uses observation time, excluding exact 72h boundary and future publication',()=>{assert.equal(observedWithinWindow('2026-09-19T12:00:01Z','2026-09-22T12:00:00Z',500000,500000,72),true);assert.equal(observedWithinWindow('2026-09-19T12:00:00Z','2026-09-22T12:00:00Z',500000,500000,72),false);assert.equal(observedWithinWindow('2026-09-23T12:00:00Z','2026-09-22T12:00:00Z',500000,500000,72),false);assert.equal(observedWithinWindow('bad','bad',500000,500000,72),false);});
 test('settings enforce bounded API, models and analysis budgets',()=>{const settings={queries:['finance'],languages:['en'],minViews:500000,maxVideoAgeHours:72,maxChannelVideos:20,maxChannelAgeDays:180,enabled:false,autoAnalyze:false,maxAnalysesPerRun:6,analysisModel:'gpt-5.6-terra',scriptModel:'gpt-5.6-sol'};assert.equal(settingsSchema.safeParse(settings).success,true);assert.equal(settingsSchema.safeParse({...settings,maxAnalysesPerRun:12}).success,true);assert.equal(settingsSchema.safeParse({...settings,maxAnalysesPerRun:13}).success,false);assert.equal(settingsSchema.safeParse({...settings,queries:Array(6).fill('finance')}).success,false);assert.equal(settingsSchema.safeParse({...settings,minViews:-1}).success,false);assert.equal(settingsSchema.safeParse({...settings,analysisModel:'unknown-model'}).success,false);});
+
+test('self-hosted agent client keeps the credential server-side and limits routes',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-agent-api'),'utf8');
+  assert.match(source,/AGENT_OPERATOR_SECRET/);
+  assert.match(source,/x-cacadores-agent-secret/);
+  assert.match(source,/127\.0\.0\.1/);
+  assert.match(source,/\/api\/episode-automation/);
+  assert.doesNotMatch(source,/\/api\/provider-settings/);
+  assert.doesNotMatch(source,/\/api\/autopilot-control/);
+  assert.doesNotMatch(source,/echo .*AGENT_OPERATOR_SECRET/);
+});
