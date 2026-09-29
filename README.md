@@ -2,6 +2,12 @@
 
 Plataforma de inteligência editorial: radar de canais, evidências, anatomia, cinco perspectivas, memória e rascunhos de roteiro. Mercado sempre inglês; interface em português.
 
+## Antes de contribuir — obrigatório
+
+Humanos e IAs devem ler [COLABORACAO.md](COLABORACAO.md) e [AGENTS.md](AGENTS.md), consultar [TODO.md](TODO.md), reservar uma tarefa na `master` e trabalhar em branch própria antes de implementar. Toda tarefa precisa de responsável, escopo, checklist e baixa com evidências. Execute `npm run tasks:setup` após clonar. O protocolo inclui as configurações de proteção que precisam ser verificadas no GitHub.
+
+O planejamento do estúdio próprio está em [docs/estudio/MAPEAMENTO.md](docs/estudio/MAPEAMENTO.md).
+
 ## Estado da entrega
 
 Prévia: https://cacadores-de-nichos.vercel.app

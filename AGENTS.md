@@ -1,5 +1,13 @@
 # Caçadores de Nichos
 
+## Processo obrigatório antes de qualquer alteração
+
+Leia integralmente `COLABORACAO.md`, `TODO.md`, `docs/PROJECT_STATE.md` e as tarefas ativas em `origin/master` após `git fetch origin`. Informe ID, responsável e escopo da tarefa. Nenhuma implementação sem `tasks/ID.json` com checklist, responsável e reserva `in_progress` previamente integrada à `master`. Use branch/worktree exclusivo por executor e não edite escopo reservado por outro. Ao terminar, registre validações reais, complete checklist/aceite e proponha a baixa no mesmo PR. Não declare integração/deploy que não verificou.
+
+Execute `npm run tasks:setup` após clonar e `npm run tasks:check` antes de commits/PRs, além das validações abaixo. Mudanças no próprio processo também exigem tarefa. `COLAB-001` é somente a implantação inicial descrita no protocolo. Leia `docs/estudio/MAPEAMENTO.md` antes de trabalhar no estúdio; implemente estrutura própria, sem copiar código ou assets do projeto de referência.
+
+## Regras do produto
+
 User direction: the monitored market and all audience-facing channel names, episode titles and scripts are always English. The operator interface and explanatory analysis remain Portuguese. English does not establish a particular channel's RPM.
 
 Preserve the separation between fictitious demo data and live records. Never simulate a completed research run or connected API. Keep secrets on the server and private operational data behind authentication. Never enable YOUTUBE_ANALYTICS_APPROVED without actual applicable acceptance.
