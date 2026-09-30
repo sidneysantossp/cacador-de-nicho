@@ -3,8 +3,9 @@
 Before starting or modifying any **owned content project**, read:
 
 1. `docs/PRODUCTION_OPERATING_SYSTEM.md` — mandatory global production contract.
-2. `docs/PROJECT_STATE.md` — current platform/operations state.
-3. The project's Channel Brain, Production DNA, Evidence Pack and active project state.
+2. `docs/AGENT_OPERATIONS.md` — mandatory agent identity, attribution and Factory Control telemetry rules.
+3. `docs/PROJECT_STATE.md` — current platform/operations state.
+4. The project's Channel Brain, Production DNA, Evidence Pack and active project state.
 
 The current global Production Operating System is `factory-mode@1.0.0`.
 

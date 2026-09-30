@@ -951,3 +951,19 @@ Decisão operacional aprovada pelo operador e válida para todos os projetos pr�
 - desenvolvimento de novas features fica subordinado à produção e deve ser retomado apenas quando um blocker real P0/P1 justificar.
 
 Este modelo substitui o padrão anterior de conversa/aprovação a cada microetapa, mas não autoriza scheduler a inventar projetos nem publicar fora do escopo aprovado.
+
+## Factory Control + Agent Attribution — 30/09/2026
+
+Nova camada operacional global para escalar a produção com múltiplas IAs/agentes:
+- Agent Registry com identidade estável, nome, assinatura, provider/model, função e estado;
+- Atlas (`atlas` / `@atlas`) é a assinatura inicial do orquestrador ChatGPT e pode ser renomeado sem perder histórico;
+- Factory System (`factory-system` / `@factory`) representa trabalho de infraestrutura sem dono criativo nomeado;
+- cada episódio pode ter um único owner e múltiplos contribuidores por papel;
+- Factory Control mostra agente, canal, vídeo, etapa, progresso, status, bloqueio e atualização;
+- progresso é derivado dos artefatos reais do pipeline e workers, não de estimativa de tempo;
+- performance por agente preserva amostra publicada, mediana de views, CTR, APV, RPM e revenue quando disponíveis;
+- não existe ranking opaco global: comparação deve respeitar tamanho de amostra, canal, nicho, formato e janela de publicação;
+- snapshot live é mantido em `radar_contexts` com id `factory-control:live` e atualizado pelos eventos do pipeline;
+- protocolo obrigatório para agentes: `docs/AGENT_OPERATIONS.md`.
+
+Os 15 episódios do GTA VI Intelligence Lab foram atribuídos inicialmente ao Atlas. Novos agentes devem registrar identidade e atribuição explicitamente antes de assumir produção.

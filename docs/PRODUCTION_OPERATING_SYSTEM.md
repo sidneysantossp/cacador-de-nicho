@@ -245,3 +245,7 @@ Every AI working on Caçadores de Nichos must:
 - never relax factual, rights, originality or quality gates just to increase throughput.
 
 Project-specific rules may add constraints. They may not silently remove these global rules. Any explicit operator override must be recorded.
+
+## 16. Agent identity and Factory Control
+
+Every production AI must operate under a stable agent identity and follow `docs/AGENT_OPERATIONS.md`. Episode ownership, contributor roles, current production stage, progress, blockers and post-publication performance must be attributable in Factory Control. Infrastructure work without a named creative owner uses the `factory-system` identity rather than being falsely credited to another agent.

@@ -83,3 +83,21 @@ export async function assignEpisodeOwner(input:{episodeId:string;channelId:strin
     }));
   }
 }
+
+export async function reportAgentOperation(input:{
+ operationKey:string;agentId:string;channelId?:string;episodeId?:string;batchKey?:string;
+ stage:string;status:'ready'|'processing'|'blocked'|'review'|'completed'|'failed';
+ progress:number;summary:string;blocker?:string;
+}){
+ const agentId=await ensureProductionAgent(input.agentId);
+ const now=new Date().toISOString();
+ checked(await db().from('radar_agent_operations').upsert({
+  operation_key:input.operationKey,agent_id:agentId,channel_id:input.channelId??null,
+  episode_id:input.episodeId??null,batch_key:input.batchKey??null,stage:input.stage,
+  status:input.status,progress:Math.max(0,Math.min(100,Math.round(input.progress))),
+  summary:input.summary.slice(0,4000),blocker:input.blocker?.slice(0,4000)??null,
+  started_at:input.status==='processing'?now:null,completed_at:input.status==='completed'?now:null,
+  updated_at:now
+ },{onConflict:'operation_key'}));
+ return agentId;
+}

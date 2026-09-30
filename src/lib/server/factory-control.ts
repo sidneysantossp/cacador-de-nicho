@@ -59,7 +59,7 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
   const channelId=String(row.channel_id),channel=channels.get(channelId);if(!channel?.owned)continue;
   const episodeId=String(row.id),payload=(row.payload??{}) as Record<string,unknown>,title=String(payload.title??'Untitled episode');
   const agentId=ownerByEpisode.get(episodeId)??'factory-system',agent=agentMap.get(agentId)??agentMap.get('factory-system');
-  let stage='planning',progress=stageProgress.planning,status:'ready'|'processing'|'blocked'|'review'|'completed'|'failed'='ready';
+  let stage='planning',progress:number=stageProgress.planning,status:'ready'|'processing'|'blocked'|'review'|'completed'|'failed'='ready';
   let summary='Episódio aguardando próxima etapa.',blocker:string|null=null,updatedAt=String(row.updated_at);
   if(projects.has(episodeId)){stage='content';progress=stageProgress.content;}
   if(scripts.has(episodeId)){stage='script';progress=stageProgress.script;}
