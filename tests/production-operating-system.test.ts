@@ -40,6 +40,18 @@ test('Every repository AI entry path tells agents to load Factory Mode',()=>{
   assert.match(agents,/factory-mode@1\.0\.0/);
   assert.match(start,/docs\/PRODUCTION_OPERATING_SYSTEM\.md/);
   assert.match(start,/Channel Brain, Production DNA/);
+
+  for(const path of [
+    'CLAUDE.md',
+    'GEMINI.md',
+    '.github/copilot-instructions.md',
+    '.cursor/rules/factory-mode.mdc'
+  ]){
+    const source=read(path);
+    assert.match(source,/AI_START_HERE\.md/,path+' must point to the mandatory bootstrap');
+    assert.match(source,/docs\/PRODUCTION_OPERATING_SYSTEM\.md/,path+' must point to the global production contract');
+    assert.match(source,/factory-mode@1\.0\.0/,path+' must pin the current factory version');
+  }
 });
 
 test('Every OpenAI runtime decision module injects the global Factory Mode bootstrap',()=>{
