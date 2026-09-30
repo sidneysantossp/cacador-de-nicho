@@ -30,7 +30,13 @@ const candidateSchema=z.object({
   repetitionKeys:z.array(z.string().min(1).max(300)).max(20),
   evidenceRefs:z.array(z.string()).min(1).max(20),
   rationale:z.string().min(1).max(2500),
-  risks:z.array(z.string().min(1).max(800)).max(12)
+  risks:z.array(z.string().min(1).max(800)).max(12),
+  originality:z.object({
+    discovery:z.string().min(60).max(2500),
+    addedValue:z.string().min(60).max(2500),
+    copyResistance:z.string().min(60).max(2500),
+    sourcePlan:z.string().min(60).max(2500)
+  }).strict()
 }).strict();
 
 const resultSchema=z.object({
@@ -79,6 +85,9 @@ const instructions=[
   'Respect constitution, doNotRepeat, narrative state, existing concepts and recent episodes.',
   'Prefer progression over repetition. A sequel must advance the thesis, not retell the previous video.',
   'Each candidate must be concrete enough to create a Content Project: theme, thesis, angle, promise, thumbnail concept, target audience and objective.',
+  'Every candidate must pass an ORIGINALITY / ANTI-SLOP test. State what this episode uniquely discovers, what value it adds beyond existing videos, why it is not trivially copyable, and exactly how evidence will be gathered or verified.',
+  'A topic, title variation, visual style or AI production trick is not an original discovery by itself.',
+  'Prefer candidates that create proprietary knowledge, synthesis, measurements, tests, datasets, source connections or a defensible editorial thesis.',
   'Rationale must summarize decision factors, not expose hidden chain-of-thought.',
   'Risks must name uncertainties or ways the proposal could fail.',
   'Write editorial fields in the language appropriate for the channel evidence; write rationale/risks in concise Brazilian Portuguese.'
