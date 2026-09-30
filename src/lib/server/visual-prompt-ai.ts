@@ -7,6 +7,7 @@ import type { ProductionDNA, ScenePlan } from '@/lib/types';
 import { settings } from './db';
 import { providerSecret } from './providers';
 import { HttpError } from './auth';
+import { withFactoryInstructions } from '@/lib/production-operating-system';
 
 const sceneDraft=z.object({
   sceneId:z.string().uuid(),
@@ -50,7 +51,7 @@ export async function draftVisualScenes(plan:ScenePlan,dna:ProductionDNA){
       const response=await (await client()).responses.parse({
         model:config.analysisModel,
         store:false,
-        instructions:[
+        instructions:withFactoryInstructions([
           'You are the Visual Planner for Caçadores de Nichos.',
           'Return exactly one record for every supplied scene and never create, delete, split, merge or reorder timecodes.',
           'sceneId must be copied exactly from input.',
@@ -62,7 +63,7 @@ export async function draftVisualScenes(plan:ScenePlan,dna:ProductionDNA){
           'Do NOT include style language, aspect ratio, negative prompts, model names, timecodes, markdown or filenames in direction.',
           'Prefer one clear visual idea per scene. Avoid adding facts that are not in the narration or supplied context.',
           'When visualBeats are present, use their type, sourcePreference, entities and search queries as semantic guidance. Do not copy query syntax into the final direction.'
-        ].join(' '),
+        ].join(' ')),
         input:JSON.stringify({
           knownCharacters,
           visualStyle:dna.visual.styleDescription,

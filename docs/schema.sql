@@ -1681,3 +1681,70 @@ return picked;
 end $;
 revoke all on function public.claim_verified_stock_job(uuid,int) from public,anon,authenticated;
 grant execute on function public.claim_verified_stock_job(uuid,int) to service_role;
+
+
+-- GLOBAL FACTORY MODE POINTER — factory-mode@1.0.0
+insert into public.radar_contexts(id,payload,updated_at)
+values(
+  'global:production-operating-system',
+  jsonb_build_object(
+    'kind','production-operating-system',
+    'id','factory-mode',
+    'version','1.0.0',
+    'status','LOCKED',
+    'scope','ALL_OWNED_PROJECTS_AND_AI_AGENTS',
+    'document','docs/PRODUCTION_OPERATING_SYSTEM.md',
+    'aiStartDocument','AI_START_HERE.md',
+    'runtimeModule','src/lib/production-operating-system.ts',
+    'operatingModel','BATCH_FIRST_PARALLEL_EXCEPTION_DRIVEN',
+    'defaultBatchSize',5,
+    'primaryKpi','active operator minutes per finished video',
+    'throughputTargets',jsonb_build_array(5,7,12),
+    'updatedAt',now()
+  ),
+  now()
+)
+on conflict(id) do update
+set payload=excluded.payload,updated_at=excluded.updated_at;
+
+create or replace function public.attach_factory_mode_pointer()
+returns trigger
+language plpgsql
+security invoker
+set search_path=''
+as $$
+declare
+  os_payload jsonb;
+  pointer jsonb;
+begin
+  if tg_table_name='radar_managed_channels'
+     and not (new.payload ? 'stage' and new.payload ? 'priority') then
+    return new;
+  end if;
+
+  select c.payload into os_payload
+  from public.radar_contexts c
+  where c.id='global:production-operating-system'
+  limit 1;
+
+  pointer:=jsonb_build_object(
+    'id',coalesce(os_payload->>'id','factory-mode'),
+    'version',coalesce(os_payload->>'version','1.0.0'),
+    'document',coalesce(os_payload->>'document','docs/PRODUCTION_OPERATING_SYSTEM.md'),
+    'required',true
+  );
+
+  new.payload:=jsonb_set(coalesce(new.payload,'{}'::jsonb),'{productionSystem}',pointer,true);
+  return new;
+end
+$$;
+
+drop trigger if exists radar_managed_channels_factory_mode on public.radar_managed_channels;
+create trigger radar_managed_channels_factory_mode
+before insert or update on public.radar_managed_channels
+for each row execute function public.attach_factory_mode_pointer();
+
+drop trigger if exists radar_content_projects_factory_mode on public.radar_content_projects;
+create trigger radar_content_projects_factory_mode
+before insert or update on public.radar_content_projects
+for each row execute function public.attach_factory_mode_pointer();

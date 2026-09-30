@@ -7,6 +7,7 @@ import { loadChannelBrain } from './channel-brain';
 import { loadNarrativeBundle } from './narrative';
 import { loadProductionDna } from './production-dna';
 import { contentProjectReadiness, contentProjectStage } from '@/lib/content-os-policy';
+import { productionOperatingSystemRef } from '@/lib/production-operating-system';
 
 function normalizeProject(row:{
   id:string;
@@ -88,6 +89,7 @@ export async function saveContentProject(
   const now=new Date().toISOString();
   const normalized:ContentProjectPayload={
     ...payload,
+    productionSystem:productionOperatingSystemRef(),
     createdAt:(await loadContentProject(payload.id))?.createdAt??payload.createdAt??now,
     updatedAt:now
   };

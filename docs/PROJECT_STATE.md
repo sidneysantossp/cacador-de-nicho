@@ -927,3 +927,27 @@ Hardening:
 - quando `SubState=elapsed`, o timer é reiniciado para ser rearmado;
 - timers deliberadamente excluídos pelo modo `assisted-manual` continuam fora do conjunto gerenciado;
 - nenhuma produção, render ou publicação é enfileirada por essa correção; ela só restaura a recorrência dos sincronizadores permitidos.
+
+
+## GLOBAL FACTORY MODE / Production Operating System — 30/09/2026
+
+Decisão operacional aprovada pelo operador e válida para todos os projetos próprios:
+
+- documento canônico: `docs/PRODUCTION_OPERATING_SYSTEM.md`;
+- bootstrap para IAs/agentes: `AI_START_HERE.md`;
+- ID/versionamento: `factory-mode@1.0.0`;
+- toda IA de runtime recebe o contrato global via `src/lib/production-operating-system.ts`;
+- todo novo Managed Channel e todo novo Content Project deve carregar ponte explícita para a versão vigente do Production Operating System;
+- operação passa a ser batch-first, paralela e exception-driven;
+- aprovação humana ocorre no escopo do projeto/lote e em exceções reais, não em cada etapa determinística;
+- o modo assisted-manual continua impedindo criação de escopo por relógio: Factory Mode começa somente após gatilho/aprovação do operador;
+- após o início aprovado, gates objetivos podem avançar automaticamente dentro do escopo;
+- pipeline canônico: seleção → pesquisa incremental → Claim Ledger → ORIGINALITY / ANTI-SLOP → script → voz → transcript/timestamps → Scene Plan → Asset Vault → fontes licenciadas/open se necessário → geração IA apenas para lacunas → rights/provenance/synthetic review → timeline/edit → render → QA → packaging → publish/hold → learning loop;
+- sourcing padrão: Asset Vault próprio → componentes gerados próprios reutilizáveis → arquivo/open media → stock licenciado → nova geração IA;
+- estados operacionais preferidos: READY, PROCESSING, BLOCKED; REVIEW apenas para julgamento humano genuíno;
+- cada blocker deve informar estágio, dependência, evidência/log e menor ação para desbloquear;
+- KPI primário: minutos humanos ativos por vídeo finalizado;
+- metas progressivas: 5 vídeos/dia → 7 vídeos/dia → 12 vídeos/dia, sem relaxar fatos, originalidade, direitos ou QA;
+- desenvolvimento de novas features fica subordinado à produção e deve ser retomado apenas quando um blocker real P0/P1 justificar.
+
+Este modelo substitui o padrão anterior de conversa/aprovação a cada microetapa, mas não autoriza scheduler a inventar projetos nem publicar fora do escopo aprovado.
