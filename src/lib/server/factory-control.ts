@@ -85,5 +85,10 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
   agentId:String(row.agent_id),
   attributedEpisodes:Number(row.attributed_episodes??0),
   publishedSamples:Number(row.published_samples??0),
-  medianViews:row.median_views===null?null:Number(row.median_views)
+  medianViews:row.median_views===null?null:Number(row.median_views),
+  medianCtrPercent:row.median_ctr_percent===null?null:Number(row.median_ctr_percent),
+  medianAveragePercentageViewed:row.median_average_percentage_viewed===null?null:Number(row.median_average_percentage_viewed),
+  medianRpm:row.median_rpm===null?null:Number(row.median_rpm),
+  totalRevenue:row.total_revenue===null?null:Number(row.total_revenue),
+  bestEpisode:null
  }));
