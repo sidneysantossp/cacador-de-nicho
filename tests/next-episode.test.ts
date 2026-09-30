@@ -184,7 +184,13 @@ function model():NextEpisodeModelResult{
           'episode:33333333-3333-4333-8333-333333333333'
         ],
         rationale:'Audience knows this mechanism already.',
-        risks:['Repetition']
+        risks:['Repetition'],
+        originality:{
+          discovery:'This episode tests whether the previous automation mechanism still explains the next stage rather than assuming the same story applies unchanged.',
+          addedValue:'It would compare the previous episode mechanism against a new consequence and identify where the prior explanation stops being sufficient.',
+          copyResistance:'The value would come from the channel-specific narrative continuity and evidence synthesis rather than from a generic automation headline.',
+          sourcePlan:'Use the existing audience learning plus the published episode as explicit evidence, then require new sources before any unsupported factual claims enter the script.'
+        }
       },
       {
         workingTitle:'What Are Humans For When Work Disappears?',
@@ -209,7 +215,13 @@ function model():NextEpisodeModelResult{
           'concept:post-work-identity'
         ],
         rationale:'Audience demand and the open thread both point to identity as the next step.',
-        risks:['The topic can become abstract without concrete examples.']
+        risks:['The topic can become abstract without concrete examples.'],
+        originality:{
+          discovery:'The channel has an unresolved audience question about what replaces work as a source of identity, status and meaning after automation spreads.',
+          addedValue:'Instead of repeating job-loss predictions, the episode advances into the social coordination problem that begins after employment stops organizing identity.',
+          copyResistance:'The moat is the accumulated Channel Brain, the explicit unresolved audience thread and the narrative progression from the prior episode rather than a trend-only topic.',
+          sourcePlan:'Ground the episode in the high-confidence audience learning, the open narrative thread and the post-work concept, then research concrete historical and social examples before scripting.'
+        }
       },
       {
         workingTitle:'The New Economy of Free Time',
@@ -230,7 +242,13 @@ function model():NextEpisodeModelResult{
         repetitionKeys:['free time economy'],
         evidenceRefs:['concept:future-work'],
         rationale:'Narratively valid but supported by weaker evidence.',
-        risks:['Less direct audience evidence.']
+        risks:['Less direct audience evidence.'],
+        originality:{
+          discovery:'The candidate isolates abundant free time as a distinct coordination problem rather than treating it as a generic side effect of automation.',
+          addedValue:'It reframes the automation discussion around institutions, status and leisure allocation, creating a different analytical question from the prior episode.',
+          copyResistance:'Its defensibility would depend on connecting the channel narrative to specific evidence and a structured leisure-economy framework rather than a generic future prediction.',
+          sourcePlan:'Start from the established future-work concept and add at least one independent research source plus a concrete case before treating the thesis as production-ready.'
+        }
       }
     ]
   };
@@ -306,4 +324,33 @@ test('assisted-manual Next Episode supports ChatGPT operator import without prov
   assert.match(server,/importOperatorNextEpisodePlan/);
   assert.match(server,/generationSource:'operator-chatgpt'/);
   assert.match(types,/operator-chatgpt/);
+});
+
+
+test('ORIGINALITY / ANTI-SLOP gate blocks generic candidates before recommendation',()=>{
+  const input=model();
+  input.recommendedIndex=1;
+  input.candidates[1].originality={
+    discovery:'Generic idea.',
+    addedValue:'Nothing new.',
+    copyResistance:'Easy to copy.',
+    sourcePlan:'Use AI.'
+  };
+  const plan=compileNextEpisodePlan({
+    id:'88888888-8888-4888-8888-888888888889',
+    channel:channel(),brain:brain(),bundle:bundle(),model:input
+  });
+  const candidate=plan.candidates[1];
+  assert.equal(candidate.originalityGate.status,'block');
+  assert.ok(candidate.blockers.includes('originality-gate:block'));
+  assert.notEqual(plan.recommendedCandidateId,candidate.id);
+});
+
+test('ORIGINALITY / ANTI-SLOP gate is enforced by acceptance and autonomous planning',()=>{
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/next-episode.ts'),'utf8');
+  const autopilot=readFileSync(resolve(process.cwd(),'src/lib/channel-autopilot-policy.ts'),'utf8');
+  const ai=readFileSync(resolve(process.cwd(),'src/lib/server/next-episode-ai.ts'),'utf8');
+  assert.match(server,/ORIGINALITY \/ ANTI-SLOP GATE/);
+  assert.match(autopilot,/originality-gate-not-passed/);
+  assert.match(ai,/Every candidate must pass an ORIGINALITY \/ ANTI-SLOP test/);
 });

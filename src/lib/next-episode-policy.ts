@@ -40,6 +40,12 @@ export type NextEpisodeModelCandidate = {
   evidenceRefs:string[];
   rationale:string;
   risks:string[];
+  originality:{
+    discovery:string;
+    addedValue:string;
+    copyResistance:string;
+    sourcePlan:string;
+  };
 };
 
 export type NextEpisodeModelResult = {
@@ -167,9 +173,35 @@ function evidenceStrength(
   return 'low';
 }
 
+function originalityGate(raw:NextEpisodeModelCandidate,evidenceRefs:string[]):NextEpisodeCandidate['originalityGate']{
+  const discovery=raw.originality.discovery.trim();
+  const thesis=raw.thesis.trim();
+  const addedValue=raw.originality.addedValue.trim();
+  const copyResistance=raw.originality.copyResistance.trim();
+  const sourcePlan=raw.originality.sourcePlan.trim();
+  const checks:NextEpisodeCandidate['originalityGate']['checks']=[
+    {code:'discovery',pass:discovery.length>=60,detail:discovery},
+    {code:'thesis',pass:thesis.length>=40,detail:thesis},
+    {code:'added-value',pass:addedValue.length>=60,detail:addedValue},
+    {code:'copy-resistance',pass:copyResistance.length>=60,detail:copyResistance},
+    {
+      code:'evidence-plan',
+      pass:evidenceRefs.length>=2&&sourcePlan.length>=60,
+      detail:sourcePlan
+    }
+  ];
+  const score=checks.filter(item=>item.pass).length*20;
+  return {
+    status:score===100?'pass':score>=80?'review':'block',
+    score,
+    checks
+  };
+}
+
 function candidateScore(item:NextEpisodeCandidate){
   const strength=item.evidenceStrength==='high'?30:item.evidenceStrength==='medium'?20:10;
-  return strength+(item.narrativeReady?20:0)+Math.min(10,item.evidenceRefs.length);
+  const originality=item.originalityGate.status==='pass'?30:item.originalityGate.status==='review'?10:0;
+  return strength+originality+(item.narrativeReady?20:0)+Math.min(10,item.evidenceRefs.length);
 }
 
 export function compileNextEpisodePlan(input:{
@@ -203,9 +235,11 @@ export function compileNextEpisodePlan(input:{
       input.bundle.concepts,
       input.brain
     );
+    const gate=originalityGate(raw,evidenceRefs);
     const blockers=[
       ...readiness.missingConcepts.map(key=>'missing-concept:'+key),
-      ...readiness.repetitionConflicts.map(key=>'repetition-conflict:'+key)
+      ...readiness.repetitionConflicts.map(key=>'repetition-conflict:'+key),
+      ...(gate.status==='pass'?[]:['originality-gate:'+gate.status])
     ];
 
     const draft:NextEpisodeCandidate={
@@ -229,6 +263,13 @@ export function compileNextEpisodePlan(input:{
       evidenceRefs,
       rationale:raw.rationale.trim().slice(0,2500),
       risks:unique(raw.risks).slice(0,12),
+      originality:{
+        discovery:raw.originality.discovery.trim().slice(0,2500),
+        addedValue:raw.originality.addedValue.trim().slice(0,2500),
+        copyResistance:raw.originality.copyResistance.trim().slice(0,2500),
+        sourcePlan:raw.originality.sourcePlan.trim().slice(0,2500)
+      },
+      originalityGate:gate,
       narrativeReady:readiness.ready,
       blockers,
       evidenceStrength:'low'
@@ -240,9 +281,9 @@ export function compileNextEpisodePlan(input:{
   });
 
   let recommended=candidates[input.model.recommendedIndex]??null;
-  if(!recommended?.narrativeReady){
+  if(!recommended?.narrativeReady||recommended.originalityGate.status!=='pass'){
     recommended=[...candidates]
-      .filter(item=>item.narrativeReady)
+      .filter(item=>item.narrativeReady&&item.originalityGate.status==='pass')
       .sort((a,b)=>candidateScore(b)-candidateScore(a))[0]??null;
   }
 
@@ -261,6 +302,9 @@ export function compileNextEpisodePlan(input:{
   }
   if(context.marketSignal==='nexlev-evidence'){
     limitations.push('Sinais NexLev sustentam descoberta recente, mas não demonstram causalidade de views, CTR, retenção ou receita.');
+  }
+  if(!candidates.some(item=>item.originalityGate.status==='pass')){
+    limitations.push('Nenhum candidato passou no ORIGINALITY / ANTI-SLOP GATE; o plano não pode recomendar nem aceitar episódio até existir descoberta, tese, valor adicional, resistência à cópia e plano de evidências suficientes.');
   }
 
   const now=new Date().toISOString();

@@ -211,7 +211,8 @@ test('Autopilot Dry Run exposes disabled generate review and auto-accept states'
       narrativeReady:true,
       blockers:[],
       evidenceStrength:'high' as const,
-      evidenceRefs:['learning:1']
+      evidenceRefs:['learning:1'],
+      originalityGate:{status:'pass' as const}
     }],
     context:{evidenceSnapshot:[
       {ref:'learning:1',type:'learning' as const,confidence:'high' as const}
@@ -258,7 +259,8 @@ test('Automatic acceptance requires autonomous mode, threshold and strong learni
       narrativeReady:true,
       blockers:[],
       evidenceStrength:'high' as const,
-      evidenceRefs:['learning:1','concept:future']
+      evidenceRefs:['learning:1','concept:future'],
+      originalityGate:{status:'pass' as const}
     }],
     context:{evidenceSnapshot:[
       {ref:'learning:1',type:'learning' as const,confidence:'high' as const},
@@ -290,6 +292,12 @@ test('Automatic acceptance requires autonomous mode, threshold and strong learni
     candidates:[{...plan.candidates[0],evidenceRefs:['concept:future']}]
   };
   assert.ok(nextEpisodeAutoAcceptIssues(ready,noLearning).includes('no-strong-learning-evidence'));
+
+  const noOriginality={
+    ...plan,
+    candidates:[{...plan.candidates[0],originalityGate:{status:'review' as const}}]
+  };
+  assert.ok(nextEpisodeAutoAcceptIssues(ready,noOriginality).includes('originality-gate-not-passed'));
 });
 
 

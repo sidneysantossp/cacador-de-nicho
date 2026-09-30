@@ -111,6 +111,7 @@ export function nextEpisodeAutoAcceptIssues(
       blockers:string[];
       evidenceStrength:'low'|'medium'|'high';
       evidenceRefs:string[];
+      originalityGate?:{status:'pass'|'review'|'block'};
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;
@@ -132,6 +133,7 @@ export function nextEpisodeAutoAcceptIssues(
     if(rank[candidate.evidenceStrength]<rank[autopilot.nextEpisodeMinEvidence]){
       issues.push('evidence-below-threshold');
     }
+    if(candidate.originalityGate?.status!=='pass')issues.push('originality-gate-not-passed');
     const evidence=new Map(plan.context.evidenceSnapshot.map(item=>[item.ref,item]));
     const strongLearning=candidate.evidenceRefs
       .map(ref=>evidence.get(ref))
@@ -171,6 +173,7 @@ export function autopilotDecisionPreview(
       blockers:string[];
       evidenceStrength:'low'|'medium'|'high';
       evidenceRefs:string[];
+      originalityGate?:{status:'pass'|'review'|'block'};
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;

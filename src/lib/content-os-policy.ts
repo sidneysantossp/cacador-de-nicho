@@ -1,7 +1,8 @@
 import type { ChannelBrain, ChannelConcept, ChannelEpisode, ContentProjectPayload } from '@/lib/types';
 import { episodeNarrativeReadiness } from '@/lib/narrative-policy';
 
-const requiredBriefFields: Array<keyof ContentProjectPayload['brief']>=[
+type RequiredBriefField='theme'|'thesis'|'angle'|'promise'|'workingTitle'|'targetAudience'|'objective';
+const requiredBriefFields:RequiredBriefField[]=[
   'theme','thesis','angle','promise','workingTitle','targetAudience','objective'
 ];
 
