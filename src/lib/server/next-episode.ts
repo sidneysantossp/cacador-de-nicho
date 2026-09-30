@@ -235,7 +235,12 @@ function contentProjectFromCandidate(input:{
       targetAudience:input.candidate.targetAudience,
       objective:input.candidate.objective,
       previousEpisodeConnection:input.candidate.previousEpisodeConnection,
-      arcConnection:input.arcName
+      arcConnection:input.arcName,
+      originality:{
+        ...input.candidate.originality,
+        gateStatus:input.candidate.originalityGate.status,
+        gateScore:input.candidate.originalityGate.score
+      }
     },
     research:{
       notes:'',
@@ -307,6 +312,12 @@ export async function acceptNextEpisodeCandidate(input:{
     throw new HttpError(
       'Este candidato está bloqueado pela Narrative Intelligence: '+
       [...readiness.missingConcepts.map(x=>'conceito '+x),...readiness.repetitionConflicts.map(x=>'repetição '+x)].join(' · '),
+      409
+    );
+  }
+  if(candidate.originalityGate?.status!=='pass'){
+    throw new HttpError(
+      'Este candidato não passou no ORIGINALITY / ANTI-SLOP GATE. Exija descoberta própria, tese defensável, valor adicional, resistência à cópia e plano de evidências antes de aceitar.',
       409
     );
   }
