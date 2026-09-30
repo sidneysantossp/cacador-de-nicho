@@ -72,10 +72,14 @@ test('New managed projects and Content Projects are stamped with the Factory Mod
   const actions=read('src/app/api/actions/route.ts');
   const contentOs=read('src/lib/server/content-os.ts');
   const validation=read('src/lib/server/validation.ts');
+  const schema=read('docs/schema.sql');
   assert.match(actions,/productionSystem:productionOperatingSystemRef\(\)/);
   assert.match(contentOs,/productionSystem:productionOperatingSystemRef\(\)/);
   assert.match(validation,/productionOperatingSystemPointerSchema/);
   assert.match(validation,/originality:z\.object/);
+  assert.match(schema,/attach_factory_mode_pointer/);
+  assert.match(schema,/radar_managed_channels_factory_mode/);
+  assert.match(schema,/radar_content_projects_factory_mode/);
 });
 
 test('Authenticated production-system endpoint exposes the AI bootstrap manifest',()=>{
