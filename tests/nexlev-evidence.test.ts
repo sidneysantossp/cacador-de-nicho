@@ -38,3 +38,9 @@ test('NexLev evidence distinguishes provider quota from an empty market result',
   assert.match(source,/não interpretar como ausência de vencedores/);
   assert.match(source,/Falha parcial em/);
 });
+test('NexLev evidence has a GTA VI-specific discovery profile',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/nexlev-evidence.ts'),'utf8');
+  assert.match(source,/gta6-intelligence/);
+  assert.match(source,/Grand Theft Auto VI GTA 6 Rockstar Games analysis hidden systems mechanics/);
+  assert.match(source,/developer build beta prototype cut content leftovers/);
+});
