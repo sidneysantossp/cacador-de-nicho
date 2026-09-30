@@ -79,3 +79,11 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
   if(run){stage=String(run.current_step??stage);progress=Math.max(progress,stageProgress[stage as keyof typeof stageProgress]??progress);updatedAt=String(run.updated_at??updatedAt);if(run.status==='completed'){status='completed';progress=100;}else if(run.status==='failed'){status='failed';blocker=String(run.last_error??'Automation failed.');}else if(run.status==='waiting'){status='blocked';blocker=String(run.hold_reason??'Aguardando intervenção.');}else{status='processing';summary='Automation Run em '+(stageLabels[stage]??stage)+'.';}}
   episodeOperations.push({id:'episode:'+episodeId,source:'episode',operationKey:'episode:'+episodeId,agentId,agentName:agent?.displayName??'Factory System',agentSignature:agent?.signature??'@factory',channelId,channelName:channel.name,episodeId,videoTitle:title,batchKey:null,stage,stageLabel:stageLabels[stage]??stage,status,progress,summary,blocker,updatedAt});
  }
+
+ const perfRows=checked(await db().from('radar_agent_performance_v').select('*'))??[];
+ const performance=perfRows.map(row=>({
+  agentId:String(row.agent_id),
+  attributedEpisodes:Number(row.attributed_episodes??0),
+  publishedSamples:Number(row.published_samples??0),
+  medianViews:row.median_views===null?null:Number(row.median_views)
+ }));
