@@ -53,6 +53,12 @@ function profileFor(channel:ManagedChannel):Profile{
     focused:'humanoid robots AI gets a body automation jobs future humans robots workforce',
     channels:'artificial intelligence future humanity robots automation technology future society'
   };
+  if(name.includes('gta vi')||name.includes('gta 6'))return {
+    key:'gta6-intelligence',
+    broad:'Grand Theft Auto VI GTA 6 Rockstar Games analysis hidden systems mechanics NPC AI police economy physics world design development',
+    focused:'Rockstar Games developer build beta prototype cut content leftovers game development archaeology GTA V GTA VI NPC systems physics',
+    channels:'GTA 6 analysis Rockstar development hidden systems mechanics lore worldbuilding faceless commentary'
+  };
   const fallback=[channel.niche,channel.description,channel.format].filter(Boolean).join(' ').slice(0,500);
   return {key:'managed-channel',broad:fallback,focused:fallback,channels:fallback};
 }
