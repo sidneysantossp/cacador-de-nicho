@@ -53,3 +53,29 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
  const automation=latest(autoRaw);
  const packageById=new Map<string,Row>();for(const row of (checked(pp)??[]) as Row[])packageById.set(String(row.id),row);
  const publishByEpisode=new Map<string,Row>();for(const row of (checked(yp)??[]) as Row[]){const pkg=packageById.get(String(row.package_id)),episodeId=String(pkg?.episode_id??'');if(episodeId&&!publishByEpisode.has(episodeId))publishByEpisode.set(episodeId,row);}
+
+ const episodeOperations:FactoryControlState['operations']=[];
+ for(const row of episodesRaw){
+  const channelId=String(row.channel_id),channel=channels.get(channelId);if(!channel?.owned)continue;
+  const episodeId=String(row.id),payload=(row.payload??{}) as Record<string,unknown>,title=String(payload.title??'Untitled episode');
+  const agentId=ownerByEpisode.get(episodeId)??'factory-system',agent=agentMap.get(agentId)??agentMap.get('factory-system');
+  let stage='planning',progress=stageProgress.planning,status:'ready'|'processing'|'blocked'|'review'|'completed'|'failed'='ready';
+  let summary='Episódio aguardando próxima etapa.',blocker:string|null=null,updatedAt=String(row.updated_at);
+  if(projects.has(episodeId)){stage='content';progress=stageProgress.content;}
+  if(scripts.has(episodeId)){stage='script';progress=stageProgress.script;}
+  if(voices.has(episodeId)){stage='voice';progress=stageProgress.voice;}
+  if(transcripts.has(episodeId)){stage='transcript';progress=stageProgress.transcript;}
+  if(scenes.has(episodeId)){stage='scenes';progress=stageProgress.scenes;}
+  if(visuals.has(episodeId)){stage='visual-prompts';progress=45;}
+  if(timelines.has(episodeId)){stage='timeline';progress=65;}
+  if(edits.has(episodeId)){stage='video-edit';progress=73;}
+  const render=renders.get(episodeId);
+  if(render){stage='render';progress=Math.max(80,Math.min(92,80+Math.round(Number(render.progress??0)*.12)));updatedAt=String(render.updated_at??updatedAt);if(render.status==='failed'){status='failed';blocker='Render failed.';}else if(render.status!=='completed')status='processing';}
+  if(qualities.has(episodeId)){stage='quality';progress=94;}
+  const pkg=packages.get(episodeId);if(pkg){stage='packaging';progress=97;updatedAt=String(pkg.updated_at??updatedAt);}
+  const publish=publishByEpisode.get(episodeId);
+  if(publish){stage='publish';progress=Math.max(98,Math.min(100,98+Math.round(Number(publish.progress??0)*.02)));updatedAt=String(publish.updated_at??updatedAt);if(publish.status==='completed'){stage='done';progress=100;status='completed';}else if(publish.status==='failed'){status='failed';blocker='Publish failed.';}else status='processing';}
+  const run=automation.get(episodeId);
+  if(run){stage=String(run.current_step??stage);progress=Math.max(progress,stageProgress[stage as keyof typeof stageProgress]??progress);updatedAt=String(run.updated_at??updatedAt);if(run.status==='completed'){status='completed';progress=100;}else if(run.status==='failed'){status='failed';blocker=String(run.last_error??'Automation failed.');}else if(run.status==='waiting'){status='blocked';blocker=String(run.hold_reason??'Aguardando intervenção.');}else{status='processing';summary='Automation Run em '+(stageLabels[stage]??stage)+'.';}}
+  episodeOperations.push({id:'episode:'+episodeId,source:'episode',operationKey:'episode:'+episodeId,agentId,agentName:agent?.displayName??'Factory System',agentSignature:agent?.signature??'@factory',channelId,channelName:channel.name,episodeId,videoTitle:title,batchKey:null,stage,stageLabel:stageLabels[stage]??stage,status,progress,summary,blocker,updatedAt});
+ }
