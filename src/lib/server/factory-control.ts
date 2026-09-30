@@ -92,3 +92,8 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
   totalRevenue:row.total_revenue===null?null:Number(row.total_revenue),
   bestEpisode:null
  }));
+
+ const summary={ready:0,processing:0,blocked:0,review:0,completed:0,failed:0};
+ for(const operation of episodeOperations)summary[operation.status]++;
+ return {generatedAt:new Date().toISOString(),summary,agents,operations:episodeOperations,performance};
+}
