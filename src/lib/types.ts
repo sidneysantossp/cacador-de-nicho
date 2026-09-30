@@ -527,7 +527,13 @@ export type AutopilotIncident = {
  resolvedAt?:string;
  payload:Record<string,unknown>;
 };
-export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; createdAt: string; updatedAt: string };
+export type ProductionOperatingSystemPointer = {
+ id:'factory-mode';
+ version:string;
+ document:'docs/PRODUCTION_OPERATING_SYSTEM.md';
+ required:true;
+};
+export type ManagedChannel = { id: string; name: string; niche: string; format: string; stage: 'idea' | 'research' | 'production' | 'published' | 'paused'; priority: 'high' | 'normal' | 'low'; description: string; sourceChannelId?: string; opportunityId?: string; autopilot?: ChannelAutopilotSettings; productionSystem?:ProductionOperatingSystemPointer; createdAt: string; updatedAt: string };
 export type ChannelBrainCharacter = {
  id: string;
  name: string;
@@ -775,6 +781,7 @@ export type ContentProjectPayload = {
  channelId: string;
  episodeId: string;
  opportunityId?: string;
+ productionSystem?:ProductionOperatingSystemPointer;
  brief: {
   theme: string;
   thesis: string;
