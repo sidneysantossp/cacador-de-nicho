@@ -1,7 +1,13 @@
 import { z } from 'zod';
 export const modelIds=['gpt-5.6-luna','gpt-5.6-terra','gpt-5.6-sol'] as const;
 export const modelSchema=z.enum(modelIds);
-export const managedChannelSchema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),niche:z.string().trim().min(2).max(80),format:z.string().trim().min(2).max(80),stage:z.enum(['idea','research','production','published','paused']),priority:z.enum(['high','normal','low']),description:z.string().trim().max(1000),sourceChannelId:z.string().max(100).optional(),opportunityId:z.string().max(150).optional(),autopilot:z.object({
+export const productionOperatingSystemPointerSchema=z.object({
+ id:z.literal('factory-mode'),
+ version:z.string().trim().min(1).max(30),
+ document:z.literal('docs/PRODUCTION_OPERATING_SYSTEM.md'),
+ required:z.literal(true)
+}).strict();
+export const managedChannelSchema=z.object({id:z.string().uuid().optional(),name:z.string().trim().min(2).max(100),niche:z.string().trim().min(2).max(80),format:z.string().trim().min(2).max(80),stage:z.enum(['idea','research','production','published','paused']),priority:z.enum(['high','normal','low']),description:z.string().trim().max(1000),sourceChannelId:z.string().max(100).optional(),opportunityId:z.string().max(150).optional(),productionSystem:productionOperatingSystemPointerSchema.optional(),autopilot:z.object({
  enabled:z.boolean(),
  mode:z.enum(['assisted','autonomous']),
  startOnAcceptedNextEpisode:z.boolean(),
@@ -200,6 +206,7 @@ export const contentProjectPayloadSchema=z.object({
  channelId:z.string().uuid(),
  episodeId:z.string().uuid(),
  opportunityId:z.string().trim().max(180).optional(),
+ productionSystem:productionOperatingSystemPointerSchema.optional(),
  brief:z.object({
   theme:z.string().trim().max(1000),
   thesis:z.string().trim().max(5000),
@@ -210,7 +217,15 @@ export const contentProjectPayloadSchema=z.object({
   targetAudience:z.string().trim().max(3000),
   objective:z.string().trim().max(3000),
   previousEpisodeConnection:z.string().trim().max(3000),
-  arcConnection:z.string().trim().max(3000)
+  arcConnection:z.string().trim().max(3000),
+  originality:z.object({
+   discovery:z.string().trim().min(1).max(2500),
+   addedValue:z.string().trim().min(1).max(2500),
+   copyResistance:z.string().trim().min(1).max(2500),
+   sourcePlan:z.string().trim().min(1).max(2500),
+   gateStatus:z.enum(['pass','review','block']),
+   gateScore:z.number().int().min(0).max(100)
+  }).strict().optional()
  }).strict(),
  research:z.object({
   notes:z.string().trim().max(20000),
