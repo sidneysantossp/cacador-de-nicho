@@ -34,3 +34,22 @@ export async function loadFactoryControlState():Promise<FactoryControlState>{
   db().from('radar_youtube_publish_jobs').select('id,status,progress,stage,package_id,updated_at').order('updated_at',{ascending:false}).limit(1000),
   db().from('radar_performance_observations').select('episode_id,observed_at,payload').order('observed_at',{ascending:false}).limit(3000)
  ]);
+
+ const agentsRaw=(checked(a)??[]) as Row[],channelsRaw=(checked(c)??[]) as Row[],episodesRaw=(checked(e)??[]) as Row[];
+ const attrs=(checked(at)??[]) as Row[],manualRaw=(checked(mo)??[]) as Row[],autoRaw=(checked(au)??[]) as Row[];
+ const projects=latest((checked(cp)??[]) as Row[]),scripts=latest((checked(sc)??[]) as Row[]);
+ const voices=latest(((checked(vo)??[]) as Row[]).filter(row=>row.selected===true));
+ const transcripts=latest((checked(tr)??[]) as Row[]),scenes=latest((checked(sp)??[]) as Row[]);
+ const visuals=latest((checked(vp)??[]) as Row[]),timelines=latest((checked(tl)??[]) as Row[]);
+ const edits=latest((checked(ve)??[]) as Row[]),renders=latest((checked(rj)??[]) as Row[]);
+ const qualities=latest((checked(qr)??[]) as Row[]),packages=latest((checked(pp)??[]) as Row[]);
+ const observations=latest((checked(po)??[]) as Row[]);
+
+ const channels=new Map<string,{name:string;owned:boolean}>();
+ for(const row of channelsRaw){const p=(row.payload??{}) as Record<string,unknown>;channels.set(String(row.id),{name:String(p.name??'Canal'),owned:p.kind!=='competitor'&&typeof p.stage==='string'});}
+ const agents=agentsRaw.map(row=>({id:String(row.id),displayName:String(row.display_name),signature:String(row.signature),provider:String(row.provider),model:row.model?String(row.model):null,role:String(row.role),status:String(row.status) as 'active'|'paused'|'retired',description:String(((row.payload??{}) as Record<string,unknown>).description??''),updatedAt:String(row.updated_at)}));
+ const agentMap=new Map(agents.map(agent=>[agent.id,agent]));
+ const ownerByEpisode=new Map<string,string>();for(const row of attrs)if(row.role==='owner')ownerByEpisode.set(String(row.episode_id),String(row.agent_id));
+ const automation=latest(autoRaw);
+ const packageById=new Map<string,Row>();for(const row of (checked(pp)??[]) as Row[])packageById.set(String(row.id),row);
+ const publishByEpisode=new Map<string,Row>();for(const row of (checked(yp)??[]) as Row[]){const pkg=packageById.get(String(row.package_id)),episodeId=String(pkg?.episode_id??'');if(episodeId&&!publishByEpisode.has(episodeId))publishByEpisode.set(episodeId,row);}
