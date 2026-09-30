@@ -31,7 +31,13 @@ const operatorCandidate=z.object({
   repetitionKeys:z.array(z.string().min(1).max(300)).max(20),
   evidenceRefs:z.array(z.string()).min(1).max(20),
   rationale:z.string().min(1).max(2500),
-  risks:z.array(z.string().min(1).max(800)).max(12)
+  risks:z.array(z.string().min(1).max(800)).max(12),
+  originality:z.object({
+    discovery:z.string().min(60).max(2500),
+    addedValue:z.string().min(60).max(2500),
+    copyResistance:z.string().min(60).max(2500),
+    sourcePlan:z.string().min(60).max(2500)
+  }).strict()
 }).strict();
 
 const schema=z.discriminatedUnion('action',[
