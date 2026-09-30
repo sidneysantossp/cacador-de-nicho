@@ -786,6 +786,14 @@ export type ContentProjectPayload = {
   objective: string;
   previousEpisodeConnection: string;
   arcConnection: string;
+  originality?: {
+   discovery: string;
+   addedValue: string;
+   copyResistance: string;
+   sourcePlan: string;
+   gateStatus: 'pass' | 'review' | 'block';
+   gateScore: number;
+  };
  };
  research: {
   notes: string;
@@ -2381,6 +2389,21 @@ export type NextEpisodeCandidate = {
  evidenceRefs: string[];
  rationale: string;
  risks: string[];
+ originality: {
+  discovery: string;
+  addedValue: string;
+  copyResistance: string;
+  sourcePlan: string;
+ };
+ originalityGate: {
+  status: 'pass' | 'review' | 'block';
+  score: number;
+  checks: Array<{
+   code: 'discovery' | 'thesis' | 'added-value' | 'copy-resistance' | 'evidence-plan';
+   pass: boolean;
+   detail: string;
+  }>;
+ };
  narrativeReady: boolean;
  blockers: string[];
  evidenceStrength: 'low' | 'medium' | 'high';
