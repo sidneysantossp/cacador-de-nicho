@@ -21,6 +21,7 @@ const checkCode=z.enum([
   'audio-silence',
   'audio-clipping',
   'caption-timing',
+  'visual-cadence',
   'visual-coverage',
   'asset-duplication',
   'media-diversity',
