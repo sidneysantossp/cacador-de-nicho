@@ -220,7 +220,8 @@ test('YouTube worker resumes after an accepted chunk loses its response',async()
       YOUTUBE_TOKEN_ENDPOINT:`http://127.0.0.1:${uploadPort}/token`,
       YOUTUBE_API_BASE:`http://127.0.0.1:${uploadPort}/youtube/v3`,
       YOUTUBE_UPLOAD_BASE:`http://127.0.0.1:${uploadPort}/upload/youtube/v3`,
-      YOUTUBE_PUBLISH_WORKER_POLL_MS:'2000'
+      YOUTUBE_PUBLISH_WORKER_POLL_MS:'2000',
+      YOUTUBE_PUBLISH_MIN_FREE_DISK_GB:'2'
     },
     stdio:['ignore','pipe','pipe']
   });

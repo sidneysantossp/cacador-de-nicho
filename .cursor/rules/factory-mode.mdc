@@ -5,4 +5,4 @@ alwaysApply: true
 
 Before starting or modifying any owned content project, read `AI_START_HERE.md` and `docs/PRODUCTION_OPERATING_SYSTEM.md`.
 
-The global operating contract is `factory-mode@1.0.0`. Project-specific rules may add constraints but may not silently remove the global operating system.
+The global operating contract is `factory-mode@1.1.0`. Project-specific rules may add constraints but may not silently remove the global operating system.

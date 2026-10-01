@@ -14,11 +14,11 @@ const read=(path:string)=>readFileSync(resolve(process.cwd(),path),'utf8');
 
 test('Factory Mode is a canonical global operating system',()=>{
   assert.equal(PRODUCTION_OPERATING_SYSTEM_ID,'factory-mode');
-  assert.equal(PRODUCTION_OPERATING_SYSTEM_VERSION,'1.0.0');
+  assert.equal(PRODUCTION_OPERATING_SYSTEM_VERSION,'1.1.0');
   assert.equal(PRODUCTION_OPERATING_SYSTEM_DOCUMENT,'docs/PRODUCTION_OPERATING_SYSTEM.md');
   assert.deepEqual(productionOperatingSystemRef(),{
     id:'factory-mode',
-    version:'1.0.0',
+    version:'1.1.0',
     document:'docs/PRODUCTION_OPERATING_SYSTEM.md',
     required:true
   });
@@ -37,7 +37,7 @@ test('Every repository AI entry path tells agents to load Factory Mode',()=>{
   const start=read('AI_START_HERE.md');
   assert.match(agents,/AI_START_HERE\.md/);
   assert.match(agents,/docs\/PRODUCTION_OPERATING_SYSTEM\.md/);
-  assert.match(agents,/factory-mode@1\.0\.0/);
+  assert.match(agents,/factory-mode@1\.1\.0/);
   assert.match(start,/docs\/PRODUCTION_OPERATING_SYSTEM\.md/);
   assert.match(start,/Channel Brain, Production DNA/);
 
@@ -50,7 +50,7 @@ test('Every repository AI entry path tells agents to load Factory Mode',()=>{
     const source=read(path);
     assert.match(source,/AI_START_HERE\.md/,path+' must point to the mandatory bootstrap');
     assert.match(source,/docs\/PRODUCTION_OPERATING_SYSTEM\.md/,path+' must point to the global production contract');
-    assert.match(source,/factory-mode@1\.0\.0/,path+' must pin the current factory version');
+    assert.match(source,/factory-mode@1\.1\.0/,path+' must pin the current factory version');
   }
 });
 
