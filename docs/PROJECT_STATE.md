@@ -935,7 +935,7 @@ Decisão operacional aprovada pelo operador e válida para todos os projetos pr�
 
 - documento canônico: `docs/PRODUCTION_OPERATING_SYSTEM.md`;
 - bootstrap para IAs/agentes: `AI_START_HERE.md`;
-- ID/versionamento: `factory-mode@1.0.0`;
+- ID/versionamento: `factory-mode@1.1.0`;
 - toda IA de runtime recebe o contrato global via `src/lib/production-operating-system.ts`;
 - todo novo Managed Channel e todo novo Content Project deve carregar ponte explícita para a versão vigente do Production Operating System;
 - operação passa a ser batch-first, paralela e exception-driven;
@@ -944,6 +944,7 @@ Decisão operacional aprovada pelo operador e válida para todos os projetos pr�
 - após o início aprovado, gates objetivos podem avançar automaticamente dentro do escopo;
 - pipeline canônico: seleção → pesquisa incremental → Claim Ledger → ORIGINALITY / ANTI-SLOP → script → voz → transcript/timestamps → Scene Plan → Asset Vault → fontes licenciadas/open se necessário → geração IA apenas para lacunas → rights/provenance/synthetic review → timeline/edit → render → QA → packaging → publish/hold → learning loop;
 - sourcing padrão: Asset Vault próprio → componentes gerados próprios reutilizáveis → arquivo/open media → stock licenciado → nova geração IA;
+- cadência visual global obrigatória: alvo de 3–4s por beat e teto rígido de 4s para qualquer imagem, clipe, shot ou composição visualmente inalterada, válido para todos os canais e todos os tipos de mídia; AutoEditor/QA deve bloquear intervalos acima de 4s até correção;
 - estados operacionais preferidos: READY, PROCESSING, BLOCKED; REVIEW apenas para julgamento humano genuíno;
 - cada blocker deve informar estágio, dependência, evidência/log e menor ação para desbloquear;
 - KPI primário: minutos humanos ativos por vídeo finalizado;
@@ -967,3 +968,31 @@ Nova camada operacional global para escalar a produção com múltiplas IAs/agen
 - protocolo obrigatório para agentes: `docs/AGENT_OPERATIONS.md`.
 
 Os 15 episódios do GTA VI Intelligence Lab foram atribuídos inicialmente ao Atlas. Novos agentes devem registrar identidade e atribuição explicitamente antes de assumir produção.
+
+
+## GRUG + DINO — 15-video validation workflow — 30/09/2026
+
+Operator-approved temporary workflow documented at `docs/GRUG_DINO_15_VIDEO_VALIDATION_WORKFLOW.md`.
+
+- scope: 15 videos total across GRUG + Dino;
+- AI/platform: intelligence/research → episode framing → final English script → prompts after validated transcript → QA → YouTube packaging/SEO → publication → learning loop;
+- operator: ElevenLabs voice → timestamped transcript validation → image generation → AutoEditor assembly/render → upload final video/audio to platform;
+- global 3–4s visual cadence / 4s hard ceiling remains mandatory;
+- after final video/audio upload and QA PASS, the operator has authorized the platform/AI to execute the connected YouTube publication workflow for this validation scope without repetitive per-video approval, unless an objective blocker or ambiguous editorial decision exists;
+- no recurring character references may be renamed/reinvented during prompt generation;
+- post-publication evidence must feed the next episode and the final 15-video validation review.
+
+
+## External Episode Master → R2 — 30/09/2026
+
+Fluxo aprovado e implementado para os 15 vídeos de validação GRUG + Dino:
+- Render Engine recebe `MASTER EXTERNO · AUTOEDITOR → R2`;
+- operador seleciona o episódio e envia MP4 final + áudio final opcional;
+- upload é transmitido em streaming para Cloudflare R2; o binário pesado não entra no Supabase Storage;
+- Supabase persiste apenas vínculo do episódio, versão do master, paths R2, tamanho, metadados técnicos, estado e linhagem;
+- master externo é representado como `radar_render_jobs` concluído com `source=external-master`, preservando compatibilidade com Production QA, Packaging e YouTube Publisher;
+- Production QA continua executando checks técnicos sobre o MP4 real e transforma os checks editoriais não observáveis por manifest em revisão explícita;
+- cadência visual global ganhou check determinístico para Timeline interna (blocker >4s) e revisão explícita para master externo;
+- migration `external_episode_master_r2` aplicada ao Supabase para permitir render/QA sem `video_edit_id` em masters externos;
+- validação DB confirmou criação versionada de QA para master externo com `video_edit_id=null`;
+- TypeScript PASS; Production Quality tests 16/16 PASS; Next.js production build PASS.

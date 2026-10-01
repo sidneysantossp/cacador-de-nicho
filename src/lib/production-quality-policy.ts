@@ -66,10 +66,77 @@ export function structuralQualityChecks(input:{
     'render-completed','render','Render concluído',
     job.status==='completed'&&!!job.outputPath?'pass':'blocker',
     job.status==='completed'&&job.outputPath
-      ?'O worker concluiu o render e registrou um output.'
+      ?(job.payload.source==='external-master'
+        ?'O master externo foi recebido no R2 e registrado como output concluído.'
+        :'O worker concluiu o render e registrou um output.')
       :'O render não está concluído ou não possui output persistido.',
     [`status=${job.status}`,`output=${job.outputPath?'present':'missing'}`]
   ));
+
+  if(job.payload.source==='external-master'){
+    const version=job.payload.externalMaster?.version??1;
+    const origin=job.payload.externalMaster?.origin??'external';
+    const evidence=[`source=${origin}`,`masterVersion=${version}`];
+
+    checks.push(check(
+      'visual-coverage','timeline','Cobertura visual do master externo','manual-review',
+      'A Timeline foi montada fora da plataforma. Confirme visualmente que não existem gaps, frames vazios ou cenas ausentes.',
+      evidence,
+      {durationSeconds:manifest.durationSeconds,externalMaster:true}
+    ));
+    checks.push(check(
+      'visual-cadence','visual','Cadência visual ≤ 4 segundos','manual-review',
+      'O master veio do AutoEditor e não possui a lista de cortes no manifest interno. Confirme que nenhum beat visualmente inalterado ultrapassa 4 segundos.',
+      ['regra global: alvo 3–4s · teto 4s',...evidence],
+      {hardCeilingSeconds:4,externalMaster:true}
+    ));
+    checks.push(check(
+      'caption-timing','captions','Sincronia de legendas','manual-review',
+      'As legendas do master externo podem estar queimadas no vídeo e não possuem cues estruturados nesta versão. Confirme sincronia e legibilidade no playback final.',
+      evidence
+    ));
+    checks.push(check(
+      'asset-duplication','visual','Repetição visual','manual-review',
+      'A composição foi finalizada externamente. Confirme que não há repetição excessiva de cenas ou apresentação tipo slideshow.',
+      evidence
+    ));
+    checks.push(check(
+      'media-diversity','visual','Diversity Score','manual-review',
+      'A diversidade visual do master externo deve ser confirmada editorialmente porque seus clips não foram montados pela Timeline interna.',
+      evidence
+    ));
+    checks.push(check(
+      'asset-provenance','visual','Proveniência dos assets','manual-review',
+      'O master externo não expõe asset por asset ao manifest interno. Confirme que os visuais usados pertencem ao workflow aprovado do episódio.',
+      evidence
+    ));
+    checks.push(check(
+      'asset-rights','visual','Direitos e base de uso dos assets','manual-review',
+      'Confirme que todos os visuais e elementos usados no AutoEditor possuem base de uso compatível com publicação.',
+      evidence
+    ));
+    checks.push(check(
+      'prompt-asset-alignment','visual','Prompt × asset','manual-review',
+      'Confirme que as imagens finais correspondem aos prompts e à narração validados para este episódio.',
+      evidence
+    ));
+    checks.push(check(
+      'character-continuity','visual','Consistência de personagem','manual-review',
+      'Confirme no playback final que personagens recorrentes preservam as referências aprovadas do canal.',
+      evidence
+    ));
+    checks.push(check(
+      'text-placeholders','text','Placeholders e texto incompleto','manual-review',
+      'O texto visível do master externo não está disponível como estrutura editável. Confirme ausência de TODO/TBD/erros ou elementos de teste.',
+      evidence
+    ));
+    checks.push(check(
+      'spelling-review','text','Ortografia contextual','manual-review',
+      'Revise legendas, nomes próprios e qualquer texto visível diretamente no master final.',
+      evidence
+    ));
+    return checks;
+  }
 
   const clips=[...manifest.visualClips].sort((a,b)=>a.startSeconds-b.startSeconds);
   let coverageOk=clips.length>0;
@@ -101,6 +168,20 @@ export function structuralQualityChecks(input:{
       :'Há cenas ausentes ou buracos na cobertura visual.',
     coverageOk?[`${clips.length} clip(s) cobrindo ${manifest.durationSeconds.toFixed(2)}s`]:gaps,
     {clipCount:clips.length,durationSeconds:manifest.durationSeconds}
+  ));
+
+  const cadenceViolations=clips.filter(clip=>clip.durationSeconds>4+EPSILON);
+  const maxVisualDuration=clips.length?Math.max(...clips.map(clip=>clip.durationSeconds)):0;
+  checks.push(check(
+    'visual-cadence','visual','Cadência visual ≤ 4 segundos',
+    cadenceViolations.length?'blocker':'pass',
+    cadenceViolations.length
+      ?'Um ou mais beats visuais ultrapassam o teto global de 4 segundos.'
+      :'Todos os beats visuais respeitam o teto global de 4 segundos.',
+    cadenceViolations.length
+      ?cadenceViolations.slice(0,30).map(clip=>`scene=${clip.sceneId.slice(0,8)} · ${clip.durationSeconds.toFixed(2)}s`)
+      :[`max=${maxVisualDuration.toFixed(2)}s · target=3–4s`],
+    {hardCeilingSeconds:4,maxVisualDuration:Number(maxVisualDuration.toFixed(3)),violations:cadenceViolations.length}
   ));
 
   const cues=manifest.captions.cues??[];

@@ -1807,8 +1807,28 @@ export type RenderJobPayload = {
  audioCodec: 'aac';
  audioBitrateKbps: number;
  outputFormat?: RenderOutputFormat;
- compilerVersion: 'render-v1' | 'render-v2' | 'render-v3' | 'render-v4';
+ compilerVersion: 'render-v1' | 'render-v2' | 'render-v3' | 'render-v4' | 'external-master-v1';
  requestedBy: 'operator';
+ source?: 'internal-render' | 'external-master';
+ externalMaster?: {
+  origin: 'autoeditor' | 'external';
+  version: number;
+  fileName: string;
+  mimeType: string;
+  expectedBytes: number;
+  audioPath?: string;
+  audioFileName?: string;
+  audioMimeType?: string;
+  audioExpectedBytes?: number;
+  episodeSequence?: number;
+  episodeTitle?: string;
+  importedAt?: string;
+  durationSeconds?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
+  codec?: string;
+ };
  chapterPlan?: RenderChapterPlan[];
  resourceBudget?: {
   maxConcurrentChapters: 1;
@@ -1857,8 +1877,8 @@ export type RenderJob = {
  id: string;
  channelId: string;
  episodeId: string;
- videoEditId: string;
- videoEditVersion: number;
+ videoEditId?: string;
+ videoEditVersion?: number;
  status: RenderJobStatus;
  progress: number;
  stage: string;
@@ -1894,6 +1914,7 @@ export type ProductionQualityCheckCode =
   | 'audio-silence'
   | 'audio-clipping'
   | 'caption-timing'
+  | 'visual-cadence'
   | 'visual-coverage'
   | 'asset-duplication'
   | 'media-diversity'
@@ -1955,8 +1976,8 @@ export type ProductionQualityReportPayload = {
  channelId: string;
  episodeId: string;
  renderJobId: string;
- videoEditId: string;
- videoEditVersion: number;
+ videoEditId?: string;
+ videoEditVersion?: number;
  renderCompilerVersion: RenderJobPayload['compilerVersion'];
  checkedAt: string;
  checks: ProductionQualityCheck[];

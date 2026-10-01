@@ -4,7 +4,7 @@ Plataforma de inteligência editorial: radar de canais, evidências, anatomia, c
 
 ## Production Operating System
 
-Toda IA ou agente que iniciar trabalho em um projeto próprio deve ler `AI_START_HERE.md` e `docs/PRODUCTION_OPERATING_SYSTEM.md` antes de operar. O contrato global atual é `factory-mode@1.0.0`: produção em lotes, paralela e orientada por exceções, com Claim Ledger, ORIGINALITY / ANTI-SLOP, direitos e QA como gates obrigatórios. O contrato também é injetado nas chamadas de IA do runtime por `src/lib/production-operating-system.ts`.
+Toda IA ou agente que iniciar trabalho em um projeto próprio deve ler `AI_START_HERE.md` e `docs/PRODUCTION_OPERATING_SYSTEM.md` antes de operar. O contrato global atual é `factory-mode@1.1.0`: produção em lotes, paralela e orientada por exceções, com Claim Ledger, ORIGINALITY / ANTI-SLOP, direitos e QA como gates obrigatórios. O contrato também é injetado nas chamadas de IA do runtime por `src/lib/production-operating-system.ts`.
 
 ## Estado da entrega
 

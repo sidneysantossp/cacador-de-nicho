@@ -7,7 +7,7 @@ Before starting or modifying any **owned content project**, read:
 3. `docs/PROJECT_STATE.md` — current platform/operations state.
 4. The project's Channel Brain, Production DNA, Evidence Pack and active project state.
 
-The current global Production Operating System is `factory-mode@1.0.0`.
+The current global Production Operating System is `factory-mode@1.1.0`.
 
 Do not operate a new project from memory alone. Project-specific instructions extend the global operating system; they do not silently replace it.
 

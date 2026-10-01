@@ -56,4 +56,4 @@ After OAuth is proven in production, NexLev tool outputs are normalized into Rad
 4. similar channels/videos
 5. transcripts and comments for shortlisted winners
 6. Evidence Packs linked to Grug / Dino Knows
-7. 15-video experiment tracking
+7. 15-video combined GRUG + Dino validation experiment tracking (see `docs/GRUG_DINO_15_VIDEO_VALIDATION_WORKFLOW.md`)

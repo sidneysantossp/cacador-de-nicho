@@ -2,7 +2,7 @@
 
 ## Mandatory AI bootstrap
 
-Before starting or modifying any owned content project, read `AI_START_HERE.md` and `docs/PRODUCTION_OPERATING_SYSTEM.md`. The global production contract is `factory-mode@1.0.0` and applies to every project and every AI. Project-specific Channel Brain / Production DNA may add constraints but may not silently remove the global operating rules.
+Before starting or modifying any owned content project, read `AI_START_HERE.md` and `docs/PRODUCTION_OPERATING_SYSTEM.md`. The global production contract is `factory-mode@1.1.0` and applies to every project and every AI. Project-specific Channel Brain / Production DNA may add constraints but may not silently remove the global operating rules.
 
 User direction: the monitored market and all audience-facing channel names, episode titles and scripts are always English. The operator interface and explanatory analysis remain Portuguese. English does not establish a particular channel's RPM.
 

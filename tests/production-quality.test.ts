@@ -421,3 +421,34 @@ test('Production QA parses FFmpeg silence and peak-volume metrics with whitespac
   assert.match(source,/max_volume:\\s\*\(-\?\[0-9\.\]\+\)\\s\*dB/);
 });
 
+
+
+test('Global visual cadence blocks any internal beat above four seconds',()=>{
+  const value=job();
+  value.payload.manifest.visualClips[0]={
+    ...value.payload.manifest.visualClips[0],
+    endSeconds:4.2,
+    durationSeconds:4.2
+  };
+  const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
+  const cadence=checks.find(check=>check.code==='visual-cadence');
+  assert.equal(cadence?.status,'blocker');
+  assert.equal(cadence?.metrics.violations,1);
+});
+
+test('External AutoEditor master uses explicit manual editorial gates instead of false timeline blockers',()=>{
+  const value=job();
+  value.videoEditId=undefined;
+  value.videoEditVersion=undefined;
+  value.payload.source='external-master';
+  value.payload.compilerVersion='external-master-v1';
+  value.payload.externalMaster={
+    origin:'autoeditor',version:1,fileName:'GRUG_EP03.mp4',mimeType:'video/mp4',expectedBytes:100000
+  };
+  value.payload.manifest.visualClips=[];
+  const checks=structuralQualityChecks({job:value});
+  assert.equal(checks.find(check=>check.code==='render-completed')?.status,'pass');
+  assert.equal(checks.find(check=>check.code==='visual-cadence')?.status,'manual-review');
+  assert.equal(checks.find(check=>check.code==='visual-coverage')?.status,'manual-review');
+  assert.equal(checks.some(check=>check.status==='blocker'),false);
+});

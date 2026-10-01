@@ -28,7 +28,7 @@ const MAX_CAPTURE=256000;
 
 type ReportRow={
   id:string;channel_id:string;episode_id:string;render_job_id:string;
-  video_edit_id:string;video_edit_version:number;version:number;
+  video_edit_id:string|null;video_edit_version:number|null;version:number;
   status:ProductionQualityReport['status'];payload:unknown;
   created_at:string;updated_at:string;
 };
@@ -41,8 +41,8 @@ function normalizeRow(row:ReportRow):ProductionQualityReport{
     channelId:row.channel_id,
     episodeId:row.episode_id,
     renderJobId:row.render_job_id,
-    videoEditId:row.video_edit_id,
-    videoEditVersion:Number(row.video_edit_version),
+    videoEditId:row.video_edit_id??undefined,
+    videoEditVersion:row.video_edit_version===null?undefined:Number(row.video_edit_version),
     version:Number(row.version),
     status:row.status,
     createdAt:payload.createdAt??String(row.created_at),
@@ -101,8 +101,8 @@ async function saveReport(
     p_channel_id:payload.channelId,
     p_episode_id:payload.episodeId,
     p_render_job_id:payload.renderJobId,
-    p_video_edit_id:payload.videoEditId,
-    p_video_edit_version:payload.videoEditVersion,
+    p_video_edit_id:payload.videoEditId??null,
+    p_video_edit_version:payload.videoEditVersion??null,
     p_status:status,
     p_payload:payload,
     p_expected_version:expectedVersion
@@ -549,6 +549,19 @@ async function projectFacts(job:RenderJob):Promise<{
   characterFacts?:ProductionQualityCharacterFact[];
   mediaDiversity:ProductionQualityMediaDiversity;
 }>{
+  if(job.payload.source==='external-master'){
+    return {
+      assetFacts:[],
+      characterFacts:undefined,
+      mediaDiversity:{
+        score:0,sourceDiversity:0,semanticDiversity:null,semanticCoverage:0,
+        maxSimilarity:null,embeddedClipCount:0,ownedClipCount:0,clipCount:0
+      }
+    };
+  }
+  if(!job.videoEditId||job.videoEditVersion===undefined){
+    throw new HttpError('Render interno sem vínculo de Video Edit para QA.',409);
+  }
   const clips=job.payload.manifest.visualClips;
   const ids=[...new Set(clips.map(clip=>clip.assetId))];
   const rows=ids.length

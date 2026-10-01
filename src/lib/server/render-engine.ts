@@ -7,7 +7,8 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { signedMediaUrl } from './media-storage';
+import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, signedMediaUrl } from './media-storage';
+import { probeStoredVideo } from './media-probe';
 import { loadVideoEdit, listVideoEdits, loadVideoEditWorkspace } from './video-editor';
 import { loadVoiceAsset } from './voice-engine';
 import { loadEpisodeScript } from './episode-script';
@@ -25,7 +26,7 @@ import {
 
 
 type Row={
-  id:string;channel_id:string;episode_id:string;video_edit_id:string;video_edit_version:number;
+  id:string;channel_id:string;episode_id:string;video_edit_id:string|null;video_edit_version:number|null;
   status:RenderJob['status'];progress:number;stage:string;attempts:number;
   worker_id:string|null;output_path:string|null;output_bytes:number|string|null;error:string|null;payload:unknown;
   created_at:string;started_at:string|null;completed_at:string|null;updated_at:string;
@@ -94,8 +95,8 @@ async function normalizeRow(row:Row,chapters?:RenderChapter[]):Promise<RenderJob
     id:row.id,
     channelId:row.channel_id,
     episodeId:row.episode_id,
-    videoEditId:row.video_edit_id,
-    videoEditVersion:Number(row.video_edit_version),
+    videoEditId:row.video_edit_id??undefined,
+    videoEditVersion:row.video_edit_version===null?undefined:Number(row.video_edit_version),
     status:row.status,
     progress:Number(row.progress),
     stage:row.stage,
@@ -448,6 +449,9 @@ export async function cancelRenderJob(jobId:string){
 export async function retryRenderJob(jobId:string){
   const job=await loadRenderJob(jobId);
   if(!job)throw new HttpError('Render job não encontrado.',404);
+  if(job.payload.source==='external-master'||!job.videoEditId||!job.videoEditVersion){
+    throw new HttpError('Master externo não usa retry de render. Importe uma nova versão do arquivo.',409);
+  }
   if(job.status!=='failed'&&job.status!=='cancelled')throw new HttpError('Somente renders failed/cancelled podem ser reenfileirados.',409);
   const current=await loadVideoEdit(job.videoEditId);
   if(!current||current.version!==job.videoEditVersion||current.status!=='approved'){
@@ -473,6 +477,252 @@ export async function retryRenderChapter(jobId:string,chapterId:string){
     throw new HttpError('O job master ainda está ativo. Aguarde ou cancele antes de refazer o capítulo.',409);
   }
   return retryRenderJob(jobId);
+}
+
+
+const EXTERNAL_MASTER_MAX_BYTES=2*1024*1024*1024;
+const ZERO_UUID='00000000-0000-0000-0000-000000000000';
+
+function externalSafeName(value:string){
+  return value.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,180)||'master.mp4';
+}
+
+function externalAspectRatio(width:number,height:number){
+  const gcd=(a:number,b:number):number=>b?gcd(b,a%b):a;
+  const d=gcd(width,height);
+  return (width/d)+':'+(height/d);
+}
+
+function externalPlaceholderManifest(audioPath?:string,audioMimeType?:string):RenderManifest{
+  return {
+    videoEditId:ZERO_UUID,
+    videoEditVersion:1,
+    timelineId:ZERO_UUID,
+    timelineVersion:1,
+    transcriptId:ZERO_UUID,
+    transcriptVersion:1,
+    format:{width:1920,height:1080,fps:30,aspectRatio:'16:9'},
+    durationSeconds:1,
+    visualClips:[],
+    voice:{assetId:ZERO_UUID,storagePath:audioPath??'',mimeType:audioMimeType??'audio/mpeg'},
+    music:null,
+    sfxEvents:[],
+    captions:{
+      enabled:false,position:'bottom',fontSize:0,maxLines:0,backgroundOpacity:0,
+      styleDescription:'External master ? captions are already baked or reviewed in the external editor.',
+      style:{
+        fontFamily:'Arial',fontWeight:700,primaryColor:'#ffffff',highlightColor:'#ffffff',
+        outlineColor:'#000000',outlineWidth:0,uppercase:false,maxWordsPerLine:7,
+        smartBreaks:true,highlightMode:'none',safeMarginPercent:5
+      },
+      cues:[]
+    },
+    overlays:[],
+    audioMix:{voiceVolume:1,musicVolume:0,sfxVolume:0,normalizeVoice:false,duckMusicUnderVoice:false}
+  };
+}
+
+export async function prepareExternalMasterUpload(input:{
+  channelId:string;
+  episodeId:string;
+  video:{fileName:string;mimeType:string;bytes:number};
+  audio?:{fileName:string;mimeType:string;bytes:number};
+}){
+  if(await preferredMediaStorage()!=='r2')throw new HttpError('Configure o Cloudflare R2 antes de importar um master externo.',503);
+  const videoMime=input.video.mimeType.split(';')[0].trim().toLowerCase();
+  if(videoMime!=='video/mp4')throw new HttpError('O master final deve ser um arquivo MP4.',415);
+  if(!Number.isSafeInteger(input.video.bytes)||input.video.bytes<=0||input.video.bytes>EXTERNAL_MASTER_MAX_BYTES){
+    throw new HttpError('O MP4 deve ter entre 1 byte e 2 GB.',413);
+  }
+  const audio=input.audio;
+  if(audio){
+    const audioMime=audio.mimeType.split(';')[0].trim().toLowerCase();
+    if(!['audio/mpeg','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/aac','audio/ogg','audio/webm'].includes(audioMime)){
+      throw new HttpError('Formato de áudio não suportado. Use MP3, WAV, M4A/AAC, OGG ou WebM.',415);
+    }
+    if(!Number.isSafeInteger(audio.bytes)||audio.bytes<=0||audio.bytes>EXTERNAL_MASTER_MAX_BYTES){
+      throw new HttpError('O áudio deve ter entre 1 byte e 2 GB.',413);
+    }
+  }
+
+  const episode=checked(await db().from('radar_episodes')
+    .select('id,channel_id,sequence,status,payload')
+    .eq('id',input.episodeId).eq('channel_id',input.channelId).maybeSingle()) as {
+      id:string;channel_id:string;sequence:number;status:string;payload:Record<string,unknown>
+    }|null;
+  if(!episode)throw new HttpError('Episódio não encontrado neste canal.',404);
+
+  const existing=checked(await db().from('radar_render_jobs')
+    .select('payload').eq('episode_id',input.episodeId)) as Array<{payload:unknown}>;
+  let version=1;
+  for(const row of existing??[]){
+    const payload=row.payload as RenderJobPayload|undefined;
+    if(payload?.source==='external-master'){
+      version=Math.max(version,Number(payload.externalMaster?.version??0)+1);
+    }
+  }
+
+  const id=crypto.randomUUID();
+  const ep='ep-'+String(episode.sequence).padStart(2,'0');
+  const root=['production',input.channelId,ep,input.episodeId,'external-master','v'+version,id].join('/');
+  const videoPath=r2StoragePath(root+'/video/'+externalSafeName(input.video.fileName));
+  const audioPath=audio?r2StoragePath(root+'/audio/'+externalSafeName(audio.fileName)):undefined;
+  const title=String(episode.payload?.title??'').trim()||('Episode '+episode.sequence);
+  const payload:RenderJobPayload={
+    preset:'source',
+    videoCodec:'libx264',
+    crf:20,
+    audioCodec:'aac',
+    audioBitrateKbps:192,
+    outputFormat:{width:1920,height:1080,fps:30},
+    compilerVersion:'external-master-v1',
+    requestedBy:'operator',
+    source:'external-master',
+    externalMaster:{
+      origin:'autoeditor',
+      version,
+      fileName:input.video.fileName,
+      mimeType:videoMime,
+      expectedBytes:input.video.bytes,
+      audioPath,
+      audioFileName:audio?.fileName,
+      audioMimeType:audio?.mimeType.split(';')[0].trim().toLowerCase(),
+      audioExpectedBytes:audio?.bytes,
+      episodeSequence:Number(episode.sequence),
+      episodeTitle:title
+    },
+    manifest:externalPlaceholderManifest(audioPath,audio?.mimeType)
+  };
+
+  const inserted=await db().from('radar_render_jobs').insert({
+    id,channel_id:input.channelId,episode_id:input.episodeId,
+    video_edit_id:null,video_edit_version:null,
+    status:'processing',progress:2,stage:'external-upload',attempts:0,
+    output_path:videoPath,output_bytes:null,payload
+  });
+  if(inserted.error)throw new HttpError('Falha ao preparar o master externo no Supabase.',502);
+
+  return {
+    jobId:id,
+    version,
+    videoUploadUrl:'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=video',
+    audioUploadUrl:audio?'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=audio':null,
+    videoPath,
+    audioPath,
+    episode:{id:episode.id,sequence:Number(episode.sequence),title}
+  };
+}
+
+export async function streamExternalMasterUpload(input:{
+  jobId:string;
+  kind:'video'|'audio';
+  body:ReadableStream<Uint8Array>;
+  mimeType:string;
+  bytes:number;
+}){
+  const row=checked(await db().from('radar_render_jobs')
+    .select('id,status,stage,output_path,payload')
+    .eq('id',input.jobId).maybeSingle()) as {
+      id:string;status:RenderJob['status'];stage:string;output_path:string|null;payload:unknown
+    }|null;
+  if(!row)throw new HttpError('Upload de master não encontrado.',404);
+  const payload=row.payload as RenderJobPayload;
+  if(payload.source!=='external-master'||!payload.externalMaster)throw new HttpError('Este job não é um master externo.',409);
+  if(row.status!=='processing'||row.stage!=='external-upload')throw new HttpError('Este upload de master não está aberto.',409);
+
+  const external=payload.externalMaster;
+  const path=input.kind==='video'?row.output_path:external.audioPath;
+  const expectedBytes=input.kind==='video'?external.expectedBytes:external.audioExpectedBytes;
+  const expectedMime=input.kind==='video'?external.mimeType:external.audioMimeType;
+  if(!path||!expectedBytes||!expectedMime)throw new HttpError('Arquivo não foi preparado para este job.',409);
+  if(input.bytes!==expectedBytes)throw new HttpError('O tamanho transmitido não corresponde ao arquivo preparado.',422);
+  const mime=input.mimeType.split(';')[0].trim().toLowerCase();
+  if(mime!==expectedMime)throw new HttpError('O tipo do arquivo transmitido não corresponde ao arquivo preparado.',422);
+  try{
+    await putMediaStream(path,input.body,mime,input.bytes);
+  }catch{
+    throw new HttpError('Falha ao transmitir o master diretamente para o Cloudflare R2.',502);
+  }
+  return {jobId:row.id,kind:input.kind};
+}
+
+export async function finalizeExternalMasterUpload(jobId:string){
+  const raw=checked(await db().from('radar_render_jobs')
+    .select(selection).eq('id',jobId).maybeSingle()) as Row|null;
+  if(!raw)throw new HttpError('Master externo não encontrado.',404);
+  const payload=raw.payload as RenderJobPayload;
+  if(payload.source!=='external-master'||!payload.externalMaster)throw new HttpError('Este job não é um master externo.',409);
+  if(raw.status==='completed')return normalizeRow(raw,[]);
+  if(raw.status!=='processing'||raw.stage!=='external-upload')throw new HttpError('O master externo não está aguardando finalização.',409);
+  if(!raw.output_path)throw new HttpError('O caminho do MP4 externo não foi registrado.',409);
+
+  let videoHead:{bytes:number;contentType:string;etag:string};
+  try{videoHead=await headMedia(raw.output_path);}
+  catch{throw new HttpError('O MP4 ainda não apareceu no R2. Aguarde o upload concluir e tente novamente.',409);}
+  if(videoHead.bytes!==payload.externalMaster.expectedBytes){
+    throw new HttpError('O tamanho do MP4 recebido no R2 não corresponde ao arquivo selecionado.',422);
+  }
+
+  if(payload.externalMaster.audioPath){
+    let audioHead:{bytes:number;contentType:string;etag:string};
+    try{audioHead=await headMedia(payload.externalMaster.audioPath);}
+    catch{throw new HttpError('O áudio final ainda não apareceu no R2.',409);}
+    if(audioHead.bytes!==payload.externalMaster.audioExpectedBytes){
+      throw new HttpError('O tamanho do áudio recebido no R2 não corresponde ao arquivo selecionado.',422);
+    }
+  }
+
+  let technical:Awaited<ReturnType<typeof probeStoredVideo>>;
+  try{technical=await probeStoredVideo(raw.output_path);}
+  catch{throw new HttpError('O MP4 chegou ao R2, mas o FFprobe não conseguiu ler o arquivo.',422);}
+  if(!technical.durationSeconds||!technical.width||!technical.height||!technical.fps){
+    throw new HttpError('O MP4 não possui metadados técnicos suficientes para o pipeline de publicação.',422);
+  }
+
+  const manifest:RenderManifest={
+    ...payload.manifest,
+    format:{
+      width:technical.width,
+      height:technical.height,
+      fps:technical.fps,
+      aspectRatio:externalAspectRatio(technical.width,technical.height)
+    },
+    durationSeconds:technical.durationSeconds,
+    voice:payload.externalMaster.audioPath?{
+      assetId:ZERO_UUID,
+      storagePath:payload.externalMaster.audioPath,
+      mimeType:payload.externalMaster.audioMimeType??'audio/mpeg'
+    }:payload.manifest.voice
+  };
+  const now=new Date().toISOString();
+  const nextPayload:RenderJobPayload={
+    ...payload,
+    outputFormat:{width:technical.width,height:technical.height,fps:technical.fps},
+    externalMaster:{
+      ...payload.externalMaster,
+      importedAt:now,
+      durationSeconds:technical.durationSeconds,
+      width:technical.width,
+      height:technical.height,
+      fps:technical.fps,
+      codec:technical.codec??undefined
+    },
+    manifest
+  };
+  const updated=await db().from('radar_render_jobs').update({
+    status:'completed',
+    progress:100,
+    stage:'external-master-ready',
+    output_bytes:videoHead.bytes,
+    payload:nextPayload,
+    completed_at:now,
+    updated_at:now
+  }).eq('id',jobId).eq('status','processing');
+  if(updated.error)throw new HttpError('Falha ao registrar o master externo concluído.',502);
+  await db().from('radar_episodes').update({status:'producing',updated_at:now}).eq('id',raw.episode_id);
+  const job=await loadRenderJob(jobId);
+  if(!job)throw new HttpError('Master externo foi salvo, mas não pôde ser recarregado.',502);
+  return job;
 }
 
 export async function listRenderWorkerNodes():Promise<RenderWorkerNode[]>{
@@ -507,14 +757,23 @@ export async function listRenderWorkerNodes():Promise<RenderWorkerNode[]>{
 }
 
 export async function renderEngineChannelState(channelId:string){
-  const [jobs,edits,workers]=await Promise.all([
+  const [jobs,edits,workers,episodeRows]=await Promise.all([
     listRenderJobs(channelId),
     listVideoEdits(channelId),
-    listRenderWorkerNodes()
+    listRenderWorkerNodes(),
+    db().from('radar_episodes').select('id,sequence,status,payload,updated_at').eq('channel_id',channelId).order('sequence',{ascending:false})
   ]);
+  const episodes=checked(episodeRows)??[];
   return {
     jobs,
     workers,
+    episodes:episodes.map(row=>({
+      id:String(row.id),
+      sequence:Number(row.sequence),
+      status:String(row.status),
+      title:String((row.payload as Record<string,unknown>)?.title??'').trim()||('Episode '+row.sequence),
+      updatedAt:String(row.updated_at)
+    })),
     videoEdits:edits.filter(edit=>edit.status==='approved')
   };
 }
@@ -522,6 +781,8 @@ export async function renderEngineChannelState(channelId:string){
 export async function expectedRenderOutputPath(jobId:string){
   const job=await loadRenderJob(jobId);
   if(!job)throw new HttpError('Render job não encontrado.',404);
+  if(job.payload.source==='external-master'&&job.outputPath)return job.outputPath;
+  if(!job.videoEditId||!job.videoEditVersion)throw new HttpError('Render interno sem vínculo de Video Edit.',409);
   return renderOutputPath({
     channelId:job.channelId,
     episodeId:job.episodeId,

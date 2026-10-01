@@ -513,7 +513,7 @@ grant select on table
   public.radar_timeline_list,
   public.radar_video_edit_list
 to service_role;
-create table if not exists public.radar_render_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,video_edit_version int not null check(video_edit_version>=1),status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,output_path text,output_bytes bigint check(output_bytes is null or output_bytes>=0),error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
+create table if not exists public.radar_render_jobs(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,video_edit_id uuid references public.radar_video_edits(id) on delete cascade,video_edit_version int check(video_edit_version>=1),status text not null default 'queued' check(status in ('queued','processing','completed','failed','cancelled')),progress int not null default 0 check(progress between 0 and 100),stage text not null default 'queued',attempts int not null default 0 check(attempts>=0),worker_token uuid,lease_until timestamptz,output_path text,output_bytes bigint check(output_bytes is null or output_bytes>=0),error text,payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),started_at timestamptz,completed_at timestamptz,updated_at timestamptz not null default now());
 create index if not exists radar_render_jobs_channel_created on public.radar_render_jobs(channel_id,created_at desc);
 create index if not exists radar_render_jobs_queue on public.radar_render_jobs(status,created_at) where status in ('queued','processing');
 create unique index if not exists radar_render_jobs_one_active_version on public.radar_render_jobs(video_edit_id,video_edit_version) where status in ('queued','processing');
@@ -628,7 +628,7 @@ create index if not exists radar_production_quality_chapters_job_sequence
 create index if not exists radar_production_quality_chapters_cache
   on public.radar_production_quality_chapters(content_hash,completed_at desc)
   where status='completed';
-create table if not exists public.radar_production_quality_reports(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,render_job_id uuid not null unique references public.radar_render_jobs(id) on delete cascade,video_edit_id uuid not null references public.radar_video_edits(id) on delete cascade,video_edit_version int not null check(video_edit_version>=1),version int not null default 1 check(version>=1),status text not null default 'review' check(status in ('blocked','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table if not exists public.radar_production_quality_reports(id uuid primary key,channel_id text not null references public.radar_managed_channels(id) on delete cascade,episode_id uuid not null references public.radar_episodes(id) on delete cascade,render_job_id uuid not null unique references public.radar_render_jobs(id) on delete cascade,video_edit_id uuid references public.radar_video_edits(id) on delete cascade,video_edit_version int check(video_edit_version>=1),version int not null default 1 check(version>=1),status text not null default 'review' check(status in ('blocked','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create index if not exists radar_production_quality_channel_updated on public.radar_production_quality_reports(channel_id,updated_at desc);
 create table if not exists public.radar_production_quality_versions(id bigint generated always as identity primary key,quality_report_id uuid not null references public.radar_production_quality_reports(id) on delete cascade,version int not null check(version>=1),status text not null check(status in ('blocked','review','approved')),payload jsonb not null,created_at timestamptz not null default now(),unique(quality_report_id,version));
 create index if not exists radar_production_quality_versions_report_version on public.radar_production_quality_versions(quality_report_id,version desc);
@@ -1169,7 +1169,19 @@ declare current_version int; next_version int;
 begin
 perform pg_advisory_xact_lock(hashtext('production-quality:'||p_report_id::text));
 if p_status not in ('blocked','review','approved') then raise exception 'invalid production quality status';end if;
-if not exists(select 1 from public.radar_render_jobs r where r.id=p_render_job_id and r.channel_id=p_channel_id and r.episode_id=p_episode_id and r.video_edit_id=p_video_edit_id and r.video_edit_version=p_video_edit_version and r.status='completed' and r.output_path is not null) then raise exception 'render job not eligible for production quality';end if;
+if not exists(
+  select 1 from public.radar_render_jobs r
+  where r.id=p_render_job_id
+    and r.channel_id=p_channel_id
+    and r.episode_id=p_episode_id
+    and r.status='completed'
+    and r.output_path is not null
+    and (
+      (p_video_edit_id is not null and p_video_edit_version is not null and r.video_edit_id=p_video_edit_id and r.video_edit_version=p_video_edit_version)
+      or
+      (p_video_edit_id is null and p_video_edit_version is null and r.video_edit_id is null and r.video_edit_version is null and r.payload->>'source'='external-master')
+    )
+) then raise exception 'render job not eligible for production quality';end if;
 select version into current_version from public.radar_production_quality_reports where id=p_report_id for update;
 if current_version is null then
   if exists(select 1 from public.radar_production_quality_reports where render_job_id=p_render_job_id) then raise exception 'render job already has production quality report';end if;

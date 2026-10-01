@@ -111,7 +111,7 @@ export default function ProductionQualityWorkspace({channel}:{channel:ManagedCha
 
     <section className="quality-queue">
       <div className="quality-section-head">
-        <div><span>COMPLETED RENDERS</span><h3>Fila de inspeção.</h3><p>Cada render possui um relatório versionado e imutavelmente ligado à versão do Video Edit.</p></div>
+        <div><span>COMPLETED MASTERS</span><h3>Fila de inspeção.</h3><p>Cada master possui um relatório versionado; renders internos mantêm vínculo com o Video Edit e masters externos mantêm vínculo direto com o episódio.</p></div>
         <button className="button subtle small" disabled={busy==='refresh'} onClick={()=>{setBusy('refresh');void load().finally(()=>setBusy(''));}}><RefreshCw size={14}/>Atualizar</button>
       </div>
 
@@ -122,7 +122,7 @@ export default function ProductionQualityWorkspace({channel}:{channel:ManagedCha
         return <article key={render.id} className="quality-render-card">
           <div>
             <span className="quality-render-id">RENDER {render.id.slice(0,8)}</span>
-            <strong>{render.payload.preset??'source'} · edit v{render.videoEditVersion}</strong>
+            <strong>{render.payload.source==='external-master'?('AutoEditor · master v'+(render.payload.externalMaster?.version??1)):((render.payload.preset??'source')+' · edit v'+render.videoEditVersion)}</strong>
             <small>{when(render.completedAt??render.updatedAt)} · {render.outputBytes?Math.round(render.outputBytes/1024)+' KB':'output pronto'}</small>
           </div>
           <div className="quality-render-actions">

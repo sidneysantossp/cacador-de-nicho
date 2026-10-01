@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  cancelRenderJob, createRenderJob, loadRenderJob,
-  renderEngineChannelState, retryRenderChapter, retryRenderJob
+  cancelRenderJob, createRenderJob, finalizeExternalMasterUpload, loadRenderJob,
+  prepareExternalMasterUpload, renderEngineChannelState, retryRenderChapter, retryRenderJob
 } from '@/lib/server/render-engine';
 
 export const runtime='nodejs';
@@ -17,6 +17,22 @@ const schema=z.discriminatedUnion('action',[
     crf:z.number().int().min(18).max(30).optional(),
     audioBitrateKbps:z.number().int().min(96).max(320).optional()
   }).strict(),
+  z.object({
+    action:z.literal('external-prepare'),
+    channelId:z.string().uuid(),
+    episodeId:z.string().uuid(),
+    video:z.object({
+      fileName:z.string().trim().min(1).max(255),
+      mimeType:z.string().trim().min(1).max(120),
+      bytes:z.number().int().positive().max(2*1024*1024*1024)
+    }).strict(),
+    audio:z.object({
+      fileName:z.string().trim().min(1).max(255),
+      mimeType:z.string().trim().min(1).max(120),
+      bytes:z.number().int().positive().max(2*1024*1024*1024)
+    }).strict().optional()
+  }).strict(),
+  z.object({action:z.literal('external-finalize'),jobId:z.string().uuid()}).strict(),
   z.object({action:z.literal('cancel'),jobId:z.string().uuid()}).strict(),
   z.object({action:z.literal('retry'),jobId:z.string().uuid()}).strict(),
   z.object({
@@ -58,6 +74,14 @@ export async function POST(request:Request){
     if(body.action==='create'){
       const job=await createRenderJob(body);
       return Response.json({message:'Render enfileirado.',job});
+    }
+    if(body.action==='external-prepare'){
+      const prepared=await prepareExternalMasterUpload(body);
+      return Response.json({message:'Master externo preparado para upload direto ao R2.',...prepared});
+    }
+    if(body.action==='external-finalize'){
+      const job=await finalizeExternalMasterUpload(body.jobId);
+      return Response.json({message:'Master externo registrado no episódio e pronto para Production QA.',job});
     }
     if(body.action==='cancel'){
       const job=await cancelRenderJob(body.jobId);

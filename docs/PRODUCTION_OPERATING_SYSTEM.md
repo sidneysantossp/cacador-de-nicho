@@ -1,7 +1,7 @@
 # Caçadores de Nichos — Production Operating System
 
 **Canonical ID:** `factory-mode`  
-**Version:** `1.0.0`  
+**Version:** `1.1.0`  
 **Status:** LOCKED / GLOBAL  
 **Applies to:** every owned content project and every AI involved in discovery, research, scripting, production, QA, packaging, publishing or learning.
 
@@ -86,6 +86,22 @@ For each episode the canonical path is:
 18. performance + audience learning loop.
 
 The system must reuse validated project research. Do not rebuild the full Evidence Pack for every episode. Each episode should research only the incremental claims required by its thesis.
+
+## 5A. Global visual cadence rule
+
+This rule is mandatory for **every channel, every episode and every visual media type**.
+
+- Target visual beat duration: **3–4 seconds**.
+- Hard ceiling: **no image, video clip, shot or visually unchanged composition may remain on screen for more than 4 seconds**.
+- The rule applies equally to still images, AI-generated visuals, owned footage, licensed stock, archive footage and other video sources.
+- If a narration span lasts longer than 4 seconds, split the visual treatment into additional beats or introduce a meaningful visual change before the 4-second ceiling.
+- A meaningful visual change may be a new image/clip, a new shot, a materially different crop/reframe, a cut to a relevant detail, a comparison view or another editorially justified composition change.
+- Do not stretch a still image or a single source clip merely to fill narration time.
+- Transcript/timestamps remain the temporal source of truth, but the Scene Plan may create additional visual beats when required to satisfy this cadence.
+- AutoEditor and final QA must flag any interval above 4 seconds as **BLOCKED** until corrected.
+- This is a global production-quality and originality safeguard. It does **not** replace rights, originality, reused-content, spam, synthetic-media or Community Guidelines checks.
+
+The objective is to keep the viewer experience active, reduce slideshow-like or low-effort presentation patterns, and make the editing language visibly intentional across both image-led and video-led channels.
 
 ## 6. Parallel production
 

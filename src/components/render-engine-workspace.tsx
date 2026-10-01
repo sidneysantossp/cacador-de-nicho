@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Download, Film, LoaderCircle, RefreshCw,
-  RotateCcw, Sparkles, Square, XCircle
+  RotateCcw, Sparkles, Square, UploadCloud, XCircle
 } from 'lucide-react';
 import type { ManagedChannel, RenderJob, RenderPreset, RenderWorkerNode, VideoEditListItem } from '@/lib/types';
 import { renderCapacityForecast, renderCapacityProfiles, renderFleetSizing } from '@/lib/render-capacity-policy';
@@ -30,6 +30,21 @@ function forecastTime(valueMinutes:number){
   return h?h+'h '+String(m).padStart(2,'0')+'m':m+' min';
 }
 
+type EpisodeOption={id:string;sequence:number;status:string;title:string;updatedAt:string};
+
+function fileMime(file:File){
+  if(file.type)return file.type;
+  const name=file.name.toLowerCase();
+  if(name.endsWith('.mp4'))return 'video/mp4';
+  if(name.endsWith('.mp3'))return 'audio/mpeg';
+  if(name.endsWith('.wav'))return 'audio/wav';
+  if(name.endsWith('.m4a'))return 'audio/mp4';
+  if(name.endsWith('.aac'))return 'audio/aac';
+  if(name.endsWith('.ogg'))return 'audio/ogg';
+  if(name.endsWith('.webm'))return 'audio/webm';
+  return 'application/octet-stream';
+}
+
 export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}){
   const [jobs,setJobs]=useState<RenderJob[]>([]);
   const [workers,setWorkers]=useState<RenderWorkerNode[]>([]);
@@ -44,6 +59,12 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
   const [message,setMessage]=useState('');
   const [targetVideosPerDay,setTargetVideosPerDay]=useState(12);
   const [fleetUtilizationPercent,setFleetUtilizationPercent]=useState(80);
+  const [episodes,setEpisodes]=useState<EpisodeOption[]>([]);
+  const [externalEpisodeId,setExternalEpisodeId]=useState('');
+  const [externalVideo,setExternalVideo]=useState<File|null>(null);
+  const [externalAudio,setExternalAudio]=useState<File|null>(null);
+  const [externalStage,setExternalStage]=useState('');
+  const [externalProgress,setExternalProgress]=useState(0);
 
   const selectedEdit=useMemo(()=>edits.find(edit=>edit.id===videoEditId)??null,[edits,videoEditId]);
   const active=useMemo(()=>jobs.some(job=>job.status==='queued'||job.status==='processing'),[jobs]);
@@ -82,6 +103,10 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
       setJobs(nextJobs);
       setWorkers((body.workers??[]) as RenderWorkerNode[]);
       setEdits(nextEdits);
+      const nextEpisodes=(body.episodes??[]) as EpisodeOption[];
+      setEpisodes(nextEpisodes);
+      setExternalEpisodeId(prev=>prev&&nextEpisodes.some(item=>item.id===prev)
+        ?prev:(nextEpisodes.find(item=>item.status==='producing')?.id??nextEpisodes[0]?.id??''));
       setVideoEditId(prev=>prev&&nextEdits.some(edit=>edit.id===prev)?prev:(nextEdits[0]?.id??''));
     }catch(error){
       if(!silent)setMessage(error instanceof Error?error.message:'Falha ao carregar Render Engine.');
@@ -129,6 +154,71 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
       await load(true);
     }catch(error){
       setMessage(error instanceof Error?error.message:'Falha no Render Engine.');
+    }finally{setBusy('');}
+  }
+
+  function streamExternal(url:string,file:File,label:string){
+    return new Promise<void>((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('PUT',url);
+      xhr.setRequestHeader('Content-Type',fileMime(file));
+      xhr.setRequestHeader('X-Upload-Size',String(file.size));
+      xhr.withCredentials=true;
+      xhr.upload.onprogress=event=>{
+        if(!event.lengthComputable)return;
+        const pct=Math.max(0,Math.min(100,Math.round((event.loaded/event.total)*100)));
+        setExternalStage(label+' '+pct+'%');
+        setExternalProgress(pct);
+      };
+      xhr.onerror=()=>reject(new Error('A conexão foi interrompida durante o upload.'));
+      xhr.onabort=()=>reject(new Error('Upload cancelado.'));
+      xhr.onload=()=>{
+        if(xhr.status>=200&&xhr.status<300){resolve();return;}
+        let msg='Falha ao transmitir o arquivo ao R2.';
+        try{msg=JSON.parse(xhr.responseText)?.message??msg;}catch{}
+        reject(new Error(msg));
+      };
+      xhr.send(file);
+    });
+  }
+
+  async function uploadExternalMaster(){
+    if(!externalEpisodeId||!externalVideo)return;
+    setBusy('external-master');setMessage('');setExternalProgress(0);
+    try{
+      setExternalStage('Preparando master no R2…');
+      const prepare=await fetch('/api/render-engine',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          action:'external-prepare',
+          channelId:channel.id,
+          episodeId:externalEpisodeId,
+          video:{fileName:externalVideo.name,mimeType:fileMime(externalVideo),bytes:externalVideo.size},
+          audio:externalAudio?{fileName:externalAudio.name,mimeType:fileMime(externalAudio),bytes:externalAudio.size}:undefined
+        })
+      });
+      const prepared=await prepare.json().catch(()=>({}));
+      if(!prepare.ok)throw new Error(prepared.message??'Falha ao preparar o master externo.');
+      await streamExternal(prepared.videoUploadUrl,externalVideo,'Enviando MP4 ao R2…');
+      if(externalAudio&&prepared.audioUploadUrl){
+        setExternalProgress(0);
+        await streamExternal(prepared.audioUploadUrl,externalAudio,'Enviando áudio ao R2…');
+      }
+      setExternalStage('Validando arquivo e registrando no episódio…');
+      const finalize=await fetch('/api/render-engine',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'external-finalize',jobId:prepared.jobId})
+      });
+      const finished=await finalize.json().catch(()=>({}));
+      if(!finalize.ok)throw new Error(finished.message??'Falha ao finalizar o master externo.');
+      setExternalProgress(100);
+      setExternalStage('Concluído · pronto para Production QA');
+      setMessage(finished.message??'Master externo importado.');
+      setExternalVideo(null);setExternalAudio(null);
+      await load(true);
+    }catch(error){
+      setExternalStage('Falhou');
+      setMessage(error instanceof Error?error.message:'Falha ao importar o master externo.');
     }finally{setBusy('');}
   }
 
@@ -206,6 +296,31 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
     </section>
 
     <section className="render-create">
+      <div className="render-section-head">
+        <div>
+          <span>MASTER EXTERNO · AUTOEDITOR → R2</span>
+          <h3>Importe o MP4 final sem consumir o Supabase Storage.</h3>
+          <p>O arquivo é transmitido diretamente ao Cloudflare R2, vinculado ao episódio e registrado como master pronto para Production QA.</p>
+        </div>
+        <UploadCloud size={28}/>
+      </div>
+      <div className="render-grid four">
+        <label>Episódio<select value={externalEpisodeId} onChange={e=>setExternalEpisodeId(e.target.value)}>
+          <option value="">Selecione</option>
+          {episodes.map(item=><option key={item.id} value={item.id}>EP{String(item.sequence).padStart(2,'0')} · {item.title} · {item.status}</option>)}
+        </select></label>
+        <label>MP4 final<input type="file" accept="video/mp4,.mp4" onChange={e=>setExternalVideo(e.target.files?.[0]??null)}/><small>{externalVideo?externalVideo.name+' · '+bytes(externalVideo.size):'Obrigatório · até 2 GB'}</small></label>
+        <label>Áudio final<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.webm" onChange={e=>setExternalAudio(e.target.files?.[0]??null)}/><small>{externalAudio?externalAudio.name+' · '+bytes(externalAudio.size):'Opcional se o take final já estiver registrado'}</small></label>
+        <div className="render-edit-summary"><strong>Destino</strong><span>Cloudflare R2</span><span>Supabase: metadados apenas</span><span>QA → Packaging → YouTube</span></div>
+      </div>
+      {externalStage&&<div className="render-progress"><span style={{width:externalProgress+'%'}}/><em>{externalStage}</em></div>}
+      {!episodes.length&&<div className="render-capacity-empty">Nenhum episódio cadastrado neste canal. Crie o episódio no Content OS antes de importar o master.</div>}
+      <button className="button primary" disabled={!externalEpisodeId||!externalVideo||busy==='external-master'} onClick={()=>void uploadExternalMaster()}>
+        <UploadCloud size={15}/>{busy==='external-master'?'Enviando master…':'Importar master externo'}
+      </button>
+    </section>
+
+    <section className="render-create">
       <div className="render-section-head"><div><span>NEW RENDER · V4</span><h3>Capítulos cacheáveis + master incremental.</h3><p>Novos jobs usam render-v4: capítulos cacheáveis e master incremental. Draft 720p usa encoder ultrafast para revisão; Source/1080p mantêm preset medium para entrega final.</p></div></div>
       <div className="render-grid four">
         <label>Video Edit aprovado<select value={videoEditId} onChange={e=>setVideoEditId(e.target.value)}><option value="">Selecione</option>{edits.map(edit=><option key={edit.id} value={edit.id}>v{edit.version} · {duration(edit.durationSeconds)} · {edit.width}×{edit.height}</option>)}</select></label>
@@ -237,7 +352,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
              <LoaderCircle className={job.status==='processing'?'spin':''} size={18}/>}
             <div><strong>{job.status}</strong><span>{job.stage}</span></div>
           </div>
-          <div className="render-job-meta"><span>edit v{job.videoEditVersion}</span><span>attempt {job.attempts}</span><span>{when(job.createdAt)}</span></div>
+          <div className="render-job-meta"><span>{job.payload.source==='external-master'?('master externo v'+(job.payload.externalMaster?.version??1)):('edit v'+job.videoEditVersion)}</span><span>{job.payload.source==='external-master'?'AutoEditor':'attempt '+job.attempts}</span><span>{when(job.createdAt)}</span></div>
         </div>
 
         <div className="render-progress"><span style={{width:Math.max(0,Math.min(100,job.progress))+'%'}}/><em>{job.progress}%</em></div>
@@ -282,7 +397,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
 
         <div className="render-job-actions">
           {(job.status==='queued'||job.status==='processing')&&<button className="button subtle small" disabled={busy==='cancel:'+job.id} onClick={()=>void action({action:'cancel',jobId:job.id},'cancel:'+job.id)}><Square size={13}/>Cancelar</button>}
-          {(job.status==='failed'||job.status==='cancelled')&&<button className="button subtle small" disabled={busy==='retry:'+job.id} onClick={()=>void action({action:'retry',jobId:job.id},'retry:'+job.id)}><RotateCcw size={13}/>Retry</button>}
+          {(job.status==='failed'||job.status==='cancelled')&&job.payload.source!=='external-master'&&<button className="button subtle small" disabled={busy==='retry:'+job.id} onClick={()=>void action({action:'retry',jobId:job.id},'retry:'+job.id)}><RotateCcw size={13}/>Retry</button>}
           {job.status==='completed'&&job.outputSignedUrl&&<a className="button primary small" href={job.outputSignedUrl} target="_blank" rel="noreferrer"><Download size={13}/>Abrir MP4</a>}
         </div>
       </article>)}</div>

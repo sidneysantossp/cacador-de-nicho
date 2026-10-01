@@ -20,7 +20,7 @@ export async function ensureProductionAgent(agentId=currentProductionAgentId()){
     model:process.env.CACADORES_AGENT_MODEL?.trim()||null,
     role:process.env.CACADORES_AGENT_ROLE?.trim()||'producer',
     status:'active',
-    payload:{productionSystem:'factory-mode@1.0.0'}
+    payload:{productionSystem:'factory-mode@1.1.0'}
   }));
   return agentId;
 }
@@ -37,7 +37,7 @@ export async function registerProductionAgent(input:{
     model:input.model?.trim()||null,
     role:input.role.trim(),
     status:'active',
-    payload:{description:input.description?.trim()||'',productionSystem:'factory-mode@1.0.0'},
+    payload:{description:input.description?.trim()||'',productionSystem:'factory-mode@1.1.0'},
     updated_at:new Date().toISOString()
   }));
   return id;
@@ -59,7 +59,7 @@ export async function ensureEpisodeOwnerAttribution(input:{episodeId:string;chan
     agent_id:agentId,
     role:'owner',
     weight:1,
-    contribution:{basis:input.basis??'Factory Control assignment',productionSystem:'factory-mode@1.0.0'}
+    contribution:{basis:input.basis??'Factory Control assignment',productionSystem:'factory-mode@1.1.0'}
   }));
   return agentId;
 }
@@ -72,7 +72,7 @@ export async function assignEpisodeOwner(input:{episodeId:string;channelId:strin
     channel_id:input.channelId,
     agent_id:input.agentId,
     weight:1,
-    contribution:{basis:input.basis??'Factory Control reassignment',productionSystem:'factory-mode@1.0.0'},
+    contribution:{basis:input.basis??'Factory Control reassignment',productionSystem:'factory-mode@1.1.0'},
     updated_at:new Date().toISOString()
   };
   if(current){
