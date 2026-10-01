@@ -641,6 +641,11 @@ export async function streamExternalMasterUpload(input:{
   try{
     await putMediaStream(path,input.body,mime,input.bytes);
   }catch{
+    const now=new Date().toISOString();
+    await db().from('radar_render_jobs').update({
+      status:'failed',stage:'external-upload-failed',updated_at:now,
+      error:'external-master-upload-failed'
+    }).eq('id',row.id).eq('status','processing');
     throw new HttpError('Falha ao transmitir o master diretamente para o Cloudflare R2.',502);
   }
   return {jobId:row.id,kind:input.kind};

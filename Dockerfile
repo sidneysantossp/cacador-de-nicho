@@ -9,7 +9,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run typecheck && npm test && npm run build
+RUN node scripts/patch-next-request-timeout.mjs && npm run typecheck && npm test && npm run build
 
 FROM node:24.15.0-bookworm-slim AS runner
 WORKDIR /app
@@ -17,6 +17,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV CACADORES_HTTP_REQUEST_TIMEOUT_MS=1800000
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
