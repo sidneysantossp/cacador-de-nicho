@@ -503,9 +503,46 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   return {input,fingerprint:hash({subject,input})};
 }
 
+const MAX_PERSISTED_SUPPLY_CANDIDATES=180;
+const MAX_PERSISTED_MATCHES_PER_SUPPLY=8;
+
+function compactInputForPersistence(input:ProductionAutonomyInput,assessment:ProductionAutonomyAssessment):ProductionAutonomyInput{
+  const allocatedIds=new Set(
+    assessment.coverage.allocations
+      .map(item=>item.assetId)
+      .filter((id):id is string=>!!id)
+  );
+  const allocatedBeatKeys=new Map<string,Set<string>>();
+  for(const allocation of assessment.coverage.allocations){
+    if(!allocation.assetId)continue;
+    const beats=allocatedBeatKeys.get(allocation.assetId)??new Set<string>();
+    beats.add(allocation.titleId+'\u0000'+allocation.beatId);
+    allocatedBeatKeys.set(allocation.assetId,beats);
+  }
+  const priority=(asset:VisualSupplyEvidence)=>{
+    if(allocatedIds.has(asset.id))return 0;
+    if(asset.ready)return 1;
+    if(asset.discovery?.licensingState==='verified'&&asset.discovery.acquisition==='materializable')return 2;
+    return 3;
+  };
+  const persistedSupply=[...input.supply]
+    .sort((a,b)=>priority(a)-priority(b))
+    .slice(0,MAX_PERSISTED_SUPPLY_CANDIDATES)
+    .map(asset=>{
+      const allocated=allocatedBeatKeys.get(asset.id);
+      const selectedMatches=[
+        ...asset.matches.filter(match=>allocated?.has(match.titleId+'\u0000'+match.beatId)),
+        ...asset.matches.filter(match=>!allocated?.has(match.titleId+'\u0000'+match.beatId))
+      ].slice(0,MAX_PERSISTED_MATCHES_PER_SUPPLY);
+      return {...asset,matches:selectedMatches};
+    });
+  return {...input,supply:persistedSupply};
+}
+
 function asStored(subject:SubjectInput,input:ProductionAutonomyInput,fingerprint:string,assessment:ProductionAutonomyAssessment):StoredProductionAutonomy{
   const createdAt=now().toISOString(); const expiresAt=new Date(Date.now()+7*86400000).toISOString();
-  return {...assessment,id:crypto.randomUUID(),subject,sourceFingerprint:fingerprint,createdAt,expiresAt,diagnostics:assessment.reasons.map(item=>item.message),input};
+  const persistedInput=compactInputForPersistence(input,assessment);
+  return {...assessment,id:crypto.randomUUID(),subject,sourceFingerprint:fingerprint,createdAt,expiresAt,diagnostics:assessment.reasons.map(item=>item.message),input:persistedInput};
 }
 
 export function productionAutonomySummary(assessment:StoredProductionAutonomy){
