@@ -114,7 +114,8 @@ export async function audienceLearningLoopChannelState(channelId:string){
   ]);
   const appliedReportIds=new Set<string>();
   for(const item of brain?.learnings??[]){
-    const match=item.id.match(/^audience:([0-9a-f-]{36}):/i);
+    const id=typeof (item as {id?:unknown}).id==='string' ? String((item as {id:string}).id) : '';
+    const match=id.match(/^audience:([0-9a-f-]{36}):/i);
     if(match)appliedReportIds.add(match[1]);
   }
   const noEligibleLearningReportIds=reports
