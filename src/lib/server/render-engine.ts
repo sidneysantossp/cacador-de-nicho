@@ -493,6 +493,13 @@ function externalAspectRatio(width:number,height:number){
   return (width/d)+':'+(height/d);
 }
 
+function normalizeExternalMime(value:string){
+  const mime=value.split(';')[0].trim().toLowerCase();
+  if(mime==='audio/x-m4a'||mime==='audio/m4a'||mime==='audio/mp4a-latm')return 'audio/mp4';
+  if(mime==='video/x-m4v')return 'video/mp4';
+  return mime;
+}
+
 function externalPlaceholderManifest(audioPath?:string,audioMimeType?:string):RenderManifest{
   return {
     videoEditId:ZERO_UUID,
@@ -529,14 +536,14 @@ export async function prepareExternalMasterUpload(input:{
   audio?:{fileName:string;mimeType:string;bytes:number};
 }){
   if(await preferredMediaStorage()!=='r2')throw new HttpError('Configure o Cloudflare R2 antes de importar um master externo.',503);
-  const videoMime=input.video.mimeType.split(';')[0].trim().toLowerCase();
+  const videoMime=normalizeExternalMime(input.video.mimeType);
   if(videoMime!=='video/mp4')throw new HttpError('O master final deve ser um arquivo MP4.',415);
   if(!Number.isSafeInteger(input.video.bytes)||input.video.bytes<=0||input.video.bytes>EXTERNAL_MASTER_MAX_BYTES){
     throw new HttpError('O MP4 deve ter entre 1 byte e 2 GB.',413);
   }
   const audio=input.audio;
   if(audio){
-    const audioMime=audio.mimeType.split(';')[0].trim().toLowerCase();
+    const audioMime=normalizeExternalMime(audio.mimeType);
     if(!['audio/mpeg','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/aac','audio/ogg','audio/webm'].includes(audioMime)){
       throw new HttpError('Formato de áudio não suportado. Use MP3, WAV, M4A/AAC, OGG ou WebM.',415);
     }
@@ -586,7 +593,7 @@ export async function prepareExternalMasterUpload(input:{
       expectedBytes:input.video.bytes,
       audioPath,
       audioFileName:audio?.fileName,
-      audioMimeType:audio?.mimeType.split(';')[0].trim().toLowerCase(),
+      audioMimeType:audio?normalizeExternalMime(audio.mimeType):undefined,
       audioExpectedBytes:audio?.bytes,
       episodeSequence:Number(episode.sequence),
       episodeTitle:title
@@ -636,8 +643,8 @@ export async function streamExternalMasterUpload(input:{
   const expectedMime=input.kind==='video'?external.mimeType:external.audioMimeType;
   if(!path||!expectedBytes||!expectedMime)throw new HttpError('Arquivo não foi preparado para este job.',409);
   if(input.bytes!==expectedBytes)throw new HttpError('O tamanho transmitido não corresponde ao arquivo preparado.',422);
-  const mime=input.mimeType.split(';')[0].trim().toLowerCase();
-  if(mime!==expectedMime)throw new HttpError('O tipo do arquivo transmitido não corresponde ao arquivo preparado.',422);
+  const mime=normalizeExternalMime(input.mimeType);
+  if(mime!==normalizeExternalMime(expectedMime))throw new HttpError('O tipo do arquivo transmitido não corresponde ao arquivo preparado.',422);
   try{
     await putMediaStream(path,input.body,mime,input.bytes);
   }catch{

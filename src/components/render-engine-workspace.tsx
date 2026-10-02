@@ -33,8 +33,9 @@ function forecastTime(valueMinutes:number){
 type EpisodeOption={id:string;sequence:number;status:string;title:string;updatedAt:string};
 
 function fileMime(file:File){
-  if(file.type)return file.type;
   const name=file.name.toLowerCase();
+  // Prefer the extension for supported media because browsers/OSes report
+  // non-standard aliases such as audio/x-m4a for perfectly valid .m4a files.
   if(name.endsWith('.mp4'))return 'video/mp4';
   if(name.endsWith('.mp3'))return 'audio/mpeg';
   if(name.endsWith('.wav'))return 'audio/wav';
@@ -42,7 +43,7 @@ function fileMime(file:File){
   if(name.endsWith('.aac'))return 'audio/aac';
   if(name.endsWith('.ogg'))return 'audio/ogg';
   if(name.endsWith('.webm'))return 'audio/webm';
-  return 'application/octet-stream';
+  return file.type||'application/octet-stream';
 }
 
 export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}){
