@@ -34,7 +34,7 @@ const titleVariants=(values:string[],prefix:string,minimum=10)=>{
   return out.slice(0,Math.max(minimum,out.length));
 };
 const VISUAL_STOP_WORDS=new Set(['a','an','and','are','as','at','be','by','every','explained','for','from','has','have','how','in','into','is','it','need','of','on','or','the','to','type','types','what','why','with']);
-const visualTokens=(value:string)=>value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ').split(/[^a-z0-9]+/).filter(Boolean).map(token=>token.length>4&&token.endsWith('s')?token.slice(0,-1):token).filter(token=>token.length>2&&!VISUAL_STOP_WORDS.has(token));
+const visualTokens=(value:string)=>value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ').split(/[^a-z0-9]+/).filter(Boolean).map(token=>token.length>4&&token.endsWith('s')&&!token.endsWith('ss')?token.slice(0,-1):token).filter(token=>token.length>2&&!VISUAL_STOP_WORDS.has(token));
 const visualRelevance=(query:string,text:string)=>{
   const wanted=[...new Set(visualTokens(query))]; if(!wanted.length)return 0;
   const hay=new Set(visualTokens(text)); const matched=wanted.filter(token=>hay.has(token)).length;
@@ -232,7 +232,7 @@ async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]
   const supply:VisualSupplyEvidence[]=[]; const providers:ProductionAutonomyInput['providers']=[]; const evidenceRefs:string[]=[];
   const materialization={attempted:0,succeeded:0,totalBytes:0,cycleSeconds:0,operatorMinutes:0,evidenceRefs:[] as string[]};
   const providerSamples=new Map<'pexels'|'pixabay',number>();
-  const selected=distinctQueries(queries).slice(0,8);
+  const selected=distinctQueries(queries).slice(0,10);
   for(const provider of ['pexels','pixabay'] as const){
     let key:string;
     try{key=await providerSecret(provider);}catch{providers.push({id:provider,status:'unavailable',evidenceRef:`provider:${provider}:not-configured`});continue;}
@@ -241,18 +241,18 @@ async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]
       try{
         let items:Record<string,unknown>[]=[];
         if(provider==='pexels'){
-          const params=new URLSearchParams({query,per_page:'12',page:'1',orientation:'landscape'});
+          const params=new URLSearchParams({query,per_page:'24',page:'1',orientation:'landscape'});
           const response=await fetch('https://api.pexels.com/v1/videos/search?'+params,{headers:{Authorization:key},signal:AbortSignal.timeout(15000),cache:'no-store'});
           if(!response.ok)continue;
           const body=await response.json() as {videos?:Record<string,unknown>[]}; items=body.videos??[];
         }else{
-          const params=new URLSearchParams({key,q:query,per_page:'20',safesearch:'true'});
+          const params=new URLSearchParams({key,q:query,per_page:'24',safesearch:'true'});
           const response=await fetch('https://pixabay.com/api/videos/?'+params,{signal:AbortSignal.timeout(15000),cache:'no-store'});
           if(!response.ok)continue;
           const body=await response.json() as {hits?:Record<string,unknown>[]}; items=body.hits??[];
         }
         successfulSearch=true;
-        for(const [index,item] of items.slice(0,12).entries()){
+        for(const [index,item] of items.slice(0,24).entries()){
           const identity=String(item.id??'').trim(); if(!identity)continue;
           const pageUrl=String(item.url??item.pageURL??'').trim()||`provider:${provider}:${identity}`;
           const duration=Number(item.duration??0)||null;
