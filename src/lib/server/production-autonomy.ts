@@ -346,6 +346,19 @@ async function discoverLiveImages(titles:VisualSimulationTitle[],queries:string[
 
 async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutonomyInput;fingerprint:string}>{
   const analyses=await list<unknown>('radar_analyses',500);
+  const researchCapability=analyses.find(item=>{
+    if(!item||typeof item!=='object')return false;
+    const value=item as Record<string,unknown>;
+    if(value.kind!=='production-autonomy-capability-evidence'||value.capability!=='research-claims'||value.status!=='completed')return false;
+    if(String(value.subjectKey??'')!==productionAutonomySubjectKey(subject))return false;
+    const sourceCount=Number(value.sourceCount??0);
+    const supportedClaimCount=Number(value.supportedClaimCount??0);
+    const observedAt=Date.parse(String(value.observedAt??''));
+    return sourceCount>=3&&supportedClaimCount>=3&&Number.isFinite(observedAt)&&Date.now()-observedAt<=30*86400000;
+  }) as Record<string,unknown>|undefined;
+  const researchCapabilityRef=researchCapability
+    ?'analysis:production-autonomy-capability:research-claims:'+String(researchCapability.observedAt)
+    :undefined;
   const market=analyses.find(item=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='universe-market-intelligence') as UniverseMarketIntelligence|undefined;
   const report=subject.subjectType==='opportunity-report'
     ?analyses.find(item=>!!item&&typeof item==='object'&&(item as {id?:string}).id===subject.subjectId) as OpportunityReport|undefined
@@ -476,8 +489,8 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   const automatic=(stage:ProductionAutonomyInput['automation'][number]['stage'],enabled:boolean,evidenceRef:string|null|undefined):ProductionAutonomyInput['automation'][number]=>
     enabled&&evidenceRef?{stage,status:'automatic',evidenceRef}:{stage,status:'unknown'};
   const automation:ProductionAutonomyInput['automation']=[
-    {stage:'research',status:'unknown'},
-    {stage:'claims',status:'unknown'},
+    researchCapabilityRef?{stage:'research',status:'automatic',evidenceRef:researchCapabilityRef}:{stage:'research',status:'unknown'},
+    researchCapabilityRef?{stage:'claims',status:'automatic',evidenceRef:researchCapabilityRef}:{stage:'claims',status:'unknown'},
     automatic('script',autonomousAutomationPolicy.autoGenerateScript,scriptRef),
     automatic('voice',autonomousAutomationPolicy.autoGenerateVoice,voiceRef),
     automatic('transcript',autonomousAutomationPolicy.autoCreateTranscript,transcriptRef),

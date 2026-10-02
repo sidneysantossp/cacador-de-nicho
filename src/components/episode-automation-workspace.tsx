@@ -38,6 +38,7 @@ function statusText(status:EpisodeAutomationRun['status']){
 }
 
 const policyLabels:Record<keyof EpisodeAutomationPolicy,string>={
+  autoGenerateResearch:'Gerar Research Pack + Claim Ledger',
   autoGenerateScript:'Gerar roteiro',
   autoApproveObjectiveGates:'Aprovar gates objetivos',
   autoGenerateVoice:'Gerar narração',

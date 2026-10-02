@@ -4,6 +4,7 @@ import type {
 } from './types';
 
 export const assistedAutomationPolicy:EpisodeAutomationPolicy={
+  autoGenerateResearch:false,
   autoGenerateScript:false,
   autoApproveObjectiveGates:false,
   autoGenerateVoice:false,
@@ -20,6 +21,7 @@ export const assistedAutomationPolicy:EpisodeAutomationPolicy={
 };
 
 export const autonomousAutomationPolicy:EpisodeAutomationPolicy={
+  autoGenerateResearch:true,
   autoGenerateScript:true,
   autoApproveObjectiveGates:true,
   autoGenerateVoice:true,

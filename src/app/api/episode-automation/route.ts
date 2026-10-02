@@ -13,6 +13,7 @@ export const dynamic='force-dynamic';
 export const maxDuration=120;
 
 const policySchema=z.object({
+  autoGenerateResearch:z.boolean().optional(),
   autoGenerateScript:z.boolean().optional(),
   autoApproveObjectiveGates:z.boolean().optional(),
   autoGenerateVoice:z.boolean().optional(),

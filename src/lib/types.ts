@@ -2522,6 +2522,7 @@ export type EpisodeAutomationStepState = {
  requiresOperator: boolean;
 };
 export type EpisodeAutomationPolicy = {
+ autoGenerateResearch: boolean;
  autoGenerateScript: boolean;
  autoApproveObjectiveGates: boolean;
  autoGenerateVoice: boolean;

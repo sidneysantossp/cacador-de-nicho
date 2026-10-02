@@ -8,6 +8,8 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadContentProject, saveContentProject } from './content-os';
+import { generateContentResearchForProject } from './content-research-ai';
+import { loadProductionDna } from './production-dna';
 import { generateScriptForProject, loadEpisodeScript, saveEpisodeScript } from './episode-script';
 import { generateElevenLabsVoice, loadVoiceAsset } from './voice-engine';
 import {
@@ -1091,8 +1093,19 @@ async function executeAutomationTransition(
   switch(current.step){
     case 'content':{
       if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática do Content Project está desativada.',409);
-      const project=await loadContentProject(run.contentProjectId);
+      let project=await loadContentProject(run.contentProjectId);
       if(!project)throw new HttpError('Content Project não encontrado.',404);
+      const productionDna=await loadProductionDna(run.channelId);
+      const documentaryMode=Boolean(
+        productionDna?.research?.documentaryMode||productionDna?.research?.requireClaimLedger
+      );
+      const researchEmpty=!project.research.pack&&project.research.sources.length===0&&
+        project.research.factChecks.length===0&&!project.research.notes.trim();
+      if(documentaryMode&&researchEmpty){
+        if(!providerAiAutorun())throw new HttpError('Pesquisa autônoma requer CACADORES_AI_AUTORUN ativo.',409);
+        if(!run.policy.autoGenerateResearch)throw new HttpError('Geração automática de Research Pack está desativada.',409);
+        project=await generateContentResearchForProject(run.contentProjectId);
+      }
       const payload=payloadOnly(project);
       await saveContentProject({
         ...payload,
@@ -1103,7 +1116,9 @@ async function executeAutomationTransition(
             'Aprovado pelo Episode Automation após passar no gate objetivo do Content OS.'
         }
       },project.version);
-      return 'Content Project aprovado pelo gate objetivo.';
+      return documentaryMode&&researchEmpty
+        ?'Research Pack + Claim Ledger gerados e Content Project aprovado pelo gate objetivo.'
+        :'Content Project aprovado pelo gate objetivo.';
     }
 
     case 'script':{
