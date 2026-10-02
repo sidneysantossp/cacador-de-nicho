@@ -141,12 +141,13 @@ test('Assisted-manual mode does not auto-enable the YouTube publish worker timer
 });
 
 
-test('YouTube publishing OAuth requests only the scopes needed for connection and upload',()=>{
+test('YouTube OAuth requests upload, management, read and analytics scopes required by the closed loop',()=>{
   const source=readFileSync(resolve(process.cwd(),'src/lib/server/youtube-oauth.ts'),'utf8');
   const scopeBlock=source.match(/export const YOUTUBE_OAUTH_SCOPES=\[([\s\S]*?)\] as const;/)?.[1]??'';
   assert.match(scopeBlock,/youtube\.upload/);
   assert.match(scopeBlock,/youtube\.readonly/);
-  assert.doesNotMatch(scopeBlock,/yt-analytics/);
+  assert.match(scopeBlock,/youtube\.force-ssl/);
+  assert.match(scopeBlock,/yt-analytics\.readonly/);
 });
 
 test('YouTube OAuth callback redirects to the configured public origin, not the container request URL',()=>{
