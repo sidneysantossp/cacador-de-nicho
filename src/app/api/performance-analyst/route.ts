@@ -15,6 +15,9 @@ import {
 import {
   closedLoopChannelState, resumeLearningLoopJob, scheduleClosedLoopJobs
 } from '@/lib/server/closed-loop-intelligence';
+import {
+  collectHistoricalYouTubePerformance
+} from '@/lib/server/youtube-performance-history';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -24,6 +27,12 @@ const actionSchema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('collect-youtube'),
     jobId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('collect-youtube-history'),
+    channelId:z.string().uuid(),
+    episodeId:z.string().uuid(),
+    videoId:z.string().trim().min(6).max(32)
   }).strict(),
   z.object({
     action:z.literal('manual'),
@@ -92,6 +101,25 @@ export async function POST(request:Request){
       return Response.json({
         message:'YouTube Analytics coletado e Performance Report gerado.',
         ...result
+      });
+    }
+    if(body.action==='collect-youtube-history'){
+      const result=await collectHistoricalYouTubePerformance(body);
+      const approved=result.report.status==='approved'
+        ?result.report
+        :await approvePerformanceReport({
+          reportId:result.report.id,
+          expectedVersion:result.report.version,
+          notes:'Backfill histórico do YouTube aprovado para calibração supervisionada do Learning Loop.'
+        });
+      const learningLoop=await applyPerformanceReportToBrain(approved.id);
+      return Response.json({
+        message:result.alreadyCollected
+          ?'Snapshot histórico já existia; Learning Loop validado.'
+          :'YouTube Analytics histórico coletado e aplicado ao Channel Brain.',
+        ...result,
+        report:approved,
+        learningLoop
       });
     }
     if(body.action==='manual'){

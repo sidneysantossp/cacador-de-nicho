@@ -127,3 +127,19 @@ test('Publishing OAuth includes YouTube Analytics for the autonomous learning lo
   assert.match(scopeBlock,/youtube\.force-ssl/);
   assert.match(scopeBlock,/yt-analytics\.readonly/);
 });
+
+test('Historical YouTube backfill verifies channel ownership before collection',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const source=await readFile('src/lib/server/youtube-performance-history.ts','utf8');
+  assert.match(source,/metadata\.youtubeChannelId!==connection\.youtubeChannelId/);
+  assert.match(source,/sourceType:'youtube-analytics'/);
+  assert.match(source,/recordedVideoId&&recordedVideoId!==metadata\.videoId/);
+});
+
+test('Historical backfill route applies only generated YouTube report to Learning Loop',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const source=await readFile('src/app/api/performance-analyst/route.ts','utf8');
+  assert.match(source,/action:z\.literal\('collect-youtube-history'\)/);
+  assert.match(source,/collectHistoricalYouTubePerformance\(body\)/);
+  assert.match(source,/applyPerformanceReportToBrain\(approved\.id\)/);
+});

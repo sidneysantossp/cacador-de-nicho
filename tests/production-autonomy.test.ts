@@ -89,3 +89,12 @@ test('worker and unit have a graceful TERM path',()=>{
   assert.match(wrapper,/wait "\$CHILD_PID"/);
   assert.match(unit,/TimeoutStopSec=20s/);
 });
+
+test('Production Autonomy learning evidence can use applied YouTube Analytics reports',()=>{
+  const source=readFileSync(
+    resolve(process.cwd(),'src/lib/server/production-autonomy.ts'),'utf8'
+  );
+  assert.match(source,/source_type','youtube-analytics'/);
+  assert.match(source,/performance:'\+String\(report\.id\)\+':'/);
+  assert.match(source,/youtube-analytics-applied/);
+});

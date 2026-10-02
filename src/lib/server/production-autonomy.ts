@@ -48,6 +48,41 @@ const evidenceRowRef=(result:{data?:Array<Record<string,unknown>>|null;error?:un
   return row?.id?`db:${table}:${String(row.id)}`:null;
 };
 
+async function appliedYouTubeLearningRef(){
+  const reports=checked(await db().from('radar_performance_reports')
+    .select('id,channel_id,observation_id')
+    .eq('status','approved')
+    .order('updated_at',{ascending:false})
+    .limit(50))??[];
+  if(!reports.length)return null;
+
+  const observationIds=reports.map(row=>String(row.observation_id));
+  const observations=checked(await db().from('radar_performance_observations')
+    .select('id')
+    .in('id',observationIds)
+    .eq('source_type','youtube-analytics'))??[];
+  const youtubeObservationIds=new Set(observations.map(row=>String(row.id)));
+
+  const channelIds=[...new Set(reports.map(row=>String(row.channel_id)))];
+  const brains=checked(await db().from('radar_channel_brains')
+    .select('id,payload')
+    .in('id',channelIds))??[];
+  const brainByChannel=new Map(brains.map(row=>[String(row.id),row.payload]));
+
+  for(const report of reports){
+    if(!youtubeObservationIds.has(String(report.observation_id)))continue;
+    const brain=brainByChannel.get(String(report.channel_id)) as
+      {learnings?:Array<{id?:unknown}>}|undefined;
+    const prefix='performance:'+String(report.id)+':';
+    if((brain?.learnings??[]).some(item=>
+      typeof item?.id==='string'&&item.id.startsWith(prefix)
+    )){
+      return `db:radar_performance_reports:${String(report.id)}:youtube-analytics-applied`;
+    }
+  }
+  return null;
+}
+
 function beatTitles(titles:string[],marketRefs:string[],queries:string[]):VisualSimulationTitle[]{
   return titles.map((title,index)=>{
     const duration=240;
@@ -479,7 +514,9 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   const qualityRef=evidenceRowRef(qualityEvidence as never,'radar_production_quality_reports');
   const packageRef=evidenceRowRef(packageEvidence as never,'radar_publication_packages');
   const publishRef=evidenceRowRef(publishEvidence as never,'radar_youtube_publish_jobs');
-  const learningRef=evidenceRowRef(learningEvidence as never,'radar_learning_loop_jobs');
+  const learningRef=
+    evidenceRowRef(learningEvidence as never,'radar_learning_loop_jobs')
+    ??await appliedYouTubeLearningRef();
   const stockEvidenceRef=liveDiscovery.materialization.succeeded>0
     ?liveDiscovery.materialization.evidenceRefs.find(ref=>ref.startsWith('r2:'))??'preflight:stock-materialization'
     :undefined;

@@ -175,6 +175,17 @@ async function reportFromObservation(observation:PerformanceObservation){
   return saveReport(payload,'review',0);
 }
 
+export async function createAutomaticYouTubePerformanceObservation(payload:PerformanceObservationPayload){
+  if(payload.sourceType!=='youtube-analytics'){
+    throw new HttpError('A coleta automática histórica aceita apenas YouTube Analytics.',400);
+  }
+  await insertObservation(payload);
+  return {
+    observation:payload as PerformanceObservation,
+    report:await reportFromObservation(payload as PerformanceObservation)
+  };
+}
+
 export async function createManualPerformanceObservation(payload:PerformanceObservationPayload){
   const channel=checked(await db().from('radar_managed_channels')
     .select('id').eq('id',payload.channelId).maybeSingle());
