@@ -19,6 +19,7 @@ import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { headMedia, putMedia, r2StoragePath } from './media-storage';
 import { stockDownloadHostAllowed } from '@/lib/stock-media-policy';
+import { autonomousAutomationPolicy } from '@/lib/episode-automation-policy';
 
 type SubjectInput=ProductionAutonomySubject;
 type AssessmentRow={id:string;subject_key:string;source_fingerprint:string;status:string;payload:unknown;created_at:string;expires_at:string};
@@ -26,11 +27,11 @@ type AssessmentRow={id:string;subject_key:string;source_fingerprint:string;statu
 const now=()=>new Date();
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value),'utf8').digest('hex');
 const refs=(...values:unknown[])=>values.flatMap(value=>Array.isArray(value)?value:typeof value==='string'?[value]:[]).map(String).filter(Boolean);
-const titleVariants=(values:string[],prefix:string)=>{
+const titleVariants=(values:string[],prefix:string,minimum=10)=>{
   const seen=new Set<string>(); const out:string[]=[];
   for(const value of values){const clean=String(value).trim();if(!clean)continue;const key=clean.toLowerCase();if(!seen.has(key)){seen.add(key);out.push(clean);}}
-  for(let i=out.length;i<10;i++)out.push(prefix+' — evidence-led test '+String(i+1).padStart(2,'0'));
-  return out.slice(0,Math.max(10,out.length));
+  for(let i=out.length;i<minimum;i++)out.push(prefix+' — evidence-led test '+String(i+1).padStart(2,'0'));
+  return out.slice(0,Math.max(minimum,out.length));
 };
 const VISUAL_STOP_WORDS=new Set(['a','an','and','are','as','at','be','by','every','explained','for','from','has','have','how','in','into','is','it','need','of','on','or','the','to','type','types','what','why','with']);
 const visualTokens=(value:string)=>value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ').split(/[^a-z0-9]+/).filter(Boolean).map(token=>token.length>4&&token.endsWith('s')?token.slice(0,-1):token).filter(token=>token.length>2&&!VISUAL_STOP_WORDS.has(token));
@@ -42,6 +43,10 @@ const visualRelevance=(query:string,text:string)=>{
 };
 const visualQuery=(value:string)=>[...new Set(visualTokens(value))].join(' ').slice(0,100);
 const distinctQueries=(values:string[])=>[...new Set(values.map(visualQuery).filter(Boolean))].slice(0,10);
+const evidenceRowRef=(result:{data?:Array<Record<string,unknown>>|null;error?:unknown},table:string)=>{
+  const row=result.error?null:result.data?.[0];
+  return row?.id?`db:${table}:${String(row.id)}`:null;
+};
 
 function beatTitles(titles:string[],marketRefs:string[],queries:string[]):VisualSimulationTitle[]{
   return titles.map((title,index)=>{
@@ -293,8 +298,12 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     const gap=market?.gaps.find(item=>item.id===subject.subjectId); const curve=gap&&market?.curves.find(item=>item.id===gap.curveId);
     marketValidated=!!gap&&!!curve&&curve.classification==='structural'&&gap.demandStatus==='observed';
     marketStatus=gap?.demandStatus??'unavailable'; marketRefs=refs(gap?.demandEvidence,curve?.evidence);
-    const keywordTitles=(gap?.targetKeywords??[]).map(keyword=>keyword+' — explained');
-    titles=titleVariants([...(gap?.firstTests??[]),...keywordTitles],gap?.title??'Validated market opportunity');
+    const keywordTitles=(gap?.targetKeywords??[]).flatMap(keyword=>[
+      keyword+' explained',
+      'How '+keyword+' work',
+      'Why '+keyword+' matter'
+    ]);
+    titles=titleVariants([...(gap?.firstTests??[]),...keywordTitles],gap?.title??'Validated market opportunity',15);
     visualQueries=distinctQueries([...(gap?.targetKeywords??[]),gap?.targetSpace??'',...(gap?.firstTests??[])]);
   }else if(subject.subjectType==='opportunity-report'){
     marketValidated=!!report&&report.validation.classification==='structural'&&report.viralDNA.demand.level!=='uncertain'&&report.viralDNA.repeatability.level!=='uncertain';
@@ -312,10 +321,24 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     titles=titleVariants(candidate?.workingTitle?[String(candidate.workingTitle)]:[],String(candidate?.workingTitle??'Next episode'));
     visualQueries=distinctQueries(titles);
   }
-  const [sceneRows,ownedRows,stockSearchRows]=await Promise.all([
+  const [
+    sceneRows,ownedRows,stockSearchRows,
+    scriptEvidence,voiceEvidence,transcriptEvidence,scenePlanEvidence,timelineEvidence,
+    renderEvidence,qualityEvidence,packageEvidence,publishEvidence,learningEvidence
+  ]=await Promise.all([
     db().from('radar_scene_assets').select('id,status,source_type,asset_kind,provider,storage_path,original_name,duration_seconds,payload').in('status',['ready','queued','processing']).limit(1000),
-    db().from('radar_owned_media_assets').select('id,status,source_type,asset_kind,storage_path,original_name,duration_seconds,title,tags,search_text,payload').eq('status','ready').limit(500)
-    ,db().from('radar_stock_searches').select('id,provider,media_kind,query,result_count,payload').order('created_at',{ascending:false}).limit(100)
+    db().from('radar_owned_media_assets').select('id,status,source_type,asset_kind,storage_path,original_name,duration_seconds,title,tags,search_text,payload').eq('status','ready').limit(500),
+    db().from('radar_stock_searches').select('id,provider,media_kind,query,result_count,payload').order('created_at',{ascending:false}).limit(100),
+    db().from('radar_episode_scripts').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_voice_assets').select('id').eq('source_type','generated').eq('provider','elevenlabs').eq('status','ready').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_transcripts').select('id').eq('source_type','alignment').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_scene_plans').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_timelines').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_render_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_production_quality_reports').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_publication_packages').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_youtube_publish_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_learning_loop_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1)
   ]);
   if(sceneRows.error||ownedRows.error||stockSearchRows.error)throw new HttpError('Não foi possível consultar a biblioteca visual para o Production Autonomy Fit.',502);
   const rows=[...(sceneRows.data??[]),...(ownedRows.data??[])];
@@ -330,12 +353,48 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   const economics=measurements.length?{costUsd:measurements.reduce((sum,item)=>sum+item.costUsd,0)/measurements.length,cycleMinutes:measurements.reduce((sum,item)=>sum+item.cycleMinutes,0)/measurements.length,operatorMinutes:measurements.reduce((sum,item)=>sum+item.operatorMinutes,0)/measurements.length,evidenceRefs:measurements.map(item=>item.ref),basis:'observed' as const}:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown' as const};
   let r2Status:ProductionAutonomyInput['providers'][number]={id:'r2',status:'unknown'};
   try{await providerSecret('r2');r2Status={id:'r2',status:'available',evidenceRef:'provider:r2:configured'};}catch{}
+
+  const scriptRef=evidenceRowRef(scriptEvidence as never,'radar_episode_scripts');
+  const voiceRef=evidenceRowRef(voiceEvidence as never,'radar_voice_assets');
+  const transcriptRef=evidenceRowRef(transcriptEvidence as never,'radar_transcripts');
+  const scenePlanRef=evidenceRowRef(scenePlanEvidence as never,'radar_scene_plans');
+  const timelineRef=evidenceRowRef(timelineEvidence as never,'radar_timelines');
+  const renderRef=evidenceRowRef(renderEvidence as never,'radar_render_jobs');
+  const qualityRef=evidenceRowRef(qualityEvidence as never,'radar_production_quality_reports');
+  const packageRef=evidenceRowRef(packageEvidence as never,'radar_publication_packages');
+  const publishRef=evidenceRowRef(publishEvidence as never,'radar_youtube_publish_jobs');
+  const learningRef=evidenceRowRef(learningEvidence as never,'radar_learning_loop_jobs');
+  const stockEvidenceRef=liveDiscovery.materialization.succeeded>0
+    ?liveDiscovery.materialization.evidenceRefs.find(ref=>ref.startsWith('r2:'))??'preflight:stock-materialization'
+    :undefined;
+  const rightsEvidenceRef=liveDiscovery.materialization.succeeded>0
+    ?liveDiscovery.materialization.evidenceRefs.find(ref=>ref.includes('/license')||ref.includes('license-summary'))??'preflight:stock-rights'
+    :undefined;
+  const automatic=(stage:ProductionAutonomyInput['automation'][number]['stage'],enabled:boolean,evidenceRef:string|null|undefined):ProductionAutonomyInput['automation'][number]=>
+    enabled&&evidenceRef?{stage,status:'automatic',evidenceRef}:{stage,status:'unknown'};
+  const automation:ProductionAutonomyInput['automation']=[
+    {stage:'research',status:'unknown'},
+    {stage:'claims',status:'unknown'},
+    automatic('script',autonomousAutomationPolicy.autoGenerateScript,scriptRef),
+    automatic('voice',autonomousAutomationPolicy.autoGenerateVoice,voiceRef),
+    automatic('transcript',autonomousAutomationPolicy.autoCreateTranscript,transcriptRef),
+    automatic('scenes',autonomousAutomationPolicy.autoCreateScenes,scenePlanRef),
+    automatic('asset-sourcing',autonomousAutomationPolicy.autoGenerateVisualAssets,stockEvidenceRef),
+    automatic('rights',autonomousAutomationPolicy.autoGenerateVisualAssets,rightsEvidenceRef),
+    automatic('timeline',autonomousAutomationPolicy.autoBuildTimeline,timelineRef),
+    automatic('render',autonomousAutomationPolicy.autoRender,renderRef),
+    automatic('quality',autonomousAutomationPolicy.autoRunQuality,qualityRef),
+    automatic('packaging',autonomousAutomationPolicy.autoCreatePackage,packageRef),
+    publishRef?{stage:'publish',status:'automatic',evidenceRef:publishRef}:{stage:'publish',status:'unknown'},
+    learningRef?{stage:'learning',status:'automatic',evidenceRef:learningRef}:{stage:'learning',status:'unknown'}
+  ];
+
   const input:ProductionAutonomyInput={
     market:{validated:marketValidated,status:marketStatus,evidenceRefs:marketRefs},
     titles:titleSet,supply,
     providers:[r2Status,...liveDiscovery.providers],
     economics,
-    automation:['research','claims','script','voice','transcript','scenes','asset-sourcing','rights','timeline','render','quality','packaging','publish','learning'].map(stage=>({stage:stage as ProductionAutonomyInput['automation'][number]['stage'],status:'unknown' as const})),
+    automation,
     generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]})),
     preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,materialization:liveDiscovery.materialization,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs,...liveDiscovery.materialization.evidenceRefs]}};
   return {input,fingerprint:hash({subject,input})};
@@ -357,7 +416,25 @@ export async function loadProductionAutonomy(subject:SubjectInput):Promise<Store
 }
 
 export async function evaluateProductionAutonomyForSubject(subject:SubjectInput){
-  const {input,fingerprint}=await loadSubject(subject); const assessment=asStored(subject,input,fingerprint,evaluateProductionAutonomy(input));
+  const loaded=await loadSubject(subject);
+  const input=loaded.input;
+  const preliminary=evaluateProductionAutonomy(input);
+  if(subject.subjectType==='universe-gap'&&preliminary.marketEligible){
+    const distinctTitleCount=new Set(input.titles.map(title=>title.title.trim().toLowerCase())).size;
+    if(distinctTitleCount>=15){
+      input.repeatability=input.repeatability.map(item=>item.episodes===15?{
+        episodes:15,
+        distinctTitleCount,
+        supplyCoveragePercent:preliminary.coverage.projectedAutonomousCoverage.percent,
+        evidenceRefs:[
+          'repeatability:15-title-simulation:'+subject.subjectId,
+          ...input.preflight?.evidenceRefs.slice(0,5)??[]
+        ]
+      }:item);
+    }
+  }
+  const fingerprint=hash({subject,input});
+  const assessment=asStored(subject,input,fingerprint,evaluateProductionAutonomy(input));
   checked(await db().from('radar_production_autonomy_assessments').insert({id:assessment.id,subject_key:productionAutonomySubjectKey(subject),source_fingerprint:fingerprint,status:assessment.status,payload:assessment,expires_at:assessment.expiresAt}));
   return assessment;
 }
