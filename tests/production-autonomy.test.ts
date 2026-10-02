@@ -46,6 +46,15 @@ test('discoverable stock is reported separately and never counted as ready',()=>
   assert.ok(result.coverage.classifications.some(item=>item.classification==='stock-discoverable'));
 });
 
+test('discoverable stock cannot be reused beyond its evidence limit',()=>{
+  const base=input();
+  const matches=base.titles.flatMap(title=>title.beats.map(beat=>({titleId:title.id,beatId:beat.id,relevance:1,identityVerified:false})));
+  base.supply=[{id:'candidate-1',sourceIdentity:'pexels:1',source:'stock',kind:'video',ready:false,availability:'available',durationSeconds:20,rights:'unknown',license:'Pexels License',provenanceRef:'https://www.pexels.com/video/1/',matches,maxUses:1,discovery:{provider:'pexels',sourceIdentity:'pexels:1',licensingState:'verified',candidateRelevance:1,acquisition:'materializable',evidenceRef:'https://www.pexels.com/video/1/'}}];
+  const result=evaluateProductionAutonomy(base);
+  assert.equal(result.coverage.discoverableSupplyCoverage.seconds,4);
+  assert.equal(result.coverage.discoverableSupplyCoverage.percent,5);
+});
+
 test('preflight is fail-closed when absent',()=>{
   const result=evaluateProductionAutonomy(input({preflight:undefined}));
   assert.notEqual(result.status,'approved');

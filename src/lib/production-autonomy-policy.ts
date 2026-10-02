@@ -282,7 +282,14 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
       let discoverableCandidate: { asset: VisualSupplyEvidence; match: { relevance: number; identityVerified: boolean } } | undefined;
       for (const { asset, match } of candidates) {
         if (asset.availability === 'unknown' || asset.rights === 'unknown' || !asset.provenanceRef?.trim() || !asset.license?.trim()) beatUncertain = true;
-        if (!asset.ready && asset.source === 'stock' && asset.discovery && !discoverableCandidate) discoverableCandidate = { asset, match };
+        if (!asset.ready && asset.source === 'stock' && asset.discovery && !discoverableCandidate) {
+          const uses=sourceUses.get(asset.sourceIdentity)??0;
+          const limit=asset.maxUses??(asset.kind==='image'?policy.maximumImageUses:1);
+          const titleSourceKey=`${title.id}\u0000${asset.sourceIdentity}`;
+          const titleShare=(titleSourceSeconds.get(titleSourceKey)??0)+beat.durationSeconds;
+          const shareOk=title.beats.length<5||titleShare/title.durationSeconds<=policy.maximumSourceSharePerTitle+EPSILON;
+          if(asset.sourceIdentity.trim()&&previousSource!==asset.sourceIdentity&&uses<limit&&shareOk)discoverableCandidate={asset,match};
+        }
         if (!asset.id.trim() || !asset.sourceIdentity.trim() || !asset.ready || asset.availability !== 'available'
           || asset.rights !== 'verified' || !asset.license?.trim() || !asset.provenanceRef?.trim()
           || !asset.storagePath?.trim()) continue;
@@ -330,7 +337,11 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
           selected = { titleId: title.id, beatId: beat.id, durationSeconds: beat.durationSeconds, source: 'stock-discoverable', assetId: asset.id, sourceIdentity: asset.sourceIdentity };
           classifications.push({titleId:title.id,beatId:beat.id,classification:'stock-discoverable',durationSeconds:beat.durationSeconds});
           if (asset.discovery?.licensingState !== 'verified' || !asset.discovery.sourceIdentity || !asset.discovery.evidenceRef) uncertainSupply = true;
-          previousSource = undefined;
+          const uses=sourceUses.get(asset.sourceIdentity)??0;
+          const titleSourceKey=`${title.id}\u0000${asset.sourceIdentity}`;
+          sourceUses.set(asset.sourceIdentity,uses+1);
+          titleSourceSeconds.set(titleSourceKey,(titleSourceSeconds.get(titleSourceKey)??0)+beat.durationSeconds);
+          previousSource = asset.sourceIdentity;
           allocations.push(selected);
           continue;
         }
