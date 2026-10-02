@@ -18,3 +18,5 @@ Assessments are stored in `radar_production_autonomy_assessments` with a seven-d
 Opportunity and Next Episode flows enqueue jobs. `scripts/production-autonomy-worker.mjs` polls the authenticated `/api/workers/production-autonomy` route, which claims work with a lease and persists the assessment. The operator panel can also run one evaluation immediately for a reviewable decision; both paths use the same deterministic evaluator.
 
 The database additions are part of `docs/schema.sql`; apply the schema before enabling the live endpoint. Until then, ordinary Market and editorial reads continue to work, while the autonomy gate remains unavailable and fail-closed.
+
+On self-hosted promotion, the deploy wrapper provisions the stable worker URL and polling interval in the protected production environment file and generates the secret locally when it is absent. The promotion never prints that value. The service remains manually controlled during calibration; no timer is installed for this worker.
