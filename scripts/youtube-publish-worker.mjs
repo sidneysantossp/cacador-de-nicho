@@ -24,6 +24,9 @@ const UPLOAD_REQUEST_TIMEOUT_MS=Math.max(30000,Number(process.env.YOUTUBE_UPLOAD
 const DOWNLOAD_HEARTBEAT_MS=Math.max(60000,Number(process.env.YOUTUBE_DOWNLOAD_HEARTBEAT_MS||300000));
 const MIN_FREE_DISK_BYTES=Math.max(2,Number(process.env.YOUTUBE_PUBLISH_MIN_FREE_DISK_GB||10))*1024*1024*1024;
 const DISK_MARGIN_BYTES=Math.max(1,Number(process.env.YOUTUBE_PUBLISH_DISK_MARGIN_GB||2))*1024*1024*1024;
+const TEST_FREE_DISK_BYTES=process.env.NODE_ENV==='test'
+  ?Math.max(0,Number(process.env.YOUTUBE_PUBLISH_TEST_FREE_DISK_BYTES||0))
+  :0;
 
 if(!SUPABASE_URL||!SERVICE_KEY){
   console.error('YouTube publish worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
@@ -186,8 +189,12 @@ async function r2Storage(){
 
 function publishDiskReady(expectedBytes=0){
   try{
-    const fs=statfsSync(os.tmpdir());
-    const freeBytes=Number(fs.bavail)*Number(fs.bsize);
+    const freeBytes=TEST_FREE_DISK_BYTES>0
+      ?TEST_FREE_DISK_BYTES
+      :(()=>{
+        const fs=statfsSync(os.tmpdir());
+        return Number(fs.bavail)*Number(fs.bsize);
+      })();
     const requiredBytes=Math.max(
       MIN_FREE_DISK_BYTES,
       Math.max(0,Number(expectedBytes)||0)+DISK_MARGIN_BYTES
