@@ -72,6 +72,7 @@ allowed=(
     "/api/operator-analysis",
     "/api/owned-media",
     "/api/performance-analyst",
+    "/api/production-autonomy",
     "/api/production-dna",
     "/api/production-quality",
     "/api/publication-package",
