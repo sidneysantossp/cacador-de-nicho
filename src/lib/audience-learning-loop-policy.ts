@@ -34,7 +34,10 @@ export function audienceReportApplied(
 ){
   if(!brain)return false;
   const prefix='audience:'+reportId+':';
-  return brain.learnings.some(item=>item.id.startsWith(prefix));
+  return brain.learnings.some(item=>
+    typeof (item as {id?:unknown}).id==='string'&&
+    String((item as {id:string}).id).startsWith(prefix)
+  );
 }
 
 export function mergeAudienceReportIntoBrain(
@@ -42,7 +45,13 @@ export function mergeAudienceReportIntoBrain(
   report:AudienceIntelligenceReport
 ){
   const candidates=audienceLearningCandidates(report);
-  const existing=new Set(brain.learnings.map(item=>item.id));
+  const existing=new Set(
+    brain.learnings
+      .map(item=>typeof (item as {id?:unknown}).id==='string'
+        ?String((item as {id:string}).id)
+        :'')
+      .filter(Boolean)
+  );
   const added=candidates.filter(item=>!existing.has(item.id));
   if(!added.length)return {brain,added:[] as ChannelBrainLearning[]};
 

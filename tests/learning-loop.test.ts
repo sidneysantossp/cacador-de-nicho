@@ -116,3 +116,43 @@ test('Script Engine supplies Channel Brain learnings to the model context',async
   const source=await readFile('src/lib/server/script-ai.ts','utf8');
   assert.match(source,/learnings:input\.brain\?\.learnings\?\?\[\]/);
 });
+
+test('approved report without diagnoses creates a low-confidence observed baseline',()=>{
+  const current=report();
+  current.diagnoses=[];
+  current.comparisons=[{
+    metric:'views',
+    current:75,
+    baseline:null,
+    delta:null,
+    deltaPercent:null,
+    relation:'unavailable',
+    baselineSource:'none',
+    baselineSampleSize:0
+  }];
+  const rows=performanceLearningCandidates(current);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].confidence,'low');
+  assert.match(rows[0].id,/observed-baseline$/);
+  assert.match(rows[0].statement,/Baseline de performance observado/);
+});
+
+test('legacy Channel Brain learnings without id do not break performance merge',()=>{
+  const legacy=brain() as unknown as {
+    learnings:Array<Record<string,unknown>>;
+  };
+  legacy.learnings.unshift({
+    type:'canonical',
+    source:'Video 1',
+    summary:'Legacy knowledge before structured learning ids.'
+  });
+  assert.equal(
+    performanceReportApplied(legacy as unknown as ChannelBrainPayload,report().id),
+    false
+  );
+  const merged=mergePerformanceReportIntoBrain(
+    legacy as unknown as ChannelBrainPayload,
+    report()
+  );
+  assert.equal(merged.added.length,1);
+});
