@@ -15,14 +15,14 @@ const claimSchema=z.object({
   claim:z.string().min(10).max(1000),
   claimType:z.enum(['fact','estimate','allegation','folklore']),
   narrationRule:z.enum(['assert','qualify','attribute','exclude']),
-  sourceUrls:z.array(z.string().url()).min(1).max(5),
+  sourceUrls:z.array(z.string().min(1).max(2048)).min(1).max(5),
   notes:z.string().max(1200)
 }).strict();
 
 const timelineSchema=z.object({
   dateLabel:z.string().min(1).max(120),
   event:z.string().min(1).max(800),
-  sourceUrls:z.array(z.string().url()).min(1).max(5)
+  sourceUrls:z.array(z.string().min(1).max(2048)).min(1).max(5)
 }).strict();const researchSchema=z.object({
   question:z.string().min(20).max(1500),
   storyAngle:z.string().min(20).max(2000),
