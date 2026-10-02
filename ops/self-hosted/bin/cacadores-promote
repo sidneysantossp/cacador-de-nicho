@@ -10,6 +10,23 @@ STATE_FILE="$BASE/state/$PROJECT.json"
 LOG_DIR="$BASE/logs/$PROJECT"
 SHA="${1:-}"
 
+ensure_production_autonomy_env() {
+  touch "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  if ! grep -Eq '^PRODUCTION_AUTONOMY_WORKER_SECRET=[^[:space:]]{32,}$' "$ENV_FILE"; then
+    sed -i '/^PRODUCTION_AUTONOMY_WORKER_SECRET=/d' "$ENV_FILE"
+    printf 'PRODUCTION_AUTONOMY_WORKER_SECRET=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >> "$ENV_FILE"
+  fi
+  if ! grep -Eq '^PRODUCTION_AUTONOMY_WORKER_URL=https://cacadores\.159\.198\.40\.98\.sslip\.io/api/workers/production-autonomy$' "$ENV_FILE"; then
+    sed -i '/^PRODUCTION_AUTONOMY_WORKER_URL=/d' "$ENV_FILE"
+    printf '%s\n' 'PRODUCTION_AUTONOMY_WORKER_URL=https://cacadores.159.198.40.98.sslip.io/api/workers/production-autonomy' >> "$ENV_FILE"
+  fi
+  if ! grep -Eq '^PRODUCTION_AUTONOMY_WORKER_POLL_MS=[0-9]+$' "$ENV_FILE"; then
+    sed -i '/^PRODUCTION_AUTONOMY_WORKER_POLL_MS=/d' "$ENV_FILE"
+    printf '%s\n' 'PRODUCTION_AUTONOMY_WORKER_POLL_MS=5000' >> "$ENV_FILE"
+  fi
+}
+
 if [[ -z "$SHA" ]]; then
   echo "usage: cacadores-promote <commit-sha>" >&2
   exit 64
@@ -21,6 +38,7 @@ git fetch --prune origin master
 FULL_SHA="$(git rev-parse "$SHA^{commit}")"
 SHORT="${FULL_SHA:0:7}"
 IMAGE="auditseo/$PROJECT:$SHORT"
+ensure_production_autonomy_env
 
 # The deployment checkout is disposable and must always mirror the exact
 # promoted commit. Discard tracked local edits left by diagnostics/benchmarks

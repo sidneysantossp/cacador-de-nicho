@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { evaluateProductionAutonomy, type ProductionAutonomyInput } from '../src/lib/production-autonomy-policy';
 
 function input(overrides:Partial<ProductionAutonomyInput>={}):ProductionAutonomyInput{
@@ -31,4 +33,13 @@ test('unknown rights and provenance block a fit instead of becoming usable suppl
   const result=evaluateProductionAutonomy(base);
   assert.notEqual(result.status,'approved');
   assert.ok(result.reasons.some(reason=>reason.code==='visual-supply-evidence-unknown'||reason.code==='visual-needs-unresolved'));
+});
+
+test('self-hosted promotion provisions autonomy env without exposing the secret',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-promote'),'utf8');
+  assert.match(source,/PRODUCTION_AUTONOMY_WORKER_SECRET=/);
+  assert.match(source,/secrets\.token_hex\(32\)/);
+  assert.match(source,/PRODUCTION_AUTONOMY_WORKER_URL=https:\/\/cacadores\.159\.198\.40\.98\.sslip\.io\/api\/workers\/production-autonomy/);
+  assert.match(source,/PRODUCTION_AUTONOMY_WORKER_POLL_MS=5000/);
+  assert.doesNotMatch(source,/echo.*PRODUCTION_AUTONOMY_WORKER_SECRET/);
 });
