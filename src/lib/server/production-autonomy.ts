@@ -300,10 +300,9 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     marketStatus=gap?.demandStatus??'unavailable'; marketRefs=refs(gap?.demandEvidence,curve?.evidence);
     const keywordTitles=(gap?.targetKeywords??[]).flatMap(keyword=>[
       keyword+' explained',
-      'How '+keyword+' work',
-      'Why '+keyword+' matter'
+      'How '+keyword+' work'
     ]);
-    titles=titleVariants([...(gap?.firstTests??[]),...keywordTitles],gap?.title??'Validated market opportunity',15);
+    titles=titleVariants([...(gap?.firstTests??[]),...keywordTitles],gap?.title??'Validated market opportunity',15).slice(0,15);
     visualQueries=distinctQueries([...(gap?.targetKeywords??[]),gap?.targetSpace??'',...(gap?.firstTests??[])]);
   }else if(subject.subjectType==='opportunity-report'){
     marketValidated=!!report&&report.validation.classification==='structural'&&report.viralDNA.demand.level!=='uncertain'&&report.viralDNA.repeatability.level!=='uncertain';
