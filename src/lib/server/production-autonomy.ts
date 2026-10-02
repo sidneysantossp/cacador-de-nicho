@@ -55,10 +55,33 @@ function normalizeAsset(row:Record<string,unknown>,titles:VisualSimulationTitle[
     return title.beats.filter(beat=>relevance>=.7).slice(0,1).map(beat=>({titleId:title.id,beatId:beat.id,relevance,identityVerified:false}));
   });
   const owned=source==='owned';
+  const ready=String(row.status??'ready')==='ready';
+  const provider=String(row.provider??stock.provider??'stock-media');
+  const licenseLabel=license.label?String(license.label):(owned?'Owned / operator supplied':null);
+  const provenance=payload.provenanceRef?String(payload.provenanceRef):(owned?'asset:'+String(row.id):null);
+  const licensingState=license.type==='owned'||license.type==='licensed'||license.type==='provider-terms'?'verified':license.type==='restricted'?'restricted':'unknown';
   return {id:String(row.id),sourceIdentity,source,kind:String(row.asset_kind)==='video'?'video':'image',
-    ready:String(row.status??'ready')==='ready',availability:'available',storagePath:source==='owned'?String(row.storage_path??''):undefined,
-    durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds??0),rights:source==='owned'||license.type==='owned'||license.type==='licensed'||license.type==='provider-terms'?'verified':'unknown',
-    license:license.label?String(license.label):(owned?'Owned / operator supplied':null),provenanceRef:payload.provenanceRef?String(payload.provenanceRef):(owned?'asset:'+String(row.id):null),matches,maxUses:1};
+    ready,availability:'available',storagePath:String(row.storage_path??'')||undefined,
+    durationSeconds:row.duration_seconds===null?null:Number(row.duration_seconds??0),rights:source==='owned'||licensingState==='verified'?'verified':licensingState==='restricted'?'restricted':'unknown',
+    license:licenseLabel,provenanceRef:provenance,matches,maxUses:1,
+    discovery:source==='stock'&&!ready?{provider,sourceIdentity:stock.providerAssetId?sourceIdentity:null,licensingState,candidateRelevance:Math.max(...matches.map(match=>match.relevance),0),acquisition:payload.acquisition==='not-materializable'?'not-materializable':payload.acquisition==='materializable'?'materializable':'unknown',evidenceRef:provenance??undefined}:undefined};
+}
+
+function normalizeStockSearch(row:Record<string,unknown>,titles:VisualSimulationTitle[]):VisualSupplyEvidence[]{
+  const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;
+  const provider=String(row.provider??'stock-media');
+  const raw=Array.isArray(payload.results)?payload.results:Array.isArray(payload.items)?payload.items:Array.isArray(payload.data)?payload.data:[];
+  return raw.flatMap((item,index)=>{
+    if(!item||typeof item!=='object')return [];
+    const value=item as Record<string,unknown>;
+    const identity=String(value.id??value.url??value.sourceIdentity??'').trim(); if(!identity)return [];
+    const text=[row.query,value.title,value.description,value.tags].filter(Boolean).join(' ').toLowerCase();
+    const matches=titles.flatMap(title=>{const tokens=title.title.toLowerCase().split(/[^a-z0-9]+/).filter(token=>token.length>3);const relevance=tokens.length?tokens.filter(token=>text.includes(token)).length/tokens.length:0;return title.beats.filter(beat=>relevance>=.7).slice(0,1).map(beat=>({titleId:title.id,beatId:beat.id,relevance,identityVerified:false}));});
+    const licenseValue=String(value.licenseType??value.license??'').toLowerCase();
+    const licensingState=licenseValue.includes('restricted')?'restricted' as const:licenseValue.includes('commercial')||licenseValue.includes('free')||licenseValue.includes('provider')?'verified' as const:'unknown' as const;
+    const acquisition=value.downloadUrl||value.download_url?'materializable' as const:'unknown' as const;
+    return [{id:`stock-search:${String(row.id)}:${index}`,sourceIdentity:`${provider}:${identity}`,source:'stock' as const,kind:String(value.mediaKind??row.media_kind)==='video'?'video' as const:'image' as const,ready:false,availability:'available' as const,storagePath:undefined,durationSeconds:null,rights:'unknown' as const,license:null,provenanceRef:null,matches,maxUses:1,discovery:{provider,sourceIdentity:`${provider}:${identity}`,licensingState,candidateRelevance:Math.max(...matches.map(match=>match.relevance),0),acquisition,evidenceRef:`stock-search:${String(row.id)}`}}];
+  });
 }
 
 async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutonomyInput;fingerprint:string}>{
@@ -87,22 +110,29 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     const candidate=Array.isArray(plan.candidates)?plan.candidates.find(item=>!!item&&typeof item==='object'&&String((item as Record<string,unknown>).id)===subject.candidateId) as Record<string,unknown>|undefined:undefined;
     titles=titleVariants(candidate?.workingTitle?[String(candidate.workingTitle)]:[],String(candidate?.workingTitle??'Next episode'));
   }
-  const [sceneRows,ownedRows]=await Promise.all([
-    db().from('radar_scene_assets').select('id,status,source_type,asset_kind,storage_path,original_name,duration_seconds,payload').eq('status','ready').limit(500),
+  const [sceneRows,ownedRows,stockSearchRows]=await Promise.all([
+    db().from('radar_scene_assets').select('id,status,source_type,asset_kind,provider,storage_path,original_name,duration_seconds,payload').in('status',['ready','queued','processing']).limit(1000),
     db().from('radar_owned_media_assets').select('id,status,source_type,asset_kind,storage_path,original_name,duration_seconds,title,tags,search_text,payload').eq('status','ready').limit(500)
+    ,db().from('radar_stock_searches').select('id,provider,media_kind,query,result_count,payload').order('created_at',{ascending:false}).limit(100)
   ]);
-  if(sceneRows.error||ownedRows.error)throw new HttpError('Não foi possível consultar a biblioteca visual para o Production Autonomy Fit.',502);
+  if(sceneRows.error||ownedRows.error||stockSearchRows.error)throw new HttpError('Não foi possível consultar a biblioteca visual para o Production Autonomy Fit.',502);
   const rows=[...(sceneRows.data??[]),...(ownedRows.data??[])];
   const titleSet=beatTitles(titles,marketRefs);
-  const supply=(rows??[]).map(row=>normalizeAsset(row as Record<string,unknown>,titleSet)).filter((item):item is VisualSupplyEvidence=>!!item);
+  const supply=[...(rows??[]).map(row=>normalizeAsset(row as Record<string,unknown>,titleSet)).filter((item):item is VisualSupplyEvidence=>!!item),...(stockSearchRows.data??[]).flatMap(row=>normalizeStockSearch(row as Record<string,unknown>,titleSet))];
+  const representativeBeatIds=titleSet.slice(0,10).map(title=>title.beats[0]?.id).filter((id):id is string=>!!id);
+  const materializedAssetCount=supply.filter(asset=>asset.ready&&asset.storagePath&&asset.provenanceRef&&asset.license).length;
+  const discoverableAssetCount=supply.filter(asset=>asset.discovery).length;
+  const measurements=rows.map(row=>{const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;const economics=(payload.economics&&typeof payload.economics==='object'?payload.economics:{}) as Record<string,unknown>;return {costUsd:Number(economics.costUsd),cycleMinutes:Number(economics.cycleMinutes),operatorMinutes:Number(economics.operatorMinutes),ref:economics.evidenceRef?String(economics.evidenceRef):`asset:${String(row.id)}`};}).filter(item=>Number.isFinite(item.costUsd)&&Number.isFinite(item.cycleMinutes)&&Number.isFinite(item.operatorMinutes)&&item.cycleMinutes>0&&item.operatorMinutes>=0);
+  const economics=measurements.length?{costUsd:measurements.reduce((sum,item)=>sum+item.costUsd,0)/measurements.length,cycleMinutes:measurements.reduce((sum,item)=>sum+item.cycleMinutes,0)/measurements.length,operatorMinutes:measurements.reduce((sum,item)=>sum+item.operatorMinutes,0)/measurements.length,evidenceRefs:measurements.map(item=>item.ref),basis:'observed' as const}:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown' as const};
   const input:ProductionAutonomyInput={
     market:{validated:marketValidated,status:marketStatus,evidenceRefs:marketRefs},
     titles:titleSet,supply,
     providers:[{id:'r2',status:process.env.R2_BUCKET?'available':'unknown',evidenceRef:process.env.R2_BUCKET?'env:R2_BUCKET':undefined},
       {id:'stock-media',status:'unknown'}],
-    economics:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown'},
+    economics,
     automation:['research','claims','script','voice','transcript','scenes','asset-sourcing','rights','timeline','render','quality','packaging','publish','learning'].map(stage=>({stage:stage as ProductionAutonomyInput['automation'][number]['stage'],status:'unknown' as const})),
-    generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]}))};
+    generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]})),
+    preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,evidenceRefs:marketRefs}};
   return {input,fingerprint:hash({subject,input})};
 }
 
@@ -112,7 +142,7 @@ function asStored(subject:SubjectInput,input:ProductionAutonomyInput,fingerprint
 }
 
 export function productionAutonomySummary(assessment:StoredProductionAutonomy){
-  return {status:assessment.status,score:assessment.score,assessmentId:assessment.id,updatedAt:assessment.createdAt,reasons:assessment.reasons.slice(0,6).map(item=>item.message)};
+  return {status:assessment.status,supplyStatus:assessment.supplyStatus,score:assessment.score,assessmentId:assessment.id,updatedAt:assessment.createdAt,reasons:assessment.reasons.slice(0,6).map(item=>item.message)};
 }
 
 export async function loadProductionAutonomy(subject:SubjectInput):Promise<StoredProductionAutonomy|null>{

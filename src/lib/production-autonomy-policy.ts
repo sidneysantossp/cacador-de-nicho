@@ -1,10 +1,12 @@
 /** Pure, deterministic pre-pilot feasibility gate. Market evidence always comes first. */
-export const PRODUCTION_AUTONOMY_VERSION = 'production-autonomy@1.0.0' as const;
+export const PRODUCTION_AUTONOMY_VERSION = 'production-autonomy@1.1.0' as const;
 export const PRODUCTION_AUTONOMY_STAGES = [
   'research', 'claims', 'script', 'voice', 'transcript', 'scenes', 'asset-sourcing',
   'rights', 'timeline', 'render', 'quality', 'packaging', 'publish', 'learning',
 ] as const;
 export type ProductionAutonomyStatus = 'approved' | 'rejected' | 'blocked' | 'not-eligible';
+/** Supply state is deliberately separate from the legacy gate status. */
+export type ProductionAutonomySupplyStatus = 'market-not-eligible' | 'market-valid-but-supply-unproven' | 'supply-discoverable' | 'supply-verified' | 'autonomy-approved';
 export type ProductionAutonomyStage = typeof PRODUCTION_AUTONOMY_STAGES[number];
 export type VisualSimulationBeat = {
   id: string;
@@ -43,6 +45,23 @@ export type VisualSupplyEvidence = {
   matches: { titleId: string; beatId: string; relevance: number; identityVerified: boolean }[];
   /** Image/source reuse across the simulation. Video ranges still cannot overlap. */
   maxUses?: number;
+  /** Search evidence is never treated as ready supply. */
+  discovery?: {
+    provider: string;
+    sourceIdentity: string | null;
+    licensingState: 'verified' | 'unknown' | 'restricted' | 'unavailable';
+    candidateRelevance: number;
+    acquisition: 'materializable' | 'not-materializable' | 'unknown';
+    evidenceRef?: string;
+  };
+};
+export type SupplyPreflight = {
+  status: 'not-run' | 'completed' | 'blocked';
+  sampledBeatCount: number;
+  representativeBeatIds: string[];
+  materializedAssetCount: number;
+  discoverableAssetCount: number;
+  evidenceRefs: string[];
 };
 export type ProductionAutonomyPolicy = {
   minimumTitles: number;
@@ -86,6 +105,7 @@ export type ProductionAutonomyInput = {
   };
   automation: { stage: ProductionAutonomyStage; status: 'automatic' | 'manual' | 'unavailable' | 'unknown'; evidenceRef?: string }[];
   generation: { available: boolean | null; evidenceRef?: string };
+  preflight?: SupplyPreflight;
   repeatability: {
     episodes: 15 | 50 | 100;
     distinctTitleCount: number | null;
@@ -104,7 +124,7 @@ export type VisualSupplyAllocation = {
   titleId: string;
   beatId: string;
   durationSeconds: number;
-  source: 'owned' | 'stock' | 'generation' | 'unresolved';
+  source: 'owned' | 'stock' | 'stock-discoverable' | 'generation' | 'unresolved';
   assetId?: string;
   sourceIdentity?: string;
   sourceStartSeconds?: number;
@@ -113,6 +133,7 @@ export type VisualSupplyAllocation = {
 export type ProductionAutonomyAssessment = {
   version: typeof PRODUCTION_AUTONOMY_VERSION;
   status: ProductionAutonomyStatus;
+  supplyStatus: ProductionAutonomySupplyStatus;
   marketEligible: boolean;
   /** Summary only; unknown dimensions contribute zero and never authorize progression. */
   score: number;
@@ -135,10 +156,15 @@ export type ProductionAutonomyAssessment = {
     ownedPercent: number;
     stockPercent: number;
     supplyPercent: number;
+    readySupplyCoverage: { seconds: number; percent: number; confidence: number | null };
+    discoverableSupplyCoverage: { seconds: number; percent: number; confidence: number | null };
+    projectedAutonomousCoverage: { seconds: number; percent: number; confidence: number | null; isProjection: true };
+    evidenceConfidence: number | null;
     generationPercent: number;
     unresolvedPercent: number;
     distinctSources: number;
     allocations: VisualSupplyAllocation[];
+    classifications: { titleId: string; beatId: string; classification: 'owned-ready' | 'stock-ready' | 'stock-discoverable' | 'generation-required' | 'unresolved'; durationSeconds: number }[];
     titles: { titleId: string; totalSeconds: number; supplyPercent: number }[];
   };
   repeatability: {
@@ -152,6 +178,7 @@ export type ProductionAutonomyAssessment = {
   economics: ProductionAutonomyInput['economics'];
   reasons: ProductionAutonomyReason[];
   policy: ProductionAutonomyPolicy;
+  preflight?: SupplyPreflight;
 };
 
 const EPSILON = 0.001;
@@ -196,6 +223,7 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   };
   const marketEligible = input.market.validated === true && referenced(input.market.evidenceRefs);
   if (!marketEligible) add('market-not-validated', 'blocker', 'A validação de mercado com evidência é obrigatória antes do Production Autonomy Fit.', input.market.evidenceRefs);
+  if (!input.preflight || input.preflight.status !== 'completed' || input.preflight.sampledBeatCount < 10) add('supply-preflight-incomplete', 'blocker', 'O Supply Preflight precisa simular pelo menos dez beats representativos antes do assessment final.', input.preflight?.evidenceRefs ?? []);
   const validPolicy = Object.values(policy).every(nonnegative)
     && policy.minimumTitles >= 1 && Number.isInteger(policy.minimumTitles)
     && policy.minimumMatchRelevance <= 1 && policy.maximumSourceSharePerTitle > 0 && policy.maximumSourceSharePerTitle <= 1
@@ -232,8 +260,11 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   let ownedSeconds = 0;
   let stockSeconds = 0;
   let generationSeconds = 0;
+  let discoverableSeconds = 0;
+  let projectedSeconds = 0;
   let unresolvedSeconds = 0;
   const totalSeconds = input.titles.reduce((sum, title) => sum + (positive(title.durationSeconds) ? title.durationSeconds : 0), 0);
+  const classifications: ProductionAutonomyAssessment['coverage']['classifications'] = [];
 
   for (const title of input.titles) {
     let previousSource: string | undefined;
@@ -248,11 +279,13 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
       }).sort((a, b) => (a.asset.source === 'owned' ? 0 : 1) - (b.asset.source === 'owned' ? 0 : 1) || b.match.relevance - a.match.relevance || a.asset.id.localeCompare(b.asset.id));
       let selected: VisualSupplyAllocation | undefined;
       let beatUncertain = false;
+      let discoverableCandidate: { asset: VisualSupplyEvidence; match: { relevance: number; identityVerified: boolean } } | undefined;
       for (const { asset, match } of candidates) {
         if (asset.availability === 'unknown' || asset.rights === 'unknown' || !asset.provenanceRef?.trim() || !asset.license?.trim()) beatUncertain = true;
+        if (!asset.ready && asset.source === 'stock' && asset.discovery && !discoverableCandidate) discoverableCandidate = { asset, match };
         if (!asset.id.trim() || !asset.sourceIdentity.trim() || !asset.ready || asset.availability !== 'available'
           || asset.rights !== 'verified' || !asset.license?.trim() || !asset.provenanceRef?.trim()
-          || (asset.source === 'owned' && !asset.storagePath?.trim())) continue;
+          || !asset.storagePath?.trim()) continue;
         if (beat.requiredIdentity && (!match.identityVerified || !asset.verifiedIdentities?.includes(beat.requiredIdentity))) continue;
         if (previousSource === asset.sourceIdentity) continue;
         const titleSourceKey = `${title.id}\u0000${asset.sourceIdentity}`;
@@ -283,15 +316,28 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
       if (selected) {
         if (selected.source === 'owned') ownedSeconds += beat.durationSeconds;
         else stockSeconds += beat.durationSeconds;
+        projectedSeconds += beat.durationSeconds;
+        classifications.push({titleId:title.id,beatId:beat.id,classification:selected.source==='owned'?'owned-ready':'stock-ready',durationSeconds:beat.durationSeconds});
         previousSource = selected.sourceIdentity;
       } else {
         uncertainSupply ||= beatUncertain;
         if (beat.requiredIdentity) exactIdentityMissing = true;
         const canGenerate = !beat.requiredIdentity && beat.generationAllowed && input.generation.available === true && Boolean(input.generation.evidenceRef?.trim());
+        if (discoverableCandidate) {
+          const {asset}=discoverableCandidate;
+          discoverableSeconds += beat.durationSeconds;
+          if (asset.discovery?.acquisition === 'materializable') projectedSeconds += beat.durationSeconds;
+          selected = { titleId: title.id, beatId: beat.id, durationSeconds: beat.durationSeconds, source: 'stock-discoverable', assetId: asset.id, sourceIdentity: asset.sourceIdentity };
+          classifications.push({titleId:title.id,beatId:beat.id,classification:'stock-discoverable',durationSeconds:beat.durationSeconds});
+          if (asset.discovery?.licensingState !== 'verified' || !asset.discovery.sourceIdentity || !asset.discovery.evidenceRef) uncertainSupply = true;
+          previousSource = undefined;
+          allocations.push(selected);
+          continue;
+        }
         const source = canGenerate ? 'generation' : 'unresolved';
         selected = { titleId: title.id, beatId: beat.id, durationSeconds: beat.durationSeconds, source };
-        if (canGenerate) generationSeconds += beat.durationSeconds;
-        else unresolvedSeconds += beat.durationSeconds;
+        if (canGenerate) { generationSeconds += beat.durationSeconds; projectedSeconds += beat.durationSeconds; classifications.push({titleId:title.id,beatId:beat.id,classification:'generation-required',durationSeconds:beat.durationSeconds}); }
+        else { unresolvedSeconds += beat.durationSeconds; classifications.push({titleId:title.id,beatId:beat.id,classification:'unresolved',durationSeconds:beat.durationSeconds}); }
         previousSource = undefined;
       }
       allocations.push(selected);
@@ -300,6 +346,8 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
 
   const supplySeconds = ownedSeconds + stockSeconds;
   const supplyPercent = percentage(supplySeconds, totalSeconds);
+  const discoverablePercent = percentage(discoverableSeconds, totalSeconds);
+  const projectedPercent = percentage(projectedSeconds, totalSeconds);
   const generationPercent = percentage(generationSeconds, totalSeconds);
   const providerUnknown = input.providers.some(provider => provider.status === 'unknown' || (provider.status === 'available' && !provider.evidenceRef?.trim()));
   const incompleteSupplyEvidence = uncertainSupply || providerUnknown;
@@ -359,9 +407,11 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   const score = round((scores.visualSupplyCoverage ?? 0) * .25 + (scores.generationIndependence ?? 0) * .1 + (scores.rights ?? 0) * .15 + (scores.cost ?? 0) * .1 + (scores.time ?? 0) * .05 + (scores.factuality ?? 0) * .15 + (scores.repeatability ?? 0) * .1 + (scores.endToEndAutonomy ?? 0) * .1);
   if (score < policy.minimumScore && !reasons.some(reason => reason.severity === 'blocker' || reason.severity === 'rejection')) add('overall-score-below-policy', 'rejection', `Score ${score} abaixo do mínimo de ${policy.minimumScore}.`);
   const status: ProductionAutonomyStatus = !marketEligible ? 'not-eligible' : reasons.some(reason => reason.severity === 'rejection') ? 'rejected' : reasons.some(reason => reason.severity === 'blocker') ? 'blocked' : 'approved';
+  const supplyStatus: ProductionAutonomySupplyStatus = !marketEligible ? 'market-not-eligible' : status === 'approved' ? 'autonomy-approved' : supplySeconds > EPSILON && unresolvedSeconds <= EPSILON && discoverableSeconds <= EPSILON && generationSeconds <= EPSILON ? 'supply-verified' : discoverableSeconds > EPSILON ? 'supply-discoverable' : 'market-valid-but-supply-unproven';
+  const evidenceConfidence = totalSeconds > 0 ? round(Math.min(1, (supplySeconds + discoverableSeconds * 0.5) / totalSeconds)) : null;
   return {
-    version: PRODUCTION_AUTONOMY_VERSION, status, marketEligible, score, scores,
-    coverage: { totalSeconds: round(totalSeconds), ownedSeconds: round(ownedSeconds), stockSeconds: round(stockSeconds), generationSeconds: round(generationSeconds), unresolvedSeconds: round(unresolvedSeconds), ownedPercent: percentage(ownedSeconds, totalSeconds), stockPercent: percentage(stockSeconds, totalSeconds), supplyPercent, generationPercent, unresolvedPercent: percentage(unresolvedSeconds, totalSeconds), distinctSources: sourceUses.size, allocations, titles: titleCoverage },
-    repeatability, economics: { ...input.economics, evidenceRefs: [...input.economics.evidenceRefs] }, reasons, policy,
+    version: PRODUCTION_AUTONOMY_VERSION, status, supplyStatus, marketEligible, score, scores,
+    coverage: { totalSeconds: round(totalSeconds), ownedSeconds: round(ownedSeconds), stockSeconds: round(stockSeconds), generationSeconds: round(generationSeconds), unresolvedSeconds: round(unresolvedSeconds), ownedPercent: percentage(ownedSeconds, totalSeconds), stockPercent: percentage(stockSeconds, totalSeconds), supplyPercent, readySupplyCoverage:{seconds:round(supplySeconds),percent:supplyPercent,confidence:supplySeconds>0?1:0}, discoverableSupplyCoverage:{seconds:round(discoverableSeconds),percent:discoverablePercent,confidence:discoverableSeconds>0?0.5:0}, projectedAutonomousCoverage:{seconds:round(projectedSeconds),percent:projectedPercent,confidence:discoverableSeconds>0?0.5:projectedSeconds>0?1:0,isProjection:true}, evidenceConfidence, generationPercent, unresolvedPercent: percentage(unresolvedSeconds, totalSeconds), distinctSources: sourceUses.size, allocations, classifications, titles: titleCoverage },
+    repeatability, economics: { ...input.economics, evidenceRefs: [...input.economics.evidenceRefs] }, reasons, policy, preflight: input.preflight,
   };
 }

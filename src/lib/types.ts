@@ -47,6 +47,7 @@ export type OpportunityTransfer = {
 };
 export type ProductionAutonomySummary = {
  status:'approved'|'rejected'|'blocked'|'not-eligible';
+ supplyStatus?:'market-not-eligible'|'market-valid-but-supply-unproven'|'supply-discoverable'|'supply-verified'|'autonomy-approved';
  score:number;
  assessmentId:string;
  updatedAt:string;

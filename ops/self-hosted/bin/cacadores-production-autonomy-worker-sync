@@ -8,10 +8,23 @@ ENV_FILE="$BASE/env/$PROJECT.production.env"
 WORK_DIR="$BASE/work/$PROJECT-production-autonomy"
 CONTAINER="$PROJECT-production-autonomy-worker"
 
+CHILD_PID=""
+stopping=0
 cleanup() {
+  if [[ "$stopping" -eq 0 && -n "$CHILD_PID" ]]; then
+    stopping=1
+    kill -TERM "$CHILD_PID" >/dev/null 2>&1 || true
+    wait "$CHILD_PID" >/dev/null 2>&1 || true
+  fi
+  docker stop --time 10 "$CONTAINER" >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+on_signal() {
+  stopping=1
+  [[ -n "$CHILD_PID" ]] && kill -TERM "$CHILD_PID" >/dev/null 2>&1 || true
+}
+trap on_signal INT TERM
+trap cleanup EXIT
 
 readarray -t VALUES < <(python3 - "$STATE_FILE" <<'PY'
 from pathlib import Path
@@ -28,7 +41,7 @@ IMAGE="${VALUES[0]:-}"
 mkdir -p "$WORK_DIR"
 chown 1001:1001 "$WORK_DIR"
 cleanup
-exec docker run --rm \
+docker run --rm \
   --name "$CONTAINER" \
   --env-file "$ENV_FILE" \
   --memory 512m \
@@ -36,4 +49,6 @@ exec docker run --rm \
   --pids-limit 128 \
   -v "$WORK_DIR:/tmp" \
   --label auditseo.role=production-autonomy-worker \
-  "$IMAGE" node scripts/production-autonomy-worker.mjs
+  "$IMAGE" node scripts/production-autonomy-worker.mjs &
+CHILD_PID=$!
+wait "$CHILD_PID"
