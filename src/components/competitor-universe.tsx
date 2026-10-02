@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
 import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import ProductionAutonomyPanel from './production-autonomy-panel';
 
 function compact(value:number|null){
   if(value===null)return '—';
@@ -284,6 +285,7 @@ export default function CompetitorUniverse({
           {gap.demandEvidence.length>0&&<div className="universe-derived-block"><span>EVIDÊNCIA DO TARGET</span>{gap.demandEvidence.slice(0,4).map(item=><small key={item}>{item}</small>)}</div>}
           <div className="universe-derived-block tests"><span>PRIMEIROS TESTES</span><ol>{gap.firstTests.map(title=><li key={title}>{title}</li>)}</ol></div>
           {gap.risks.length>0&&<div className="universe-derived-block"><span>RISCOS</span><p>{gap.risks.slice(0,3).join(' · ')}</p></div>}
+          <ProductionAutonomyPanel subjectType="universe-gap" subjectId={gap.id} mode={mode}/>
         </article>;
       })}</div>}
     </section>}

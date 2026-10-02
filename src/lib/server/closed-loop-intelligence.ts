@@ -1,4 +1,5 @@
 import 'server-only';
+import { productionAutonomyPending } from '@/lib/production-autonomy-integration';
 
 import type {
   LearningLoopJob, LearningLoopJobPayload, LearningLoopJobStatus, ManagedChannel
@@ -333,6 +334,11 @@ async function maybeAdvanceNextEpisode(
     };
   }
 
+  if(productionAutonomyPending(plan.candidates)){
+    // The economics worker owns this dependency. Retry the learning job instead
+    // of converting a queued machine assessment into a permanent human review.
+    throw new HttpError('Production Autonomy Fit em avaliação; aguarde o worker antes da aceitação automática.',409);
+  }
   const issues=nextEpisodeAutoAcceptIssues(channel,plan);
   if(!issues.length){
     issues.push(...await loadAutopilotOperationalIssues(channel.id));

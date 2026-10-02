@@ -45,7 +45,15 @@ export type OpportunityTransfer = {
  titles: string[];
  risks: string[];
 };
+export type ProductionAutonomySummary = {
+ status:'approved'|'rejected'|'blocked'|'not-eligible';
+ score:number;
+ assessmentId:string;
+ updatedAt:string;
+ reasons:string[];
+};
 export type OpportunityReport = {
+ productionAutonomy?:ProductionAutonomySummary;
  kind: 'opportunity-report';
  id: string;
  channelStudyId: string;
@@ -2397,6 +2405,7 @@ export type AudienceIntelligenceVersion = {
 };
 
 export type NextEpisodeCandidate = {
+ productionAutonomy?:ProductionAutonomySummary;
  id: string;
  workingTitle: string;
  theme: string;

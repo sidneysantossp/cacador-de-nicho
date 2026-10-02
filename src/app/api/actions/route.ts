@@ -13,6 +13,7 @@ import { managedChannelSchema, settingsSchema } from '@/lib/server/validation';
 import { assertAutopilotActivationAllowed } from '@/lib/server/autopilot-activation';
 import { handoffUniversePilotToContentOs } from '@/lib/server/universe-pilot-handoff';
 import { productionOperatingSystemRef } from '@/lib/production-operating-system';
+import { assertProductionAutonomyApproved } from '@/lib/server/production-autonomy';
 export const runtime='nodejs';
 export const maxDuration=300;
 const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: use o fluxo ChatGPT Operator Analysis para esta etapa.',409);};
@@ -28,6 +29,9 @@ export async function POST(request:Request){try{requireOperator(request);if(!dbC
     throw new HttpError('A oportunidade não está mais acionável no Market atual.',409);
   }
   if(!intelligence)throw new HttpError('Market Intelligence ainda não está disponível.',409);
+  if(pilotDecision==='approved'){
+    await assertProductionAutonomyApproved({subjectType:'universe-gap',subjectId:body.universeGapId});
+  }
   const id=crypto.randomUUID();
   const createdAt=new Date().toISOString();
   const decision=buildUniversePilotDecision({

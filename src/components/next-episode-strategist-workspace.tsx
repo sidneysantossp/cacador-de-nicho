@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { ManagedChannel, NextEpisodeCandidate, NextEpisodePlan } from '@/lib/types';
 import { effectiveChannelAutopilot } from '@/lib/channel-autopilot-policy';
+import ProductionAutonomyPanel from './production-autonomy-panel';
 
 type State={
   plans:NextEpisodePlan[];
@@ -198,9 +199,11 @@ function PlanView({
         {candidate.risks.length>0&&<div className="next-episode-risks"><strong>Riscos</strong>{candidate.risks.map(item=><p key={item}><AlertTriangle size={11}/>{item}</p>)}</div>}
         {candidate.blockers.length>0&&<div className="next-episode-blockers">{candidate.blockers.map(item=><span key={item}>{item}</span>)}</div>}
 
-        <button className="button primary" disabled={stale||!candidate.narrativeReady||busy==='accept:'+candidate.id} onClick={()=>onAccept(candidate)}>
-          <ShieldCheck size={14}/>{busy==='accept:'+candidate.id?'Criando…':autoStart?'Aceitar → '+(automationMode==='autonomous'?'Autopilot':'Automation'):'Aceitar → Content OS'}
-        </button>
+        <ProductionAutonomyPanel subjectType="next-episode" subjectId={plan.id} candidateId={candidate.id} mode="live">
+          {autonomyReady=><button className="button primary" disabled={stale||!candidate.narrativeReady||!autonomyReady||busy==='accept:'+candidate.id} onClick={()=>onAccept(candidate)}>
+            <ShieldCheck size={14}/>{busy==='accept:'+candidate.id?'Criando…':autoStart?'Aceitar → '+(automationMode==='autonomous'?'Autopilot':'Automation'):'Aceitar → Content OS'}
+          </button>}
+        </ProductionAutonomyPanel>
       </article>;
     })}</div>
 

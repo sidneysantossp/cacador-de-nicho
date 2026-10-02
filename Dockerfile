@@ -35,6 +35,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts/owned-media-intelligence-
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/owned-media-intelligence-supervisor.mjs ./scripts/owned-media-intelligence-supervisor.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/verified-stock-worker.mjs ./scripts/verified-stock-worker.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/verified-stock-supervisor.mjs ./scripts/verified-stock-supervisor.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/production-autonomy-worker.mjs ./scripts/production-autonomy-worker.mjs
 USER nextjs
 EXPOSE 3000
 CMD ["node","server.js"]

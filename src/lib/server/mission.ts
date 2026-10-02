@@ -12,6 +12,7 @@ import { HttpError } from './auth';
 import { providerSecret, testProvider } from './providers';
 import { isYouTubeSearchQuotaError, YouTubeSearchQuotaError } from './youtube';
 import { YouTubeSearchBudgetError } from './youtube-search-budget';
+import { loadProductionAutonomy, productionAutonomySummary } from './production-autonomy';
 import { processUniverseImportQueue, refreshUniverseCompetitors, runUniverseIntelligence, runUniverseMarketIntelligence, shouldRefreshUniverseMarketIntelligence, universeMarketIntelligenceState, universeQueueSummary, universeState } from './universe';
 
 const OBJECTIVE='Encontrar, validar e transformar oportunidades de conteúdo em ativos capazes de gerar receita.';
@@ -65,7 +66,7 @@ function reportSource(report:OpportunityReport,studies:ChannelStudy[]){
   return studies.find(study=>study.id===report.channelStudyId)?.source.name??report.title;
 }
 
-function buildBrief(input:{
+async function buildBrief(input:{
   startedAt:string;
   completedAt:string;
   status:MissionBrief['status'];
@@ -79,10 +80,14 @@ function buildBrief(input:{
   workCompleted:string[];
   blockers:string[];
   notes:string[];
-}):MissionBrief{
-  const productionQueue=input.reports.flatMap(report=>{
+}):Promise<MissionBrief>{
+  const reportsWithFit=await Promise.all(input.reports.map(async report=>{
+    const assessment=await loadProductionAutonomy({subjectType:'opportunity-report',subjectId:report.id});
+    return assessment?{...report,productionAutonomy:productionAutonomySummary(assessment)}:report;
+  }));
+  const productionQueue=reportsWithFit.flatMap(report=>{
     const readiness=productionReadiness(report);
-    if(!readiness.ready)return [];
+    if(!readiness.ready||report.productionAutonomy?.status!=='approved')return [];
     return [{
       reportId:report.id,
       channelStudyId:report.channelStudyId,
@@ -330,7 +335,7 @@ export async function runMission():Promise<MissionBrief>{
 
     const completedAt=new Date().toISOString();
     const status:MissionBrief['status']=health.blockers.length?'blocked':blockers.length?'partial':'completed';
-    const brief=buildBrief({
+    const brief=await buildBrief({
       startedAt,
       completedAt,
       status,

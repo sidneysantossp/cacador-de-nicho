@@ -13,6 +13,7 @@ import ChannelDnaPage from './channel-dna-page';
 import ChannelBrainPage from './channel-brain-page';
 import OwnedMediaLibraryWorkspace from './owned-media-library-workspace';
 import FactoryControlWorkspace from './factory-control-workspace';
+import ProductionAutonomyPanel from './production-autonomy-panel';
 
 type View = 'mission' | 'factory' | 'universe' | 'universeDna' | 'radar' | 'analysis' | 'reports' | 'opportunities' | 'management' | 'channelBrain' | 'library' | 'memory' | 'scripts' | 'activity' | 'settings';
 const nav = [{id:'mission',label:'Mission Control',icon:Sparkles},{id:'factory',label:'Factory Control',icon:Activity},{id:'universe',label:'Universe',icon:Globe2},{id:'radar',label:'Radar de nichos',icon:Radar},{id:'analysis',label:'Análise de Canal',icon:BrainCircuit},{id:'reports',label:'Opportunity Reports',icon:Sparkles},{id:'opportunities',label:'Oportunidades',icon:Layers3},{id:'management',label:'Gestão de projetos',icon:FolderKanban},{id:'library',label:'Biblioteca de Mídia',icon:Library},{id:'memory',label:'Memória & pesquisa',icon:BookOpen},{id:'scripts',label:'Roteiros',icon:FileText},{id:'activity',label:'Atividade',icon:Clock3}] as const;
@@ -184,6 +185,7 @@ export default function Dashboard(){
           <div className="proposal-difference"><span>CURVA / NICHE LOCK</span><p>{report?report.curve.thesis:`${study.nicheProfile.primaryNiche} → ${study.nicheProfile.subniche}`}</p></div>
           {report&&<div className="proposal-difference"><span>VALIDAÇÃO</span><p>{report.validation.classification} · {report.validation.independentCreators} criador(es) independente(s) · {report.validation.supportingVideos} vídeo(s) de suporte.</p></div>}
           {report&&<div className="study-chips">{report.transfers.map(item=><span key={item.id}>{item.label}: {item.targetNiche}</span>)}</div>}
+          {report&&<ProductionAutonomyPanel subjectType="opportunity-report" subjectId={report.id} mode={data.mode}/>}
           <div className="proposal-actions">
            <button className="button primary small" disabled={data.mode==='demo'||!!busy} onClick={()=>void action({action:'opportunityReport',channelStudyId:study.id},'opportunityReport')}><Sparkles size={15}/>{report?'Atualizar relatório':'Gerar Opportunity Report'}</button>
            <button className="button subtle small" onClick={()=>{setAnalysisFocusId(study.id);setView('analysis');}}>Abrir relatório completo <ArrowUpRight size={15}/></button>

@@ -8,6 +8,7 @@ import { loadChannelBrain } from './channel-brain';
 import { loadContentProject, saveContentProject } from './content-os';
 import { loadNarrativeBundle, saveChannelEpisode } from './narrative';
 import { universeMarketIntelligenceState } from './universe';
+import { assertProductionAutonomyApproved } from './production-autonomy';
 
 async function loadPilotDecision(decisionId:string):Promise<Decision>{
   const row=checked(await db().from('radar_decisions')
@@ -52,6 +53,7 @@ export async function handoffUniversePilotToContentOs(decisionId:string,channelI
   if(!current.ok){
     throw new HttpError('O gap perdeu o status PILOT READY no Market atual. Revalide a hipótese antes de criar produção.',409);
   }
+  await assertProductionAutonomyApproved({subjectType:'universe-gap',subjectId:decision.pilotBrief!.gapId});
 
   const existingRow=checked(await db().from('radar_content_projects')
     .select('id,episode_id,channel_id')

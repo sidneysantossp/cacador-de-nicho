@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AlertCircle, ArrowUpRight, CheckCircle2, PlayCircle, Rocket, Sparkles } from 'lucide-react';
 import type { Decision, ManagedChannel, MissionBrief, YouTubeSearchBudgetState } from '@/lib/types';
+import ProductionAutonomyPanel from './production-autonomy-panel';
 
 function statusLabel(status:MissionBrief['status']){
   return status==='completed'?'Missão concluída':status==='partial'?'Missão parcial':'Missão bloqueada';
@@ -98,6 +99,7 @@ export default function MissionControl({
             <div className="mission-first-episode"><span>COMEÇAR POR</span><strong>{item.firstEpisode||'Definir episódio piloto'}</strong></div>
             <ul>{item.reasons.slice(0,4).map(reason=><li key={reason}>{reason}</li>)}</ul>
             <div className="mission-next"><span>PRÓXIMO MOVIMENTO</span><p>{item.nextAction}</p></div>
+            <ProductionAutonomyPanel subjectType="opportunity-report" subjectId={item.reportId} mode={mode}/>
             <button className="button primary small" onClick={()=>onOpenStudy(item.channelStudyId)}>Abrir plano completo <ArrowUpRight size={15}/></button>
           </article>)}
         </div>:<div className="mission-zero"><PlayCircle size={24}/><div><strong>Nenhuma oportunidade atingiu o nível de produção nesta missão.</strong><p>Os critérios não foram relaxados para preencher a fila.</p></div></div>}
@@ -116,9 +118,10 @@ export default function MissionControl({
             {item.alternateAngles?.length?<div className="mission-next"><span>ÂNGULOS RELACIONADOS ({item.alternateAngles.length})</span><p>{item.alternateAngles.map(angle=>`${angle.title} — ${angle.curveName}`).join(' · ')}</p></div>:null}
             <ul>{item.reasons.slice(0,4).map(reason=><li key={reason}>{reason}</li>)}</ul>
             {item.risks.length>0&&<div className="mission-next"><span>RISCOS</span><p>{item.risks.slice(0,3).join(' · ')}</p></div>}
-            {item.readiness==='pilot-ready'&&<div className="mission-next">
+            <ProductionAutonomyPanel subjectType="universe-gap" subjectId={item.gapId} mode={mode}>
+            {autonomyReady=>item.readiness==='pilot-ready'&&<div className="mission-next">
               <span>DECISÃO DO PILOTO</span>
-              {pilotDecisionFor(item.gapId)?<p><strong>{pilotDecisionFor(item.gapId)?.decision==='approved'?'PILOTO APROVADO':'PILOTO REJEITADO'}</strong> · {pilotDecisionFor(item.gapId)?.reason}</p>:<p>A evidência passou pelo gate. A decisão final continua humana.</p>}
+              {pilotDecisionFor(item.gapId)?<p><strong>{pilotDecisionFor(item.gapId)?.decision==='approved'?'PILOTO APROVADO':'PILOTO REJEITADO'}</strong> · {pilotDecisionFor(item.gapId)?.reason}</p>:<p>A aprovação exige validação de mercado e Production Autonomy Fit vigente.</p>}
               {pilotDecisionFor(item.gapId)?.pilotBrief&&<div className="mission-first-episode">
                 <span>PILOT BRIEF · PRÓXIMO GATE</span>
                 <strong>{pilotDecisionFor(item.gapId)?.pilotBrief?.firstTest}</strong>
@@ -132,7 +135,7 @@ export default function MissionControl({
                   {managedChannels.map(channel=><option value={channel.id} key={channel.id}>{channel.name} · {channel.niche}</option>)}
                 </select>
                 <small>O handoff cria apenas um draft com fact-check pendente. Roteiro e produção continuam bloqueados até revisão humana.</small>
-                <button className="button primary small" disabled={mode==='demo'||!!busy||!(pilotChannels[item.gapId]??'')} onClick={()=>{
+                <button className="button primary small" disabled={mode==='demo'||!!busy||!autonomyReady||!(pilotChannels[item.gapId]??'')} onClick={()=>{
                   const decision=pilotDecisionFor(item.gapId);
                   const channelId=pilotChannels[item.gapId]??'';
                   if(decision&&channelId)void onPilotHandoff(decision.id,channelId);
@@ -145,10 +148,11 @@ export default function MissionControl({
                 <button className="button subtle small" onClick={()=>onOpenPilotHandoff(pilotDecisionFor(item.gapId)!.pilotHandoff!.channelId)}>Abrir Content OS <ArrowUpRight size={15}/></button>
               </div>}
               <div className="mission-actions">
-                <button className="button primary small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='approved'} onClick={()=>void onPilotDecision(item.gapId,'approved')}>Aprovar piloto</button>
+                <button className="button primary small" disabled={mode==='demo'||!!busy||!autonomyReady||pilotDecisionFor(item.gapId)?.decision==='approved'} onClick={()=>void onPilotDecision(item.gapId,'approved')}>Aprovar piloto</button>
                 <button className="button subtle small" disabled={mode==='demo'||!!busy||pilotDecisionFor(item.gapId)?.decision==='rejected'} onClick={()=>void onPilotDecision(item.gapId,'rejected')}>Não seguir</button>
               </div>
             </div>}
+            </ProductionAutonomyPanel>
           </article>)}
         </div>
       </section>}

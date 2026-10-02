@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+PROJECT=cacador-de-nicho
+STATE_FILE="$BASE/state/$PROJECT.json"
+ENV_FILE="$BASE/env/$PROJECT.production.env"
+WORK_DIR="$BASE/work/$PROJECT-production-autonomy"
+CONTAINER="$PROJECT-production-autonomy-worker"
+
+cleanup() {
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+readarray -t VALUES < <(python3 - "$STATE_FILE" <<'PY'
+from pathlib import Path
+import json,sys
+s=json.loads(Path(sys.argv[1]).read_text())
+prod=s.get("production") or {}
+print(prod.get("image", ""))
+PY
+)
+IMAGE="${VALUES[0]:-}"
+[[ -n "$IMAGE" ]] || { echo "production state incomplete" >&2; exit 1; }
+[[ -f "$ENV_FILE" ]] || { echo "production env missing" >&2; exit 1; }
+
+mkdir -p "$WORK_DIR"
+chown 1001:1001 "$WORK_DIR"
+cleanup
+exec docker run --rm \
+  --name "$CONTAINER" \
+  --env-file "$ENV_FILE" \
+  --memory 512m \
+  --cpus 0.5 \
+  --pids-limit 128 \
+  -v "$WORK_DIR:/tmp" \
+  --label auditseo.role=production-autonomy-worker \
+  "$IMAGE" node scripts/production-autonomy-worker.mjs

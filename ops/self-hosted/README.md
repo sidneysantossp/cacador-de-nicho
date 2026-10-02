@@ -25,6 +25,8 @@ These files mirror the production scheduler/watchdog artifacts installed on the 
 
 `cacadores-render-worker-sync.timer` keeps the ffmpeg Render Worker on the promoted image. It is resource-bounded independently from the web app and media-analysis workers. It processes stock gaps asynchronously so the dashboard and Episode Automation do not need to stay connected while external search, download and frame validation run.
 
+`cacadores-production-autonomy-worker-sync.service` is a manually controlled, long-running Production Autonomy evaluator. It is intentionally not enabled and has no timer in the calibration phase. Start it explicitly only after the idle, claim, persistence and fail-closed checks pass; stopping the unit removes its worker container.
+
 ## Secret handling
 
 The Universe and Market wrappers source `CRON_SECRET` from the production environment and call the currently promoted port over loopback. The secret is never embedded in these repository files and is not placed in the process command line.
@@ -45,3 +47,5 @@ Sensitive control-plane endpoints such as `/api/auth`, `/api/provider-settings`,
 Copy the files under `bin/` to `/srv/auditseo-deploy/bin/` with mode `0750`, and the files under `systemd/` to `/etc/systemd/system/` with mode `0644`. Then run `systemctl daemon-reload` and enable the timers required by the environment.
 
 After reconciliation, verify the promoted application health, `systemctl list-timers`, and the next Universe execution time before considering the host healthy.
+
+The Production Autonomy worker reads `PRODUCTION_AUTONOMY_WORKER_SECRET`, `PRODUCTION_AUTONOMY_WORKER_URL` and `PRODUCTION_AUTONOMY_WORKER_POLL_MS` from `/srv/auditseo-deploy/env/cacador-de-nicho.production.env`. The secret is never stored in Git, the image, browser code or log payloads.

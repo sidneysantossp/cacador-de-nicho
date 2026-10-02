@@ -1756,6 +1756,63 @@ create trigger radar_managed_channels_factory_mode
 before insert or update on public.radar_managed_channels
 for each row execute function public.attach_factory_mode_pointer();
 
+-- Autonomous Production Economics: private append-only evaluations + leased jobs.
+create table if not exists public.radar_production_autonomy_assessments (
+ id uuid primary key,
+ subject_key text not null,
+ source_fingerprint text not null,
+ status text not null check (status in ('approved','rejected','blocked','not-eligible')),
+ payload jsonb not null,
+ created_at timestamptz not null default now(),
+ expires_at timestamptz not null
+);
+create index if not exists radar_production_autonomy_subject
+ on public.radar_production_autonomy_assessments(subject_key,created_at desc);
+create table if not exists public.radar_production_autonomy_jobs (
+ id uuid primary key default gen_random_uuid(),
+ subject_key text not null unique,
+ subject jsonb not null,
+ status text not null default 'queued' check (status in ('queued','processing','completed','failed')),
+ attempts integer not null default 0 check (attempts between 0 and 3),
+ worker_token uuid,
+ lease_until timestamptz,
+ available_at timestamptz not null default now(),
+ assessment_id uuid references public.radar_production_autonomy_assessments(id),
+ last_error text,
+ created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now()
+);
+create index if not exists radar_production_autonomy_pending
+ on public.radar_production_autonomy_jobs(available_at) where status in ('queued','processing');
+alter table public.radar_production_autonomy_assessments enable row level security;
+alter table public.radar_production_autonomy_jobs enable row level security;
+revoke all on public.radar_production_autonomy_assessments,public.radar_production_autonomy_jobs from anon,authenticated;
+grant select,insert on public.radar_production_autonomy_assessments to service_role;
+grant select,insert,update,delete on public.radar_production_autonomy_jobs to service_role;
+
+create or replace function public.claim_production_autonomy_job(p_worker_token uuid)
+returns jsonb language plpgsql security invoker set search_path=public as $$
+declare claimed public.radar_production_autonomy_jobs;
+begin
+ if p_worker_token is null then raise exception 'worker token required'; end if;
+ update public.radar_production_autonomy_jobs
+ set status='failed',last_error='Worker lease expired after three attempts.',updated_at=now()
+ where status='processing' and lease_until<now() and attempts>=3;
+ select * into claimed from public.radar_production_autonomy_jobs
+ where attempts<3 and available_at<=now()
+ and (status='queued' or (status='processing' and lease_until<now()))
+ order by available_at,created_at for update skip locked limit 1;
+ if not found then return null; end if;
+ update public.radar_production_autonomy_jobs
+ set status='processing',attempts=attempts+1,worker_token=p_worker_token,
+ lease_until=now()+interval '10 minutes',updated_at=now()
+ where id=claimed.id returning * into claimed;
+ return to_jsonb(claimed);
+end $$;
+revoke all on function public.claim_production_autonomy_job(uuid) from public,anon,authenticated;
+grant execute on function public.claim_production_autonomy_job(uuid) to service_role;
+
+
 drop trigger if exists radar_content_projects_factory_mode on public.radar_content_projects;
 create trigger radar_content_projects_factory_mode
 before insert or update on public.radar_content_projects

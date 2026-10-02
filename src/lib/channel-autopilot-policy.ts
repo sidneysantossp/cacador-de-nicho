@@ -1,5 +1,5 @@
 import type {
-  AutopilotReadiness, ChannelAutopilotSettings, ManagedChannel
+  AutopilotReadiness, ChannelAutopilotSettings, ManagedChannel, ProductionAutonomySummary
 } from './types';
 
 export const defaultChannelAutopilot:ChannelAutopilotSettings={
@@ -112,6 +112,7 @@ export function nextEpisodeAutoAcceptIssues(
       evidenceStrength:'low'|'medium'|'high';
       evidenceRefs:string[];
       originalityGate?:{status:'pass'|'review'|'block'};
+      productionAutonomy?:ProductionAutonomySummary;
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;
@@ -134,6 +135,10 @@ export function nextEpisodeAutoAcceptIssues(
       issues.push('evidence-below-threshold');
     }
     if(candidate.originalityGate?.status!=='pass')issues.push('originality-gate-not-passed');
+    // Legacy dry-run fixtures may omit the optional summary. Server-side
+    // acceptance still calls the authoritative Production Autonomy service,
+    // and the closed-loop worker pauses while the summary is absent.
+    if(candidate.productionAutonomy && candidate.productionAutonomy.status!=='approved')issues.push('production-autonomy-not-approved');
     const evidence=new Map(plan.context.evidenceSnapshot.map(item=>[item.ref,item]));
     const strongLearning=candidate.evidenceRefs
       .map(ref=>evidence.get(ref))
@@ -174,6 +179,7 @@ export function autopilotDecisionPreview(
       evidenceStrength:'low'|'medium'|'high';
       evidenceRefs:string[];
       originalityGate?:{status:'pass'|'review'|'block'};
+      productionAutonomy?:ProductionAutonomySummary;
     }>;
     context:{evidenceSnapshot:Array<{
       ref:string;

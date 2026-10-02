@@ -22,6 +22,7 @@ const agentOperatorPaths=[
   '/api/owned-media',
   '/api/performance-analyst',
   '/api/production-dna',
+  '/api/production-autonomy',
   '/api/production-quality',
   '/api/publication-package',
   '/api/radar',

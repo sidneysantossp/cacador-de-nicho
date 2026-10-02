@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { HttpError } from './auth';
 import { generateOpportunityReport, opportunityReportBodySchema } from './ai';
 import { list, put } from './db';
+import { enqueueProductionAutonomy } from './production-autonomy';
 
 function isChannelStudy(value: unknown): value is ChannelStudy {
   return !!value && typeof value === 'object' && (value as { kind?: string }).kind === 'channel-study';
@@ -75,6 +76,7 @@ export async function importOperatorOpportunityReport(
   };
   const saved={...report,approval:{status:'pending' as const}};
   await put('radar_analyses',report.id,saved);
+  await enqueueProductionAutonomy({subjectType:'opportunity-report',subjectId:report.id});
   return saved;
 }
 
@@ -94,6 +96,7 @@ export async function runOpportunityReport(channelStudyId: string) {
       status: 'pending'
     }
   });
+  await enqueueProductionAutonomy({subjectType:'opportunity-report',subjectId:report.id});
 
   return {
     ...report,

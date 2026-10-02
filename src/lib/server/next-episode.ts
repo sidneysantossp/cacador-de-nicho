@@ -20,6 +20,11 @@ import {
 } from '@/lib/channel-autopilot-policy';
 import { loadAutopilotOperationalIssues } from './autopilot-operational';
 import { latestNexLevEvidenceSources } from './nexlev-evidence';
+import {
+  assertProductionAutonomyApproved, enqueueProductionAutonomy,
+  loadProductionAutonomy, productionAutonomySummary
+} from './production-autonomy';
+import { productionAutonomyRecommendation } from '@/lib/production-autonomy-integration';
 
 type Row={
   id:string;channel_id:string;brain_version:number;version:number;
@@ -40,6 +45,28 @@ function normalize(row:Row):NextEpisodePlan{
   };
 }
 
+async function withProductionAutonomy(plan:NextEpisodePlan):Promise<NextEpisodePlan>{
+  const candidates=await Promise.all(plan.candidates.map(async candidate=>{
+    const assessment=await loadProductionAutonomy({
+      subjectType:'next-episode',subjectId:plan.id,candidateId:candidate.id
+    });
+    return {...candidate,productionAutonomy:assessment?productionAutonomySummary(assessment):undefined};
+  }));
+  return {
+    ...plan,
+    candidates,
+    recommendedCandidateId:plan.status==='accepted'
+      ?plan.recommendedCandidateId:productionAutonomyRecommendation(candidates)
+  };
+}
+
+async function queuePlanProductionAutonomy(plan:NextEpisodePlan){
+  for(const candidate of plan.candidates){
+    await enqueueProductionAutonomy({subjectType:'next-episode',subjectId:plan.id,candidateId:candidate.id});
+  }
+  return withProductionAutonomy(plan);
+}
+
 async function channel(channelId:string):Promise<ManagedChannel>{
   const row=checked(await db().from('radar_managed_channels')
     .select('payload').eq('id',channelId).maybeSingle());
@@ -57,7 +84,7 @@ export async function listNextEpisodePlans(channelId:string){
 export async function loadNextEpisodePlan(planId:string){
   const row=checked(await db().from('radar_next_episode_plans')
     .select(selection).eq('id',planId).maybeSingle());
-  return row?normalize(row as Row):null;
+  return row?withProductionAutonomy(normalize(row as Row)):null;
 }
 
 export async function loadNextEpisodePlanHistory(planId:string,limit=30):Promise<NextEpisodePlanVersion[]>{
@@ -130,7 +157,7 @@ export async function generateNextEpisodePlan(channelId:string){
   if(!brain)throw new HttpError('Crie e salve o Channel Brain antes de planejar o próximo episódio.',409);
 
   const reusable=plans.find(plan=>plan.status==='review'&&plan.brainVersion===brain.version);
-  if(reusable)return {plan:reusable,created:false};
+  if(reusable)return {plan:await queuePlanProductionAutonomy(reusable),created:false};
 
   const generated=await generateNextEpisodeStrategy({channel:managed,brain,bundle,marketEvidence});
   let payload:NextEpisodePlanPayload;
@@ -151,7 +178,7 @@ export async function generateNextEpisodePlan(channelId:string){
     );
   }
 
-  return {plan:await savePlan(payload,'review',0),created:true};
+  return {plan:await queuePlanProductionAutonomy(await savePlan(payload,'review',0)),created:true};
 }
 
 export async function nextEpisodeOperatorContext(channelId:string){
@@ -166,7 +193,10 @@ export async function nextEpisodeOperatorContext(channelId:string){
   return {
     channelId,
     brainVersion:brain.version,
-    activePlan:plans.find(plan=>plan.status==='review')??null,
+    activePlan:await (async()=>{
+      const active=plans.find(plan=>plan.status==='review');
+      return active?withProductionAutonomy(active):null;
+    })(),
     context:buildNextEpisodeEvidenceContext(managed,brain,bundle,marketEvidence)
   };
 }
@@ -189,7 +219,7 @@ export async function importOperatorNextEpisodePlan(input:{
   }
 
   const reusable=plans.find(plan=>plan.status==='review'&&plan.brainVersion===brain.version);
-  if(reusable)return {plan:reusable,created:false};
+  if(reusable)return {plan:await queuePlanProductionAutonomy(reusable),created:false};
 
   let payload:NextEpisodePlanPayload;
   try{
@@ -208,7 +238,7 @@ export async function importOperatorNextEpisodePlan(input:{
       400
     );
   }
-  return {plan:await savePlan(payload,'review',0),created:true};
+  return {plan:await queuePlanProductionAutonomy(await savePlan(payload,'review',0)),created:true};
 }
 
 function contentProjectFromCandidate(input:{
@@ -269,6 +299,9 @@ export async function acceptNextEpisodeCandidate(input:{
       throw new HttpError('Este plano já foi aceito com outro candidato.',409);
     }
     const managed=await channel(plan.channelId);
+    await assertProductionAutonomyApproved({
+      subjectType:'next-episode',subjectId:plan.id,candidateId:input.candidateId
+    });
     const automation=plan.review.acceptedContentProjectId
       ?await startAcceptedEpisodeAutopilot(managed,plan.review.acceptedContentProjectId,createEpisodeAutomationRun)
       :{
@@ -322,6 +355,9 @@ export async function acceptNextEpisodeCandidate(input:{
     );
   }
 
+  await assertProductionAutonomyApproved({
+    subjectType:'next-episode',subjectId:plan.id,candidateId:candidate.id
+  });
   await claimCandidate(plan.id,plan.version,candidate.id);
 
   const now=new Date().toISOString();
@@ -425,11 +461,12 @@ export async function nextEpisodeChannelState(channelId:string){
     channel(channelId),
     loadAutopilotOperationalIssues(channelId)
   ]);
-  const activePlan=plans.find(item=>item.status==='review')??null;
+  const active=plans.find(item=>item.status==='review')??null;
+  const activePlan=active?await withProductionAutonomy(active):null;
   const basePreview=autopilotDecisionPreview(managed,activePlan);
   const canaryBlocks=basePreview.action==='auto-accept'?operationalIssues:[];
   return {
-    plans,
+    plans:plans.map(plan=>plan.id===activePlan?.id?activePlan:plan),
     brainVersion:brain?.version??0,
     episodeCount:bundle.episodes.length,
     activePlan,

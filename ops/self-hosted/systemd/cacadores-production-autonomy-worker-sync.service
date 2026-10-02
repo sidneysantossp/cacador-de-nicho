@@ -1,0 +1,15 @@
+[Unit]
+Description=Caçadores Production Autonomy worker
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/srv/auditseo-deploy/bin/cacadores-production-autonomy-worker-sync
+KillMode=control-group
+Restart=no
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
