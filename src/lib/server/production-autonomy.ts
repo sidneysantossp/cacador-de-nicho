@@ -122,6 +122,12 @@ type LiveStockDiscovery={
 
 const PREFLIGHT_SAMPLE_MAX_BYTES=80*1024*1024;
 const PREFLIGHT_SAMPLE_TOTAL=4;
+const R2_STANDARD_STORAGE_USD_PER_GB_MONTH=0.015;
+const R2_CLASS_A_USD_PER_MILLION=4.5;
+const R2_CLASS_B_USD_PER_MILLION=0.36;
+const R2_PRICING_REF='https://developers.cloudflare.com/r2/pricing/';
+const PEXELS_API_PRICING_REF='https://help.pexels.com/hc/en-us/articles/47677890260761-Is-the-Pexels-API-free-to-use';
+const PIXABAY_API_PRICING_REF='https://pixabay.com/api/docs/';
 
 async function safePreflightDownload(url:string,provider:'pexels'|'pixabay'){
   let current=new URL(url);
@@ -142,7 +148,14 @@ async function safePreflightDownload(url:string,provider:'pexels'|'pixabay'){
   throw new Error('preflight-too-many-redirects');
 }
 
-function sampleDownloadUrl(provider:'pexels'|'pixabay',item:Record<string,unknown>){
+function sampleDownloadUrl(provider:'pexels'|'pixabay',kind:'image'|'video',item:Record<string,unknown>){
+  if(kind==='image'){
+    if(provider==='pexels'){
+      const src=(item.src&&typeof item.src==='object'?item.src:{}) as Record<string,unknown>;
+      return String(src.large2x??src.large??src.original??'')||null;
+    }
+    return String(item.largeImageURL??item.webformatURL??'')||null;
+  }
   if(provider==='pexels'){
     const files=Array.isArray(item.video_files)?item.video_files as Record<string,unknown>[]:[];
     const usable=files
@@ -166,6 +179,7 @@ function sampleDownloadUrl(provider:'pexels'|'pixabay',item:Record<string,unknow
 
 async function materializePreflightSample(input:{
   provider:'pexels'|'pixabay';
+  kind:'image'|'video';
   item:Record<string,unknown>;
   sourceIdentity:string;
   pageUrl:string;
@@ -173,10 +187,11 @@ async function materializePreflightSample(input:{
   durationSeconds:number|null;
   maxUses:number;
 }):Promise<{asset:VisualSupplyEvidence;bytes:number;seconds:number;evidenceRef:string}|null>{
-  const downloadUrl=sampleDownloadUrl(input.provider,input.item);
+  const downloadUrl=sampleDownloadUrl(input.provider,input.kind,input.item);
   if(!downloadUrl)return null;
   try{await providerSecret('r2');}catch{return null;}
-  const key='production-autonomy/preflight/'+input.provider+'/'+input.sourceIdentity.split(':').slice(1).join(':')+'.mp4';
+  const extension=input.kind==='image'?'.jpg':'.mp4';
+  const key='production-autonomy/preflight/'+input.provider+'/'+input.sourceIdentity.split(':').slice(1).join(':')+extension;
   const storagePath=r2StoragePath(key);
   const started=Date.now();
   let bytes=0;
@@ -198,7 +213,7 @@ async function materializePreflightSample(input:{
       id:'preflight-ready:'+input.sourceIdentity,
       sourceIdentity:input.sourceIdentity,
       source:'stock',
-      kind:'video',
+      kind:input.kind,
       ready:true,
       availability:'available',
       storagePath,
@@ -267,7 +282,7 @@ async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]
           const providerSampleCount=providerSamples.get(provider)??0;
           if(index===0&&materialization.succeeded<PREFLIGHT_SAMPLE_TOTAL&&providerSampleCount<2){
             materialization.attempted++;
-            const sample=await materializePreflightSample({provider,item,sourceIdentity,pageUrl,matches,durationSeconds:duration,maxUses});
+            const sample=await materializePreflightSample({provider,kind:'video',item,sourceIdentity,pageUrl,matches,durationSeconds:duration,maxUses});
             if(sample){
               candidate=sample.asset;
               materialization.succeeded++;
@@ -285,6 +300,47 @@ async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]
     providers.push(successfulSearch?{id:provider,status:'available',evidenceRef:`provider:${provider}:live-search`}:{id:provider,status:'unknown'});
   }
   return {supply,providers,evidenceRefs:[...new Set(evidenceRefs)].slice(0,50),materialization:{...materialization,cycleSeconds:Math.round(materialization.cycleSeconds*1000)/1000,evidenceRefs:[...new Set(materialization.evidenceRefs)].filter(Boolean)}};
+}
+
+async function discoverLiveImages(titles:VisualSimulationTitle[],queries:string[]){
+  const supply:VisualSupplyEvidence[]=[]; const evidenceRefs:string[]=[];
+  const selected=distinctQueries(queries).slice(0,10);
+  for(const provider of ['pexels','pixabay'] as const){
+    let key:string;
+    try{key=await providerSecret(provider);}catch{continue;}
+    for(const query of selected){
+      try{
+        let items:Record<string,unknown>[]=[];
+        if(provider==='pexels'){
+          const params=new URLSearchParams({query,per_page:'24',page:'1',orientation:'landscape'});
+          const response=await fetch('https://api.pexels.com/v1/search?'+params,{headers:{Authorization:key},signal:AbortSignal.timeout(15000),cache:'no-store'});
+          if(!response.ok)continue;
+          const body=await response.json() as {photos?:Record<string,unknown>[]}; items=body.photos??[];
+        }else{
+          const params=new URLSearchParams({key,q:query,per_page:'24',safesearch:'true',orientation:'horizontal'});
+          const response=await fetch('https://pixabay.com/api/?'+params,{signal:AbortSignal.timeout(15000),cache:'no-store'});
+          if(!response.ok)continue;
+          const body=await response.json() as {hits?:Record<string,unknown>[]}; items=body.hits??[];
+        }
+        for(const [index,item] of items.slice(0,24).entries()){
+          const identity=String(item.id??'').trim(); if(!identity)continue;
+          const pageUrl=String(item.url??item.pageURL??'').trim()||`provider:${provider}:image:${identity}`;
+          const relevance=Math.max(.7,.94-index*.02);
+          const matches=discoveryMatches(titles,query,relevance); if(!matches.length)continue;
+          const sourceIdentity=`${provider}:image:${identity}`;
+          const license=provider==='pexels'?'Pexels License':'Pixabay Content License';
+          supply.push({
+            id:`preflight:${sourceIdentity}:${visualQuery(query)}`,
+            sourceIdentity,source:'stock',kind:'image',ready:false,availability:'available',
+            durationSeconds:null,rights:'unknown',license,provenanceRef:pageUrl,matches,maxUses:1,
+            discovery:{provider,sourceIdentity,licensingState:'verified',candidateRelevance:relevance,acquisition:'materializable',evidenceRef:pageUrl}
+          });
+          evidenceRefs.push(pageUrl);
+        }
+      }catch{/* image discovery is supplementary and fail-closed */}
+    }
+  }
+  return {supply,evidenceRefs:[...new Set(evidenceRefs)].slice(0,100)};
 }
 
 async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutonomyInput;fingerprint:string}>{
@@ -323,7 +379,8 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   const [
     sceneRows,ownedRows,stockSearchRows,
     scriptEvidence,voiceEvidence,transcriptEvidence,scenePlanEvidence,timelineEvidence,
-    renderEvidence,qualityEvidence,packageEvidence,publishEvidence,learningEvidence
+    renderEvidence,qualityEvidence,packageEvidence,publishEvidence,learningEvidence,
+    renderBenchmarks,priorAutonomyAssessments
   ]=await Promise.all([
     db().from('radar_scene_assets').select('id,status,source_type,asset_kind,provider,storage_path,original_name,duration_seconds,payload').in('status',['ready','queued','processing']).limit(1000),
     db().from('radar_owned_media_assets').select('id,status,source_type,asset_kind,storage_path,original_name,duration_seconds,title,tags,search_text,payload').eq('status','ready').limit(500),
@@ -337,19 +394,65 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     db().from('radar_production_quality_reports').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
     db().from('radar_publication_packages').select('id').eq('status','approved').order('updated_at',{ascending:false}).limit(1),
     db().from('radar_youtube_publish_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1),
-    db().from('radar_learning_loop_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1)
+    db().from('radar_learning_loop_jobs').select('id').eq('status','completed').order('updated_at',{ascending:false}).limit(1),
+    db().from('radar_render_jobs').select('id,payload').eq('status','completed').order('updated_at',{ascending:false}).limit(20),
+    db().from('radar_production_autonomy_assessments').select('id,payload').eq('subject_key',productionAutonomySubjectKey(subject)).order('created_at',{ascending:false}).limit(20)
   ]);
   if(sceneRows.error||ownedRows.error||stockSearchRows.error)throw new HttpError('Não foi possível consultar a biblioteca visual para o Production Autonomy Fit.',502);
   const rows=[...(sceneRows.data??[]),...(ownedRows.data??[])];
   if(!visualQueries.length)visualQueries=distinctQueries(titles);
   const titleSet=beatTitles(titles,marketRefs,visualQueries);
   const liveDiscovery=marketValidated?await discoverLiveStock(titleSet,visualQueries):{supply:[],providers:[],evidenceRefs:[],materialization:{attempted:0,succeeded:0,totalBytes:0,cycleSeconds:0,operatorMinutes:0,evidenceRefs:[]}};
-  const supply=[...(rows??[]).map(row=>normalizeAsset(row as Record<string,unknown>,titleSet)).filter((item):item is VisualSupplyEvidence=>!!item),...(stockSearchRows.data??[]).flatMap(row=>normalizeStockSearch(row as Record<string,unknown>,titleSet)),...liveDiscovery.supply];
+  const liveImages=marketValidated?await discoverLiveImages(titleSet,visualQueries):{supply:[],evidenceRefs:[]};
+  const supply=[...(rows??[]).map(row=>normalizeAsset(row as Record<string,unknown>,titleSet)).filter((item):item is VisualSupplyEvidence=>!!item),...(stockSearchRows.data??[]).flatMap(row=>normalizeStockSearch(row as Record<string,unknown>,titleSet)),...liveDiscovery.supply,...liveImages.supply];
   const representativeBeatIds=titleSet.slice(0,10).map(title=>title.beats[0]?.id).filter((id):id is string=>!!id);
   const materializedAssetCount=supply.filter(asset=>asset.ready&&asset.storagePath&&asset.provenanceRef&&asset.license).length;
   const discoverableAssetCount=supply.filter(asset=>asset.discovery).length;
   const measurements=rows.map(row=>{const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;const economics=(payload.economics&&typeof payload.economics==='object'?payload.economics:{}) as Record<string,unknown>;return {costUsd:Number(economics.costUsd),cycleMinutes:Number(economics.cycleMinutes),operatorMinutes:Number(economics.operatorMinutes),ref:economics.evidenceRef?String(economics.evidenceRef):`asset:${String(row.id)}`};}).filter(item=>Number.isFinite(item.costUsd)&&Number.isFinite(item.cycleMinutes)&&Number.isFinite(item.operatorMinutes)&&item.cycleMinutes>0&&item.operatorMinutes>=0);
-  const economics=measurements.length?{costUsd:measurements.reduce((sum,item)=>sum+item.costUsd,0)/measurements.length,cycleMinutes:measurements.reduce((sum,item)=>sum+item.cycleMinutes,0)/measurements.length,operatorMinutes:measurements.reduce((sum,item)=>sum+item.operatorMinutes,0)/measurements.length,evidenceRefs:measurements.map(item=>item.ref),basis:'observed' as const}:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown' as const};
+  let economics:ProductionAutonomyInput['economics']=measurements.length?{costUsd:measurements.reduce((sum,item)=>sum+item.costUsd,0)/measurements.length,cycleMinutes:measurements.reduce((sum,item)=>sum+item.cycleMinutes,0)/measurements.length,operatorMinutes:measurements.reduce((sum,item)=>sum+item.operatorMinutes,0)/measurements.length,evidenceRefs:measurements.map(item=>item.ref),basis:'observed'}:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown'};
+  if(!measurements.length&&marketValidated){
+    const historicalSamples=(priorAutonomyAssessments.error?[]:priorAutonomyAssessments.data??[]).flatMap(row=>{
+      const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;
+      const preflight=(payload.preflight&&typeof payload.preflight==='object'?payload.preflight:{}) as Record<string,unknown>;
+      const materialization=(preflight.materialization&&typeof preflight.materialization==='object'?preflight.materialization:{}) as Record<string,unknown>;
+      const succeeded=Number(materialization.succeeded??0);
+      const totalBytes=Number(materialization.totalBytes??0);
+      const cycleSeconds=Number(materialization.cycleSeconds??0);
+      return succeeded>0&&totalBytes>0&&cycleSeconds>0?[{succeeded,totalBytes,cycleSeconds,evidenceRef:`db:radar_production_autonomy_assessments:${String(row.id)}`}]:[];
+    });
+    const currentSample=liveDiscovery.materialization.succeeded>0&&liveDiscovery.materialization.totalBytes>0&&liveDiscovery.materialization.cycleSeconds>0
+      ?[{succeeded:liveDiscovery.materialization.succeeded,totalBytes:liveDiscovery.materialization.totalBytes,cycleSeconds:liveDiscovery.materialization.cycleSeconds,evidenceRef:'preflight:current-materialization'}]:[];
+    const coldSample=[...historicalSamples,...currentSample].sort((a,b)=>(b.cycleSeconds/b.succeeded)-(a.cycleSeconds/a.succeeded))[0];
+    const renderSamples=(renderBenchmarks.error?[]:renderBenchmarks.data??[]).flatMap(row=>{
+      const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;
+      const metrics=(payload.metrics&&typeof payload.metrics==='object'?payload.metrics:{}) as Record<string,unknown>;
+      const realTimeFactor=Number(metrics.realTimeFactor??0);
+      return realTimeFactor>0&&Number.isFinite(realTimeFactor)?[{realTimeFactor,evidenceRef:`db:radar_render_jobs:${String(row.id)}`}]:[];
+    }).sort((a,b)=>a.realTimeFactor-b.realTimeFactor);
+    const renderSample=renderSamples.length?renderSamples[Math.floor(renderSamples.length/2)]:null;
+    if(coldSample&&renderSample){
+      const targetDurationSeconds=titleSet[0]?.durationSeconds??240;
+      const beatsPerEpisode=Math.ceil(targetDurationSeconds/4);
+      const averageAssetBytes=coldSample.totalBytes/coldSample.succeeded;
+      const averageAssetSeconds=coldSample.cycleSeconds/coldSample.succeeded;
+      const projectedStorageGb=averageAssetBytes*beatsPerEpisode/1_000_000_000;
+      const projectedStorageCost=projectedStorageGb*R2_STANDARD_STORAGE_USD_PER_GB_MONTH;
+      const projectedOperationsCost=beatsPerEpisode/1_000_000*(R2_CLASS_A_USD_PER_MILLION+R2_CLASS_B_USD_PER_MILLION);
+      const acquisitionMinutes=averageAssetSeconds*beatsPerEpisode/60;
+      const renderMinutes=targetDurationSeconds*renderSample.realTimeFactor/60;
+      economics={
+        costUsd:Math.round((projectedStorageCost+projectedOperationsCost)*10000)/10000,
+        cycleMinutes:Math.round((acquisitionMinutes+renderMinutes)*100)/100,
+        operatorMinutes:liveDiscovery.materialization.operatorMinutes,
+        evidenceRefs:[
+          coldSample.evidenceRef,renderSample.evidenceRef,R2_PRICING_REF,
+          PEXELS_API_PRICING_REF,PIXABAY_API_PRICING_REF,
+          ...liveDiscovery.materialization.evidenceRefs.slice(0,6)
+        ],
+        basis:'quoted'
+      };
+    }
+  }
   let r2Status:ProductionAutonomyInput['providers'][number]={id:'r2',status:'unknown'};
   try{await providerSecret('r2');r2Status={id:'r2',status:'available',evidenceRef:'provider:r2:configured'};}catch{}
 
@@ -395,7 +498,7 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     economics,
     automation,
     generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]})),
-    preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,materialization:liveDiscovery.materialization,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs,...liveDiscovery.materialization.evidenceRefs]}};
+    preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,materialization:liveDiscovery.materialization,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs,...liveImages.evidenceRefs,...liveDiscovery.materialization.evidenceRefs]}};
   return {input,fingerprint:hash({subject,input})};
 }
 
