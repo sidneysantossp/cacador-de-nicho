@@ -17,6 +17,8 @@ import {
 import { checked, db, list } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { headMedia, putMedia, r2StoragePath } from './media-storage';
+import { stockDownloadHostAllowed } from '@/lib/stock-media-policy';
 
 type SubjectInput=ProductionAutonomySubject;
 type AssessmentRow={id:string;subject_key:string;source_fingerprint:string;status:string;payload:unknown;created_at:string;expires_at:string};
@@ -103,7 +105,117 @@ type LiveStockDiscovery={
   supply:VisualSupplyEvidence[];
   providers:ProductionAutonomyInput['providers'];
   evidenceRefs:string[];
+  materialization:{
+    attempted:number;
+    succeeded:number;
+    totalBytes:number;
+    cycleSeconds:number;
+    operatorMinutes:number;
+    evidenceRefs:string[];
+  };
 };
+
+const PREFLIGHT_SAMPLE_MAX_BYTES=80*1024*1024;
+const PREFLIGHT_SAMPLE_TOTAL=4;
+
+async function safePreflightDownload(url:string,provider:'pexels'|'pixabay'){
+  let current=new URL(url);
+  for(let redirects=0;redirects<6;redirects++){
+    if(current.protocol!=='https:'||!stockDownloadHostAllowed(provider,current.hostname))throw new Error('preflight-source-host-not-allowed');
+    const response=await fetch(current,{redirect:'manual',signal:AbortSignal.timeout(120000),cache:'no-store'});
+    if(response.status>=300&&response.status<400){
+      const location=response.headers.get('location'); if(!location)throw new Error('preflight-invalid-redirect');
+      current=new URL(location,current); continue;
+    }
+    if(!response.ok)throw new Error('preflight-download-failed');
+    const declared=Number(response.headers.get('content-length')??0);
+    if(declared>PREFLIGHT_SAMPLE_MAX_BYTES)throw new Error('preflight-sample-too-large');
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(bytes.length>PREFLIGHT_SAMPLE_MAX_BYTES)throw new Error('preflight-sample-too-large');
+    return {bytes,mimeType:(response.headers.get('content-type')||'video/mp4').split(';')[0]||'video/mp4'};
+  }
+  throw new Error('preflight-too-many-redirects');
+}
+
+function sampleDownloadUrl(provider:'pexels'|'pixabay',item:Record<string,unknown>){
+  if(provider==='pexels'){
+    const files=Array.isArray(item.video_files)?item.video_files as Record<string,unknown>[]:[];
+    const usable=files
+      .filter(file=>String(file.file_type??'').startsWith('video/mp4')&&typeof file.link==='string')
+      .map(file=>({url:String(file.link),width:Number(file.width??0),bytes:Number(file.file_size??0)}))
+      .filter(file=>!file.bytes||file.bytes<=PREFLIGHT_SAMPLE_MAX_BYTES)
+      .sort((a,b)=>{
+        const aw=a.width>0&&a.width<=1920?a.width:-a.width;
+        const bw=b.width>0&&b.width<=1920?b.width:-b.width;
+        return bw-aw;
+      });
+    return usable[0]?.url??null;
+  }
+  const videos=(item.videos&&typeof item.videos==='object'?item.videos:{}) as Record<string,Record<string,unknown>>;
+  for(const key of ['medium','large','small','tiny']){
+    const url=videos[key]?.url;
+    if(typeof url==='string'&&url)return url;
+  }
+  return null;
+}
+
+async function materializePreflightSample(input:{
+  provider:'pexels'|'pixabay';
+  item:Record<string,unknown>;
+  sourceIdentity:string;
+  pageUrl:string;
+  matches:VisualSupplyEvidence['matches'];
+  durationSeconds:number|null;
+  maxUses:number;
+}):Promise<{asset:VisualSupplyEvidence;bytes:number;seconds:number;evidenceRef:string}|null>{
+  const downloadUrl=sampleDownloadUrl(input.provider,input.item);
+  if(!downloadUrl)return null;
+  try{await providerSecret('r2');}catch{return null;}
+  const key='production-autonomy/preflight/'+input.provider+'/'+input.sourceIdentity.split(':').slice(1).join(':')+'.mp4';
+  const storagePath=r2StoragePath(key);
+  const started=Date.now();
+  let bytes=0;
+  try{
+    const existing=await headMedia(storagePath);
+    bytes=existing.bytes;
+  }catch{
+    const downloaded=await safePreflightDownload(downloadUrl,input.provider);
+    bytes=downloaded.bytes.length;
+    const persisted=await putMedia(key,downloaded.bytes,downloaded.mimeType,{cacheControl:'604800'});
+    if(persisted!==storagePath)return null;
+    await headMedia(storagePath);
+  }
+  const seconds=Math.max(.001,(Date.now()-started)/1000);
+  const license=input.provider==='pexels'?'Pexels License':'Pixabay Content License';
+  const licenseUrl=input.provider==='pexels'?'https://www.pexels.com/license/':'https://pixabay.com/service/license-summary/';
+  return {
+    asset:{
+      id:'preflight-ready:'+input.sourceIdentity,
+      sourceIdentity:input.sourceIdentity,
+      source:'stock',
+      kind:'video',
+      ready:true,
+      availability:'available',
+      storagePath,
+      durationSeconds:input.durationSeconds,
+      rights:'verified',
+      license,
+      provenanceRef:input.pageUrl,
+      matches:input.matches,
+      maxUses:input.maxUses,
+      discovery:{
+        provider:input.provider,
+        sourceIdentity:input.sourceIdentity,
+        licensingState:'verified',
+        candidateRelevance:Math.max(...input.matches.map(match=>match.relevance),0),
+        acquisition:'materializable',
+        evidenceRef:input.pageUrl
+      }
+    },
+    bytes,seconds,
+    evidenceRef:licenseUrl
+  };
+}
 
 function discoveryMatches(titles:VisualSimulationTitle[],query:string,relevance:number){
   return titles.flatMap(title=>title.beats.filter(beat=>beat.query===query).map(beat=>({
@@ -113,6 +225,8 @@ function discoveryMatches(titles:VisualSimulationTitle[],query:string,relevance:
 
 async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]):Promise<LiveStockDiscovery>{
   const supply:VisualSupplyEvidence[]=[]; const providers:ProductionAutonomyInput['providers']=[]; const evidenceRefs:string[]=[];
+  const materialization={attempted:0,succeeded:0,totalBytes:0,cycleSeconds:0,operatorMinutes:0,evidenceRefs:[] as string[]};
+  const providerSamples=new Map<'pexels'|'pixabay',number>();
   const selected=distinctQueries(queries).slice(0,8);
   for(const provider of ['pexels','pixabay'] as const){
     let key:string;
@@ -142,16 +256,30 @@ async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]
           const sourceIdentity=`${provider}:${identity}`;
           const license=provider==='pexels'?'Pexels License':'Pixabay Content License';
           const maxUses=duration?Math.max(1,Math.min(5,Math.floor(duration/4))):2;
-          supply.push({id:`preflight:${sourceIdentity}:${visualQuery(query)}`,sourceIdentity,source:'stock',kind:'video',ready:false,
+          let candidate:VisualSupplyEvidence={id:`preflight:${sourceIdentity}:${visualQuery(query)}`,sourceIdentity,source:'stock',kind:'video',ready:false,
             availability:'available',durationSeconds:duration,rights:'unknown',license,provenanceRef:pageUrl,matches,maxUses,
-            discovery:{provider,sourceIdentity,licensingState:'verified',candidateRelevance:relevance,acquisition:'materializable',evidenceRef:pageUrl}});
+            discovery:{provider,sourceIdentity,licensingState:'verified',candidateRelevance:relevance,acquisition:'materializable',evidenceRef:pageUrl}};
+          const providerSampleCount=providerSamples.get(provider)??0;
+          if(index===0&&materialization.succeeded<PREFLIGHT_SAMPLE_TOTAL&&providerSampleCount<2){
+            materialization.attempted++;
+            const sample=await materializePreflightSample({provider,item,sourceIdentity,pageUrl,matches,durationSeconds:duration,maxUses});
+            if(sample){
+              candidate=sample.asset;
+              materialization.succeeded++;
+              materialization.totalBytes+=sample.bytes;
+              materialization.cycleSeconds+=sample.seconds;
+              materialization.evidenceRefs.push(sample.evidenceRef,pageUrl,candidate.storagePath??'');
+              providerSamples.set(provider,providerSampleCount+1);
+            }
+          }
+          supply.push(candidate);
           evidenceRefs.push(pageUrl);
         }
       }catch{/* one provider query must not invalidate the whole preflight */}
     }
     providers.push(successfulSearch?{id:provider,status:'available',evidenceRef:`provider:${provider}:live-search`}:{id:provider,status:'unknown'});
   }
-  return {supply,providers,evidenceRefs:[...new Set(evidenceRefs)].slice(0,50)};
+  return {supply,providers,evidenceRefs:[...new Set(evidenceRefs)].slice(0,50),materialization:{...materialization,cycleSeconds:Math.round(materialization.cycleSeconds*1000)/1000,evidenceRefs:[...new Set(materialization.evidenceRefs)].filter(Boolean)}};
 }
 
 async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutonomyInput;fingerprint:string}>{
@@ -193,21 +321,23 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
   const rows=[...(sceneRows.data??[]),...(ownedRows.data??[])];
   if(!visualQueries.length)visualQueries=distinctQueries(titles);
   const titleSet=beatTitles(titles,marketRefs,visualQueries);
-  const liveDiscovery=marketValidated?await discoverLiveStock(titleSet,visualQueries):{supply:[],providers:[],evidenceRefs:[]};
+  const liveDiscovery=marketValidated?await discoverLiveStock(titleSet,visualQueries):{supply:[],providers:[],evidenceRefs:[],materialization:{attempted:0,succeeded:0,totalBytes:0,cycleSeconds:0,operatorMinutes:0,evidenceRefs:[]}};
   const supply=[...(rows??[]).map(row=>normalizeAsset(row as Record<string,unknown>,titleSet)).filter((item):item is VisualSupplyEvidence=>!!item),...(stockSearchRows.data??[]).flatMap(row=>normalizeStockSearch(row as Record<string,unknown>,titleSet)),...liveDiscovery.supply];
   const representativeBeatIds=titleSet.slice(0,10).map(title=>title.beats[0]?.id).filter((id):id is string=>!!id);
   const materializedAssetCount=supply.filter(asset=>asset.ready&&asset.storagePath&&asset.provenanceRef&&asset.license).length;
   const discoverableAssetCount=supply.filter(asset=>asset.discovery).length;
   const measurements=rows.map(row=>{const payload=(row.payload&&typeof row.payload==='object'?row.payload:{}) as Record<string,unknown>;const economics=(payload.economics&&typeof payload.economics==='object'?payload.economics:{}) as Record<string,unknown>;return {costUsd:Number(economics.costUsd),cycleMinutes:Number(economics.cycleMinutes),operatorMinutes:Number(economics.operatorMinutes),ref:economics.evidenceRef?String(economics.evidenceRef):`asset:${String(row.id)}`};}).filter(item=>Number.isFinite(item.costUsd)&&Number.isFinite(item.cycleMinutes)&&Number.isFinite(item.operatorMinutes)&&item.cycleMinutes>0&&item.operatorMinutes>=0);
   const economics=measurements.length?{costUsd:measurements.reduce((sum,item)=>sum+item.costUsd,0)/measurements.length,cycleMinutes:measurements.reduce((sum,item)=>sum+item.cycleMinutes,0)/measurements.length,operatorMinutes:measurements.reduce((sum,item)=>sum+item.operatorMinutes,0)/measurements.length,evidenceRefs:measurements.map(item=>item.ref),basis:'observed' as const}:{costUsd:null,cycleMinutes:null,operatorMinutes:null,evidenceRefs:[],basis:'unknown' as const};
+  let r2Status:ProductionAutonomyInput['providers'][number]={id:'r2',status:'unknown'};
+  try{await providerSecret('r2');r2Status={id:'r2',status:'available',evidenceRef:'provider:r2:configured'};}catch{}
   const input:ProductionAutonomyInput={
     market:{validated:marketValidated,status:marketStatus,evidenceRefs:marketRefs},
     titles:titleSet,supply,
-    providers:[{id:'r2',status:process.env.R2_BUCKET?'available':'unknown',evidenceRef:process.env.R2_BUCKET?'env:R2_BUCKET':undefined},...liveDiscovery.providers],
+    providers:[r2Status,...liveDiscovery.providers],
     economics,
     automation:['research','claims','script','voice','transcript','scenes','asset-sourcing','rights','timeline','render','quality','packaging','publish','learning'].map(stage=>({stage:stage as ProductionAutonomyInput['automation'][number]['stage'],status:'unknown' as const})),
     generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]})),
-    preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs]}};
+    preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,materialization:liveDiscovery.materialization,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs,...liveDiscovery.materialization.evidenceRefs]}};
   return {input,fingerprint:hash({subject,input})};
 }
 

@@ -61,6 +61,14 @@ export type SupplyPreflight = {
   representativeBeatIds: string[];
   materializedAssetCount: number;
   discoverableAssetCount: number;
+  materialization?: {
+    attempted: number;
+    succeeded: number;
+    totalBytes: number;
+    cycleSeconds: number;
+    operatorMinutes: number;
+    evidenceRefs: string[];
+  };
   evidenceRefs: string[];
 };
 export type ProductionAutonomyPolicy = {
