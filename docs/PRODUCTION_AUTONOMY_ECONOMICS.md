@@ -6,6 +6,8 @@ The evaluator runs a Supply Preflight after Market validation. It simulates at l
 
 The assessment records separate `readySupplyCoverage`, `discoverableSupplyCoverage` and explicitly projected `projectedAutonomousCoverage`. It also records duration-weighted coverage for owned media, stock, generation and unresolved beats, title-level coverage, reusable source count, rights, factuality, cost, cycle time, operator minutes, repeatability at 15/50/100 episodes, evidence confidence and the status of every production stage. Unknown provider, rights, factuality, economics or repeatability evidence is preserved as a blocker. It never becomes zero cost, zero time or automatic approval.
 
+For a pre-pilot manufacturing decision, the coverage policy is applied to `projectedAutonomousCoverage`, but only after representative external assets have been materialized and their storage, licensing and provenance verified. This avoids downloading an entire 15-video portfolio merely to decide whether the format is manufacturable. `readySupplyCoverage` remains separately visible and does not become projected supply. Actual episode production and release still require the selected assets to be ready and to pass the existing rights, timeline and Production QA gates.
+
 Statuses are:
 
 - `not-eligible`: the Market has not supplied validated evidence;

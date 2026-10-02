@@ -238,9 +238,10 @@ async function materializePreflightSample(input:{
 }
 
 function discoveryMatches(titles:VisualSimulationTitle[],query:string,relevance:number){
-  return titles.flatMap(title=>title.beats.filter(beat=>beat.query===query).map(beat=>({
-    titleId:title.id,beatId:beat.id,relevance,identityVerified:false
-  })));
+  return titles.flatMap(title=>title.beats.flatMap(beat=>{
+    const queryRelevance=visualRelevance(beat.query,query);
+    return queryRelevance>=.7?[{titleId:title.id,beatId:beat.id,relevance:Math.min(relevance,queryRelevance),identityVerified:false}]:[];
+  }));
 }
 
 async function discoverLiveStock(titles:VisualSimulationTitle[],queries:string[]):Promise<LiveStockDiscovery>{

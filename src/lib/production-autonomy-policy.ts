@@ -173,7 +173,7 @@ export type ProductionAutonomyAssessment = {
     distinctSources: number;
     allocations: VisualSupplyAllocation[];
     classifications: { titleId: string; beatId: string; classification: 'owned-ready' | 'stock-ready' | 'stock-discoverable' | 'generation-required' | 'unresolved'; durationSeconds: number }[];
-    titles: { titleId: string; totalSeconds: number; supplyPercent: number }[];
+    titles: { titleId: string; totalSeconds: number; supplyPercent: number; projectedPercent: number }[];
   };
   repeatability: {
     episodes: 15 | 50 | 100;
@@ -232,6 +232,7 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   const marketEligible = input.market.validated === true && referenced(input.market.evidenceRefs);
   if (!marketEligible) add('market-not-validated', 'blocker', 'A validação de mercado com evidência é obrigatória antes do Production Autonomy Fit.', input.market.evidenceRefs);
   if (!input.preflight || input.preflight.status !== 'completed' || input.preflight.sampledBeatCount < 10) add('supply-preflight-incomplete', 'blocker', 'O Supply Preflight precisa simular pelo menos dez beats representativos antes do assessment final.', input.preflight?.evidenceRefs ?? []);
+  if (marketEligible && input.preflight?.status === 'completed' && (input.preflight.materialization?.succeeded ?? 0) < 2) add('supply-preflight-materialization-insufficient', 'blocker', 'O piloto precisa materializar ao menos duas amostras externas com storage, licença e proveniência verificadas antes de confiar em supply descobrível.', input.preflight?.materialization?.evidenceRefs ?? []);
   const validPolicy = Object.values(policy).every(nonnegative)
     && policy.minimumTitles >= 1 && Number.isInteger(policy.minimumTitles)
     && policy.minimumMatchRelevance <= 1 && policy.maximumSourceSharePerTitle > 0 && policy.maximumSourceSharePerTitle <= 1
@@ -289,7 +290,10 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
       let beatUncertain = false;
       let discoverableCandidate: { asset: VisualSupplyEvidence; match: { relevance: number; identityVerified: boolean } } | undefined;
       for (const { asset, match } of candidates) {
-        if (asset.availability === 'unknown' || asset.rights === 'unknown' || !asset.provenanceRef?.trim() || !asset.license?.trim()) beatUncertain = true;
+        const discoveryVerified=!asset.ready&&asset.source==='stock'&&asset.availability==='available'&&asset.discovery?.licensingState==='verified'&&Boolean(asset.discovery.sourceIdentity?.trim())&&Boolean(asset.discovery.evidenceRef?.trim())&&asset.discovery.acquisition==='materializable';
+        if(asset.ready){
+          if(asset.availability==='unknown'||asset.rights==='unknown'||!asset.provenanceRef?.trim()||!asset.license?.trim())beatUncertain=true;
+        }else if(!discoveryVerified)beatUncertain=true;
         if (!asset.ready && asset.source === 'stock' && asset.discovery && !discoverableCandidate) {
           const uses=sourceUses.get(asset.sourceIdentity)??0;
           const limit=asset.maxUses??(asset.kind==='image'?policy.maximumImageUses:1);
@@ -370,17 +374,23 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   const generationPercent = percentage(generationSeconds, totalSeconds);
   const providerUnknown = input.providers.some(provider => provider.status === 'unknown' || (provider.status === 'available' && !provider.evidenceRef?.trim()));
   const incompleteSupplyEvidence = uncertainSupply || providerUnknown;
-  if (supplySeconds < totalSeconds - EPSILON && incompleteSupplyEvidence) add('visual-supply-evidence-unknown', 'blocker', 'Há disponibilidade, licença, proveniência ou consulta de provider sem confirmação; ausência de evidência não é cobertura zero comprovada.');
-  if (simulationValid && supplyPercent < policy.minimumSupplyCoveragePercent) add('visual-supply-below-policy', incompleteSupplyEvidence ? 'blocker' : 'rejection', `Cobertura visual reutilizável de ${supplyPercent}% abaixo do mínimo de ${policy.minimumSupplyCoveragePercent}%.`);
+  if (projectedSeconds < totalSeconds - EPSILON && incompleteSupplyEvidence) add('visual-supply-evidence-unknown', 'blocker', 'Há disponibilidade, licença, proveniência ou consulta de provider sem confirmação; ausência de evidência não é cobertura zero comprovada.');
+  if (simulationValid && projectedPercent < policy.minimumSupplyCoveragePercent) add('visual-supply-below-policy', incompleteSupplyEvidence ? 'blocker' : 'rejection', `Cobertura autônoma projetada de ${projectedPercent}% abaixo do mínimo de ${policy.minimumSupplyCoveragePercent}%.`);
   if (generationPercent > policy.maximumGenerationPercent) add('generation-dependency-too-high', 'rejection', `Dependência de geração de ${generationPercent}% acima do limite de ${policy.maximumGenerationPercent}%.`);
   if (unresolvedSeconds > EPSILON) add('visual-needs-unresolved', 'blocker', `${round(unresolvedSeconds)} segundos ainda não têm mídia utilizável nem geração autônoma comprovada.`);
   if (exactIdentityMissing) add('exact-identity-unverified', 'blocker', 'Há necessidade documental de identidade exata sem mídia verificada; stock genérico ou geração não podem substituir essa evidência.');
+  const allocationProjected=(allocation:VisualSupplyAllocation)=>{
+    if(allocation.source==='owned'||allocation.source==='stock'||allocation.source==='generation')return true;
+    if(allocation.source!=='stock-discoverable'||!allocation.assetId)return false;
+    return input.supply.some(asset=>asset.id===allocation.assetId&&asset.discovery?.acquisition==='materializable'&&asset.discovery.licensingState==='verified'&&Boolean(asset.discovery.evidenceRef?.trim())&&Boolean(asset.discovery.sourceIdentity?.trim()));
+  };
   const titleCoverage = input.titles.map(title => ({
     titleId: title.id,
     totalSeconds: positive(title.durationSeconds) ? title.durationSeconds : 0,
     supplyPercent: percentage(allocations.filter(allocation => allocation.titleId === title.id && (allocation.source === 'owned' || allocation.source === 'stock')).reduce((sum, allocation) => sum + allocation.durationSeconds, 0), title.durationSeconds),
+    projectedPercent: percentage(allocations.filter(allocation => allocation.titleId === title.id && allocationProjected(allocation)).reduce((sum, allocation) => sum + allocation.durationSeconds, 0), title.durationSeconds),
   }));
-  if (simulationValid && titleCoverage.some(title => title.supplyPercent < policy.minimumTitleSupplyCoveragePercent)) add('title-coverage-below-policy', incompleteSupplyEvidence ? 'blocker' : 'rejection', `Ao menos um título fica abaixo de ${policy.minimumTitleSupplyCoveragePercent}% de cobertura; a média do portfólio não pode ocultar um episódio inviável.`);
+  if (simulationValid && titleCoverage.some(title => title.projectedPercent < policy.minimumTitleSupplyCoveragePercent)) add('title-coverage-below-policy', incompleteSupplyEvidence ? 'blocker' : 'rejection', `Ao menos um título fica abaixo de ${policy.minimumTitleSupplyCoveragePercent}% de cobertura autônoma projetada; a média do portfólio não pode ocultar um episódio inviável.`);
   if (unsupportedSeconds > EPSILON) add('unsupported-facts', 'rejection', 'A simulação depende de afirmações sem sustentação; remova ou verifique antes do piloto.');
   if (unknownFactSeconds > EPSILON) add('factuality-unverified', 'blocker', 'A factualidade exige evidências verificáveis por beat; a própria simulação não confirma fatos.');
 
@@ -414,9 +424,9 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   });
   const budgetScore = (value: number, maximum: number) => value <= maximum ? 100 : maximum > 0 ? percentage(maximum, value) : 0;
   const scores: ProductionAutonomyAssessment['scores'] = {
-    visualSupplyCoverage: simulationValid ? supplyPercent : null,
-    generationIndependence: simulationValid ? percentage(supplySeconds, totalSeconds) : null,
-    rights: simulationValid && supplySeconds + generationSeconds >= totalSeconds - EPSILON ? 100 : null,
+    visualSupplyCoverage: simulationValid ? projectedPercent : null,
+    generationIndependence: simulationValid ? percentage(Math.max(0,projectedSeconds-generationSeconds), totalSeconds) : null,
+    rights: simulationValid && projectedSeconds >= totalSeconds - EPSILON && !incompleteSupplyEvidence && !exactIdentityMissing ? 100 : null,
     cost: costKnown ? budgetScore(input.economics.costUsd!, policy.maximumCostUsd) : null,
     time: timeKnown ? Math.min(budgetScore(input.economics.cycleMinutes!, policy.maximumCycleMinutes), budgetScore(input.economics.operatorMinutes!, policy.maximumOperatorMinutes)) : null,
     factuality: simulationValid && unknownFactSeconds <= EPSILON ? percentage(factualSeconds, totalSeconds) : null,

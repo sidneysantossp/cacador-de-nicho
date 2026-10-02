@@ -10,7 +10,7 @@ function input(overrides:Partial<ProductionAutonomyInput>={}):ProductionAutonomy
     beats:[1,2].map(beatIndex=>({id:'t'+titleIndex+'b'+beatIndex,durationSeconds:4,query:'Evidence title '+titleIndex,generationAllowed:false,factuality:'verified' as const,evidenceRefs:['market:'+titleIndex]}))
   }));
   const supply=titles.flatMap(title=>title.beats.map((beat,beatIndex)=>({id:title.id+beat.id,sourceIdentity:title.id+beat.id,source:'owned' as const,kind:'image' as const,ready:true,availability:'available' as const,storagePath:'r2/'+title.id+'/'+beat.id,durationSeconds:null,rights:'verified' as const,license:'owned',provenanceRef:'asset:'+beat.id,matches:[{titleId:title.id,beatId:beat.id,relevance:1,identityVerified:true}]})));
-  return {market:{validated:true,status:'structural',evidenceRefs:['market:validated']},titles,supply,providers:[{id:'r2',status:'available',evidenceRef:'provider:r2'}],economics:{costUsd:2,cycleMinutes:30,operatorMinutes:1,evidenceRefs:['economics:observed'],basis:'observed'},automation:['research','claims','script','voice','transcript','scenes','asset-sourcing','rights','timeline','render','quality','packaging','publish','learning'].map(stage=>({stage:stage as ProductionAutonomyInput['automation'][number]['stage'],status:'automatic' as const,evidenceRef:'stage:'+stage})),generation:{available:true,evidenceRef:'generation:configured'},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:episodes,supplyCoveragePercent:90,evidenceRefs:['repeat:'+episodes]})),preflight:{status:'completed',sampledBeatCount:10,representativeBeatIds:titles.slice(0,10).map(title=>title.beats[0].id),materializedAssetCount:supply.length,discoverableAssetCount:0,evidenceRefs:['preflight:observed']},...overrides};
+  return {market:{validated:true,status:'structural',evidenceRefs:['market:validated']},titles,supply,providers:[{id:'r2',status:'available',evidenceRef:'provider:r2'}],economics:{costUsd:2,cycleMinutes:30,operatorMinutes:1,evidenceRefs:['economics:observed'],basis:'observed'},automation:['research','claims','script','voice','transcript','scenes','asset-sourcing','rights','timeline','render','quality','packaging','publish','learning'].map(stage=>({stage:stage as ProductionAutonomyInput['automation'][number]['stage'],status:'automatic' as const,evidenceRef:'stage:'+stage})),generation:{available:true,evidenceRef:'generation:configured'},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:episodes,supplyCoveragePercent:90,evidenceRefs:['repeat:'+episodes]})),preflight:{status:'completed',sampledBeatCount:10,representativeBeatIds:titles.slice(0,10).map(title=>title.beats[0].id),materializedAssetCount:supply.length,discoverableAssetCount:0,materialization:{attempted:2,succeeded:2,totalBytes:2000,cycleSeconds:2,operatorMinutes:0,evidenceRefs:['preflight:materialized']},evidenceRefs:['preflight:observed']},...overrides};
 }
 
 test('market validation remains a prerequisite even when manufacturing is complete',()=>{
@@ -53,6 +53,15 @@ test('discoverable stock cannot be reused beyond its evidence limit',()=>{
   const result=evaluateProductionAutonomy(base);
   assert.equal(result.coverage.discoverableSupplyCoverage.seconds,4);
   assert.equal(result.coverage.discoverableSupplyCoverage.percent,5);
+});
+
+test('verified discoverable supply can approve a manufacturing fit after representative materialization',()=>{
+  const base=input();
+  base.supply=base.supply.map(asset=>({...asset,source:'stock' as const,ready:false,storagePath:undefined,rights:'unknown' as const,license:'Pexels License',provenanceRef:'https://www.pexels.com/video/1/',discovery:{provider:'pexels',sourceIdentity:asset.sourceIdentity,licensingState:'verified' as const,candidateRelevance:1,acquisition:'materializable' as const,evidenceRef:'https://www.pexels.com/video/1/'}}));
+  const result=evaluateProductionAutonomy(base);
+  assert.equal(result.coverage.readySupplyCoverage.percent,0);
+  assert.equal(result.coverage.projectedAutonomousCoverage.percent,100);
+  assert.equal(result.status,'approved');
 });
 
 test('preflight is fail-closed when absent',()=>{
