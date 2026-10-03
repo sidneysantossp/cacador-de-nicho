@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import type { ContentFactCheck, EpisodeScriptPayload } from '../src/lib/types';
 import {
   combineScriptSections, countScriptWords, documentaryScriptClaimIssues, estimateScriptMinutes,
-  normalizeScriptPayload, scriptApprovalIssues, scriptGenerationIntegrityIssues
+  normalizeScriptPayload, retentionArchitectureIssues, scriptApprovalIssues,
+  scriptGenerationIntegrityIssues
 } from '../src/lib/script-policy';
 import { episodeScriptPayloadSchema } from '../src/lib/server/validation';
 
@@ -307,4 +308,131 @@ test('legacy approved scripts expose script text as modern content for Voice Eng
   assert.match(server,/typeof raw\.script==='string'\?raw\.script:''/);
   assert.match(server,/content,/);
   assert.match(server,/provenance:raw\.provenance\?\?\{generatedBy:'operator'\}/);
+});
+
+
+function retentionLongForm(overrides:Partial<EpisodeScriptPayload>={}):EpisodeScriptPayload{
+  const sections=[
+    {
+      id:'71111111-1111-4111-8111-111111111111',
+      label:'Hook',
+      purpose:'Open contradiction.',
+      content:'A city solves one problem and creates the next. '.repeat(110),
+      claimIds:[],
+      retention:{
+        role:'hook' as const,
+        questionOpened:'Why do successful cities keep rebuilding things that once worked?',
+        payoffDelivered:'The viewer sees that urban systems can become constraints.',
+        nextQuestion:'What makes a good solution become the wrong solution later?'
+      }
+    },
+    {
+      id:'72222222-2222-4222-8222-222222222222',
+      label:'Proof',
+      purpose:'Show first mechanism.',
+      content:'The first case shows demand outgrowing the old solution. '.repeat(100),
+      claimIds:[],
+      retention:{
+        role:'proof' as const,
+        questionOpened:'Is growth the whole explanation?',
+        payoffDelivered:'Growth can overwhelm yesterday\'s infrastructure.',
+        nextQuestion:'What if the city is not growing in the same way?'
+      }
+    },
+    {
+      id:'73333333-3333-4333-8333-333333333333',
+      label:'Midpoint',
+      purpose:'Reframe the interpretation.',
+      content:'The next case breaks the growth explanation entirely. '.repeat(100),
+      claimIds:[],
+      retention:{
+        role:'midpoint-reframe' as const,
+        questionOpened:'Can a system become wrong even while it still works?',
+        payoffDelivered:'Changing external conditions can invalidate a functioning design.',
+        nextQuestion:'If planners know this, why can they not future-proof the city once?'
+      }
+    },
+    {
+      id:'74444444-4444-4444-8444-444444444444',
+      label:'Second Question',
+      purpose:'Open deeper problem.',
+      content:'Every decision changes the city future decisions must respond to. '.repeat(95),
+      claimIds:[],
+      retention:{
+        role:'second-question' as const,
+        questionOpened:'Why can cities not be future-proofed once?',
+        payoffDelivered:'Infrastructure changes the environment future planning inherits.',
+        nextQuestion:'So what is a successful city actually optimizing for?'
+      }
+    },
+    {
+      id:'75555555-5555-4555-8555-555555555555',
+      label:'Callback',
+      purpose:'Pay off the opening.',
+      content:'The city was never unfinished; it was adapting while still running. '.repeat(85),
+      claimIds:[],
+      retention:{
+        role:'callback' as const,
+        questionOpened:'',
+        payoffDelivered:'The opening contradiction resolves as continuous adaptation.',
+        nextQuestion:''
+      }
+    }
+  ];
+  const normalized=normalizeScriptPayload({
+    ...payload,
+    title:'Why Great Cities Never Stand Still',
+    sections,
+    retention:{
+      macroQuestion:'Why do successful cities keep rebuilding things that once worked?',
+      promisedPayoff:'Reveal the mechanism that turns yesterday\'s solution into tomorrow\'s constraint.',
+      midpointReframe:'Growth is not the whole explanation; external conditions can make a working system wrong.',
+      endingCallback:'A city is always building its future on top of yesterday\'s solution.'
+    },
+    continuityNotes:[],
+    factCheckWarnings:[],
+    ...overrides
+  },155);
+  return {...normalized,estimatedMinutes:12.5};
+}
+
+test('Retention architecture accepts causal long-form with midpoint and callback',()=>{
+  assert.deepEqual(retentionArchitectureIssues(retentionLongForm()),[]);
+});
+
+test('Retention architecture blocks a long-form script without a Retention Map',()=>{
+  const script=retentionLongForm({retention:undefined});
+  assert.ok(retentionArchitectureIssues(script).includes('retention-map-missing'));
+});
+
+test('Retention architecture blocks dead-end sections and missing midpoint',()=>{
+  const script=retentionLongForm();
+  script.sections=script.sections.map((section,index)=>index===1
+    ?{...section,retention:{...section.retention!,nextQuestion:''}}
+    :section
+  );
+  script.sections=script.sections.map(section=>section.retention?.role==='midpoint-reframe'
+    ?{...section,retention:{...section.retention,role:'proof' as const}}
+    :section
+  );
+  const issues=retentionArchitectureIssues(script);
+  assert.ok(issues.includes('retention-next-question-missing:72222222-2222-4222-8222-222222222222'));
+  assert.ok(issues.includes('retention-midpoint-reframe-missing'));
+});
+
+test('Retention architecture flags repeated generic AI transitions',()=>{
+  const script=retentionLongForm();
+  script.sections[1].content+=' The important distinction is this.';
+  script.sections[2].content+=' Think about what that means.';
+  script.content=combineScriptSections(script.sections);
+  assert.ok(retentionArchitectureIssues(script).includes('anti-slop-generic-transition-overuse'));
+});
+
+test('Script AI plans ending and midpoint before prose',()=>{
+  const source=readFileSync('src/lib/server/script-ai.ts','utf8');
+  assert.match(source,/Decide the ending and midpoint before the opening/);
+  assert.match(source,/macroQuestion/);
+  assert.match(source,/midpoint-reframe/);
+  assert.match(source,/questionOpened/);
+  assert.match(source,/nextQuestion/);
 });

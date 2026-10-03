@@ -14,11 +14,29 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const assertProviderAiAllowed=()=>{if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: use importOperatorScript em vez da geração OpenAI.',409);};
 
+const retentionRole=z.enum([
+  'hook','setup','proof','rehook','midpoint-reframe','second-question',
+  'synthesis','callback','close'
+]);
+const retentionBeat=z.object({
+  role:retentionRole,
+  questionOpened:z.string().trim().max(2000),
+  payoffDelivered:z.string().trim().max(2000),
+  nextQuestion:z.string().trim().max(2000)
+}).strict();
+const retentionMap=z.object({
+  macroQuestion:z.string().trim().min(1).max(3000),
+  promisedPayoff:z.string().trim().min(1).max(3000),
+  midpointReframe:z.string().trim().min(1).max(3000),
+  endingCallback:z.string().trim().min(1).max(3000)
+}).strict();
+
 const operatorSection=z.object({
   label:z.string().trim().min(1).max(120),
   purpose:z.string().trim().max(1000),
   content:z.string().trim().min(1).max(40000),
-  claimIds:z.array(z.string().uuid()).max(100).optional()
+  claimIds:z.array(z.string().uuid()).max(100).optional(),
+  retention:retentionBeat.optional()
 }).strict();
 
 const postSchema=z.discriminatedUnion('action',[
@@ -32,6 +50,7 @@ const postSchema=z.discriminatedUnion('action',[
     title:z.string().trim().min(1).max(300),
     language:z.string().trim().min(2).max(80),
     sections:z.array(operatorSection).min(1).max(80),
+    retention:retentionMap.optional(),
     continuityNotes:z.array(z.string().trim().max(1000)).max(100).default([]),
     factCheckWarnings:z.array(z.string().trim().max(1000)).max(100).default([])
   }).strict(),

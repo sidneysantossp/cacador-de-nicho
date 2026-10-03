@@ -836,12 +836,38 @@ export type ContentProjectVersion = {
  payload: ContentProjectPayload;
  createdAt: string;
 };
+export type EpisodeScriptRetentionRole =
+ | 'hook'
+ | 'setup'
+ | 'proof'
+ | 'rehook'
+ | 'midpoint-reframe'
+ | 'second-question'
+ | 'synthesis'
+ | 'callback'
+ | 'close';
+
+export type EpisodeScriptRetentionBeat = {
+ role: EpisodeScriptRetentionRole;
+ questionOpened: string;
+ payoffDelivered: string;
+ nextQuestion: string;
+};
+
+export type EpisodeScriptRetentionMap = {
+ macroQuestion: string;
+ promisedPayoff: string;
+ midpointReframe: string;
+ endingCallback: string;
+};
+
 export type EpisodeScriptSection = {
  id: string;
  label: string;
  purpose: string;
  content: string;
  claimIds?: string[];
+ retention?: EpisodeScriptRetentionBeat;
 };
 export type EpisodeScriptSectionPlan = {
  id: string;
@@ -849,6 +875,7 @@ export type EpisodeScriptSectionPlan = {
  purpose: string;
  targetWords: number;
  claimIds?: string[];
+ retention?: EpisodeScriptRetentionBeat;
 };
 export type EpisodeScriptGeneration = {
  stage: 'sections' | 'complete';
@@ -857,6 +884,7 @@ export type EpisodeScriptGeneration = {
  totalSections: number;
  sectionPlans: EpisodeScriptSectionPlan[];
  sectionSummaries: string[];
+ retention?: EpisodeScriptRetentionMap;
  updatedAt: string;
 };
 export type EpisodeScriptPayload = {
@@ -873,6 +901,7 @@ export type EpisodeScriptPayload = {
  estimatedMinutes: number | null;
  continuityNotes: string[];
  factCheckWarnings: string[];
+ retention?: EpisodeScriptRetentionMap;
  generation?: EpisodeScriptGeneration;
  provenance: {
   generatedBy: 'platform' | 'chatgpt' | 'codex' | 'external' | 'operator';

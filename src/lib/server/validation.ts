@@ -294,6 +294,23 @@ export const contentProjectPayloadSchema=z.object({
  createdAt:z.string().datetime(),
  updatedAt:z.string().datetime()
 }).strict();
+const episodeScriptRetentionRoleSchema=z.enum([
+ 'hook','setup','proof','rehook','midpoint-reframe','second-question',
+ 'synthesis','callback','close'
+]);
+const episodeScriptRetentionBeatSchema=z.object({
+ role:episodeScriptRetentionRoleSchema,
+ questionOpened:z.string().trim().max(2000),
+ payoffDelivered:z.string().trim().max(2000),
+ nextQuestion:z.string().trim().max(2000)
+}).strict();
+const episodeScriptRetentionMapSchema=z.object({
+ macroQuestion:z.string().trim().min(1).max(3000),
+ promisedPayoff:z.string().trim().min(1).max(3000),
+ midpointReframe:z.string().trim().min(1).max(3000),
+ endingCallback:z.string().trim().min(1).max(3000)
+}).strict();
+
 export const episodeScriptPayloadSchema=z.object({
  kind:z.literal('episode-script'),
  id:z.string().uuid(),
@@ -307,13 +324,15 @@ export const episodeScriptPayloadSchema=z.object({
   label:z.string().trim().min(1).max(120),
   purpose:z.string().trim().max(1000),
   content:z.string().trim().min(1).max(40000),
-  claimIds:z.array(z.string().uuid()).max(100).optional()
+  claimIds:z.array(z.string().uuid()).max(100).optional(),
+  retention:episodeScriptRetentionBeatSchema.optional()
  }).strict()).min(1).max(80),
  content:z.string().trim().min(1).max(200000),
  wordCount:z.number().int().min(1).max(50000),
  estimatedMinutes:z.number().min(0).max(600).nullable(),
  continuityNotes:shortList(100,1000),
  factCheckWarnings:shortList(100,1000),
+ retention:episodeScriptRetentionMapSchema.optional(),
  generation:z.object({
   stage:z.enum(['sections','complete']),
   targetWords:z.number().int().min(1).max(50000),
@@ -324,9 +343,11 @@ export const episodeScriptPayloadSchema=z.object({
    label:z.string().trim().min(1).max(120),
    purpose:z.string().trim().max(1000),
    targetWords:z.number().int().min(100).max(4000),
-   claimIds:z.array(z.string().uuid()).max(100).optional()
+   claimIds:z.array(z.string().uuid()).max(100).optional(),
+   retention:episodeScriptRetentionBeatSchema.optional()
   }).strict()).min(1).max(80),
   sectionSummaries:z.array(z.string().trim().max(1000)).max(80),
+  retention:episodeScriptRetentionMapSchema.optional(),
   updatedAt:z.string().datetime()
  }).strict().optional(),
  provenance:z.object({

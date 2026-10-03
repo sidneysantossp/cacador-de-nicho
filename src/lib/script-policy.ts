@@ -121,6 +121,72 @@ export function scriptGenerationIntegrityIssues(payload:EpisodeScriptPayload){
   return [...new Set(issues)];
 }
 
+export function retentionArchitectureIssues(payload:EpisodeScriptPayload){
+  const minutes=Number(payload.estimatedMinutes??0);
+  if(!Number.isFinite(minutes)||minutes<10)return [] as string[];
+
+  const issues:string[]=[];
+  if(!payload.retention){
+    issues.push('retention-map-missing');
+    return issues;
+  }
+  const sections=payload.sections;
+  if(!sections.length)return ['retention-no-sections'];
+  const missing=sections.filter(section=>!section.retention);
+  issues.push(...missing.map(section=>'retention-beat-missing:'+section.id));
+  if(missing.length)return [...new Set(issues)];
+
+  const beats=sections.map(section=>section.retention!);
+  if(beats[0]?.role!=='hook')issues.push('retention-first-section-not-hook');
+  if(!beats[0]?.questionOpened.trim())issues.push('retention-hook-question-missing');
+
+  for(let index=0;index<beats.length-1;index++){
+    if(!beats[index].nextQuestion.trim()){
+      issues.push('retention-next-question-missing:'+sections[index].id);
+    }
+  }
+  for(let index=1;index<beats.length;index++){
+    if(!beats[index].payoffDelivered.trim()){
+      issues.push('retention-micro-payoff-missing:'+sections[index].id);
+    }
+  }
+
+  const midpointIndexes=beats
+    .map((beat,index)=>beat.role==='midpoint-reframe'?index:-1)
+    .filter(index=>index>=0);
+  if(!midpointIndexes.length)issues.push('retention-midpoint-reframe-missing');
+  else{
+    const totalWords=Math.max(1,payload.wordCount);
+    const sectionWords=sections.map(section=>countScriptWords(section.content));
+    const validMidpoint=midpointIndexes.some(index=>{
+      const before=sectionWords.slice(0,index).reduce((sum,value)=>sum+value,0);
+      const center=(before+sectionWords[index]/2)/totalWords;
+      return center>=0.35&&center<=0.65;
+    });
+    if(!validMidpoint)issues.push('retention-midpoint-reframe-out-of-range');
+  }
+
+  const finalRole=beats.at(-1)?.role;
+  if(finalRole!=='callback'&&finalRole!=='close'){
+    issues.push('retention-final-section-not-callback');
+  }
+
+  const genericPhrases=[
+    'the important distinction is',
+    'the useful lesson is',
+    'that detail matters',
+    'think about what that means',
+    'the point here is not'
+  ];
+  const lower=payload.content.toLowerCase();
+  const genericCount=genericPhrases.reduce((count,phrase)=>
+    count+(lower.split(phrase).length-1),0
+  );
+  if(genericCount>=2)issues.push('anti-slop-generic-transition-overuse');
+
+  return [...new Set(issues)];
+}
+
 export function scriptApprovalIssues(
   payload:EpisodeScriptPayload,
   documentary?:{claims:ContentFactCheck[];documentaryMode:boolean}
@@ -135,5 +201,6 @@ export function scriptApprovalIssues(
   if(documentary)issues.push(...documentaryScriptClaimIssues({
     payload,claims:documentary.claims,documentaryMode:documentary.documentaryMode
   }));
+  issues.push(...retentionArchitectureIssues(payload));
   return [...new Set(issues)];
 }

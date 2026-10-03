@@ -266,7 +266,9 @@ export async function importOperatorScript(input:{
     purpose:string;
     content:string;
     claimIds?:string[];
+    retention?:EpisodeScriptSection['retention'];
   }>;
+  retention?:EpisodeScriptPayload['retention'];
   continuityNotes:string[];
   factCheckWarnings:string[];
 }):Promise<EpisodeScript>{
@@ -301,13 +303,15 @@ export async function importOperatorScript(input:{
       label:section.label,
       purpose:section.purpose,
       content:section.content,
-      claimIds:section.claimIds??[]
+      claimIds:section.claimIds??[],
+      retention:section.retention
     })),
     content:'',
     wordCount:1,
     estimatedMinutes:null,
     continuityNotes:input.continuityNotes,
     factCheckWarnings:input.factCheckWarnings,
+    retention:input.retention,
     provenance:{generatedBy:'chatgpt',model:'chatgpt-operator'},
     createdAt:existing?.createdAt??now,
     updatedAt:now
@@ -341,6 +345,7 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
       totalSections:outline.sectionPlans.length,
       sectionPlans:outline.sectionPlans,
       sectionSummaries:[],
+      retention:outline.retention,
       updatedAt:now
     };
     const firstPlan=generation.sectionPlans[0];
@@ -351,7 +356,8 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
       label:firstPlan.label,
       purpose:firstPlan.purpose,
       content:generated.content,
-      claimIds:generated.claimIds
+      claimIds:generated.claimIds,
+      retention:firstPlan.retention
     };
     const completedSections=1;
     const completed=completedSections>=generation.totalSections;
@@ -379,6 +385,7 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
       estimatedMinutes:null,
       continuityNotes:outline.continuityNotes,
       factCheckWarnings:warnings,
+      retention:outline.retention,
       generation:nextGeneration,
       provenance:{generatedBy:'platform',model:generated.model||outline.model},
       createdAt:existing?.createdAt??now,
@@ -423,7 +430,8 @@ export async function generateScriptForProject(projectId:string):Promise<Episode
     label:plan.label,
     purpose:plan.purpose,
     content:generated.content,
-    claimIds:generated.claimIds
+    claimIds:generated.claimIds,
+    retention:plan.retention
   };
   const sections=[
     ...existing.sections.filter(section=>section.id!==plan.id),
