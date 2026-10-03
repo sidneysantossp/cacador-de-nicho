@@ -13,7 +13,19 @@ export const dynamic='force-dynamic';
 
 const provider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
 const schema=z.discriminatedUnion('action',[
-  z.object({action:z.literal('saveSecret'),provider,key:z.string().trim().min(8).max(1000)}).strict(),
+  z.object({
+    action:z.literal('saveSecret'),
+    provider,
+    key:z.string().trim().min(8).max(1000)
+  }).strict().superRefine((value,ctx)=>{
+    if(value.provider==='elevenlabs'&&!value.key.startsWith('sk_')){
+      ctx.addIssue({
+        code:z.ZodIssueCode.custom,
+        path:['key'],
+        message:'A chave da ElevenLabs precisa começar com sk_. Não use API Key ID.'
+      });
+    }
+  }),
   z.object({
     action:z.literal('saveR2'),
     accountId:z.string().trim().min(10).max(100),
