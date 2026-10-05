@@ -35,10 +35,13 @@ function firstQuery(scene:SceneTimecode,beat:VisualBeat|null){
   ).slice(0,500);
 }
 
-export function sourceRouteForScene(scene:SceneTimecode):SourceRoutePlan{
+export function sourceRouteForScene(
+  scene:SceneTimecode,
+  editorialQuery?:string
+):SourceRoutePlan{
   const beat=firstBeat(scene);
   const preference=beat?.sourcePreference??'legacy';
-  const query=firstQuery(scene,beat);
+  const query=(editorialQuery?.trim()||firstQuery(scene,beat)).slice(0,500);
 
   if(preference==='archive-image'){
     return {
@@ -105,6 +108,20 @@ export function sourceRouteForScene(scene:SceneTimecode):SourceRoutePlan{
   };
 }
 
+
+export function applyDocumentarySourcePolicy(
+  route:SourceRoutePlan,
+  documentaryMode:boolean
+):SourceRoutePlan{
+  if(!documentaryMode||route.preference==='generated')return route;
+  if(!route.actions.includes('generated-image'))return route;
+  return {
+    ...route,
+    actions:route.actions.filter(action=>action!=='generated-image'),
+    syntheticAllowed:false,
+    rationale:route.rationale+' Documentary mode: synthetic fallback disabled unless generation is explicitly selected as the beat source.'
+  };
+}
 
 export function sourceYears(value:string){
   return [...new Set(value.match(/\b(?:18|19|20)\d{2}\b/g)??[])];
