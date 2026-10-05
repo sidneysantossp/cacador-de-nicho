@@ -4,7 +4,7 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { checked, db, dbConfigured } from '@/lib/server/db';
 import {
   createScenePlanFromTranscript, listScenePlans, loadScenePlan,
-  loadScenePlanHistory, loadScenePlanHistoryVersion, saveScenePlan
+  loadScenePlanHistory, loadScenePlanHistoryVersion, rebuildScenePlan, saveScenePlan
 } from '@/lib/server/scene-timecode';
 import { scenePlanPayloadSchema } from '@/lib/server/validation';
 import { listTranscriptsByChannel, loadTranscript } from '@/lib/server/transcription-engine';
@@ -15,6 +15,7 @@ export const dynamic='force-dynamic';
 
 const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('create'),transcriptId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('rebuild'),planId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
@@ -93,14 +94,18 @@ export async function POST(request:Request){
 
     const plan=body.action==='create'
       ?await createScenePlanFromTranscript(body.transcriptId)
-      :await saveScenePlan(body.plan,body.status,body.expectedVersion);
+      :body.action==='rebuild'
+        ?await rebuildScenePlan(body.planId)
+        :await saveScenePlan(body.plan,body.status,body.expectedVersion);
 
     return Response.json({
       message:body.action==='create'
         ?'Scene Plan criado a partir do transcript aprovado.'
-        :body.status==='approved'
-          ?'Scene Plan aprovado e episódio movido para produção.'
-          :'Scene Plan salvo.',
+        :body.action==='rebuild'
+          ?'Scene Plan reconstruído com o Production DNA atual.'
+          :body.status==='approved'
+            ?'Scene Plan aprovado e episódio movido para produção.'
+            :'Scene Plan salvo.',
       plan,
       history:await loadScenePlanHistory(plan.id,20)
     });
