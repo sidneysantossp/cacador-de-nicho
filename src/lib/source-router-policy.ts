@@ -114,12 +114,22 @@ export function applyDocumentarySourcePolicy(
   documentaryMode:boolean
 ):SourceRoutePlan{
   if(!documentaryMode||route.preference==='generated')return route;
-  if(!route.actions.includes('generated-image'))return route;
+  const withoutSynthetic=route.actions.filter(action=>action!=='generated-image');
+  const actions=route.preference==='stock-image'
+    ?([
+      ...withoutSynthetic.filter(action=>action==='owned'),
+      ...withoutSynthetic.filter(action=>action==='stock-video'),
+      ...withoutSynthetic.filter(action=>action==='stock-image'),
+      ...withoutSynthetic.filter(action=>
+        action!=='owned'&&action!=='stock-video'&&action!=='stock-image'
+      )
+    ] as SourceRouteAction[])
+    :withoutSynthetic;
   return {
     ...route,
-    actions:route.actions.filter(action=>action!=='generated-image'),
+    actions,
     syntheticAllowed:false,
-    rationale:route.rationale+' Documentary mode: synthetic fallback disabled unless generation is explicitly selected as the beat source.'
+    rationale:route.rationale+' Documentary mode: prefer real motion footage when available and disable synthetic fallback unless generation is explicitly selected as the beat source.'
   };
 }
 
