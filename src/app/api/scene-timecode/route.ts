@@ -17,6 +17,12 @@ const postSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('create'),transcriptId:z.string().uuid()}).strict(),
   z.object({action:z.literal('rebuild'),planId:z.string().uuid()}).strict(),
   z.object({
+    action:z.literal('approveCurrent'),
+    planId:z.string().uuid(),
+    expectedVersion:z.number().int().min(1).max(100000),
+    acceptDurationWarnings:z.boolean().optional().default(false)
+  }).strict(),
+  z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
     status:z.enum(['draft','review','approved']),
@@ -92,20 +98,35 @@ export async function POST(request:Request){
     if(!parsed.success)throw new HttpError('Revise os campos do Scene Timecode Protocol.',400);
     const body=parsed.data;
 
-    const plan=body.action==='create'
-      ?await createScenePlanFromTranscript(body.transcriptId)
-      :body.action==='rebuild'
-        ?await rebuildScenePlan(body.planId)
-        :await saveScenePlan(body.plan,body.status,body.expectedVersion);
+    let plan;
+    if(body.action==='create')plan=await createScenePlanFromTranscript(body.transcriptId);
+    else if(body.action==='rebuild')plan=await rebuildScenePlan(body.planId);
+    else if(body.action==='approveCurrent'){
+      const current=await loadScenePlan(body.planId);
+      if(!current)throw new HttpError('Scene Plan não encontrado.',404);
+      if(current.version!==body.expectedVersion){
+        throw new HttpError('Scene Plan desatualizado. Recarregue antes de aprovar.',409);
+      }
+      const {version:_version,status:_status,...payload}=current;
+      plan=await saveScenePlan({
+        ...payload,
+        review:{
+          ...payload.review,
+          durationWarningsAccepted:body.acceptDurationWarnings
+        }
+      },'approved',body.expectedVersion);
+    }else plan=await saveScenePlan(body.plan,body.status,body.expectedVersion);
 
     return Response.json({
       message:body.action==='create'
         ?'Scene Plan criado a partir do transcript aprovado.'
         :body.action==='rebuild'
           ?'Scene Plan reconstruído com o Production DNA atual.'
-          :body.status==='approved'
-            ?'Scene Plan aprovado e episódio movido para produção.'
-            :'Scene Plan salvo.',
+          :body.action==='approveCurrent'
+            ?'Scene Plan atual aprovado e episódio movido para produção.'
+            :body.status==='approved'
+              ?'Scene Plan aprovado e episódio movido para produção.'
+              :'Scene Plan salvo.',
       plan,
       history:await loadScenePlanHistory(plan.id,20)
     });
