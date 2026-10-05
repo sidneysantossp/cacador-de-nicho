@@ -101,10 +101,19 @@ test('Scene Timecode blocks stale transcript versions and missing segment covera
 
 test('Scene Timecode reports Production DNA duration exceptions separately',()=>{
   const input=plan();
-  input.scenes[0]={...input.scenes[0],endSeconds:5,durationSeconds:5};
+  input.scenes[0]={
+    ...input.scenes[0],
+    endSeconds:5,
+    durationSeconds:5,
+    visualBeats:[{
+      ...input.scenes[0].visualBeats![0],
+      endSeconds:5,
+      durationSeconds:5
+    }]
+  };
   input.scenes[1]={...input.scenes[1],startSeconds:5,endSeconds:6,durationSeconds:1};
   const warnings=sceneDurationWarnings(input,dna);
-  assert.ok(warnings.includes('scene-1-above-max-duration'));
+  assert.ok(warnings.includes('scene-1-beat-1-above-max-duration'));
   assert.ok(warnings.includes('scene-2-below-min-duration'));
 });
 
@@ -115,4 +124,61 @@ test('Duration warnings require explicit operator acceptance before approval',()
   assert.ok(scenePlanApprovalIssues(input,transcript,dna).includes('duration-warnings-not-accepted'));
   input.review.durationWarningsAccepted=true;
   assert.equal(scenePlanApprovalIssues(input,transcript,dna).includes('duration-warnings-not-accepted'),false);
+});
+
+
+test('Scene Timecode splits long transcript segments into visual beats under the DNA ceiling',()=>{
+  const longTranscript:Transcript={
+    ...transcript,
+    words:Array.from({length:18},(_,index)=>({
+      id:`8${String(index).padStart(2,'0')}11111-1111-4111-8111-111111111111`,
+      text:`word${index+1}`,
+      startSeconds:index*.45,
+      endSeconds:(index+1)*.45,
+      type:'word' as const
+    })),
+    segments:[{
+      id:'89999999-9999-4999-8999-999999999999',
+      startSeconds:0,
+      endSeconds:8.1,
+      text:Array.from({length:18},(_,index)=>`word${index+1}`).join(' '),
+      wordIds:Array.from({length:18},(_,index)=>
+        `8${String(index).padStart(2,'0')}11111-1111-4111-8111-111111111111`
+      )
+    }]
+  };
+  const scenes=createInitialScenes(longTranscript,8.1,{
+    min:2.5,preferred:3.5,max:6
+  });
+  assert.equal(scenes.length,1);
+  assert.equal(scenes[0].visualBeats?.length,2);
+  assert.ok(scenes[0].visualBeats!.every(beat=>beat.durationSeconds<=6));
+  assert.ok(scenes[0].visualBeats!.every(beat=>beat.durationSeconds>=2.5));
+  assert.equal(
+    sceneDurationWarnings({
+      ...plan(),
+      audioDurationSeconds:8.1,
+      scenes
+    },{
+      format:{sceneDurationSeconds:{min:2.5,preferred:3.5,max:6}}
+    } as unknown as ProductionDNA).some(item=>item.includes('above-max-duration')),
+    false
+  );
+});
+
+test('Scene Timecode treats visual beats as the hard max-duration boundary',()=>{
+  const input=plan();
+  input.scenes[0]={
+    ...input.scenes[0],
+    endSeconds:6,
+    durationSeconds:6,
+    visualBeats:[
+      {...input.scenes[0].visualBeats![0],sequence:1,startSeconds:0,endSeconds:3,durationSeconds:3},
+      {...input.scenes[0].visualBeats![0],id:'88888888-8888-4888-8888-888888888888',sequence:2,startSeconds:3,endSeconds:6,durationSeconds:3}
+    ]
+  };
+  input.scenes[1]={...input.scenes[1],startSeconds:6,endSeconds:7,durationSeconds:1};
+  input.audioDurationSeconds=7;
+  const warnings=sceneDurationWarnings(input,dna);
+  assert.equal(warnings.some(item=>item.includes('scene-1')&&item.includes('above-max-duration')),false);
 });
