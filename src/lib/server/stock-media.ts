@@ -10,7 +10,8 @@ import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './as
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
-  stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery
+  stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
+  verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
 import { downloadMedia } from './media-storage';
@@ -332,7 +333,7 @@ export async function searchStockMedia(input:{
     remaining=response.headers.get('x-quota-remaining');
   }
 
-  checked(await db().from('radar_stock_searches').insert({
+  const ledger=await db().from('radar_stock_searches').insert({
     id:crypto.randomUUID(),
     channel_id:set.channelId,
     visual_prompt_set_id:set.id,
@@ -342,9 +343,17 @@ export async function searchStockMedia(input:{
     query,
     result_count:results.length,
     payload:{remaining,reset}
-  }));
+  });
+  const legacyWikimediaConstraint=input.provider==='wikimedia'
+    &&ledger.error?.code==='23514'
+    &&String(ledger.error?.message??'').includes('radar_stock_searches_provider_check');
+  if(ledger.error&&!legacyWikimediaConstraint)checked(ledger);
 
-  return {results,rateLimit:{remaining,reset}};
+  return {
+    results,
+    rateLimit:{remaining,reset},
+    ledgerRecorded:!ledger.error
+  };
 }
 
 async function safeDownload(url:string,provider:StockMediaProvider,maxBytes:number){
@@ -694,9 +703,12 @@ export async function resolveVerifiedStockMediaForScene(input:{
       results:discovered.results,
       desiredDurationSeconds:input.desiredDurationSeconds,
       orientation
-    }).filter(item=>item.relevance>=.45).slice(0,maxCandidates);
+    }).slice(0,maxCandidates);
 
-    for(const candidate of ranked){
+    for(const [candidateIndex,candidate] of ranked.entries()){
+      const searchRelevance=verifiedStockSearchRelevance(
+        candidate.relevance,candidateIndex
+      );
       let assetId:string|null=null;
       let createdCandidate=false;
       try{
@@ -733,7 +745,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
             desiredDurationSeconds:input.desiredDurationSeconds
           });
           visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=candidate.score*.55+visualRelevance*.45;
+          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
         let asset=existing?{id:String(existing.id)}:null;
@@ -744,7 +756,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
           })
           :{ok:true,expected:null,observed:[],reason:null};
         if(cached&&match&&cachedConstraints.ok&&stockCandidateAccepted({
-          searchScore:candidate.relevance,
+          searchScore:searchRelevance,
           visualRelevance,
           combinedScore
         })){
@@ -795,7 +807,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
             desiredDurationSeconds:input.desiredDurationSeconds
           });
           visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=candidate.score*.55+visualRelevance*.45;
+          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
         const constraints=match
@@ -806,7 +818,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
           :{ok:true,expected:null,observed:[],reason:null};
 
         if(match&&constraints.ok&&stockCandidateAccepted({
-          searchScore:candidate.relevance,
+          searchScore:searchRelevance,
           visualRelevance,
           combinedScore
         })){
@@ -824,7 +836,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
                 validationQuery,
                 provider,
                 providerAssetId:candidate.result.providerAssetId,
-                searchRelevance:candidate.relevance,
+                searchRelevance,
+                metadataRelevance:candidate.relevance,
                 visualRelevance,
                 combinedScore,
                 sourceStartSeconds:match.sourceStartSeconds,
@@ -842,7 +855,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
             provider,
             assetId:asset.id,
             candidate:candidate.result,
-            searchRelevance:candidate.relevance,
+            searchRelevance,
+                metadataRelevance:candidate.relevance,
             visualRelevance,
             combinedScore,
             match,
@@ -857,7 +871,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
           provider,
           providerAssetId:candidate.result.providerAssetId,
           stage:'visual-verification',
-          searchRelevance:candidate.relevance,
+          searchRelevance,
+                metadataRelevance:candidate.relevance,
           visualRelevance,
           combinedScore,
           hardConstraintReason:constraints.reason,
