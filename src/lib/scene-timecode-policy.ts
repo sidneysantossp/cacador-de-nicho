@@ -5,6 +5,89 @@ import { buildVisualBeat } from '@/lib/visual-beat-policy';
 
 const EPSILON=0.02;
 
+type VisualBeatTiming={
+  min:number|null;
+  preferred:number|null;
+  max:number|null;
+};
+
+function visualBeatCount(duration:number,timing?:VisualBeatTiming){
+  if(duration<=0)return 1;
+  const preferred=timing?.preferred??null;
+  const min=timing?.min??null;
+  const max=timing?.max??null;
+  let count=preferred!==null&&preferred>0
+    ?Math.max(1,Math.round(duration/preferred))
+    :1;
+  if(max!==null&&max>0&&duration/count>max+EPSILON){
+    count=Math.max(count,Math.ceil(duration/max));
+  }
+  if(min!==null&&min>0&&count>1&&duration/count<min-EPSILON){
+    count=Math.max(1,Math.floor(duration/min));
+  }
+  if(max!==null&&max>0&&duration/count>max+EPSILON){
+    count=Math.max(count,Math.ceil(duration/max));
+  }
+  return Math.max(1,count);
+}
+
+function sceneVisualBeats(
+  transcript:Transcript,
+  segment:TranscriptSegment,
+  startSeconds:number,
+  endSeconds:number,
+  timing?:VisualBeatTiming
+){
+  const duration=Math.max(0,endSeconds-startSeconds);
+  const count=visualBeatCount(duration,timing);
+  if(count<=1){
+    const beat=buildVisualBeat({segment,sequence:1});
+    return [{
+      ...beat,
+      startSeconds,
+      endSeconds,
+      durationSeconds:duration
+    }];
+  }
+
+  const wordById=new Map(transcript.words.map(word=>[word.id,word]));
+  const words=segment.wordIds
+    .map(id=>wordById.get(id))
+    .filter((word):word is NonNullable<typeof word>=>Boolean(word)&&word!.type==='word')
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+
+  return Array.from({length:count},(_,index)=>{
+    const beatStart=startSeconds+(duration*index/count);
+    const beatEnd=index===count-1
+      ?endSeconds
+      :startSeconds+(duration*(index+1)/count);
+    const subset=words.filter(word=>{
+      const midpoint=(word.startSeconds+word.endSeconds)/2;
+      return midpoint>=beatStart-EPSILON
+        &&(index===count-1?midpoint<=beatEnd+EPSILON:midpoint<beatEnd-EPSILON);
+    });
+    const narration=subset.map(word=>word.text).join(' ').replace(/\s+/g,' ').trim()
+      ||segment.text;
+    const beat=buildVisualBeat({
+      segment:{
+        ...segment,
+        startSeconds:beatStart,
+        endSeconds:beatEnd,
+        text:narration,
+        wordIds:subset.map(word=>word.id)
+      },
+      sequence:index+1
+    });
+    return {
+      ...beat,
+      startSeconds:beatStart,
+      endSeconds:beatEnd,
+      durationSeconds:Math.max(0,beatEnd-beatStart),
+      transcriptSegmentIds:[segment.id]
+    };
+  });
+}
+
 export function scenePlanAudioDuration(transcript:Transcript,audioDuration:number|null){
   const transcriptEnd=Math.max(0,...transcript.segments.map(segment=>segment.endSeconds??segment.startSeconds));
   return Math.max(audioDuration??0,transcriptEnd);
@@ -12,7 +95,8 @@ export function scenePlanAudioDuration(transcript:Transcript,audioDuration:numbe
 
 export function createInitialScenes(
   transcript:Transcript,
-  audioDuration:number|null
+  audioDuration:number|null,
+  visualBeatTiming?:VisualBeatTiming
 ):SceneTimecode[]{
   const segments=[...transcript.segments]
     .filter(segment=>segment.endSeconds!==null&&segment.endSeconds>segment.startSeconds)
@@ -27,7 +111,9 @@ export function createInitialScenes(
     const rawEnd=next?next.startSeconds:total;
     const end=Math.max(segment.endSeconds!,rawEnd);
     const sceneEnd=Math.min(total,end);
-    const beat=buildVisualBeat({segment,sequence:1});
+    const beats=sceneVisualBeats(
+      transcript,segment,start,sceneEnd,visualBeatTiming
+    );
     return {
       id:crypto.randomUUID(),
       sequence:index+1,
@@ -43,12 +129,7 @@ export function createInitialScenes(
       assetMode:'image',
       promptDirection:'',
       notes:'',
-      visualBeats:[{
-        ...beat,
-        startSeconds:start,
-        endSeconds:sceneEnd,
-        durationSeconds:Math.max(0,sceneEnd-start)
-      }]
+      visualBeats:beats
     };
   });
 }
@@ -62,7 +143,22 @@ export function normalizeScenePlan(payload:ScenePlanPayload):ScenePlanPayload{
       startSeconds:Math.max(0,scene.startSeconds),
       endSeconds:Math.max(0,scene.endSeconds),
       durationSeconds:Math.max(0,scene.endSeconds-scene.startSeconds),
-      narration:scene.narration.trim()
+      narration:scene.narration.trim(),
+      visualBeats:scene.visualBeats
+        ?[...scene.visualBeats]
+          .sort((a,b)=>a.startSeconds-b.startSeconds||a.sequence-b.sequence)
+          .map((beat,beatIndex)=>({
+            ...beat,
+            sequence:beatIndex+1,
+            startSeconds:Math.max(scene.startSeconds,beat.startSeconds),
+            endSeconds:Math.min(scene.endSeconds,beat.endSeconds),
+            durationSeconds:Math.max(0,
+              Math.min(scene.endSeconds,beat.endSeconds)
+              -Math.max(scene.startSeconds,beat.startSeconds)
+            ),
+            narration:beat.narration.trim()
+          }))
+        :scene.visualBeats
     }));
 
   return {...payload,scenes,updatedAt:new Date().toISOString()};
@@ -98,13 +194,25 @@ export function scenePlanStructuralIssues(
       if(!expectedSegments.has(id))issues.push('unknown-transcript-segment');
     });
 
-    for(const beat of scene.visualBeats??[]){
+    const beats=[...(scene.visualBeats??[])]
+      .sort((a,b)=>a.startSeconds-b.startSeconds||a.sequence-b.sequence);
+    beats.forEach((beat,beatIndex)=>{
       if(beat.endSeconds<=beat.startSeconds)issues.push('invalid-visual-beat-duration');
       if(beat.startSeconds<scene.startSeconds-EPSILON||beat.endSeconds>scene.endSeconds+EPSILON){
         issues.push('visual-beat-outside-scene');
       }
       if(!beat.narration.trim())issues.push('empty-visual-beat-narration');
       if(!beat.queries.length)issues.push('visual-beat-without-query');
+      const previousBeat=beats[beatIndex-1];
+      if(previousBeat){
+        if(beat.startSeconds<previousBeat.endSeconds-EPSILON)issues.push('visual-beat-overlap');
+        if(beat.startSeconds>previousBeat.endSeconds+EPSILON)issues.push('visual-beat-gap');
+      }else if(beat.startSeconds>scene.startSeconds+EPSILON){
+        issues.push('visual-beat-gap-at-start');
+      }
+    });
+    if(beats.length&&beats.at(-1)!.endSeconds<scene.endSeconds-EPSILON){
+      issues.push('visual-beat-gap-at-end');
     }
   });
 
@@ -131,8 +239,23 @@ export function sceneDurationWarnings(
   const warnings:string[]=[];
 
   payload.scenes.forEach(scene=>{
-    if(min!==null&&scene.durationSeconds+EPSILON<min)warnings.push('scene-'+scene.sequence+'-below-min-duration');
-    if(max!==null&&scene.durationSeconds-EPSILON>max)warnings.push('scene-'+scene.sequence+'-above-max-duration');
+    if(min!==null&&scene.durationSeconds+EPSILON<min){
+      warnings.push('scene-'+scene.sequence+'-below-min-duration');
+    }
+    if(max!==null){
+      const beats=scene.visualBeats??[];
+      if(beats.length){
+        beats.forEach(beat=>{
+          if(beat.durationSeconds-EPSILON>max){
+            warnings.push(
+              'scene-'+scene.sequence+'-beat-'+beat.sequence+'-above-max-duration'
+            );
+          }
+        });
+      }else if(scene.durationSeconds-EPSILON>max){
+        warnings.push('scene-'+scene.sequence+'-above-max-duration');
+      }
+    }
   });
 
   return warnings;
