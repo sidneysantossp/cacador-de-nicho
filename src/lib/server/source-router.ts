@@ -6,6 +6,7 @@ import { providerSecret } from './providers';
 import { downloadMedia } from './media-storage';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
+import { loadProductionDna } from './production-dna';
 import {
   deleteSceneAsset, generateGoogleImage, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
@@ -17,7 +18,8 @@ import {
 } from './verified-stock-jobs';
 import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
 import {
-  archiveTemporalEvidence, sourceRouteForScene, type SourceRouteAction
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, sourceRouteForScene,
+  type SourceRouteAction
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 
@@ -226,7 +228,12 @@ export async function resolveSourceForScene(input:{
   const scene=plan.scenes.find(item=>item.id===input.sceneId);
   if(!scene)throw new HttpError('Cena não encontrada no Scene Plan.',404);
 
-  const route=sourceRouteForScene(scene);
+  const visual=promptSet.scenePrompts.find(item=>item.sceneId===scene.id);
+  const dna=await loadProductionDna(promptSet.channelId);
+  const route=applyDocumentarySourcePolicy(
+    sourceRouteForScene(scene,visual?.direction),
+    dna?.research?.documentaryMode===true
+  );
   const attempts:Array<Record<string,unknown>>=[];
 
   for(const action of route.actions){
