@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
-  archiveTemporalEvidence, sourceRouteForScene
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, sourceRouteForScene
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -129,4 +129,37 @@ test('Archive temporal provenance does not require a date for undated archive qu
   });
   assert.equal(result.ok,true);
   assert.equal(result.required,false);
+});
+
+
+test('Source Router uses enriched editorial direction when supplied',()=>{
+  const route=sourceRouteForScene(
+    scene(beat({queries:['Then it spent years putting that highway underground.']})),
+    'Boston Big Dig Central Artery underground highway construction archival documentary'
+  );
+  assert.match(route.query,/Boston Big Dig Central Artery/);
+  assert.doesNotMatch(route.query,/Then it spent years/);
+  assert.deepEqual(route.actions,['owned','wikimedia','manual-archive']);
+});
+
+
+test('Documentary mode removes automatic synthetic fallback from real-source beats',()=>{
+  const base=sourceRouteForScene(scene(beat({
+    type:'literal',sourcePreference:'stock-image',
+    queries:['Boston Big Dig elevated Central Artery documentary photograph']
+  })));
+  const route=applyDocumentarySourcePolicy(base,true);
+  assert.equal(route.syntheticAllowed,false);
+  assert.equal(route.actions.includes('generated-image'),false);
+  assert.deepEqual(route.actions,['owned','stock-image','stock-video']);
+});
+
+test('Documentary mode still permits generation when the beat explicitly requests generated imagery',()=>{
+  const base=sourceRouteForScene(scene(beat({
+    type:'illustration',sourcePreference:'generated',
+    queries:['conceptual city infrastructure layers illustration']
+  })));
+  const route=applyDocumentarySourcePolicy(base,true);
+  assert.equal(route.syntheticAllowed,true);
+  assert.deepEqual(route.actions,['owned','generated-image']);
 });
