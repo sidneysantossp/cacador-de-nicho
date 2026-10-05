@@ -31,12 +31,42 @@ export function stockFallbackEligible(value:string){
   return /\b(?:stock|footage|documentary|real[- ]life|realistic|photoreal|photo|present[- ]day|current[- ]location|live action)\b/.test(text);
 }
 
+const providerQueryStopWords=new Set([
+  'a','an','and','are','as','at','be','been','being','but','by','can','does','for','from',
+  'had','has','have','in','into','is','it','its','just','less','major','middle','of','on',
+  'once','only','or','our','ran','that','the','their','them','these','this','those','through',
+  'to','was','we','were','what','when','where','which','while','who','why','will','with',
+  'years','something','dramatic','revealing','also','none','urban','infrastructure'
+]);
+
+function compactProviderKeywords(value:string,limit=16){
+  const words=value.match(/[A-Za-z0-9][A-Za-z0-9'-]*/g)??[];
+  const seen=new Set<string>();
+  const selected:string[]=[];
+  for(const word of words){
+    const key=word.toLowerCase();
+    if(providerQueryStopWords.has(key)||seen.has(key))continue;
+    seen.add(key);
+    selected.push(word);
+    if(selected.length>=limit)break;
+  }
+  return selected.join(' ');
+}
+
 export function stockDiscoveryQuery(value:string){
-  const cleaned=value
-    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action|real|only)\b/gi,' ')
+  const enrichedDirection=/\b(?:visibly\s+illustrate|visibly\s+support|documentary\s+evidence\s+for|visual\s+evidence\s+for|explain\s+the\s+spatial\s+relationship\s+in)\s*:/i.test(value);
+  const editorialCore=value
+    .replace(/^\s*(?:real\s+)?(?:landscape\s+)?documentary\s+(?:photo|image|video|footage)(?:\s+or\s+(?:photo|image|video|footage))?\s+of\s+/i,'')
+    .replace(/^\s*authentic\s+(?:historical\s+archival\s+image|official\s+planning\s+document|planning\s+document|map|diagram)\s+(?:of|from)\s+/i,'')
+    .replace(/^\s*factual\s+sourced\s+(?:map|planning\s+diagram)\s+of\s+/i,'')
+    .replace(/\b(?:visibly\s+illustrate|visibly\s+support|documentary\s+evidence\s+for|visual\s+evidence\s+for|explain\s+the\s+spatial\s+relationship\s+in)\s*:\s*/gi,' ')
+    .replace(/;\s*(?:prioritize|prefer|avoid|no\b|geographic\s+accuracy|required\b)[\s\S]*$/i,' ');
+
+  const cleaned=editorialCore
+    .replace(/\b(?:present[- ]day|current[- ]location|real[- ]life|realistic|photoreal(?:istic)?|documentary|stock|footage|live action|real|only|photo|photos|image|images)\b/gi,' ')
     .replace(/\b(?:wide[- ]angle|wide|medium|close[- ]up|aerial|street[- ]level)?\s*establishing shot\b/gi,' ')
     .replace(/\b(?:16\s*:\s*9|9\s*:\s*16)\b/g,' ')
-    .replace(/[\/|]+/g,' ')
+    .replace(/[\/|—–]+/g,' ')
     .replace(/\s+/g,' ')
     .replace(/\s+([,.;:])/g,'$1')
     .replace(/\s*[,;:.]+\s*$/,'')
@@ -48,6 +78,9 @@ export function stockDiscoveryQuery(value:string){
   }
   if(taxonomy.districts.length&&taxonomy.cities.length){
     return [taxonomy.districts[0],taxonomy.cities[0]].filter(Boolean).join(' ').slice(0,100);
+  }
+  if(enrichedDirection){
+    return compactProviderKeywords(cleaned).slice(0,100);
   }
   return cleaned.slice(0,100);
 }
