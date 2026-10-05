@@ -187,3 +187,11 @@ test('Visual Prompt Engine only marks DNA OWNED references ready when library ro
   assert.match(server,/row\.status==='ready'&&row\.asset_kind==='image'/);
   assert.match(server,/dnaReady/);
 });
+
+
+test('Visual Prompt Engine exposes compact approval for the current set version',()=>{
+  const route=readFileSync('src/app/api/visual-prompt-engine/route.ts','utf8');
+  assert.match(route,/action:z\.literal\('approveCurrent'\)/);
+  assert.match(route,/current\.version!==body\.expectedVersion/);
+  assert.match(route,/saveVisualPromptSet\(payload,'approved',body\.expectedVersion\)/);
+});
