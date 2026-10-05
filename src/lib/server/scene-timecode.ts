@@ -157,6 +157,32 @@ export async function createScenePlanFromTranscript(transcriptId:string):Promise
   return saveScenePlan(payload,'draft',0);
 }
 
+export async function rebuildScenePlan(planId:string):Promise<ScenePlan>{
+  const existing=await loadScenePlan(planId);
+  if(!existing)throw new HttpError('Scene Plan não encontrado.',404);
+  const context=await eligibleContext(existing.transcriptId);
+  const audioDuration=scenePlanAudioDuration(
+    context.transcript,context.asset.durationSeconds
+  );
+  const rebuilt:ScenePlanPayload={
+    ...existing,
+    transcriptVersion:context.transcript.version,
+    voiceTake:context.transcript.voiceTake,
+    audioDurationSeconds:audioDuration,
+    scenes:createInitialScenes(
+      context.transcript,
+      context.asset.durationSeconds,
+      context.dna?.format.sceneDurationSeconds
+    ),
+    review:{
+      notes:'Rebuilt from approved transcript using current Production DNA.',
+      durationWarningsAccepted:false
+    },
+    updatedAt:new Date().toISOString()
+  };
+  return saveScenePlan(rebuilt,'draft',existing.version);
+}
+
 export async function saveScenePlan(
   payload:ScenePlanPayload,
   status:ScenePlan['status'],
