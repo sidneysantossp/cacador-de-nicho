@@ -34,6 +34,11 @@ const postSchema=z.discriminatedUnion('action',[
   }).strict(),
   z.object({action:z.literal('generate'),setId:z.string().uuid()}).strict(),
   z.object({
+    action:z.literal('approveCurrent'),
+    setId:z.string().uuid(),
+    expectedVersion:z.number().int().min(1).max(100000)
+  }).strict(),
+  z.object({
     action:z.literal('save'),
     expectedVersion:z.number().int().min(0).max(100000).nullable(),
     status:z.enum(['draft','review','approved']),
@@ -104,7 +109,15 @@ export async function POST(request:Request){
     if(body.action==='create')promptSet=await createVisualPromptSet(body.scenePlanId);
     else if(body.action==='importOperatorPrompts')promptSet=await importOperatorVisualPrompts(body);
     else if(body.action==='generate'){assertProviderAiAllowed();promptSet=await generateVisualPromptDrafts(body.setId);}
-    else promptSet=await saveVisualPromptSet(body.promptSet,body.status,body.expectedVersion);
+    else if(body.action==='approveCurrent'){
+      const current=await loadVisualPromptSet(body.setId);
+      if(!current)throw new HttpError('Visual Prompt Set não encontrado.',404);
+      if(current.version!==body.expectedVersion){
+        throw new HttpError('Visual Prompt Set desatualizado. Recarregue antes de aprovar.',409);
+      }
+      const {version:_version,status:_status,...payload}=current;
+      promptSet=await saveVisualPromptSet(payload,'approved',body.expectedVersion);
+    }else promptSet=await saveVisualPromptSet(body.promptSet,body.status,body.expectedVersion);
 
     return Response.json({
       message:body.action==='create'
@@ -115,9 +128,11 @@ export async function POST(request:Request){
           ?promptSet.aiPlanning
             ?'Planejamento visual IA: '+promptSet.aiPlanning.completedScenes+'/'+promptSet.aiPlanning.totalScenes+' cenas concluídas.'
             :'Direções visuais atualizadas sem alterar os timecodes.'
-          :body.status==='approved'
-            ?'Visual Prompt Set aprovado.'
-            :'Visual Prompt Set salvo.',
+          :body.action==='approveCurrent'
+            ?'Visual Prompt Set atual aprovado.'
+            :body.status==='approved'
+              ?'Visual Prompt Set aprovado.'
+              :'Visual Prompt Set salvo.',
       promptSet,
       history:await loadVisualPromptSetHistory(promptSet.id,20)
     });
