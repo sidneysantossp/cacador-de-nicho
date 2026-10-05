@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ProductionDNA, ScenePlanPayload, Transcript } from '../src/lib/types';
 import {
   createInitialScenes, normalizeScenePlan, sceneDurationWarnings,
@@ -181,4 +182,14 @@ test('Scene Timecode treats visual beats as the hard max-duration boundary',()=>
   input.audioDurationSeconds=7;
   const warnings=sceneDurationWarnings(input,dna);
   assert.equal(warnings.some(item=>item.includes('scene-1')&&item.includes('above-max-duration')),false);
+});
+
+test('Scene Timecode API exposes a versioned rebuild using current Production DNA',()=>{
+  const route=readFileSync('src/app/api/scene-timecode/route.ts','utf8');
+  const server=readFileSync('src/lib/server/scene-timecode.ts','utf8');
+  assert.match(route,/action:z\.literal\('rebuild'\)/);
+  assert.match(route,/rebuildScenePlan\(body\.planId\)/);
+  assert.match(server,/export async function rebuildScenePlan/);
+  assert.match(server,/context\.dna\?\.format\.sceneDurationSeconds/);
+  assert.match(server,/durationWarningsAccepted:false/);
 });
