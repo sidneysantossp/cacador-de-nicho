@@ -123,6 +123,14 @@ export function rankStockMediaResults(input:{
     .sort((a,b)=>b.score-a.score);
 }
 
+export function verifiedStockSearchRelevance(
+  metadataRelevance:number,
+  providerIndex:number
+){
+  const providerSignal=Math.max(.45,.50-Math.max(0,providerIndex)*.025);
+  return Math.max(0,Math.min(1,Math.max(metadataRelevance,providerSignal)));
+}
+
 export function stockCandidateAccepted(input:{
   searchScore:number;
   visualRelevance:number;
