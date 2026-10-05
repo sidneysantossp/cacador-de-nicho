@@ -151,10 +151,15 @@ test('Scene Timecode splits long transcript segments into visual beats under the
   const scenes=createInitialScenes(longTranscript,8.1,{
     min:2.5,preferred:3.5,max:6
   });
-  assert.equal(scenes.length,1);
-  assert.equal(scenes[0].visualBeats?.length,2);
-  assert.ok(scenes[0].visualBeats!.every(beat=>beat.durationSeconds<=6));
-  assert.ok(scenes[0].visualBeats!.every(beat=>beat.durationSeconds>=2.5));
+  assert.equal(scenes.length,2);
+  assert.ok(scenes.every(scene=>scene.visualBeats?.length===1));
+  assert.ok(scenes.every(scene=>scene.durationSeconds<=6));
+  assert.ok(scenes.every(scene=>scene.durationSeconds>=2.5));
+  assert.deepEqual(scenes[0].transcriptSegmentIds,scenes[1].transcriptSegmentIds);
+  assert.equal(
+    new Set(scenes.flatMap(scene=>scene.transcriptWordIds)).size,
+    longTranscript.words.length
+  );
   assert.equal(
     sceneDurationWarnings({
       ...plan(),
@@ -192,4 +197,50 @@ test('Scene Timecode API exposes a versioned rebuild using current Production DN
   assert.match(server,/export async function rebuildScenePlan/);
   assert.match(server,/context\.dna\?\.format\.sceneDurationSeconds/);
   assert.match(server,/durationWarningsAccepted:false/);
+});
+
+test('Scene Timecode API can approve the current version without resending the full plan',()=>{
+  const route=readFileSync('src/app/api/scene-timecode/route.ts','utf8');
+  assert.match(route,/action:z\.literal\('approveCurrent'\)/);
+  assert.match(route,/current\.version!==body\.expectedVersion/);
+  assert.match(route,/durationWarningsAccepted:body\.acceptDurationWarnings/);
+  assert.match(route,/saveScenePlan\(\{/);
+});
+
+
+test('Scene Timecode allows one transcript segment to span multiple visual scenes when words partition cleanly',()=>{
+  const longTranscript:Transcript={
+    ...transcript,
+    words:[
+      {id:'91111111-1111-4111-8111-111111111111',text:'first',startSeconds:0,endSeconds:1,type:'word'},
+      {id:'92222222-2222-4222-8222-222222222222',text:'second',startSeconds:1,endSeconds:2,type:'word'},
+      {id:'93333333-3333-4333-8333-333333333333',text:'third',startSeconds:2,endSeconds:3,type:'word'},
+      {id:'94444444-4444-4444-8444-444444444444',text:'fourth',startSeconds:3,endSeconds:4,type:'word'},
+      {id:'95555555-5555-4555-8555-555555555555',text:'fifth',startSeconds:4,endSeconds:5,type:'word'},
+      {id:'96666666-6666-4666-8666-666666666666',text:'sixth',startSeconds:5,endSeconds:6,type:'word'},
+      {id:'97777777-7777-4777-8777-777777777777',text:'seventh',startSeconds:6,endSeconds:7,type:'word'},
+      {id:'98888888-8888-4888-8888-888888888888',text:'eighth',startSeconds:7,endSeconds:8,type:'word'}
+    ],
+    segments:[{
+      id:'99999999-9999-4999-8999-999999999999',
+      startSeconds:0,endSeconds:8,
+      text:'first second third fourth fifth sixth seventh eighth',
+      wordIds:[
+        '91111111-1111-4111-8111-111111111111','92222222-2222-4222-8222-222222222222',
+        '93333333-3333-4333-8333-333333333333','94444444-4444-4444-8444-444444444444',
+        '95555555-5555-4555-8555-555555555555','96666666-6666-4666-8666-666666666666',
+        '97777777-7777-4777-8777-777777777777','98888888-8888-4888-8888-888888888888'
+      ]
+    }],
+    text:'first second third fourth fifth sixth seventh eighth'
+  };
+  const scenes=createInitialScenes(longTranscript,8,{min:2.5,preferred:3.5,max:6});
+  const payload:ScenePlanPayload={
+    ...plan(),
+    transcriptVersion:longTranscript.version,
+    audioDurationSeconds:8,
+    scenes
+  };
+  assert.equal(scenes.length,2);
+  assert.deepEqual(scenePlanStructuralIssues(payload,longTranscript),[]);
 });
