@@ -151,7 +151,7 @@ test('Documentary mode removes automatic synthetic fallback from real-source bea
   const route=applyDocumentarySourcePolicy(base,true);
   assert.equal(route.syntheticAllowed,false);
   assert.equal(route.actions.includes('generated-image'),false);
-  assert.deepEqual(route.actions,['owned','stock-image','stock-video']);
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image']);
 });
 
 test('Documentary mode still permits generation when the beat explicitly requests generated imagery',()=>{
@@ -162,4 +162,21 @@ test('Documentary mode still permits generation when the beat explicitly request
   const route=applyDocumentarySourcePolicy(base,true);
   assert.equal(route.syntheticAllowed,true);
   assert.deepEqual(route.actions,['owned','generated-image']);
+});
+
+test('Documentary mode keeps archive document and map routes factual rather than motion-forcing them',()=>{
+  const cases=[
+    {type:'archive' as const,sourcePreference:'archive-image' as const},
+    {type:'document' as const,sourcePreference:'document' as const},
+    {type:'map' as const,sourcePreference:'map' as const}
+  ];
+  for(const item of cases){
+    const base=sourceRouteForScene(scene(beat({
+      type:item.type,sourcePreference:item.sourcePreference
+    })));
+    const route=applyDocumentarySourcePolicy(base,true);
+    assert.equal(route.actions[0],'owned');
+    assert.equal(route.actions.includes('generated-image'),false);
+    assert.equal(route.syntheticAllowed,false);
+  }
 });
