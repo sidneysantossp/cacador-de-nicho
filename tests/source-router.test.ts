@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, sourceRouteForScene
@@ -179,4 +180,11 @@ test('Documentary mode keeps archive document and map routes factual rather than
     assert.equal(route.actions.includes('generated-image'),false);
     assert.equal(route.syntheticAllowed,false);
   }
+});
+
+test('Source Router requeues verified stock when the enriched visual query changes',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/existing\.query!==jobInput\.query/);
+  assert.match(source,/reason:'visual-query-changed'/);
+  assert.match(source,/enqueueVerifiedStockJob\(jobInput\)/);
 });
