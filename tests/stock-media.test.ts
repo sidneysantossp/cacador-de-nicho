@@ -230,3 +230,14 @@ test('Verified Stock worker drains backlog quickly but keeps normal idle/error p
   assert.match(source,/await sleep\(Math\.max\(POLL_MS,5000\)\);/);
   assert.match(source,/drainYieldMs:DRAIN_YIELD_MS/);
 });
+
+
+test('Stock discovery compacts enriched documentary directions into provider-friendly subject queries',()=>{
+  const editorial='Real documentary photo or footage of Boston, Massachusetts — Central Artery and Big Dig urban infrastructure; visibly illustrate: Boston once ran a major elevated highway through the middle of downtown; prioritize location-specific infrastructure, street-level evidence or a clear physical mechanism; avoid generic unrelated skyline imagery.';
+  const query=stockDiscoveryQuery(editorial);
+  assert.match(query,/Boston/i);
+  assert.match(query,/Central Artery|Big Dig/i);
+  assert.match(query,/elevated highway|downtown/i);
+  assert.equal(query.length<=100,true);
+  assert.doesNotMatch(query,/documentary|photo or footage|prioritize|avoid/i);
+});
