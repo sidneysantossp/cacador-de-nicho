@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
-  stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery
+  stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
+  verifiedStockSearchRelevance
 } from '../src/lib/stock-media-policy';
 
 test('Stock Media allows only expected Pexels media hosts',()=>{
@@ -240,4 +241,35 @@ test('Stock discovery compacts enriched documentary directions into provider-fri
   assert.match(query,/elevated highway|downtown/i);
   assert.equal(query.length<=100,true);
   assert.doesNotMatch(query,/documentary|photo or footage|prioritize|avoid/i);
+});
+
+test('Wikimedia search only tolerates the known legacy provider constraint until schema migration lands',()=>{
+  const source=readFileSync('src/lib/server/stock-media.ts','utf8');
+  const schema=readFileSync('docs/schema.sql','utf8');
+  assert.match(source,/legacyWikimediaConstraint=input\.provider==='wikimedia'/);
+  assert.match(source,/ledger\.error\?\.code==='23514'/);
+  assert.match(source,/radar_stock_searches_provider_check/);
+  assert.match(schema,/provider in \('pexels','pixabay','unsplash','vecteezy','wikimedia'\)/);
+});
+
+
+test('Verified stock lets top provider results reach visual validation without treating them as visually proven',()=>{
+  assert.equal(verifiedStockSearchRelevance(0,0),.5);
+  assert.equal(verifiedStockSearchRelevance(0,1),.475);
+  assert.equal(verifiedStockSearchRelevance(0,2),.45);
+  assert.equal(verifiedStockSearchRelevance(.82,0),.82);
+  const weakVisual=.18;
+  const weakCombined=verifiedStockSearchRelevance(0,0)*.55+weakVisual*.45;
+  assert.equal(stockCandidateAccepted({
+    searchScore:verifiedStockSearchRelevance(0,0),
+    visualRelevance:weakVisual,
+    combinedScore:weakCombined
+  }),false);
+  const usefulVisual=.35;
+  const usefulCombined=verifiedStockSearchRelevance(0,0)*.55+usefulVisual*.45;
+  assert.equal(stockCandidateAccepted({
+    searchScore:verifiedStockSearchRelevance(0,0),
+    visualRelevance:usefulVisual,
+    combinedScore:usefulCombined
+  }),true);
 });
