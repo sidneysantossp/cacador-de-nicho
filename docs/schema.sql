@@ -813,9 +813,350 @@ grant execute on function public.claim_radar_universe_queue(int) to service_role
 create table if not exists public.radar_snapshots(id bigint generated always as identity primary key,channel_id text not null,video_id text not null,views bigint not null check(views>=0),observed_at timestamptz not null);
 create index if not exists radar_snapshots_observed on public.radar_snapshots(observed_at);
 create table if not exists public.radar_jobs(id text primary key,status text not null check(status in ('running','completed','failed')),token uuid not null,lease_until timestamptz not null,attempts int not null default 1,updated_at timestamptz not null default now());
-do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_voice_generation_chunks','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_embeddings','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_render_workers','radar_render_chapters','radar_production_quality_chapters','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports',
-…[sentinelx: truncated 25982 bytes]…
-pdated_at=now() where id=p_plan_id;
+do $$ declare t text;begin foreach t in array array['radar_channels','radar_analyses','radar_decisions','radar_contexts','radar_scripts','radar_settings','radar_runs','radar_managed_channels','radar_channel_brains','radar_channel_brain_versions','radar_content_arcs','radar_episodes','radar_channel_concepts','radar_production_dna','radar_production_dna_versions','radar_content_projects','radar_content_project_versions','radar_episode_scripts','radar_episode_script_versions','radar_voice_assets','radar_voice_generation_chunks','radar_transcripts','radar_transcript_versions','radar_scene_plans','radar_scene_plan_versions','radar_visual_prompt_sets','radar_visual_prompt_set_versions','radar_scene_assets','radar_stock_searches','radar_external_import_batches','radar_external_import_items','radar_media_library_metadata','radar_owned_media_assets','radar_owned_media_visual_analysis','radar_owned_media_segments','radar_owned_media_embeddings','radar_owned_media_analysis_jobs','radar_asset_visual_analysis','radar_asset_segments','radar_timelines','radar_timeline_versions','radar_audio_assets','radar_video_edits','radar_video_edit_versions','radar_render_jobs','radar_render_workers','radar_render_chapters','radar_production_quality_chapters','radar_production_quality_reports','radar_production_quality_versions','radar_publication_packages','radar_publication_package_versions','radar_performance_observations','radar_performance_reports','radar_performance_report_versions','radar_audience_intelligence_reports','radar_audience_intelligence_versions','radar_episode_automation_runs','radar_episode_automation_events','radar_next_episode_plans','radar_next_episode_plan_versions','radar_nexlev_connections','radar_nexlev_evidence_packs','radar_youtube_connections','radar_youtube_channels','radar_project_youtube_channels','radar_youtube_oauth_pending','radar_nexlev_connections','radar_youtube_publish_jobs','radar_learning_loop_jobs','radar_autopilot_control','radar_autopilot_control_versions','radar_universe_queue','radar_snapshots','radar_jobs'] loop execute format('alter table public.%I enable row level security',t);execute format('revoke all on table public.%I from anon, authenticated',t);execute format('grant all on table public.%I to service_role',t);end loop;end $$;
+revoke all on sequence public.radar_snapshots_id_seq from anon, authenticated;
+grant usage,select on sequence public.radar_snapshots_id_seq to service_role;
+revoke all on sequence public.radar_channel_brain_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_channel_brain_versions_id_seq to service_role;
+revoke all on sequence public.radar_production_dna_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_production_dna_versions_id_seq to service_role;
+revoke all on sequence public.radar_content_project_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_content_project_versions_id_seq to service_role;
+revoke all on sequence public.radar_episode_script_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_episode_script_versions_id_seq to service_role;
+revoke all on sequence public.radar_transcript_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_transcript_versions_id_seq to service_role;
+revoke all on sequence public.radar_scene_plan_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_scene_plan_versions_id_seq to service_role;
+revoke all on sequence public.radar_visual_prompt_set_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_visual_prompt_set_versions_id_seq to service_role;
+revoke all on sequence public.radar_timeline_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_timeline_versions_id_seq to service_role;
+revoke all on sequence public.radar_video_edit_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_video_edit_versions_id_seq to service_role;
+revoke all on sequence public.radar_production_quality_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_production_quality_versions_id_seq to service_role;
+revoke all on sequence public.radar_publication_package_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_publication_package_versions_id_seq to service_role;
+revoke all on sequence public.radar_performance_report_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_performance_report_versions_id_seq to service_role;
+revoke all on sequence public.radar_audience_intelligence_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_audience_intelligence_versions_id_seq to service_role;
+revoke all on sequence public.radar_episode_automation_events_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_episode_automation_events_id_seq to service_role;
+revoke all on sequence public.radar_next_episode_plan_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_next_episode_plan_versions_id_seq to service_role;
+revoke all on sequence public.radar_autopilot_control_versions_id_seq from anon,authenticated;
+grant usage,select on sequence public.radar_autopilot_control_versions_id_seq to service_role;
+
+insert into public.radar_autopilot_control(id,version,status,pause_reason,max_concurrent_automation_runs,max_concurrent_learning_jobs,payload)
+values('global',1,'paused','Control Plane inicializado em modo seguro.',1,1,jsonb_build_object('kind','autopilot-control','id','global','status','paused','pauseReason','Control Plane inicializado em modo seguro.','maxConcurrentAutomationRuns',1,'maxConcurrentLearningJobs',1,'updatedBy','system','createdAt',to_char(now() at time zone 'utc','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'updatedAt',to_char(now() at time zone 'utc','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')))
+on conflict(id) do nothing;
+insert into public.radar_autopilot_control_versions(control_id,version,status,payload)
+select id,version,status,payload from public.radar_autopilot_control where id='global'
+on conflict(control_id,version) do nothing;
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values('cacadores-media','cacadores-media',false,524288000,array['audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/m4a','audio/ogg','audio/flac','audio/webm','image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime'])
+on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+create or replace function public.save_autopilot_control(p_status text,p_pause_reason text,p_max_concurrent_automation_runs int,p_max_concurrent_learning_jobs int,p_payload jsonb,p_expected_version int) returns int
+language plpgsql security invoker set search_path='' as $$
+declare current_version int;next_version int;
+begin
+perform pg_advisory_xact_lock(hashtext('autopilot-control:global'));
+if p_status not in ('running','paused') then raise exception 'invalid autopilot control status';end if;
+if p_max_concurrent_automation_runs not between 1 and 10 then raise exception 'invalid automation concurrency';end if;
+if p_max_concurrent_learning_jobs not between 1 and 10 then raise exception 'invalid learning concurrency';end if;
+select version into current_version from public.radar_autopilot_control where id='global' for update;
+if current_version is null then raise exception 'autopilot control missing';end if;
+if current_version<>p_expected_version then raise exception 'autopilot control version conflict';end if;
+next_version:=current_version+1;
+update public.radar_autopilot_control set version=next_version,status=p_status,pause_reason=left(coalesce(p_pause_reason,''),1000),max_concurrent_automation_runs=p_max_concurrent_automation_runs,max_concurrent_learning_jobs=p_max_concurrent_learning_jobs,payload=p_payload,updated_at=now() where id='global';
+insert into public.radar_autopilot_control_versions(control_id,version,status,payload) values('global',next_version,p_status,p_payload);
+return next_version;
+end $$;
+revoke all on function public.save_autopilot_control(text,text,int,int,jsonb,int) from public,anon,authenticated;
+grant execute on function public.save_autopilot_control(text,text,int,int,jsonb,int) to service_role;
+
+create or replace function public.claim_render_job(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid render lease';end if;
+update public.radar_render_jobs
+set status='queued',stage='requeued-after-lease',worker_token=null,worker_id=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+select id into picked
+from public.radar_render_jobs
+where status='queued'
+order by created_at asc
+for update skip locked
+limit 1;
+if picked is null then return null;end if;
+update public.radar_render_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,
+worker_token=p_worker_token,worker_id=null,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+return picked;
+end $;
+revoke all on function public.claim_render_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_render_job(uuid,int) to service_role;
+
+create or replace function public.claim_render_job(
+  p_worker_token uuid,
+  p_worker_id text,
+  p_lease_seconds int default 900
+) returns uuid
+language plpgsql security invoker set search_path='' as $
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid render lease';end if;
+if coalesce(length(trim(p_worker_id)),0)<1 then raise exception 'invalid render worker id';end if;
+if not exists(
+  select 1 from public.radar_render_workers w where w.id=p_worker_id
+) then raise exception 'render worker not registered';end if;
+
+update public.radar_render_jobs
+set status='queued',stage='requeued-after-lease',worker_token=null,worker_id=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+
+select id into picked
+from public.radar_render_jobs
+where status='queued'
+order by created_at asc
+for update skip locked
+limit 1;
+
+if picked is null then return null;end if;
+
+update public.radar_render_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,
+worker_token=p_worker_token,worker_id=p_worker_id,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+
+return picked;
+end $;
+revoke all on function public.claim_render_job(uuid,text,int) from public,anon,authenticated;
+grant execute on function public.claim_render_job(uuid,text,int) to service_role;
+
+create or replace function public.heartbeat_render_job(p_job_id uuid,p_worker_token uuid,p_progress int,p_stage text,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_render_jobs
+set progress=greatest(progress,least(99,greatest(1,p_progress))),stage=left(coalesce(p_stage,'processing'),120),
+lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_render_job(uuid,uuid,int,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_render_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.save_performance_report(p_report_id uuid,p_channel_id text,p_episode_id uuid,p_observation_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
+language plpgsql security invoker set search_path='' as $$
+declare current_version int;next_version int;
+begin
+perform pg_advisory_xact_lock(hashtext('performance-report:'||p_report_id::text));
+if p_status not in ('draft','review','approved') then raise exception 'invalid performance report status';end if;
+if not exists(select 1 from public.radar_performance_observations o where o.id=p_observation_id and o.channel_id=p_channel_id and o.episode_id=p_episode_id) then raise exception 'performance observation not eligible';end if;
+select version into current_version from public.radar_performance_reports where id=p_report_id for update;
+if current_version is null then
+  if exists(select 1 from public.radar_performance_reports where observation_id=p_observation_id) then raise exception 'performance observation already has report';end if;
+  if p_expected_version is not null and p_expected_version not in (0,1) then raise exception 'performance report version conflict';end if;
+  insert into public.radar_performance_reports(id,channel_id,episode_id,observation_id,version,status,payload) values(p_report_id,p_channel_id,p_episode_id,p_observation_id,1,p_status,p_payload);
+  insert into public.radar_performance_report_versions(report_id,version,status,payload) values(p_report_id,1,p_status,p_payload);
+  return 1;
+end if;
+if p_expected_version is not null and p_expected_version<>current_version then raise exception 'performance report version conflict';end if;
+next_version:=current_version+1;
+update public.radar_performance_reports set version=next_version,status=p_status,payload=p_payload,updated_at=now() where id=p_report_id;
+insert into public.radar_performance_report_versions(report_id,version,status,payload) values(p_report_id,next_version,p_status,p_payload);
+return next_version;
+end $$;
+revoke all on function public.save_performance_report(uuid,text,uuid,uuid,text,jsonb,int) from public,anon,authenticated;
+grant execute on function public.save_performance_report(uuid,text,uuid,uuid,text,jsonb,int) to service_role;
+
+create or replace function public.save_audience_intelligence_report(p_report_id uuid,p_channel_id text,p_episode_id uuid,p_performance_report_id uuid,p_observation_id uuid,p_status text,p_payload jsonb,p_expected_version int default null) returns int
+language plpgsql security invoker set search_path='' as $$
+declare current_version int; next_version int;
+begin
+perform pg_advisory_xact_lock(hashtext('audience-intelligence:'||p_report_id::text));
+if p_status not in ('review','approved') then raise exception 'invalid audience intelligence status';end if;
+if not exists(select 1 from public.radar_performance_reports pr join public.radar_performance_observations po on po.id=pr.observation_id where pr.id=p_performance_report_id and pr.status='approved' and pr.channel_id=p_channel_id and pr.episode_id=p_episode_id and po.id=p_observation_id and po.channel_id=p_channel_id and po.episode_id=p_episode_id) then raise exception 'audience intelligence source not eligible';end if;
+select version into current_version from public.radar_audience_intelligence_reports where id=p_report_id for update;
+if current_version is null then
+  if exists(select 1 from public.radar_audience_intelligence_reports where performance_report_id=p_performance_report_id) then raise exception 'performance report already has audience intelligence';end if;
+  if p_expected_version is not null and p_expected_version not in (0,1) then raise exception 'audience intelligence version conflict';end if;
+  insert into public.radar_audience_intelligence_reports(id,channel_id,episode_id,performance_report_id,observation_id,version,status,payload) values(p_report_id,p_channel_id,p_episode_id,p_performance_report_id,p_observation_id,1,p_status,p_payload);
+  insert into public.radar_audience_intelligence_versions(audience_report_id,version,status,payload) values(p_report_id,1,p_status,p_payload);
+  return 1;
+end if;
+if p_expected_version is not null and p_expected_version<>current_version then raise exception 'audience intelligence version conflict';end if;
+next_version:=current_version+1;
+update public.radar_audience_intelligence_reports set version=next_version,status=p_status,payload=p_payload,updated_at=now() where id=p_report_id;
+insert into public.radar_audience_intelligence_versions(audience_report_id,version,status,payload) values(p_report_id,next_version,p_status,p_payload);
+return next_version;
+end $$;
+revoke all on function public.save_audience_intelligence_report(uuid,text,uuid,uuid,uuid,text,jsonb,int) from public,anon,authenticated;
+grant execute on function public.save_audience_intelligence_report(uuid,text,uuid,uuid,uuid,text,jsonb,int) to service_role;
+
+create or replace function public.claim_youtube_publish_job(p_worker_token uuid,p_lease_seconds int default 1800) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;
+begin
+if p_lease_seconds<60 or p_lease_seconds>7200 then raise exception 'invalid youtube publish lease';end if;
+update public.radar_youtube_publish_jobs set status='queued',stage='requeued-after-lease',worker_token=null,lease_until=null,updated_at=now()
+where status='processing' and lease_until is not null and lease_until<now();
+select j.id into picked from public.radar_youtube_publish_jobs j join public.radar_youtube_channels c on c.id=j.connection_id
+where j.status='queued' and c.status='connected' order by j.created_at asc for update of j skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_youtube_publish_jobs
+set status='processing',progress=greatest(progress,1),stage='claimed',attempts=attempts+1,worker_token=p_worker_token,
+lease_until=now()+make_interval(secs=>p_lease_seconds),started_at=coalesce(started_at,now()),error=null,updated_at=now()
+where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_youtube_publish_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_youtube_publish_job(uuid,int) to service_role;
+
+create or replace function public.heartbeat_youtube_publish_job(p_job_id uuid,p_worker_token uuid,p_progress int,p_stage text,p_lease_seconds int default 1800) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_youtube_publish_jobs
+set progress=greatest(progress,least(99,greatest(1,p_progress))),stage=left(coalesce(p_stage,'processing'),120),
+lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_youtube_publish_job(uuid,uuid,int,text,int) to service_role;
+
+create or replace function public.claim_learning_loop_job(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;control_status text;max_jobs int;active_jobs int;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid learning loop lease';end if;
+select status,max_concurrent_learning_jobs into control_status,max_jobs from public.radar_autopilot_control where id='global';
+if control_status is distinct from 'running' then return null;end if;
+update public.radar_learning_loop_jobs set status='scheduled',stage='requeued-after-lease',worker_token=null,lease_until=null,due_at=least(due_at,now()),updated_at=now()
+where status='processing' and worker_token is not null and lease_until is not null and lease_until<now();
+select count(*) into active_jobs from public.radar_learning_loop_jobs
+where status='processing' and worker_token is not null and lease_until is not null and lease_until>now();
+if active_jobs>=coalesce(max_jobs,1) then return null;end if;
+select id into picked from public.radar_learning_loop_jobs
+where status='scheduled' and due_at<=now()
+order by due_at asc,created_at asc for update skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_learning_loop_jobs set status='processing',stage='claimed',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_learning_loop_job(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_learning_loop_job(uuid,int) to service_role;
+
+create or replace function public.heartbeat_learning_loop_job(p_job_id uuid,p_worker_token uuid,p_stage text,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $
+begin
+update public.radar_learning_loop_jobs
+set stage=left(coalesce(p_stage,'processing'),120),lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now()
+where id=p_job_id and status='processing' and worker_token=p_worker_token;
+return found;
+end $;
+revoke all on function public.heartbeat_learning_loop_job(uuid,uuid,text,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_learning_loop_job(uuid,uuid,text,int) to service_role;
+
+create or replace function public.claim_episode_automation_run(p_worker_token uuid,p_lease_seconds int default 900) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare picked uuid;control_status text;max_runs int;active_runs int;
+begin
+if p_lease_seconds<60 or p_lease_seconds>3600 then raise exception 'invalid automation lease';end if;
+select status,max_concurrent_automation_runs into control_status,max_runs from public.radar_autopilot_control where id='global';
+if control_status is distinct from 'running' then return null;end if;
+update public.radar_episode_automation_runs set status='active',worker_token=null,lease_until=null,updated_at=now()
+where status='running' and mode='autonomous' and worker_token is not null and lease_until is not null and lease_until<now();
+select count(*) into active_runs from public.radar_episode_automation_runs
+where status='running' and worker_token is not null and lease_until is not null and lease_until>now();
+if active_runs>=coalesce(max_runs,1) then return null;end if;
+select r.id into picked from public.radar_episode_automation_runs r
+where r.mode='autonomous'
+  and r.hold_step is null
+  and (r.status='active' or (r.status='running' and r.worker_token is null))
+  and not (
+    r.current_step='visual-assets'
+    and exists(
+      select 1 from public.radar_verified_stock_jobs j
+      where j.episode_id=r.episode_id
+        and j.status in ('queued','processing')
+    )
+  )
+  and not (
+    r.current_step='render'
+    and exists(
+      select 1 from public.radar_render_jobs j
+      where j.episode_id=r.episode_id
+        and j.status in ('queued','processing')
+    )
+  )
+order by r.updated_at asc for update skip locked limit 1;
+if picked is null then return null;end if;
+update public.radar_episode_automation_runs set status='running',attempts=attempts+1,worker_token=p_worker_token,lease_until=now()+make_interval(secs=>p_lease_seconds),last_error=null,updated_at=now() where id=picked;
+return picked;
+end $$;
+revoke all on function public.claim_episode_automation_run(uuid,int) from public,anon,authenticated;
+grant execute on function public.claim_episode_automation_run(uuid,int) to service_role;
+
+create or replace function public.heartbeat_episode_automation_run(p_run_id uuid,p_worker_token uuid,p_lease_seconds int default 900) returns boolean
+language plpgsql security invoker set search_path='' as $$
+begin
+update public.radar_episode_automation_runs set lease_until=now()+make_interval(secs=>p_lease_seconds),updated_at=now() where id=p_run_id and status='running' and worker_token=p_worker_token;
+return found;
+end $$;
+revoke all on function public.heartbeat_episode_automation_run(uuid,uuid,int) from public,anon,authenticated;
+grant execute on function public.heartbeat_episode_automation_run(uuid,uuid,int) to service_role;
+
+create or replace function public.claim_next_episode_candidate(p_plan_id uuid,p_expected_version int,p_candidate_id uuid) returns boolean
+language plpgsql security invoker set search_path='' as $$
+declare current_version int; current_status text; current_candidate uuid; current_payload jsonb;
+begin
+perform pg_advisory_xact_lock(hashtext('next-episode-accept:'||p_plan_id::text));
+select version,status,acceptance_candidate_id,payload into current_version,current_status,current_candidate,current_payload
+from public.radar_next_episode_plans where id=p_plan_id for update;
+if current_version is null then raise exception 'next episode plan not found';end if;
+if current_status='accepted' then
+  if current_payload#>>'{review,acceptedCandidateId}'=p_candidate_id::text then return true;end if;
+  raise exception 'next episode plan already accepted';
+end if;
+if current_status<>'review' then raise exception 'next episode plan unavailable';end if;
+if current_version<>p_expected_version then raise exception 'next episode plan version conflict';end if;
+if not exists(select 1 from jsonb_array_elements(coalesce(current_payload->'candidates','[]'::jsonb)) item where item->>'id'=p_candidate_id::text) then raise exception 'candidate does not belong to plan';end if;
+if current_candidate is null then
+  update public.radar_next_episode_plans set acceptance_candidate_id=p_candidate_id,acceptance_claimed_at=now(),updated_at=now() where id=p_plan_id;
+  return true;
+end if;
+if current_candidate=p_candidate_id then return true;end if;
+raise exception 'next episode acceptance already claimed';
+end $$;
+revoke all on function public.claim_next_episode_candidate(uuid,int,uuid) from public,anon,authenticated;
+grant execute on function public.claim_next_episode_candidate(uuid,int,uuid) to service_role;
+
+create or replace function public.save_next_episode_plan(p_plan_id uuid,p_channel_id text,p_brain_version int,p_status text,p_payload jsonb,p_expected_version int default null) returns int
+language plpgsql security invoker set search_path='' as $$
+declare current_version int; next_version int;
+begin
+perform pg_advisory_xact_lock(hashtext('next-episode-plan:'||p_plan_id::text));
+if p_status not in ('review','accepted','superseded') then raise exception 'invalid next episode plan status';end if;
+if not exists(select 1 from public.radar_managed_channels where id=p_channel_id) then raise exception 'managed channel not found';end if;
+select version into current_version from public.radar_next_episode_plans where id=p_plan_id for update;
+if current_version is null then
+  if p_expected_version is not null and p_expected_version not in (0,1) then raise exception 'next episode plan version conflict';end if;
+  insert into public.radar_next_episode_plans(id,channel_id,brain_version,version,status,payload) values(p_plan_id,p_channel_id,p_brain_version,1,p_status,p_payload);
+  insert into public.radar_next_episode_plan_versions(plan_id,version,status,payload) values(p_plan_id,1,p_status,p_payload);
+  return 1;
+end if;
+if p_expected_version is not null and p_expected_version<>current_version then raise exception 'next episode plan version conflict';end if;
+next_version:=current_version+1;
+update public.radar_next_episode_plans set brain_version=p_brain_version,version=next_version,status=p_status,payload=p_payload,updated_at=now() where id=p_plan_id;
 insert into public.radar_next_episode_plan_versions(plan_id,version,status,payload) values(p_plan_id,next_version,p_status,p_payload);
 return next_version;
 end $$;
