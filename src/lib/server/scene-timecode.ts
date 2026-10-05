@@ -143,7 +143,11 @@ export async function createScenePlanFromTranscript(transcriptId:string):Promise
     transcriptVersion:context.transcript.version,
     voiceTake:context.transcript.voiceTake,
     audioDurationSeconds:audioDuration,
-    scenes:createInitialScenes(context.transcript,context.asset.durationSeconds),
+    scenes:createInitialScenes(
+      context.transcript,
+      context.asset.durationSeconds,
+      context.dna?.format.sceneDurationSeconds
+    ),
     review:{notes:'',durationWarningsAccepted:false},
     createdAt:now,
     updatedAt:now
