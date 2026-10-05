@@ -280,7 +280,25 @@ export async function resolveSourceForScene(input:{
     }
 
     if(action==='stock-video'){
+      const jobInput={
+        promptSetId:input.promptSetId,
+        sceneId:input.sceneId,
+        query:route.query,
+        desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
+        orientation:'landscape' as const,
+        providers:['pexels','pixabay'] as StockMediaProvider[],
+        maxCandidatesPerProvider:2
+      };
       const existing=await loadVerifiedStockJob(input.promptSetId,input.sceneId);
+      const queryChanged=existing&&existing.query!==jobInput.query;
+      if(queryChanged){
+        const queued=await enqueueVerifiedStockJob(jobInput);
+        attempts.push({
+          action,status:'queued',jobId:queued.id,
+          reason:'visual-query-changed'
+        });
+        return {status:'queued' as const,route,action,job:queued,attempts};
+      }
       if(existing?.status==='queued'||existing?.status==='processing'){
         attempts.push({action,status:existing.status,jobId:existing.id});
         return {status:'queued' as const,route,action,job:existing,attempts};
@@ -299,15 +317,7 @@ export async function resolveSourceForScene(input:{
         attempts.push({action,status:'failed',jobId:existing.id,error:existing.lastError});
         continue;
       }
-      const queued=await enqueueVerifiedStockJob({
-        promptSetId:input.promptSetId,
-        sceneId:input.sceneId,
-        query:route.query,
-        desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
-        orientation:'landscape',
-        providers:['pexels','pixabay'],
-        maxCandidatesPerProvider:2
-      });
+      const queued=await enqueueVerifiedStockJob(jobInput);
       attempts.push({action,status:'queued',jobId:queued.id});
       return {status:'queued' as const,route,action,job:queued,attempts};
     }
