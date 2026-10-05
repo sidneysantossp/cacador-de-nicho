@@ -105,7 +105,7 @@ export function createInitialScenes(
   const total=scenePlanAudioDuration(transcript,audioDuration);
   if(!segments.length||total<=0)return [];
 
-  return segments.map((segment,index)=>{
+  const scenes=segments.flatMap((segment,index)=>{
     const next=segments[index+1];
     const start=index===0?0:segment.startSeconds;
     const rawEnd=next?next.startSeconds:total;
@@ -114,24 +114,26 @@ export function createInitialScenes(
     const beats=sceneVisualBeats(
       transcript,segment,start,sceneEnd,visualBeatTiming
     );
-    return {
+    return beats.map(beat=>({
       id:crypto.randomUUID(),
-      sequence:index+1,
-      startSeconds:start,
-      endSeconds:sceneEnd,
-      durationSeconds:Math.max(0,sceneEnd-start),
-      narration:segment.text,
+      sequence:0,
+      startSeconds:beat.startSeconds,
+      endSeconds:beat.endSeconds,
+      durationSeconds:beat.durationSeconds,
+      narration:beat.narration,
       transcriptSegmentIds:[segment.id],
-      transcriptWordIds:[...segment.wordIds],
+      transcriptWordIds:[...beat.transcriptWordIds],
       visualIntent:'',
       shotType:'',
       characterIds:[],
-      assetMode:'image',
+      assetMode:'image' as const,
       promptDirection:'',
       notes:'',
-      visualBeats:beats
-    };
+      visualBeats:[{...beat,sequence:1}]
+    }));
   });
+
+  return scenes.map((scene,index)=>({...scene,sequence:index+1}));
 }
 
 export function normalizeScenePlan(payload:ScenePlanPayload):ScenePlanPayload{
@@ -170,8 +172,12 @@ export function scenePlanStructuralIssues(
 ){
   const issues:string[]=[];
   const scenes=[...payload.scenes].sort((a,b)=>a.startSeconds-b.startSeconds);
-  const expectedSegments=new Set(transcript.segments.map(segment=>segment.id));
-  const coverage=new Map<string,number>();
+  const expectedSegments=new Map(
+    transcript.segments.map(segment=>[segment.id,segment])
+  );
+  const segmentScenes=new Map<string,SceneTimecode[]>();
+  const expectedWords=new Set(transcript.words.map(word=>word.id));
+  const wordCoverage=new Map<string,number>();
 
   if(!scenes.length)issues.push('no-scenes');
   if(payload.transcriptVersion!==transcript.version)issues.push('stale-transcript-version');
@@ -190,8 +196,14 @@ export function scenePlanStructuralIssues(
     }
 
     scene.transcriptSegmentIds.forEach(id=>{
-      coverage.set(id,(coverage.get(id)??0)+1);
       if(!expectedSegments.has(id))issues.push('unknown-transcript-segment');
+      const rows=segmentScenes.get(id)??[];
+      rows.push(scene);
+      segmentScenes.set(id,rows);
+    });
+    scene.transcriptWordIds.forEach(id=>{
+      if(!expectedWords.has(id))issues.push('unknown-transcript-word');
+      wordCoverage.set(id,(wordCoverage.get(id)??0)+1);
     });
 
     const beats=[...(scene.visualBeats??[])]
@@ -220,10 +232,22 @@ export function scenePlanStructuralIssues(
     issues.push('scene-gap-at-end');
   }
 
-  for(const id of expectedSegments){
-    const count=coverage.get(id)??0;
-    if(count===0)issues.push('missing-transcript-segment');
-    if(count>1)issues.push('duplicate-transcript-segment');
+  for(const [id,segment] of expectedSegments){
+    const rows=segmentScenes.get(id)??[];
+    if(!rows.length){
+      issues.push('missing-transcript-segment');
+      continue;
+    }
+    if(rows.length>1&&!segment.wordIds.length){
+      issues.push('duplicate-transcript-segment-without-word-partition');
+    }
+    if(segment.wordIds.length){
+      for(const wordId of segment.wordIds){
+        const count=wordCoverage.get(wordId)??0;
+        if(count===0)issues.push('missing-transcript-word');
+        if(count>1)issues.push('duplicate-transcript-word');
+      }
+    }
   }
 
   return [...new Set(issues)];
