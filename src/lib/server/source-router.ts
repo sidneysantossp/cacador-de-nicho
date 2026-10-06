@@ -23,6 +23,9 @@ import {
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 
+const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
+const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
+
 type ImageVerification={
   relevance:number;
   summary:string;
@@ -265,7 +268,7 @@ export async function resolveSourceForScene(input:{
     }
 
     if(action==='stock-image'){
-      for(const provider of ['pexels','pixabay'] as const){
+      for(const provider of STOCK_IMAGE_PROVIDERS){
         const result=await resolveStillCandidates({
           promptSetId:input.promptSetId,
           sceneId:input.sceneId,
@@ -286,7 +289,7 @@ export async function resolveSourceForScene(input:{
         query:route.query,
         desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
         orientation:'landscape' as const,
-        providers:['pexels','pixabay'] as StockMediaProvider[],
+        providers:STOCK_VIDEO_PROVIDERS,
         maxCandidatesPerProvider:2
       };
       const existing=await loadVerifiedStockJob(input.promptSetId,input.sceneId);
