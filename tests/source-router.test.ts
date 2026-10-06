@@ -188,3 +188,10 @@ test('Source Router requeues verified stock when the enriched visual query chang
   assert.match(source,/reason:'visual-query-changed'/);
   assert.match(source,/enqueueVerifiedStockJob\(jobInput\)/);
 });
+
+test('Source Router reopens stock gaps when the query compiler changes',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/previousCompiledQuery!==currentCompiledQuery/);
+  assert.match(source,/reason:'stock-query-compiler-changed'/);
+  assert.match(source,/stockDiscoveryQuery\(route\.query\)/);
+});
