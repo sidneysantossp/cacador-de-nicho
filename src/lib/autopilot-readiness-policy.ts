@@ -7,7 +7,6 @@ export type AutopilotReadinessInput={
  providers:{
   openai:boolean;
   elevenlabs:boolean;
-  googleai:boolean;
  };
  workers:{
   automation:boolean;
@@ -82,12 +81,6 @@ export function buildAutopilotReadiness(input:AutopilotReadinessInput):Autopilot
    input.providers.elevenlabs,
    'ElevenLabs configurada para geração automática de voz.',
    'Configure a ElevenLabs para o modo Autonomous.'
-  ),
-  check(
-   'googleai-provider','Google AI','production','autonomous',
-   input.providers.googleai,
-   'Google AI configurada para geração automática de mídia.',
-   'Configure Google AI para visual assets automáticos.'
   ),
   check(
    'youtube-oauth','YouTube OAuth','youtube','closed-loop',
