@@ -3,8 +3,8 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   addElevenLabsSharedVoice, deleteVoiceAsset, discoverElevenLabsSharedVoice,
-  generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
-  listVoiceAssets, loadVoiceAsset, selectVoiceAsset, uploadVoiceAsset
+  finalizeVoiceAssetUpload, generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
+  listVoiceAssets, loadVoiceAsset, prepareVoiceAssetUpload, selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
 import {
   createTranscriptFromAlignment, loadTranscriptByVoiceAsset, transcribeWithScribe
@@ -15,6 +15,8 @@ export const dynamic='force-dynamic';
 export const maxDuration=1800;
 
 const jsonSchema=z.discriminatedUnion('action',[
+  z.object({action:z.literal('prepareUpload'),scriptId:z.string().uuid(),fileName:z.string().trim().min(1).max(500),mimeType:z.string().trim().min(1).max(160),bytes:z.number().int().positive().max(100*1024*1024)}).strict(),
+  z.object({action:z.literal('finalizeUpload'),scriptId:z.string().uuid(),assetId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('addSharedVoice'),
     originalVoiceId:z.string().trim().min(1).max(200),
@@ -91,6 +93,14 @@ export async function POST(request:Request){
     if(!parsed.success)throw new HttpError('Revise os campos do Voice Engine.',400);
     const body=parsed.data;
 
+    if(body.action==='prepareUpload'){
+      const upload=await prepareVoiceAssetUpload(body);
+      return Response.json({message:'Upload direto preparado.',upload});
+    }
+    if(body.action==='finalizeUpload'){
+      const asset=await finalizeVoiceAssetUpload(body);
+      return Response.json({message:'Master externo finalizado e pronto.',asset,assets:await listVoiceAssets(body.scriptId)});
+    }
     if(body.action==='addSharedVoice'){
       const voice=await addElevenLabsSharedVoice(body);
       return Response.json({message:'Voz compartilhada adicionada ao workspace ElevenLabs.',voice});
