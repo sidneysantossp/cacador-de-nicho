@@ -117,6 +117,8 @@ export default function ProviderSettings({
 
   {!ready&&<div className="config-gate"><KeyRound size={19}/><div><strong>{authenticated?'Supabase ainda não configurado':'Entre na operação para configurar'}</strong><p>{authenticated?'A base privada precisa estar ativa antes de receber chaves.':'As credenciais só podem ser vistas e alteradas depois do login.'}</p></div></div>}
 
+  {ready&&<div className="config-gate"><KeyRound size={19}/><div><strong>Migração segura de credenciais legadas</strong><p>Transfere as credenciais do Vault legado diretamente para o cofre local criptografado. Nenhuma chave passa pelo navegador.</p></div><button className="button primary small" disabled={Boolean(busy)} onClick={()=>void send({action:'migrateLegacy'},'migrate-legacy')}>{busy==='migrate-legacy'?'Migrando…':'Migrar credenciais legadas'}</button></div>}
+
   <div className="provider-grid">
    <NexLevCard
      status={nexlev}
