@@ -244,3 +244,36 @@ test('Scene Timecode allows one transcript segment to span multiple visual scene
   assert.equal(scenes.length,2);
   assert.deepEqual(scenePlanStructuralIssues(payload,longTranscript),[]);
 });
+
+test('Scene Timecode derives word partitions from timestamps when imported segments omit wordIds',()=>{
+  const importedTranscript:Transcript={
+    ...transcript,
+    words:[
+      {id:'a1111111-1111-4111-8111-111111111111',text:'first',startSeconds:0,endSeconds:1,type:'word'},
+      {id:'a2222222-2222-4222-8222-222222222222',text:'second',startSeconds:1,endSeconds:2,type:'word'},
+      {id:'a3333333-3333-4333-8333-333333333333',text:'third',startSeconds:2,endSeconds:3,type:'word'},
+      {id:'a4444444-4444-4444-8444-444444444444',text:'fourth',startSeconds:3,endSeconds:4,type:'word'},
+      {id:'a5555555-5555-4555-8555-555555555555',text:'fifth',startSeconds:4,endSeconds:5,type:'word'},
+      {id:'a6666666-6666-4666-8666-666666666666',text:'sixth',startSeconds:5,endSeconds:6,type:'word'},
+      {id:'a7777777-7777-4777-8777-777777777777',text:'seventh',startSeconds:6,endSeconds:7,type:'word'},
+      {id:'a8888888-8888-4888-8888-888888888888',text:'eighth',startSeconds:7,endSeconds:8,type:'word'}
+    ],
+    segments:[{
+      id:'a9999999-9999-4999-8999-999999999999',
+      startSeconds:0,endSeconds:8,
+      text:'first second third fourth fifth sixth seventh eighth',
+      wordIds:[]
+    }],
+    text:'first second third fourth fifth sixth seventh eighth'
+  };
+  const scenes=createInitialScenes(importedTranscript,8,{min:2.5,preferred:3.5,max:6});
+  const payload:ScenePlanPayload={
+    ...plan(),
+    transcriptVersion:importedTranscript.version,
+    audioDurationSeconds:8,
+    scenes
+  };
+  assert.equal(scenes.length,2);
+  assert.equal(new Set(scenes.flatMap(scene=>scene.transcriptWordIds)).size,importedTranscript.words.length);
+  assert.deepEqual(scenePlanStructuralIssues(payload,importedTranscript),[]);
+});
