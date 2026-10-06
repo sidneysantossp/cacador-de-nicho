@@ -11,6 +11,27 @@ type VisualBeatTiming={
   max:number|null;
 };
 
+function transcriptWordsForSegment(
+  transcript:Transcript,
+  segment:TranscriptSegment
+){
+  const wordById=new Map(transcript.words.map(word=>[word.id,word]));
+  const explicit=segment.wordIds
+    .map(id=>wordById.get(id))
+    .filter((word):word is NonNullable<typeof word>=>Boolean(word)&&word!.type==='word')
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+  if(explicit.length)return explicit;
+
+  const end=segment.endSeconds??segment.startSeconds;
+  return transcript.words
+    .filter(word=>{
+      if(word.type!=='word')return false;
+      const midpoint=(word.startSeconds+word.endSeconds)/2;
+      return midpoint>=segment.startSeconds-EPSILON&&midpoint<=end+EPSILON;
+    })
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
+}
+
 function visualBeatCount(duration:number,timing?:VisualBeatTiming){
   if(duration<=0)return 1;
   const preferred=timing?.preferred??null;
@@ -50,11 +71,7 @@ function sceneVisualBeats(
     }];
   }
 
-  const wordById=new Map(transcript.words.map(word=>[word.id,word]));
-  const words=segment.wordIds
-    .map(id=>wordById.get(id))
-    .filter((word):word is NonNullable<typeof word>=>Boolean(word)&&word!.type==='word')
-    .sort((a,b)=>a.startSeconds-b.startSeconds);
+  const words=transcriptWordsForSegment(transcript,segment);
 
   return Array.from({length:count},(_,index)=>{
     const beatStart=startSeconds+(duration*index/count);
@@ -238,12 +255,13 @@ export function scenePlanStructuralIssues(
       issues.push('missing-transcript-segment');
       continue;
     }
-    if(rows.length>1&&!segment.wordIds.length){
+    const segmentWords=transcriptWordsForSegment(transcript,segment);
+    if(rows.length>1&&!segmentWords.length){
       issues.push('duplicate-transcript-segment-without-word-partition');
     }
-    if(segment.wordIds.length){
-      for(const wordId of segment.wordIds){
-        const count=wordCoverage.get(wordId)??0;
+    if(segmentWords.length){
+      for(const word of segmentWords){
+        const count=wordCoverage.get(word.id)??0;
         if(count===0)issues.push('missing-transcript-word');
         if(count>1)issues.push('duplicate-transcript-word');
       }
