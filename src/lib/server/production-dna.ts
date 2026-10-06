@@ -70,13 +70,82 @@ export function createDefaultProductionDna(channel:ManagedChannel):ProductionDna
   };
 }
 
+export function normalizeProductionDnaPayload(
+  payload:unknown,
+  channelId:string
+):ProductionDnaPayload{
+  const defaults=createDefaultProductionDna({id:channelId} as ManagedChannel);
+  const raw=(payload&&typeof payload==='object'?payload:{}) as Partial<ProductionDnaPayload>&Record<string,unknown>;
+  const format=raw.format??defaults.format;
+  const visual=raw.visual??defaults.visual;
+  const voice=raw.voice??defaults.voice;
+  const captions=raw.captions??defaults.captions;
+  const editing=raw.editing??defaults.editing;
+  const thumbnail=raw.thumbnail??defaults.thumbnail;
+  const providers=raw.providers??defaults.providers;
+  return {
+    ...defaults,
+    ...raw,
+    kind:'production-dna',
+    channelId,
+    format:{
+      ...defaults.format,
+      ...format,
+      targetDurationMinutes:{...defaults.format.targetDurationMinutes,...format.targetDurationMinutes},
+      sceneDurationSeconds:{...defaults.format.sceneDurationSeconds,...format.sceneDurationSeconds}
+    },
+    visual:{
+      ...defaults.visual,
+      ...visual,
+      palette:Array.isArray(visual.palette)?visual.palette:[],
+      compositionRules:Array.isArray(visual.compositionRules)?visual.compositionRules:[],
+      cameraRules:Array.isArray(visual.cameraRules)?visual.cameraRules:[],
+      motionRules:Array.isArray(visual.motionRules)?visual.motionRules:[],
+      forbidden:Array.isArray(visual.forbidden)?visual.forbidden:[]
+    },
+    characters:Array.isArray(raw.characters)?raw.characters:[],
+    voice:{
+      ...defaults.voice,
+      ...voice,
+      providerPreference:Array.isArray(voice.providerPreference)?voice.providerPreference:[],
+      narrationStyle:Array.isArray(voice.narrationStyle)?voice.narrationStyle:[],
+      pronunciationRules:Array.isArray(voice.pronunciationRules)?voice.pronunciationRules:[]
+    },
+    captions:{...defaults.captions,...captions},
+    editing:{
+      ...defaults.editing,
+      ...editing,
+      transitions:Array.isArray(editing.transitions)?editing.transitions:[],
+      musicStyle:Array.isArray(editing.musicStyle)?editing.musicStyle:[],
+      sfxRules:Array.isArray(editing.sfxRules)?editing.sfxRules:[],
+      pacingRules:Array.isArray(editing.pacingRules)?editing.pacingRules:[]
+    },
+    thumbnail:{
+      ...defaults.thumbnail,
+      ...thumbnail,
+      styleRules:Array.isArray(thumbnail.styleRules)?thumbnail.styleRules:[],
+      forbidden:Array.isArray(thumbnail.forbidden)?thumbnail.forbidden:[]
+    },
+    providers:{
+      ...defaults.providers,
+      ...providers,
+      image:Array.isArray(providers.image)?providers.image:[],
+      video:Array.isArray(providers.video)?providers.video:[],
+      voice:Array.isArray(providers.voice)?providers.voice:[],
+      stock:Array.isArray(providers.stock)?providers.stock:[]
+    },
+    createdAt:typeof raw.createdAt==='string'?raw.createdAt:defaults.createdAt,
+    updatedAt:typeof raw.updatedAt==='string'?raw.updatedAt:defaults.updatedAt
+  };
+}
+
 export async function loadProductionDna(channelId:string):Promise<ProductionDNA|null>{
   const row=checked(await db().from('radar_production_dna')
     .select('id,version,payload')
     .eq('id',channelId)
     .maybeSingle());
   if(!row)return null;
-  return {...row.payload as ProductionDnaPayload,channelId:String(row.id),version:Number(row.version)};
+  return {...normalizeProductionDnaPayload(row.payload,String(row.id)),version:Number(row.version)};
 }
 
 export async function loadProductionDnaHistory(channelId:string,limit=20):Promise<ProductionDnaVersion[]>{
