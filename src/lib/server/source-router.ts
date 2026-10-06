@@ -306,6 +306,16 @@ export async function resolveSourceForScene(input:{
       if(existing?.status==='completed'){
         const completedStatus=String(existing.result?.status??'');
         if(completedStatus==='gap'){
+          const previousCompiledQuery=String(existing.result?.query??'');
+          const currentCompiledQuery=stockDiscoveryQuery(route.query);
+          if(previousCompiledQuery!==currentCompiledQuery){
+            const restarted=await restartVerifiedStockJob(existing.id);
+            attempts.push({
+              action,status:'queued',jobId:restarted.id,
+              reason:'stock-query-compiler-changed'
+            });
+            return {status:'queued' as const,route,action,job:restarted,attempts};
+          }
           attempts.push({action,status:'gap',jobId:existing.id});
           continue;
         }
