@@ -40,9 +40,6 @@ SHORT="${FULL_SHA:0:7}"
 IMAGE="auditseo/$PROJECT:$SHORT"
 ensure_production_autonomy_env
 
-# The deployment checkout is disposable and must always mirror the exact
-# promoted commit. Discard tracked local edits left by diagnostics/benchmarks
-# before reading versioned wrappers or building the image.
 git checkout -f --detach "$FULL_SHA"
 git reset --hard "$FULL_SHA"
 
@@ -72,7 +69,19 @@ sed -i "s/^APP_COMMIT_SHA=.*/APP_COMMIT_SHA=$FULL_SHA/" "$ENV_FILE"
 sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" "$ENV_FILE"
 
 docker rm -f "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
-docker run -d   --name "$CANDIDATE_CONTAINER"   --restart unless-stopped   --env-file "$ENV_FILE"   -p "127.0.0.1:$CANDIDATE_PORT:3000"   "$IMAGE" >/dev/null
+if ! docker network inspect cacadores-infra >/dev/null 2>&1; then
+  docker network create --driver bridge cacadores-infra >/dev/null
+fi
+if ! docker inspect cacadores-postgres >/dev/null 2>&1 || [[ "$(docker inspect -f '{{.State.Running}}' cacadores-postgres 2>/dev/null || true)" != "true" ]]; then
+  echo "self-hosted PostgreSQL is not running" >&2
+  exit 1
+fi
+if ! docker inspect cacadores-postgrest >/dev/null 2>&1 || [[ "$(docker inspect -f '{{.State.Running}}' cacadores-postgrest 2>/dev/null || true)" != "true" ]]; then
+  echo "self-hosted PostgREST is not running" >&2
+  exit 1
+fi
+docker run -d --name "$CANDIDATE_CONTAINER" --restart unless-stopped --env-file "$ENV_FILE" -p "127.0.0.1:$CANDIDATE_PORT:3000" "$IMAGE" >/dev/null
+docker network connect cacadores-infra "$CANDIDATE_CONTAINER" >/dev/null 2>&1 || true
 
 BODY=""
 for i in $(seq 1 30); do
@@ -155,8 +164,6 @@ state["project"]="cacador-de-nicho"
 p.write_text(json.dumps(state,indent=2)+"\n")
 PY
 
-# Synchronize versioned self-hosted wrappers and systemd units from the exact
-# promoted commit so GitHub remains the operational source of truth.
 if [[ -d "$ROOT/ops/self-hosted/bin" ]]; then
   for FILE in "$ROOT"/ops/self-hosted/bin/*; do
     [[ -f "$FILE" ]] || continue
