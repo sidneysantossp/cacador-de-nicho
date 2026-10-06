@@ -5,10 +5,54 @@ import { defaultSettings } from '@/lib/types';
 import { buildOpportunityGaps } from '@/lib/reference-catalog';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { HttpError } from './auth';
-export const dbConfigured=()=>!!process.env.SUPABASE_URL&&!!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+export type DatabaseMode='self-hosted'|'supabase';
+export function databaseMode():DatabaseMode{
+  return process.env.DATABASE_API_URL&&process.env.DATABASE_SERVICE_ROLE_KEY?'self-hosted':'supabase';
+}
+export const dbConfigured=()=>databaseMode()==='self-hosted' ? !!process.env.DATABASE_API_URL&&!!process.env.DATABASE_SERVICE_ROLE_KEY : !!process.env.SUPABASE_URL&&!!process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const policyApproved=()=>process.env.YOUTUBE_ANALYTICS_APPROVED==='true';
-export function db(){if(!dbConfigured())throw new HttpError('Configure o Supabase e aplique docs/schema.sql.',503);return createClient(process.env.SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});}
-export function checked<T>(result:{data:T;error:unknown}):T{if(result.error)throw new HttpError('Falha no Supabase. Verifique a conexão e o schema instalado.',502);return result.data;}
+
+export type SupabaseIssue='egress-quota-exceeded'|'project-restricted'|null;
+
+export function supabaseIssue(error:unknown):SupabaseIssue{
+ const text=error instanceof Error
+  ?error.name+' '+error.message
+  :typeof error==='string'
+   ?error
+   :JSON.stringify(error??{});
+ if(/exceed_egress_quota/i.test(text))return 'egress-quota-exceeded';
+ if(/service for this project is restricted|project is restricted|exceed_[a-z_]*quota/i.test(text)){
+  return 'project-restricted';
+ }
+ return null;
+}
+
+export function db(){
+  if(databaseMode()==='self-hosted'){
+    const url=process.env.DATABASE_API_URL?.trim();
+    const key=process.env.DATABASE_SERVICE_ROLE_KEY?.trim();
+    if(!url||!key)throw new HttpError('Configure o PostgreSQL local e o PostgREST do Caçadores.',503);
+    return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+  }
+  const url=process.env.SUPABASE_URL?.trim();
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if(!url||!key)throw new HttpError('Configure o banco de dados do Caçadores.',503);
+  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+}
+export function checked<T>(result:{data:T;error:unknown}):T{
+ if(result.error){
+  const issue=supabaseIssue(result.error);
+  if(issue==='egress-quota-exceeded'){
+   throw new HttpError('Supabase restringiu o projeto porque a quota de egress foi excedida. Libere o spend cap ou ajuste o plano no Supabase antes de continuar.',503);
+  }
+  if(issue==='project-restricted'){
+   throw new HttpError('O projeto Supabase está temporariamente restrito por quota ou billing. Revise Usage/Billing no Supabase antes de continuar.',503);
+  }
+  throw new HttpError('Falha no Supabase. Verifique a conexão e o schema instalado.',502);
+ }
+ return result.data;
+}
 export async function put(table:string,id:string,payload:unknown){checked(await db().from(table).upsert({id,payload,updated_at:new Date().toISOString()}));}
 export async function list<T>(table:string,limit=200):Promise<T[]>{const data=checked(await db().from(table).select('payload').order('updated_at',{ascending:false}).limit(limit));return (data??[]).map(x=>x.payload as T);}
 async function optionalList<T>(table:string,limit=200):Promise<T[]>{try{return await list<T>(table,limit);}catch{return [];}}
