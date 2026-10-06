@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
+import { withFactoryInstructions } from '@/lib/production-operating-system';
 
 export type ImageVerification={
   relevance:number;
@@ -46,14 +47,14 @@ export async function verifyStillImageWithOpenAI(input:{bytes:Buffer;mimeType:st
     const response=await client.responses.parse({
       model,
       store:false,
-      instructions:[
+      instructions:withFactoryInstructions([
         'Validate this candidate image against the editorial visual intent below.',
         'Judge only what is visibly supported. Do not infer an exact person, place, event or date unless visual evidence supports it.',
         'relevance is 0..1. Use high scores only when the image clearly satisfies the requested subject and context.',
         'focusX and focusY are normalized 0..1 coordinates for the center of the primary visible subject relevant to the editorial intent.',
         'Use 0.5,0.5 when the relevant subject is centered or no safer focal point is visible. focusLabel names the visible subject used as focus.',
         'Return only the requested structured result.'
-      ].join('\\n'),
+      ].join('\\n')),
       input:[{role:'user',content:[
         {type:'input_text',text:'EDITORIAL INTENT: '+input.query},
         {type:'input_image',image_url:imageUrl,detail:'high'}
