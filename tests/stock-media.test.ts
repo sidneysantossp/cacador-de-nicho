@@ -223,6 +223,18 @@ test('Verified Stock worker remains valid Node ESM syntax',()=>{
   execFileSync(process.execPath,['--check','scripts/verified-stock-worker.mjs'],{stdio:'pipe'});
 });
 
+test('Verified Stock worker prefers self-hosted database credentials',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
+  assert.match(source,/process\.env\.DATABASE_API_URL\|\|process\.env\.SUPABASE_URL/);
+  assert.match(source,/process\.env\.DATABASE_SERVICE_ROLE_KEY\|\|process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source,/DATABASE_URL\+'\/rest\/v1\/rpc\/'/);
+});
+
+test('Verified Stock worker sync joins the self-hosted database network',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
+  assert.match(source,/--network cacadores-infra/);
+});
+
 test('Verified Stock worker drains backlog quickly but keeps normal idle/error polling',()=>{
   const source=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
   assert.match(source,/VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS/);
