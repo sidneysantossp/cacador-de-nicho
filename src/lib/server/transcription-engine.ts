@@ -5,7 +5,7 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadEpisodeScript } from './episode-script';
 import { loadVoiceAsset } from './voice-engine';
-import { signedMediaUrl } from './media-storage';
+import { downloadMedia, signedMediaUrl } from './media-storage';
 import { providerSecret } from './providers';
 import {
   normalizeTranscriptPayload, parseSrtOrVtt, parseTimestampedText,
