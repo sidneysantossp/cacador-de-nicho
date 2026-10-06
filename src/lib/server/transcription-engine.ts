@@ -296,6 +296,55 @@ export async function transcribeWithScribe(voiceAssetId:string){
   });
 }
 
+export async function transcribeWithOpenAI(voiceAssetId:string){
+  const {asset,script}=await eligibleContext(voiceAssetId);
+  const key=await providerSecret('openai');
+  const bytes=await downloadMedia(asset.storagePath).catch(()=>{
+    throw new HttpError('Não foi possível carregar o áudio para transcrição OpenAI.',502);
+  });
+  if(!bytes.length)throw new HttpError('O master de áudio está vazio.',422);
+
+  const form=new FormData();
+  form.set('file',new File([bytes],asset.originalName??'master.m4a',{type:asset.mimeType||'audio/mp4'}));
+  form.set('model','whisper-1');
+  form.set('language','en');
+  form.set('response_format','verbose_json');
+  form.append('timestamp_granularities[]','segment');
+  form.append('timestamp_granularities[]','word');
+
+  let response:Response;
+  try{
+    response=await fetch('https://api.openai.com/v1/audio/transcriptions',{
+      method:'POST',
+      headers:{Authorization:'Bearer '+key},
+      body:form,
+      signal:AbortSignal.timeout(900000),
+      cache:'no-store'
+    });
+  }catch{
+    throw new HttpError('A OpenAI excedeu o tempo de transcrição do master.',504);
+  }
+  if(!response.ok){
+    const raw=await response.text().catch(()=>'');
+    if(response.status===401||response.status===403)throw new HttpError('A OpenAI recusou a credencial configurada para transcrição.',422);
+    if(response.status===429)throw new HttpError('A OpenAI atingiu limite de uso para transcrição.',429);
+    throw new HttpError('A OpenAI falhou ao transcrever o áudio'+(raw?' ('+raw.slice(0,180)+')':'')+'.',502);
+  }
+  const body=await response.json();
+  let parsed;
+  try{parsed=parseTranscriptJson(JSON.stringify(body),asset.durationSeconds);}
+  catch{throw new HttpError('A resposta de transcrição OpenAI não pôde ser normalizada.',502);}
+  if(!parsed.text||!parsed.segments.length)throw new HttpError('A OpenAI não devolveu segmentos utilizáveis.',502);
+  return saveGeneratedTranscript(asset,script,'imported',{
+    text:parsed.text,
+    words:parsed.words,
+    segments:parsed.segments,
+    languageCode:parsed.languageCode??'en',
+    originalFormat:'json',
+    provenance:{provider:'openai',model:'whisper-1'}
+  });
+}
+
 export async function importTranscriptFile(voiceAssetId:string,file:File){
   const {asset,script}=await eligibleContext(voiceAssetId);
   if(file.size<=0)throw new HttpError('O arquivo de transcrição está vazio.',400);
