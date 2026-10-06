@@ -195,3 +195,10 @@ test('Source Router reopens stock gaps when the query compiler changes',()=>{
   assert.match(source,/reason:'stock-query-compiler-changed'/);
   assert.match(source,/stockDiscoveryQuery\(route\.query\)/);
 });
+test('Source Router prioritizes Vecteezy in autonomous stock provider order',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/STOCK_IMAGE_PROVIDERS:StockMediaProvider\[\]=\['vecteezy','pexels','pixabay'\]/);
+  assert.match(source,/STOCK_VIDEO_PROVIDERS:StockMediaProvider\[\]=\['vecteezy','pexels','pixabay'\]/);
+  assert.match(source,/for\(const provider of STOCK_IMAGE_PROVIDERS\)/);
+  assert.match(source,/providers:STOCK_VIDEO_PROVIDERS/);
+});
