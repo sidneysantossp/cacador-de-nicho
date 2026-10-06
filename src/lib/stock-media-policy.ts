@@ -200,3 +200,32 @@ export function stockVisualConstraintsSatisfied(input:{
     reason:ok?null:'expected '+expectedLabel+' but observed '+(observed.join(', ')||'unknown time of day')
   };
 }
+
+export function stockDiscoveryQueries(value:string){
+  const primary=stockDiscoveryQuery(value);
+  const taxonomy=classifyMediaTaxonomy(value);
+  const city=taxonomy.cities[0]??'';
+  const primaryWords=primary.split(/\s+/).filter(Boolean);
+  const cityWords=new Set(city.toLowerCase().split(/\s+/).filter(Boolean));
+  const mechanismWords=new Set([
+    'highway','freeway','traffic','tunnel','road','roads','street','streets','transit','rail',
+    'railway','subway','bridge','bridges','water','stormwater','flood','flooding','plaza',
+    'drainage','sewer','planning','density','housing','construction','downtown','land',
+    'underground','elevated','infrastructure','skyline','transport','transportation'
+  ]);
+  const mechanisms=primaryWords.filter(word=>
+    mechanismWords.has(word.toLowerCase())
+  );
+  const nonCity=primaryWords.filter(word=>!cityWords.has(word.toLowerCase()));
+  const variants=[
+    primary,
+    city&&mechanisms.length
+      ?[city,...mechanisms.slice(0,4)].join(' ')
+      :'',
+    city&&nonCity.length
+      ?[city,...nonCity.slice(-4)].join(' ')
+      :'',
+    city?city+' city infrastructure':''
+  ].map(item=>item.trim().slice(0,100)).filter(Boolean);
+  return [...new Set(variants)];
+}
