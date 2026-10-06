@@ -93,7 +93,15 @@ export async function GET(request:Request){
       promptSets,
       scenePlans:scenePlans.filter(item=>item.status==='approved')
     },{headers:{'Cache-Control':'no-store'}});
-  }catch(e){return errorResponse(e);}
+  }catch(e){
+    if(e instanceof HttpError)return errorResponse(e);
+    const raw=e instanceof Error?e.message:'unknown-error';
+    const safe=raw
+      .replace(/[A-Za-z0-9_\-]{32,}/g,'[redacted]')
+      .replace(/https?:\/\/[^\s]+/g,'[url]')
+      .slice(0,240);
+    return errorResponse(new HttpError('Visual Prompt Engine internal: '+safe,500));
+  }
 }
 
 export async function POST(request:Request){
