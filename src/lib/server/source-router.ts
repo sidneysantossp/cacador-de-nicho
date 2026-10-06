@@ -2,8 +2,8 @@ import 'server-only';
 
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { providerSecret } from './providers';
 import { downloadMedia } from './media-storage';
+import { verifyStillImageWithOpenAI, type ImageVerification } from './visual-image-verification';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
@@ -26,16 +26,6 @@ import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 
-type ImageVerification={
-  relevance:number;
-  summary:string;
-  matchedEvidence:string[];
-  mismatchReason:string;
-  focusX:number;
-  focusY:number;
-  focusLabel:string;
-};
-
 async function imageAsset(assetId:string){
   const row=checked(await db().from('radar_scene_assets')
     .select('id,asset_kind,status,storage_path,mime_type,bytes,payload')
@@ -47,71 +37,12 @@ async function imageAsset(assetId:string){
   return row;
 }
 
+
 async function verifyStillImage(assetId:string,query:string):Promise<ImageVerification>{
   const asset=await imageAsset(assetId);
   const bytes=await downloadMedia(String(asset.storage_path));
   if(!bytes.length)throw new HttpError('A imagem ficou vazia durante a validação visual.',502);
-  const key=await providerSecret('googleai');
-  const model=(process.env.VISUAL_INTELLIGENCE_MODEL??'gemini-2.5-flash').replace(/^models\//,'');
-  const schema={
-    type:'OBJECT',
-    properties:{
-      relevance:{type:'NUMBER'},
-      summary:{type:'STRING'},
-      matchedEvidence:{type:'ARRAY',items:{type:'STRING'}},
-      mismatchReason:{type:'STRING'},
-      focusX:{type:'NUMBER'},
-      focusY:{type:'NUMBER'},
-      focusLabel:{type:'STRING'}
-    },
-    required:['relevance','summary','matchedEvidence','mismatchReason','focusX','focusY','focusLabel']
-  };
-  let response:Response;
-  try{
-    response=await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',
-      {
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-goog-api-key':key},
-        body:JSON.stringify({
-          contents:[{role:'user',parts:[
-            {text:[
-              'Validate this candidate image against the editorial visual intent below.',
-              'Judge only what is visibly supported. Do not infer an exact person, place, event or date unless visual evidence supports it.',
-              'relevance is 0..1. Use high scores only when the image clearly satisfies the requested subject/context.',
-              'focusX and focusY are normalized 0..1 coordinates for the center of the primary visible subject relevant to the editorial intent.',
-              'Use 0.5,0.5 when the relevant subject is centered or no safer focal point is visible. focusLabel names the visible subject used as focus.',
-              'EDITORIAL INTENT: '+query
-            ].join('\n')},
-            {inline_data:{mime_type:String(asset.mime_type||'image/jpeg'),data:bytes.toString('base64')}}
-          ]}],
-          generationConfig:{temperature:.1,responseMimeType:'application/json',responseSchema:schema}
-        }),
-        signal:AbortSignal.timeout(90000),
-        cache:'no-store'
-      }
-    );
-  }catch{throw new HttpError('A validação visual da imagem excedeu o tempo.',504);}
-  if(response.status===429)throw new HttpError('A Google AI atingiu o limite durante a validação da imagem.',429);
-  if(response.status===401||response.status===403)throw new HttpError('A Google AI recusou a validação da imagem.',422);
-  if(!response.ok)throw new HttpError('A Google AI falhou ao validar a imagem candidata.',502);
-  const body=await response.json() as {candidates?:Array<{content?:{parts?:Array<{text?:string}>}}>} ;
-  const raw=(body.candidates?.[0]?.content?.parts??[]).map(part=>part.text??'').join('').trim();
-  if(!raw)throw new HttpError('A validação visual não retornou resultado.',502);
-  try{
-    const parsed=JSON.parse(raw) as Partial<ImageVerification>;
-    return {
-      relevance:Math.max(0,Math.min(1,Number(parsed.relevance??0))),
-      summary:String(parsed.summary??'').trim().slice(0,1200),
-      matchedEvidence:Array.isArray(parsed.matchedEvidence)
-        ?parsed.matchedEvidence.map(String).map(value=>value.trim()).filter(Boolean).slice(0,20)
-        :[],
-      mismatchReason:String(parsed.mismatchReason??'').trim().slice(0,1200),
-      focusX:Math.max(0,Math.min(1,Number(parsed.focusX??.5))),
-      focusY:Math.max(0,Math.min(1,Number(parsed.focusY??.5))),
-      focusLabel:String(parsed.focusLabel??'').trim().slice(0,240)
-    };
-  }catch{throw new HttpError('A validação visual retornou JSON inválido.',502);}
+  return verifyStillImageWithOpenAI({bytes,mimeType:String(asset.mime_type||'image/jpeg'),query});
 }
 
 async function persistImageVerification(assetId:string,query:string,verification:ImageVerification){
