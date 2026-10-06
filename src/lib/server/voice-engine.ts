@@ -13,7 +13,8 @@ import { checked, db } from './db';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import {
-  downloadMedia, downloadMediaToFile, putMedia, removeMedia, signedMediaUrl
+  downloadMedia, downloadMediaToFile, headMedia, putMedia, r2StoragePath, removeMedia,
+  signedMediaPutUrl, signedMediaUrl
 } from './media-storage';
 import { loadEpisodeScript } from './episode-script';
 import { loadProductionDna } from './production-dna';
@@ -464,6 +465,88 @@ export async function listVoiceAssets(scriptId:string):Promise<VoiceAssetListIte
       stale:voiceAssetIsStale(asset,script,textHash(script.content))
     };
   }));
+}
+
+export async function prepareVoiceAssetUpload(input:{
+  scriptId:string;fileName:string;mimeType:string;bytes:number;
+}){
+  const script=await approvedScript(input.scriptId);
+  if(!Number.isSafeInteger(input.bytes)||input.bytes<=0)throw new HttpError('O arquivo de áudio está vazio.',400);
+  if(input.bytes>MAX_AUDIO_BYTES)throw new HttpError('O áudio excede o limite de 100 MB.',413);
+  const mimeType=normalizeMime(input.mimeType,input.fileName);
+  const metadata={
+    scriptVersion:script.version,
+    scriptWordCount:script.wordCount,
+    textHash:textHash(script.content),
+    durationSeconds:null,
+    characterCount:script.content.length,
+    expectedBytes:input.bytes,
+    uploadTransport:'direct-r2'
+  };
+  const reservation=await reserveAsset(script,'uploaded','external',mimeType,input.fileName,metadata);
+  const ext=extensionForMime(mimeType,input.fileName);
+  const storageKey=[
+    'channels',script.channelId,'episodes',script.episodeId,'voice',script.id,
+    'take-'+String(reservation.take).padStart(3,'0')+'-'+reservation.id+'.'+ext
+  ].join('/');
+  const storagePath=r2StoragePath(storageKey);
+  const uploadUrl=await signedMediaPutUrl(storagePath,mimeType,600);
+  if(!uploadUrl){
+    await db().from('radar_voice_assets').update({
+      status:'failed',selected:false,payload:{...metadata,error:'direct-upload-unavailable'},
+      updated_at:new Date().toISOString()
+    }).eq('id',reservation.id);
+    throw new HttpError('Não foi possível preparar o upload direto do áudio para o R2.',503);
+  }
+  checked(await db().from('radar_voice_assets').update({
+    storage_path:storagePath,mime_type:mimeType,bytes:input.bytes,payload:metadata,
+    updated_at:new Date().toISOString()
+  }).eq('id',reservation.id));
+  return {assetId:reservation.id,take:reservation.take,storagePath,mimeType,uploadUrl};
+}
+
+export async function finalizeVoiceAssetUpload(input:{scriptId:string;assetId:string}){
+  const script=await approvedScript(input.scriptId);
+  const row=checked(await db().from('radar_voice_assets')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .eq('id',input.assetId).eq('script_id',script.id).maybeSingle());
+  if(!row)throw new HttpError('Upload de voz não encontrado.',404);
+  if(String(row.status)==='ready')return normalizeAsset(row as never);
+  const storagePath=String(row.storage_path??'');
+  if(!storagePath.startsWith('r2:'))throw new HttpError('O upload de voz não possui destino R2 válido.',409);
+  const expected=Number(row.bytes??0);
+  let remote:{bytes:number;contentType:string;etag:string};
+  try{remote=await headMedia(storagePath);}
+  catch{throw new HttpError('O áudio ainda não apareceu no R2. Tente finalizar novamente.',409);}
+  if(remote.bytes<=0||remote.bytes!==expected){
+    throw new HttpError('O tamanho recebido no R2 não corresponde ao master preparado.',422);
+  }
+  const root=await mkdtemp(path.join(os.tmpdir(),'voice-upload-'));
+  let durationSeconds:null|number=null;
+  try{
+    const local=path.join(root,'master.'+extensionForMime(String(row.mime_type),String(row.original_name??'')));
+    await downloadMediaToFile(storagePath,local);
+    durationSeconds=await audioDuration(local);
+  }finally{
+    await rm(root,{recursive:true,force:true}).catch(()=>{});
+  }
+  if(!durationSeconds)throw new HttpError('Não foi possível determinar a duração do master enviado.',422);
+  const payload={
+    ...((row.payload??{}) as Record<string,unknown>),
+    durationSeconds:Number(durationSeconds.toFixed(6)),
+    finalizedAt:new Date().toISOString()
+  };
+  const updated=checked(await db().from('radar_voice_assets').update({
+    status:'ready',bytes:remote.bytes,mime_type:remote.contentType||row.mime_type,payload,
+    updated_at:new Date().toISOString()
+  }).eq('id',input.assetId)
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .single());
+  await db().rpc('select_voice_asset_if_none',{p_script_id:script.id,p_asset_id:input.assetId});
+  const finalRow=checked(await db().from('radar_voice_assets')
+    .select('id,channel_id,episode_id,script_id,take,source_type,provider,status,selected,storage_path,mime_type,original_name,bytes,payload,created_at,updated_at')
+    .eq('id',input.assetId).single());
+  return normalizeAsset(finalRow as never);
 }
 
 export async function uploadVoiceAsset(scriptId:string,file:File){
