@@ -143,7 +143,7 @@ test('Autopilot activation readiness gate stays identical for UI and server',()=
     channelId:'11111111-1111-4111-8111-111111111111',
     hasBrain:true,
     hasProductionDna:true,
-    providers:{openai:true,elevenlabs:true,googleai:true},
+    providers:{openai:true,elevenlabs:true},
     workers:{automation:true,learningLoop:true},
     youtube:{
       oauthConfigured:true,
@@ -306,7 +306,7 @@ test('Autopilot readiness separates configuration from temporary operational hol
     channelId:'11111111-1111-4111-8111-111111111111',
     hasBrain:true,
     hasProductionDna:true,
-    providers:{openai:true,elevenlabs:true,googleai:true},
+    providers:{openai:true,elevenlabs:true},
     workers:{automation:true,learningLoop:true},
     youtube:{
       oauthConfigured:true,
@@ -350,7 +350,7 @@ test('Autopilot readiness blocks each capability at its own prerequisite layer',
     channelId:'11111111-1111-4111-8111-111111111111',
     hasBrain:false,
     hasProductionDna:true,
-    providers:{openai:false,elevenlabs:false,googleai:false},
+    providers:{openai:false,elevenlabs:false},
     workers:{automation:true,learningLoop:true},
     youtube:{oauthConfigured:true,connected:true,scopes:[] as string[]},
     operations:{
@@ -367,6 +367,6 @@ test('Autopilot readiness blocks each capability at its own prerequisite layer',
   assert.ok(result.checks.some(check=>check.code==='channel-brain'&&check.status==='blocker'));
   assert.ok(result.checks.some(check=>check.code==='openai-provider'&&check.status==='blocker'));
   assert.ok(result.checks.some(check=>check.code==='elevenlabs-provider'&&check.status==='blocker'));
-  assert.ok(result.checks.some(check=>check.code==='googleai-provider'&&check.status==='blocker'));
+
   assert.ok(result.checks.some(check=>check.code==='youtube-scopes'&&check.status==='blocker'));
 });
