@@ -9,8 +9,8 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
-  stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery,
+  stockDownloadHostAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
   verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
@@ -666,7 +666,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
   maxCandidatesPerProvider?:number;
 }){
   const editorialQuery=input.query.trim();
-  const query=stockDiscoveryQuery(editorialQuery);
+  const discoveryQueries=stockDiscoveryQueries(editorialQuery);
+  const query=discoveryQueries[0]??stockDiscoveryQuery(editorialQuery);
   const validationQuery=stockVisualValidationQuery(editorialQuery);
   const {set}=await sceneContext(input.promptSetId,input.sceneId);
   if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
@@ -679,31 +680,55 @@ export async function resolveVerifiedStockMediaForScene(input:{
   const attempts:Array<Record<string,unknown>>=[];
 
   for(const provider of providers){
-    let discovered:Awaited<ReturnType<typeof searchStockMedia>>;
-    try{
-      discovered=await searchStockMedia({
-        promptSetId:input.promptSetId,
-        sceneId:input.sceneId,
-        provider,
-        kind:'video',
-        query,
+    type RankedCandidate=ReturnType<typeof rankStockMediaResults>[number]&{
+      discoveryQuery:string;
+    };
+    const rankedByAsset=new Map<string,RankedCandidate>();
+
+    for(const discoveryQuery of discoveryQueries){
+      let discovered:Awaited<ReturnType<typeof searchStockMedia>>;
+      try{
+        discovered=await searchStockMedia({
+          promptSetId:input.promptSetId,
+          sceneId:input.sceneId,
+          provider,
+          kind:'video',
+          query:discoveryQuery,
+          orientation
+        });
+        attempts.push({
+          provider,
+          stage:'search',
+          query:discoveryQuery,
+          results:discovered.results.length
+        });
+      }catch(error){
+        attempts.push({
+          provider,
+          stage:'search',
+          query:discoveryQuery,
+          error:error instanceof Error?error.message:'Falha desconhecida na busca stock.'
+        });
+        continue;
+      }
+
+      const variantRanked=rankStockMediaResults({
+        query:discoveryQuery,
+        results:discovered.results,
+        desiredDurationSeconds:input.desiredDurationSeconds,
         orientation
       });
-    }catch(error){
-      attempts.push({
-        provider,
-        stage:'search',
-        error:error instanceof Error?error.message:'Falha desconhecida na busca stock.'
-      });
-      continue;
+      for(const candidate of variantRanked){
+        const key=candidate.result.providerAssetId;
+        const enriched:RankedCandidate={...candidate,discoveryQuery};
+        const current=rankedByAsset.get(key);
+        if(!current||enriched.score>current.score)rankedByAsset.set(key,enriched);
+      }
     }
 
-    const ranked=rankStockMediaResults({
-      query,
-      results:discovered.results,
-      desiredDurationSeconds:input.desiredDurationSeconds,
-      orientation
-    }).slice(0,maxCandidates);
+    const ranked=[...rankedByAsset.values()]
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,maxCandidates);
 
     for(const [candidateIndex,candidate] of ranked.entries()){
       const searchRelevance=verifiedStockSearchRelevance(
@@ -833,6 +858,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
               ...payload,
               verifiedStock:{
                 query,
+                discoveryQuery:candidate.discoveryQuery,
                 validationQuery,
                 provider,
                 providerAssetId:candidate.result.providerAssetId,
