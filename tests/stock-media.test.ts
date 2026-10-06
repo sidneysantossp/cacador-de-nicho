@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQuery, stockDownloadHostAllowed,
+  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery,
+  stockDownloadHostAllowed,
   stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
   verifiedStockSearchRelevance
 } from '../src/lib/stock-media-policy';
@@ -272,4 +273,14 @@ test('Verified stock lets top provider results reach visual validation without t
     visualRelevance:usefulVisual,
     combinedScore:usefulCombined
   }),true);
+});
+
+test('Stock discovery expands enriched documentary directions into layered provider queries',()=>{
+  const editorial='Real documentary photo or footage of Boston, Massachusetts — Central Artery and Big Dig urban infrastructure; visibly illustrate: Boston once ran a major elevated highway through the middle of downtown; prioritize location-specific infrastructure, street-level evidence or a clear physical mechanism; avoid generic unrelated skyline imagery.';
+  const queries=stockDiscoveryQueries(editorial);
+  assert.equal(queries[0],stockDiscoveryQuery(editorial));
+  assert.ok(queries.some(query=>/Boston.*highway/i.test(query)));
+  assert.ok(queries.some(query=>/Boston city infrastructure/i.test(query)));
+  assert.equal(queries.length>=3,true);
+  assert.equal(queries.every(query=>query.length<=100),true);
 });
