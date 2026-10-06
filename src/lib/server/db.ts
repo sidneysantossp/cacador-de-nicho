@@ -5,10 +5,41 @@ import { defaultSettings } from '@/lib/types';
 import { buildOpportunityGaps } from '@/lib/reference-catalog';
 import { qualifiesOpportunityCandidate } from '@/lib/opportunity-criteria';
 import { HttpError } from './auth';
-export const dbConfigured=()=>!!process.env.SUPABASE_URL&&!!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+export type DatabaseMode='self-hosted'|'supabase';
+
+export function databaseMode():DatabaseMode{
+  return process.env.DATABASE_API_URL&&process.env.DATABASE_SERVICE_ROLE_KEY?'self-hosted':'supabase';
+}
+
+export const dbConfigured=()=>databaseMode()==='self-hosted'
+  ?!!process.env.DATABASE_API_URL&&!!process.env.DATABASE_SERVICE_ROLE_KEY
+  :!!process.env.SUPABASE_URL&&!!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 export const policyApproved=()=>process.env.YOUTUBE_ANALYTICS_APPROVED==='true';
-export function db(){if(!dbConfigured())throw new HttpError('Configure o Supabase e aplique docs/schema.sql.',503);return createClient(process.env.SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});}
-export function checked<T>(result:{data:T;error:unknown}):T{if(result.error)throw new HttpError('Falha no Supabase. Verifique a conexão e o schema instalado.',502);return result.data;}
+
+export function db(){
+  if(databaseMode()==='self-hosted'){
+    const url=process.env.DATABASE_API_URL?.trim();
+    const key=process.env.DATABASE_SERVICE_ROLE_KEY?.trim();
+    if(!url||!key)throw new HttpError('Configure o PostgreSQL local e o PostgREST do Caçadores.',503);
+    return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+  }
+  const url=process.env.SUPABASE_URL?.trim();
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if(!url||!key)throw new HttpError('Configure o banco de dados do Caçadores.',503);
+  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+}
+
+export function checked<T>(result:{data:T;error:unknown}):T{
+  if(result.error){
+    const text=result.error instanceof Error?result.error.message:JSON.stringify(result.error??{});
+    if(/exceed_egress_quota/i.test(text))throw new HttpError('O banco legado está temporariamente bloqueado por quota de egress. O modo self-hosted deve ser ativado antes de continuar.',503);
+    throw new HttpError('Falha no banco de dados. Verifique a conexão e o schema instalado.',502);
+  }
+  return result.data;
+}
+
 export async function put(table:string,id:string,payload:unknown){checked(await db().from(table).upsert({id,payload,updated_at:new Date().toISOString()}));}
 export async function list<T>(table:string,limit=200):Promise<T[]>{const data=checked(await db().from(table).select('payload').order('updated_at',{ascending:false}).limit(limit));return (data??[]).map(x=>x.payload as T);}
 async function optionalList<T>(table:string,limit=200):Promise<T[]>{try{return await list<T>(table,limit);}catch{return [];}}
@@ -50,6 +81,3 @@ function normalizeChannelStudy(study:ChannelStudy):ChannelStudy{
 }
 
 export async function loadRadar():Promise<Pick<RadarData,'channels'|'universeCompetitors'|'universeMarketIntelligence'|'channelStudies'|'opportunityReports'|'missionBrief'|'gaps'|'managedChannels'|'channelBrains'|'decisions'|'contexts'|'scripts'|'runs'|'settings'|'lastUpdated'>>{await cleanup();const [allChannels,allAnalyses,managedRecords,channelBrains,decisions,contexts,scripts,runs,config]=await Promise.all([list<RadarData['channels'][number]>('radar_channels',1000),optionalList<unknown>('radar_analyses',200),optionalList<ManagedChannel|UniverseCompetitor>('radar_managed_channels',1000),optionalChannelBrains(),list<RadarData['decisions'][number]>('radar_decisions'),list<RadarData['contexts'][number]>('radar_contexts'),list<RadarData['scripts'][number]>('radar_scripts'),list<RadarData['runs'][number]>('radar_runs',30),settings()]);const channelStudies=allAnalyses.filter((item):item is ChannelStudy=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='channel-study').map(normalizeChannelStudy);const opportunityReports=allAnalyses.filter((item):item is OpportunityReport=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='opportunity-report');const universeMarketIntelligence=allAnalyses.find((item):item is UniverseMarketIntelligence=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='universe-market-intelligence')??null;const missionBrief=allAnalyses.find((item):item is MissionBrief=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='mission-brief')??null;const universeCompetitors=managedRecords.filter((item):item is UniverseCompetitor=>!!item&&typeof item==='object'&&(item as {kind?:string}).kind==='competitor');const managedChannels=managedRecords.filter((item):item is ManagedChannel=>!('kind' in (item as object))||(item as {kind?:string}).kind!=='competitor');const references=allChannels.filter(c=>c.discoverySource==='reference');const channels=allChannels.filter(c=>c.discoverySource==='reference-adjacent'&&qualifiesOpportunityCandidate(c,config));const gaps=buildOpportunityGaps([...references,...channels]);return {channels,universeCompetitors,universeMarketIntelligence,channelStudies,opportunityReports,missionBrief,gaps,managedChannels,channelBrains,decisions,contexts,scripts,runs,settings:config,lastUpdated:channels[0]?.observedAt??references[0]?.observedAt??null};}
-
-
-
