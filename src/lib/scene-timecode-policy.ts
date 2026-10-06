@@ -256,15 +256,18 @@ export function scenePlanStructuralIssues(
       continue;
     }
     const segmentWords=transcriptWordsForSegment(transcript,segment);
+    const wordsToValidate=rows.length>1
+      ?segmentWords
+      :segment.wordIds
+        .map(wordId=>transcript.words.find(word=>word.id===wordId))
+        .filter((word):word is NonNullable<typeof word>=>Boolean(word));
     if(rows.length>1&&!segmentWords.length){
       issues.push('duplicate-transcript-segment-without-word-partition');
     }
-    if(segmentWords.length){
-      for(const word of segmentWords){
-        const count=wordCoverage.get(word.id)??0;
-        if(count===0)issues.push('missing-transcript-word');
-        if(count>1)issues.push('duplicate-transcript-word');
-      }
+    for(const word of wordsToValidate){
+      const count=wordCoverage.get(word.id)??0;
+      if(count===0)issues.push('missing-transcript-word');
+      if(count>1)issues.push('duplicate-transcript-word');
     }
   }
 
