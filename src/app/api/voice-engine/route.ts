@@ -7,7 +7,7 @@ import {
   listVoiceAssets, loadVoiceAsset, prepareVoiceAssetUpload, selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
 import {
-  createTranscriptFromAlignment, loadTranscriptByVoiceAsset, transcribeWithScribe
+  createTranscriptFromAlignment, loadTranscriptByVoiceAsset, transcribeWithOpenAI, transcribeWithScribe
 } from '@/lib/server/transcription-engine';
 
 export const runtime='nodejs';
@@ -134,9 +134,15 @@ export async function POST(request:Request){
       if(!asset)throw new HttpError('Take de voz não encontrado.',404);
       let transcript=await loadTranscriptByVoiceAsset(body.assetId);
       if(!transcript){
-        transcript=asset.alignment
-          ?await createTranscriptFromAlignment(body.assetId)
-          :await transcribeWithScribe(body.assetId);
+        if(asset.alignment){
+          transcript=await createTranscriptFromAlignment(body.assetId);
+        }else{
+          try{transcript=await transcribeWithScribe(body.assetId);}
+          catch(error){
+            console.warn('[voice-rebuild-scribe-fallback]',error instanceof Error?error.message:'unknown-error');
+            transcript=await transcribeWithOpenAI(body.assetId);
+          }
+        }
       }
       return Response.json({
         message:transcript.status==='approved'
