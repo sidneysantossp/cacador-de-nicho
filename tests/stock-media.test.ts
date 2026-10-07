@@ -7,7 +7,8 @@ import {
   deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
   stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockFallbackEligible, stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied,
-  stockVisualValidationQuery, validStockQuery, verifiedStockSearchRelevance
+  stockVisualValidationQuery, validStockQuery, verifiedStockGapNeedsTransientRecovery,
+  verifiedStockSearchRelevance
 } from '../src/lib/stock-media-policy';
 
 test('Stock Media allows only expected Pexels media hosts',()=>{
