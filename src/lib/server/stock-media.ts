@@ -960,6 +960,15 @@ export async function resolveVerifiedStockMediaForScene(input:{
           }
         }
 
+        const fallbackTrim=!match&&analysisFallbackReason
+          ?deterministicStockFallbackTrim({
+            durationSeconds:asset.durationSeconds??candidate.result.durationSeconds,
+            desiredDurationSeconds:input.desiredDurationSeconds,
+            seed:scene.sequence+candidateIndex*17
+          })
+          :null;
+        const sourceStartSeconds=match?.sourceStartSeconds??fallbackTrim?.sourceStartSeconds??null;
+        const sourceEndSeconds=match?.sourceEndSeconds??fallbackTrim?.sourceEndSeconds??null;
         const constraints=match
           ?stockVisualConstraintsSatisfied({
             query:validationQuery,
@@ -967,25 +976,33 @@ export async function resolveVerifiedStockMediaForScene(input:{
           })
           :{ok:true,expected:null,observed:[],reason:null};
 
-        const reuseWithTrim=match
+        const reuseWithTrim=sourceStartSeconds!==null&&sourceEndSeconds!==null
           ?sourceReuseDecision({
             sourceType:'stock',
             targetSequence:scene.sequence,
             observations:priorUses,
-            candidateStartSeconds:match.sourceStartSeconds,
-            candidateEndSeconds:match.sourceEndSeconds
+            candidateStartSeconds:sourceStartSeconds,
+            candidateEndSeconds:sourceEndSeconds
           })
           :reuseBeforeAcquisition;
-        if(match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
-          searchScore:searchRelevance,
-          visualRelevance,
-          combinedScore
-        })){
-          const row=checked(await db().from('radar_scene_assets')
+        const indexedAccepted=Boolean(
+          match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
+            searchScore:searchRelevance,
+            visualRelevance,
+            combinedScore
+          })
+        );
+        const fallbackAccepted=Boolean(
+          !match&&analysisFallbackReason&&fallbackTrim&&
+          searchRelevance>=.45&&reuseWithTrim.ok
+        );
+        if(indexedAccepted||fallbackAccepted){
+          let row=checked(await db().from('radar_scene_assets')
             .select('payload')
             .eq('id',asset.id)
             .maybeSingle());
-          const payload=(row?.payload??{}) as Record<string,unknown>;
+          let payload=(row?.payload??{}) as Record<string,unknown>;
+          const verificationMode=fallbackAccepted?'pre-render-fallback':'visual-index';
           await db().from('radar_scene_assets').update({
             payload:{
               ...payload,
@@ -999,14 +1016,62 @@ export async function resolveVerifiedStockMediaForScene(input:{
                 metadataRelevance:candidate.relevance,
                 visualRelevance,
                 combinedScore,
-                sourceStartSeconds:match.sourceStartSeconds,
-                sourceEndSeconds:match.sourceEndSeconds,
+                sourceStartSeconds,
+                sourceEndSeconds,
                 verifiedAt:new Date().toISOString(),
+                verificationMode,
+                visualIndexFallbackReason:analysisFallbackReason??undefined,
                 cachedFromAssetId:cached?String(cached.id):undefined
               }
             },
             updated_at:new Date().toISOString()
           }).eq('id',asset.id);
+
+          if(fallbackAccepted){
+            const review=await ensureSceneAssetVisualQa(asset.id);
+            if(review.status!=='pass'){
+              throw new HttpError('O fallback stock não passou no Pre-Render Visual QA.',422);
+            }
+            visualRelevance=review.relevance;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+            if(!stockCandidateAccepted({
+              searchScore:searchRelevance,
+              visualRelevance,
+              combinedScore
+            })){
+              throw new HttpError('O fallback stock ficou abaixo do score mínimo após o Visual QA.',422);
+            }
+            row=checked(await db().from('radar_scene_assets')
+              .select('payload')
+              .eq('id',asset.id)
+              .maybeSingle());
+            payload=(row?.payload??{}) as Record<string,unknown>;
+            const verified=payload.verifiedStock&&typeof payload.verifiedStock==='object'
+              ?payload.verifiedStock as Record<string,unknown>
+              :{};
+            await db().from('radar_scene_assets').update({
+              payload:{
+                ...payload,
+                verifiedStock:{
+                  ...verified,
+                  visualRelevance,
+                  combinedScore,
+                  verifiedAt:new Date().toISOString()
+                }
+              },
+              updated_at:new Date().toISOString()
+            }).eq('id',asset.id);
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'pre-render-fallback',
+              relevance:review.relevance,
+              qualityScore:review.qualityScore,
+              editorialUsefulness:review.editorialUsefulness,
+              accepted:true
+            });
+          }
+
           await selectSceneAsset(asset.id);
           return {
             status:'matched' as const,
@@ -1016,10 +1081,12 @@ export async function resolveVerifiedStockMediaForScene(input:{
             assetId:asset.id,
             candidate:candidate.result,
             searchRelevance,
-                metadataRelevance:candidate.relevance,
+            metadataRelevance:candidate.relevance,
             visualRelevance,
             combinedScore,
             match,
+            fallbackTrim:fallbackAccepted?fallbackTrim:null,
+            verificationMode,
             cacheReuse:cached?{
               sourceAssetId:String(cached.id)
             }:null,
@@ -1036,6 +1103,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
           visualRelevance,
           combinedScore,
           hardConstraintReason:constraints.reason,
+          visualIndexFallbackReason:analysisFallbackReason,
+          fallbackTrim,
           sourceDiversityReason:reuseWithTrim.ok?null:reuseWithTrim.reason,
           sourceUsageCount:reuseWithTrim.usageCount,
           sourceMaxUses:reuseWithTrim.maxUses,
