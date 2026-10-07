@@ -59,9 +59,12 @@ function routeQuery(
   // "authentic map") after a Scene Plan route changes. Evidence-specific beats
   // may still use an enriched editorial query because their source class itself
   // is factual and explicit.
+  const explicitDocumentaryEvidence=/^\s*documentary\s+evidence\s+for\s*:/i.test(editorial);
   if(
-    editorial&&
-    (preference==='archive-image'||preference==='document'||preference==='map'||preference==='legacy')
+    editorial&&(
+      explicitDocumentaryEvidence||
+      preference==='archive-image'||preference==='document'||preference==='map'||preference==='legacy'
+    )
   ){
     return editorial.slice(0,500);
   }
