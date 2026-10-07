@@ -127,6 +127,7 @@ async function resolveStillCandidates(input:{
     orientation:'landscape'
   }).slice(0,4);
   const attempts:Array<Record<string,unknown>>=[];
+  let uploadedRevalidationAttempted=false;
 
   for(const candidate of ranked){
     let asset:SceneAsset|null=null;
@@ -218,6 +219,42 @@ export async function resolveSourceForScene(input:{
       if(result.status==='matched'||result.status==='skipped'){
         return {status:'matched' as const,route,action,result,attempts};
       }
+
+      if(
+        route.preference==='generated'&&
+        /^\s*documentary\s+evidence\s+for\s*:/i.test(route.query)
+      ){
+        uploadedRevalidationAttempted=true;
+        try{
+          const reused=await revalidateExistingUploadedStill({
+            promptSetId:input.promptSetId,
+            sceneId:input.sceneId,
+            query:route.query
+          });
+          if(reused?.status==='matched'){
+            attempts.push({
+              action:'uploaded-revalidation',
+              status:'matched',
+              assetId:reused.assetId,
+              relevance:reused.verification.relevance
+            });
+            return {status:'matched' as const,route,action:'owned' as const,result:reused,attempts};
+          }
+          if(reused?.status==='rejected'){
+            attempts.push({
+              action:'uploaded-revalidation',
+              status:'rejected',
+              relevance:reused.verification.relevance
+            });
+          }
+        }catch(error){
+          attempts.push({
+            action:'uploaded-revalidation',
+            status:'failed',
+            error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'
+          });
+        }
+      }
       continue;
     }
 
@@ -295,6 +332,14 @@ export async function resolveSourceForScene(input:{
         return {status:'queued' as const,route,action,job:restarted,attempts};
       }
       if(existing?.status==='failed'){
+        if(existing.lastError==='superseded-by-upload-revalidation'){
+          const restarted=await restartVerifiedStockJob(existing.id);
+          attempts.push({
+            action,status:'queued',jobId:restarted.id,
+            reason:'upload-revalidation-rejected'
+          });
+          return {status:'queued' as const,route,action,job:restarted,attempts};
+        }
         attempts.push({action,status:'failed',jobId:existing.id,error:existing.lastError});
         continue;
       }
@@ -338,8 +383,9 @@ export async function resolveSourceForScene(input:{
     }
   }
 
-  try{
-    const reused=await revalidateExistingUploadedStill({
+  if(!uploadedRevalidationAttempted){
+    try{
+      const reused=await revalidateExistingUploadedStill({
       promptSetId:input.promptSetId,
       sceneId:input.sceneId,
       query:route.query
@@ -351,8 +397,9 @@ export async function resolveSourceForScene(input:{
     if(reused?.status==='rejected'){
       attempts.push({action:'uploaded-revalidation',status:'rejected',relevance:reused.verification.relevance});
     }
-  }catch(error){
-    attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
+    }catch(error){
+      attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
+    }
   }
 
   return {
