@@ -656,6 +656,15 @@ async function cloneCachedStockToScene(input:{
   });
 }
 
+function stockProviderSearchShouldTrip(error:unknown){
+  const status=error instanceof HttpError?error.status:500;
+  const message=error instanceof Error?error.message:'';
+  return (
+    status===429||status===500||status===502||status===503||status===504||
+    /\b(?:timeout|timed out|temporar|unavailable|rate limit|too many requests|econnreset|etimedout|fetch failed)\b/i.test(message)
+  );
+}
+
 export async function resolveVerifiedStockMediaForScene(input:{
   promptSetId:string;
   sceneId:string;
@@ -684,6 +693,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
       discoveryQuery:string;
     };
     const rankedByAsset=new Map<string,RankedCandidate>();
+    let providerCircuitOpen=false;
 
     for(const discoveryQuery of discoveryQueries){
       let discovered:Awaited<ReturnType<typeof searchStockMedia>>;
@@ -703,12 +713,23 @@ export async function resolveVerifiedStockMediaForScene(input:{
           results:discovered.results.length
         });
       }catch(error){
+        const circuitOpen=stockProviderSearchShouldTrip(error);
         attempts.push({
           provider,
           stage:'search',
           query:discoveryQuery,
-          error:error instanceof Error?error.message:'Falha desconhecida na busca stock.'
+          error:error instanceof Error?error.message:'Falha desconhecida na busca stock.',
+          circuitOpen
         });
+        if(circuitOpen){
+          providerCircuitOpen=true;
+          attempts.push({
+            provider,
+            stage:'provider-circuit-breaker',
+            reason:'transient-provider-failure'
+          });
+          break;
+        }
         continue;
       }
 
@@ -725,6 +746,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
         if(!current||enriched.score>current.score)rankedByAsset.set(key,enriched);
       }
     }
+
+    if(providerCircuitOpen)continue;
 
     const ranked=[...rankedByAsset.values()]
       .sort((a,b)=>b.score-a.score)
