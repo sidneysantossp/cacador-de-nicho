@@ -22,7 +22,7 @@ import {
   createVisualPromptSet, generateVisualPromptDrafts,
   loadVisualPromptSet, saveVisualPromptSet
 } from './visual-prompt-engine';
-import { listSceneAssets } from './asset-factory';
+import { listSceneAssets, refreshSceneAssetPromptContext } from './asset-factory';
 import { resolveSourceForScene } from './source-router';
 import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 import {
@@ -1307,26 +1307,32 @@ async function executeAutomationTransition(
         if(!target)continue;
 
         const existingSelected=assets.find(asset=>
-          asset.sceneId===sceneId&&asset.selected&&asset.status==='ready'&&!asset.stale
+          asset.sceneId===sceneId&&asset.selected&&asset.status==='ready'
         );
-        if(existingSelected&&existingSelected.visualQa?.status!=='pass'){
+        if(existingSelected){
           const review=await ensureSceneAssetVisualQa(existingSelected.id);
           if(review.status==='pass'){
+            const currentAsset=existingSelected.stale
+              ?await refreshSceneAssetPromptContext(existingSelected.id)
+              :existingSelected;
             const scene=scenesById.get(sceneId);
             const prompt=promptsByScene.get(sceneId);
-            if(scene){
+            if(scene&&currentAsset){
               const route=applyDocumentarySourcePolicy(
                 sourceRouteForScene(scene,prompt?.direction),
                 documentaryMode
               );
               if(motionRouteAssetSatisfied({
                 route,
-                assetKind:existingSelected.assetKind,
-                payload:{...existingSelected,visualQa:review}
+                assetKind:currentAsset.assetKind,
+                payload:{...currentAsset,visualQa:review}
               })){
                 processed++;
                 matched++;
-                actions.set('visual-qa-pass',(actions.get('visual-qa-pass')??0)+1);
+                actions.set(
+                  existingSelected.stale?'visual-qa-revalidated':'visual-qa-pass',
+                  (actions.get(existingSelected.stale?'visual-qa-revalidated':'visual-qa-pass')??0)+1
+                );
                 continue;
               }
             }
