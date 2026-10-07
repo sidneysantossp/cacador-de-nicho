@@ -183,49 +183,61 @@ export function structuralQualityChecks(input:{
     {clipCount:clips.length,durationSeconds:manifest.durationSeconds}
   ));
 
-  const imageCadenceBlockers=clips.filter(
-    clip=>clip.kind==='image'&&clip.durationSeconds>4+EPSILON
+  const imageHasEditorialMotion=(clip:typeof clips[number])=>{
+    if(clip.kind!=='image')return false;
+    const style=clip.style;
+    if(style.motionPreset&&style.motionPreset!=='none')return true;
+    return (
+      Math.abs(style.scaleEnd-style.scaleStart)>.005||
+      Math.abs(style.xEnd-style.xStart)>.005||
+      Math.abs(style.yEnd-style.yStart)>.005
+    );
+  };
+  const staticImageCadenceBlockers=clips.filter(
+    clip=>clip.kind==='image'&&!imageHasEditorialMotion(clip)&&clip.durationSeconds>4+EPSILON
   );
-  const videoCadenceBlockers=clips.filter(
-    clip=>clip.kind==='video'&&clip.durationSeconds>10+EPSILON
+  const movingVisuals=clips.filter(
+    clip=>clip.kind==='video'||imageHasEditorialMotion(clip)
   );
-  const videoCadenceWarnings=clips.filter(
-    clip=>clip.kind==='video'&&
-      clip.durationSeconds>8+EPSILON&&
-      clip.durationSeconds<=10+EPSILON
+  const movingCadenceBlockers=movingVisuals.filter(
+    clip=>clip.durationSeconds>10+EPSILON
   );
-  const cadenceBlockers=[...imageCadenceBlockers,...videoCadenceBlockers];
+  const movingCadenceWarnings=movingVisuals.filter(
+    clip=>clip.durationSeconds>8+EPSILON&&clip.durationSeconds<=10+EPSILON
+  );
+  const cadenceBlockers=[...staticImageCadenceBlockers,...movingCadenceBlockers];
   const maxVisualDuration=clips.length?Math.max(...clips.map(clip=>clip.durationSeconds)):0;
   const cadenceStatus=cadenceBlockers.length
     ?'blocker'
-    :videoCadenceWarnings.length
+    :movingCadenceWarnings.length
       ?'warning'
       :'pass';
   checks.push(check(
-    'visual-cadence','visual','Cadência visual por tipo de mídia',
+    'visual-cadence','visual','Cadência visual por movimento editorial',
     cadenceStatus,
     cadenceBlockers.length
-      ?'Há imagem estática acima de 4s ou vídeo acima de 10s; ajuste a montagem antes da publicação.'
-      :videoCadenceWarnings.length
-        ?'Há vídeos longos entre 8s e 10s; a montagem é aceitável, mas merece revisão de ritmo.'
-        :'A cadência respeita os limites por tipo de mídia.',
+      ?'Há imagem realmente estática acima de 4s ou visual em movimento acima de 10s; ajuste a montagem antes da publicação.'
+      :movingCadenceWarnings.length
+        ?'Há visuais em movimento entre 8s e 10s; a montagem é aceitável, mas merece revisão de ritmo.'
+        :'A cadência respeita os limites de movimento editorial.',
     cadenceBlockers.length
       ?cadenceBlockers.slice(0,30).map(clip=>
         `scene=${clip.sceneId.slice(0,8)} · ${clip.kind} · ${clip.durationSeconds.toFixed(2)}s`
       )
-      :videoCadenceWarnings.length
-        ?videoCadenceWarnings.slice(0,30).map(clip=>
-          `scene=${clip.sceneId.slice(0,8)} · video · ${clip.durationSeconds.toFixed(2)}s`
+      :movingCadenceWarnings.length
+        ?movingCadenceWarnings.slice(0,30).map(clip=>
+          `scene=${clip.sceneId.slice(0,8)} · ${clip.kind} · ${clip.durationSeconds.toFixed(2)}s`
         )
-        :[`max=${maxVisualDuration.toFixed(2)}s · image≤4s · video≤8s target`],
+        :[`max=${maxVisualDuration.toFixed(2)}s · static-image≤4s · moving-visual≤8s target`],
     {
-      imageHardCeilingSeconds:4,
-      videoWarningSeconds:8,
-      videoHardCeilingSeconds:10,
+      staticImageHardCeilingSeconds:4,
+      movingVisualWarningSeconds:8,
+      movingVisualHardCeilingSeconds:10,
       maxVisualDuration:Number(maxVisualDuration.toFixed(3)),
-      imageViolations:imageCadenceBlockers.length,
-      videoViolations:videoCadenceBlockers.length,
-      videoWarnings:videoCadenceWarnings.length,
+      staticImageViolations:staticImageCadenceBlockers.length,
+      movingVisualViolations:movingCadenceBlockers.length,
+      movingVisualWarnings:movingCadenceWarnings.length,
+      animatedImageCount:clips.filter(imageHasEditorialMotion).length,
       violations:cadenceBlockers.length
     }
   ));
