@@ -1482,7 +1482,7 @@ async function executeAutomationTransition(
   }
 }
 
-async function assertAutomationAdvanceLease(runId:string,workerToken?:string){
+async function assertAutomationWorkerLease(runId:string,workerToken:string){
   const row=checked(await db().from('radar_episode_automation_runs')
     .select('id,mode,status,worker_token,lease_until')
     .eq('id',runId)
@@ -1493,19 +1493,47 @@ async function assertAutomationAdvanceLease(runId:string,workerToken?:string){
   const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
   const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
 
-  if(workerToken){
-    if(String(row.mode)!=='autonomous'){
-      throw new HttpError('Worker só pode avançar runs Autonomous.',409);
-    }
-    if(!activeLease||token!==workerToken){
-      throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
-    }
-    return;
+  if(String(row.mode)!=='autonomous'){
+    throw new HttpError('Worker só pode avançar runs Autonomous.',409);
   }
+  if(!activeLease||token!==workerToken){
+    throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
+  }
+}
 
-  if(activeLease){
-    throw new HttpError('Automation Run já está sendo processado pelo worker.',409);
-  }
+async function acquireOperatorAutomationLease(runId:string){
+  const now=new Date();
+  const nowIso=now.toISOString();
+  const client=db();
+
+  const expired=await client.from('radar_episode_automation_runs').update({
+    worker_token:null,
+    lease_until:null,
+    updated_at:nowIso
+  })
+    .eq('id',runId)
+    .not('worker_token','is',null)
+    .lt('lease_until',nowIso);
+  if(expired.error)throw new HttpError('Falha ao recuperar lease expirado do Automation Run.',502);
+
+  const operatorToken=crypto.randomUUID();
+  const rows=checked(await client.from('radar_episode_automation_runs').update({
+    worker_token:operatorToken,
+    lease_until:new Date(now.getTime()+300000).toISOString(),
+    updated_at:nowIso
+  })
+    .eq('id',runId)
+    .is('worker_token',null)
+    .select('id'));
+
+  if(rows?.length)return operatorToken;
+
+  const existing=checked(await client.from('radar_episode_automation_runs')
+    .select('id')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!existing)throw new HttpError('Automation Run não encontrado.',404);
+  throw new HttpError('Automation Run já está sendo processado por outro executor.',409);
 }
 
 async function releaseAutomationLease(runId:string,workerToken:string){
@@ -1518,49 +1546,55 @@ async function releaseAutomationLease(runId:string,workerToken:string){
 }
 
 export async function advanceEpisodeAutomationRun(runId:string,workerToken?:string){
-  await assertAutomationAdvanceLease(runId,workerToken);
-  let run=await reconcileEpisodeAutomationRun(runId);
-  if(run.status==='completed'||run.status==='cancelled')return run;
-  if(workerToken&&run.status==='waiting')return run;
-  if(run.holdStep){
-    throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
-  }
-
-  const current=run.steps.find(item=>item.step===run.currentStep);
-  if(!current)throw new HttpError('Etapa atual do Automation Run não foi encontrada.',409);
-  if(current.requiresOperator){
-    throw new HttpError(current.reason??'Esta etapa exige ação do operador.',409);
-  }
-  if(current.status==='running'){
-    return run;
-  }
-  if(!['ready','waiting'].includes(current.status)){
-    throw new HttpError(current.reason??'A etapa atual ainda não está pronta para avançar.',409);
-  }
-
-  await appendEvent(run.id,{
-    step:current.step,
-    status:'started',
-    message:'Executor iniciou '+current.label+'.',
-    payload:{stepStatus:current.status}
-  });
-
+  const operatorToken=workerToken?null:await acquireOperatorAutomationLease(runId);
   try{
-    const message=await executeAutomationTransition(run,current);
+    if(workerToken)await assertAutomationWorkerLease(runId,workerToken);
+
+    let run=await reconcileEpisodeAutomationRun(runId);
+    if(run.status==='completed'||run.status==='cancelled')return run;
+    if(workerToken&&run.status==='waiting')return run;
+    if(run.holdStep){
+      throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
+    }
+
+    const current=run.steps.find(item=>item.step===run.currentStep);
+    if(!current)throw new HttpError('Etapa atual do Automation Run não foi encontrada.',409);
+    if(current.requiresOperator){
+      throw new HttpError(current.reason??'Esta etapa exige ação do operador.',409);
+    }
+    if(current.status==='running'){
+      return run;
+    }
+    if(!['ready','waiting'].includes(current.status)){
+      throw new HttpError(current.reason??'A etapa atual ainda não está pronta para avançar.',409);
+    }
+
     await appendEvent(run.id,{
       step:current.step,
-      status:'completed',
-      message,
+      status:'started',
+      message:'Executor iniciou '+current.label+'.',
       payload:{stepStatus:current.status}
     });
-    run=await reconcileEpisodeAutomationRun(run.id);
-    return run;
-  }catch(error){
-    const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
-    if(automationOperatorHold(error)){
-      return holdAutomationRun(run,current.step,message);
+
+    try{
+      const message=await executeAutomationTransition(run,current);
+      await appendEvent(run.id,{
+        step:current.step,
+        status:'completed',
+        message,
+        payload:{stepStatus:current.status}
+      });
+      run=await reconcileEpisodeAutomationRun(run.id);
+      return run;
+    }catch(error){
+      const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
+      if(automationOperatorHold(error)){
+        return holdAutomationRun(run,current.step,message);
+      }
+      return failAutomationRun(run,current.step,message);
     }
-    return failAutomationRun(run,current.step,message);
+  }finally{
+    if(operatorToken)await releaseAutomationLease(runId,operatorToken).catch(()=>{});
   }
 }
 
