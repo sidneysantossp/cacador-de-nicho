@@ -296,3 +296,10 @@ test('Stock discovery expands enriched documentary directions into layered provi
   assert.equal(queries.length>=3,true);
   assert.equal(queries.every(query=>query.length<=100),true);
 });
+
+test('Verified Stock worker does not treat a selected still as a resolved video job',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/app/api/workers/verified-stock/route.ts'),'utf8');
+  assert.match(source,/select\('id,asset_kind,source_type,provider,payload'\)/);
+  assert.match(source,/selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'/);
+});
+
