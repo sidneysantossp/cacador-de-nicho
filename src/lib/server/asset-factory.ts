@@ -515,7 +515,9 @@ export async function resolveOwnedMediaForScene(input:{
     );
     return {
       status:'gap' as const,
-      reason:hasRejectedCandidate?'visual-qa-rejected':'weak-match' as const,
+      reason:hasRejectedCandidate
+        ?'visual-qa-rejected' as const
+        :matches.length?'weak-match' as const:'no-match' as const,
       query,
       sceneId:scene.id,
       timecodeLabel:visual.timecodeLabel,
