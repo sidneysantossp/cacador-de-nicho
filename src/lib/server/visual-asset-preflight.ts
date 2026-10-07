@@ -94,17 +94,45 @@ function sumFreezeSeconds(stderr:string){
   return total;
 }
 
-async function videoSamples(storagePath:string){
+function sourceTrim(payload:Record<string,unknown>){
+  for(const key of ['verifiedStock','owned']){
+    const item=object(payload[key]);
+    const start=Number(item.sourceStartSeconds);
+    const end=Number(item.sourceEndSeconds);
+    if(Number.isFinite(start)&&Number.isFinite(end)&&start>=0&&end>start){
+      return {start,end};
+    }
+  }
+  return null;
+}
+
+async function videoSamples(
+  storagePath:string,
+  requestedTrim?:{start:number;end:number}|null
+){
   const root=await mkdtemp(path.join(tmpdir(),'cacadores-visual-qa-'));
   const input=path.join(root,'input.mp4');
   try{
     await downloadMediaToFile(storagePath,input);
     const technical=await probeVideoInput(input);
-    const duration=Math.max(.1,technical.durationSeconds??0);
+    const sourceDuration=Math.max(.1,technical.durationSeconds??0);
+    const trimStart=requestedTrim
+      ?Math.max(0,Math.min(sourceDuration-.01,requestedTrim.start))
+      :0;
+    const trimEnd=requestedTrim
+      ?Math.max(trimStart+.01,Math.min(sourceDuration,requestedTrim.end))
+      :sourceDuration;
+    const duration=Math.max(.01,trimEnd-trimStart);
     const requested=duration>=1
-      ?[duration*.10,duration*.50,duration*.90]
-      :[0];
-    const unique=[...new Set(requested.map(value=>Math.max(0,Math.min(duration-.01,value)).toFixed(3)))];
+      ?[
+          trimStart+duration*.10,
+          trimStart+duration*.50,
+          trimStart+duration*.90
+        ]
+      :[trimStart];
+    const unique=[...new Set(requested.map(value=>
+      Math.max(trimStart,Math.min(trimEnd-.005,value)).toFixed(3)
+    ))];
     const frames:VisualVerificationFrame[]=[];
     for(let index=0;index<unique.length;index++){
       const target=path.join(root,'frame-'+String(index+1).padStart(2,'0')+'.jpg');
@@ -130,7 +158,9 @@ async function videoSamples(storagePath:string){
     try{
       const result=await execFile(FFMPEG,[
         '-hide_banner','-nostats',
+        '-ss',trimStart.toFixed(3),
         '-i',input,
+        '-t',duration.toFixed(3),
         '-map','0:v:0','-an',
         '-vf','freezedetect=n=-45dB:d=0.5',
         '-f','null','-'
@@ -266,7 +296,7 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
   let verification:ImageVerification;
   try{
     if(row.asset_kind==='video'){
-      const sampled=await videoSamples(row.storage_path);
+      const sampled=await videoSamples(row.storage_path,sourceTrim(payload));
       motion=sampled.motion;
       verification=await verifyVisualFramesWithOpenAI({
         frames:sampled.frames,
