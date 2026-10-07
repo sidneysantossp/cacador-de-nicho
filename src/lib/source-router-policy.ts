@@ -115,6 +115,26 @@ export function routePrefersMotion(route:SourceRoutePlan){
   return videoIndex>=0&&(imageIndex<0||videoIndex<imageIndex);
 }
 
+export const VIDEO_FIRST_FALLBACK_POLICY_VERSION='video-first-v1';
+
+export function motionRouteAssetSatisfied(input:{
+  route:SourceRoutePlan;
+  assetKind:string;
+  payload?:unknown;
+}){
+  if(!routePrefersMotion(input.route))return true;
+  if(input.assetKind==='video')return true;
+  const payload=input.payload&&typeof input.payload==='object'
+    ?input.payload as Record<string,unknown>
+    :{};
+  const raw=payload.videoFirstFallback;
+  const fallback=raw&&typeof raw==='object'
+    ?raw as Record<string,unknown>
+    :{};
+  return fallback.policyVersion===VIDEO_FIRST_FALLBACK_POLICY_VERSION&&
+    fallback.videoExhausted===true;
+}
+
 export function applyDocumentarySourcePolicy(
   route:SourceRoutePlan,
   documentaryMode:boolean
