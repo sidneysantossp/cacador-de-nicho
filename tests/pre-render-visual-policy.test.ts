@@ -132,7 +132,7 @@ test('Motion-first planning routes generic literal beats to video before stills'
     'stock-video'
   );
   assert.equal(
-    classifyVisualBeat('A 1947 archive photograph documents the original system',true).sourcePreference,
+    classifyVisualBeat('In 1947 the original railway system shaped the city',true).sourcePreference,
     'archive-image'
   );
 });
