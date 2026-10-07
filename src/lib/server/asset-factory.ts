@@ -12,6 +12,9 @@ import { loadVisualPromptSet } from './visual-prompt-engine';
 import { loadScenePlan } from './scene-timecode';
 import { loadProductionDna } from './production-dna';
 import { loadVoiceAsset } from './voice-engine';
+import {
+  assertSceneAssetVisualQa, ensureSceneAssetVisualQa, isVisualQaRejection
+} from './visual-asset-preflight';
 import { matchOwnedMediaSegments } from './owned-media-intelligence';
 import { libraryFirstMatchAccepted, libraryFirstSceneQuery } from '@/lib/media-library-policy';
 import {
@@ -64,6 +67,7 @@ function normalizeRow(row:Row):SceneAsset{
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
     stock:payload.stock as SceneAsset['stock']|undefined,
     verifiedStock:payload.verifiedStock as SceneAsset['verifiedStock']|undefined,
+    visualQa:payload.visualQa as SceneAsset['visualQa']|undefined,
     videoFirstFallback:payload.videoFirstFallback as SceneAsset['videoFirstFallback']|undefined,
     owned:payload.owned as SceneAsset['owned']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
@@ -115,6 +119,7 @@ function metadataFor(
     license:extra.license??{type:'unknown',label:'Unknown'},
     stock:extra.stock,
     verifiedStock:extra.verifiedStock,
+    visualQa:extra.visualQa,
     owned:extra.owned,
     costUsd:extra.costUsd??null,
     modelId:extra.modelId,
@@ -205,11 +210,14 @@ async function persistReady(
   }).eq('id',assetId));
 
   if(selectIfNone){
-    await db().rpc('select_scene_asset_if_none',{
-      p_visual_prompt_set_id:asset.visualPromptSetId,
-      p_scene_id:asset.sceneId,
-      p_asset_id:assetId
-    });
+    const review=await ensureSceneAssetVisualQa(assetId);
+    if(review.status==='pass'){
+      await db().rpc('select_scene_asset_if_none',{
+        p_visual_prompt_set_id:asset.visualPromptSetId,
+        p_scene_id:asset.sceneId,
+        p_asset_id:assetId
+      });
+    }
   }
 
   return rawAsset(assetId);
@@ -430,15 +438,18 @@ export async function resolveOwnedMediaForScene(input:{
       !assetIsStale(selected,promptSet.version,visual)&&
       (!input.preferredKind||selected.assetKind===input.preferredKind)
     ){
-      return {
-        status:'skipped' as const,
-        reason:'selected-ready' as const,
-        query:'',
-        sceneId:scene.id,
-        timecodeLabel:visual.timecodeLabel,
-        asset:selected,
-        match:null
-      };
+      const review=await ensureSceneAssetVisualQa(selected.id);
+      if(review.status==='pass'){
+        return {
+          status:'skipped' as const,
+          reason:'selected-ready' as const,
+          query:'',
+          sceneId:scene.id,
+          timecodeLabel:visual.timecodeLabel,
+          asset:{...selected,visualQa:review},
+          match:null
+        };
+      }
     }
   }
 
@@ -493,17 +504,35 @@ export async function resolveOwnedMediaForScene(input:{
     };
   }
 
-  const asset=input.dryRun?null:await attachOwnedMediaToScene({
-    promptSetId:promptSet.id,
-    sceneId:scene.id,
-    ownedAssetId:best.assetId,
-    segmentId:best.segment.id,
-    sourceStartSeconds:best.sourceStartSeconds,
-    sourceEndSeconds:best.sourceEndSeconds,
-    matchScore:best.score,
-    visualCoverage:best.visualCoverage,
-    select:true
-  });
+  let asset=null;
+  if(!input.dryRun){
+    try{
+      asset=await attachOwnedMediaToScene({
+        promptSetId:promptSet.id,
+        sceneId:scene.id,
+        ownedAssetId:best.assetId,
+        segmentId:best.segment.id,
+        sourceStartSeconds:best.sourceStartSeconds,
+        sourceEndSeconds:best.sourceEndSeconds,
+        matchScore:best.score,
+        visualCoverage:best.visualCoverage,
+        select:true
+      });
+    }catch(error){
+      if(isVisualQaRejection(error)){
+        return {
+          status:'gap' as const,
+          reason:'visual-qa-rejected' as const,
+          query,
+          sceneId:scene.id,
+          timecodeLabel:visual.timecodeLabel,
+          asset:null,
+          match:best
+        };
+      }
+      throw error;
+    }
+  }
   return {
     status:'matched' as const,
     reason:'owned-library' as const,
@@ -802,6 +831,8 @@ export async function refreshGoogleVideo(assetId:string){
 export async function selectSceneAsset(assetId:string){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset não encontrado.',404);
+  if(asset.status!=='ready')throw new HttpError('Este asset ainda não está pronto para seleção.',409);
+  await assertSceneAssetVisualQa(assetId);
   const result=await db().rpc('select_scene_asset',{
     p_visual_prompt_set_id:asset.visualPromptSetId,p_scene_id:asset.sceneId,p_asset_id:asset.id
   });

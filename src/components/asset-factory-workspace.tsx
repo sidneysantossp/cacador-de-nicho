@@ -193,12 +193,14 @@ export default function AssetFactoryWorkspace({channel}:{channel:ManagedChannel}
               {asset.status==='ready'&&asset.signedUrl&&asset.assetKind==='video'&&<video controls preload="metadata" src={asset.signedUrl}/>}
               {asset.status==='processing'&&<div className="asset-processing"><RefreshCw className="spin" size={22}/><span>Processando</span></div>}
               {asset.status==='failed'&&<div className="asset-failed"><CircleAlert size={22}/><span>Falhou</span></div>}
+              {asset.status==='rejected'&&<div className="asset-failed"><CircleAlert size={22}/><span>Visual QA reprovou</span></div>}
             </div>
-            <div className="asset-variant-head"><strong>VAR {String(asset.variant).padStart(2,'0')}</strong>{asset.selected&&<em>ATIVA</em>}{asset.stale&&<span>STALE</span>}</div>
+            <div className="asset-variant-head"><strong>VAR {String(asset.variant).padStart(2,'0')}</strong>{asset.selected&&<em>ATIVA</em>}{asset.stale&&<span>STALE</span>}{asset.visualQa&&<span>QA {asset.visualQa.status.toUpperCase()}</span>}</div>
             <div className="asset-meta">
               <span>{asset.sourceType}</span><span>{asset.provider??'external'}</span>{asset.modelId&&<span>{asset.modelId}</span>}<span>{asset.bytes?bytes(asset.bytes):'—'}</span>
             </div>
             <div className="asset-license"><small>{asset.license.label}</small>{asset.costUsd!==null&&<small>US$ {asset.costUsd.toFixed(4)}</small>}</div>
+            {asset.visualQa&&<div className="asset-error">Visual QA · relevance {(asset.visualQa.relevance*100).toFixed(0)}% · quality {(asset.visualQa.qualityScore*100).toFixed(0)}% · usefulness {(asset.visualQa.editorialUsefulness*100).toFixed(0)}%{asset.visualQa.motion?.meaningfulMotion===false?' · motion insuficiente':''}{asset.visualQa.issues.length?' · '+asset.visualQa.issues.join(' · '):''}</div>}
             {asset.error&&<div className="asset-error">{asset.error}</div>}
             <div className="asset-variant-actions">
               {asset.status==='processing'&&asset.assetKind==='video'&&<button className="button subtle small" disabled={!!busy} onClick={()=>void assetAction('refreshVideo',asset)}><RefreshCw size={13}/>Atualizar status</button>}

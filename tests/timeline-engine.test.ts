@@ -117,8 +117,8 @@ test('Timeline structural gate requires narration to cover the full project',()=
 test('Timeline asset gate detects changed selection and stale upstream assets',()=>{
   const t=timeline();
   const selected=new Map([
-    [scenePlan.scenes[0].id,{id:assets[0].id,stale:false,ready:true}],
-    [scenePlan.scenes[1].id,{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',stale:true,ready:true}]
+    [scenePlan.scenes[0].id,{id:assets[0].id,stale:false,ready:true,visualQaPassed:true}],
+    [scenePlan.scenes[1].id,{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',stale:true,ready:true,visualQaPassed:true}]
   ]);
   const issues=timelineAssetIssues({
     timeline:t,
@@ -136,6 +136,23 @@ test('Timeline approval combines structural and current asset gates',()=>{
   const t=timeline();
   const issues=timelineApprovalIssues(t,scenePlan,['voice-stale']);
   assert.deepEqual(issues,['voice-stale']);
+});
+
+test('Timeline asset gate blocks selected media without visual QA',()=>{
+  const t=timeline();
+  const selected=new Map(scenePlan.scenes.map((scene,index)=>[
+    scene.id,{id:assets[index].id,stale:false,ready:true,visualQaPassed:index!==0}
+  ]));
+  const issues=timelineAssetIssues({
+    timeline:t,
+    currentScenePlanVersion:scenePlan.version,
+    currentPromptSetVersion:promptSet.version,
+    voiceReady:true,
+    voiceSelected:true,
+    voiceStale:false,
+    selectedSceneAssets:selected
+  });
+  assert.ok(issues.includes('scene-asset-visual-qa-pending'));
 });
 
 
@@ -212,7 +229,7 @@ test('Large source shortage remains explicit and blocks approval',()=>{
 test('Timeline asset gate rejects a voice take that is no longer selected',()=>{
   const t=timeline();
   const selected=new Map(scenePlan.scenes.map((scene,index)=>[
-    scene.id,{id:assets[index].id,stale:false,ready:true}
+    scene.id,{id:assets[index].id,stale:false,ready:true,visualQaPassed:true}
   ]));
   const issues=timelineAssetIssues({
     timeline:t,

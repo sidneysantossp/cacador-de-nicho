@@ -254,7 +254,29 @@ test('Video-first still fallback is accepted only after video exhaustion is reco
     true
   );
   assert.equal(routePrefersMotion(route),true);
-  assert.equal(motionRouteAssetSatisfied({route,assetKind:'video'}),true);
+  assert.equal(motionRouteAssetSatisfied({route,assetKind:'video'}),false);
+  assert.equal(motionRouteAssetSatisfied({
+    route,
+    assetKind:'video',
+    payload:{
+      visualQa:{
+        status:'pass',
+        staticGraphic:false,
+        motion:{meaningfulMotion:true}
+      }
+    }
+  }),true);
+  assert.equal(motionRouteAssetSatisfied({
+    route,
+    assetKind:'video',
+    payload:{
+      visualQa:{
+        status:'pass',
+        staticGraphic:true,
+        motion:{meaningfulMotion:true}
+      }
+    }
+  }),false);
   assert.equal(motionRouteAssetSatisfied({route,assetKind:'image',payload:{}}),false);
   assert.equal(motionRouteAssetSatisfied({
     route,
@@ -297,4 +319,14 @@ test('Source Router reopens completed stock gaps caused by a retired visual mode
   const retryIndex=source.indexOf('verifiedStockGapNeedsVisualModelRetry(existing.result)');
   const exhaustedIndex=source.indexOf('videoExhausted=true',retryIndex);
   assert.ok(retryIndex>=0&&exhaustedIndex>retryIndex);
+});
+
+
+test('Scene asset selection is guarded by Pre-Render Visual QA',()=>{
+  const assetFactory=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  const preflight=readFileSync('src/lib/server/visual-asset-preflight.ts','utf8');
+  assert.match(assetFactory,/await assertSceneAssetVisualQa\(assetId\)/);
+  assert.match(assetFactory,/ensureSceneAssetVisualQa\(assetId\)/);
+  assert.match(preflight,/static-graphic-disguised-as-video/);
+  assert.match(preflight,/template-animation-not-motion/);
 });

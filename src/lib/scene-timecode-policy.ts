@@ -2,6 +2,9 @@ import type {
   ProductionDNA, ScenePlanPayload, SceneTimecode, Transcript, TranscriptSegment
 } from '@/lib/types';
 import { buildVisualBeat } from '@/lib/visual-beat-policy';
+import {
+  productionPrefersMotion, scenePlanVisualStrategyIssues
+} from '@/lib/pre-render-visual-policy';
 
 const EPSILON=0.02;
 
@@ -57,12 +60,13 @@ function sceneVisualBeats(
   segment:TranscriptSegment,
   startSeconds:number,
   endSeconds:number,
-  timing?:VisualBeatTiming
+  timing?:VisualBeatTiming,
+  preferMotion=false
 ){
   const duration=Math.max(0,endSeconds-startSeconds);
   const count=visualBeatCount(duration,timing);
   if(count<=1){
-    const beat=buildVisualBeat({segment,sequence:1});
+    const beat=buildVisualBeat({segment,sequence:1,preferMotion});
     return [{
       ...beat,
       startSeconds,
@@ -93,7 +97,8 @@ function sceneVisualBeats(
         text:narration,
         wordIds:subset.map(word=>word.id)
       },
-      sequence:index+1
+      sequence:index+1,
+      preferMotion
     });
     return {
       ...beat,
@@ -113,7 +118,8 @@ export function scenePlanAudioDuration(transcript:Transcript,audioDuration:numbe
 export function createInitialScenes(
   transcript:Transcript,
   audioDuration:number|null,
-  visualBeatTiming?:VisualBeatTiming
+  visualBeatTiming?:VisualBeatTiming,
+  dna?:ProductionDNA|null
 ):SceneTimecode[]{
   const segments=[...transcript.segments]
     .filter(segment=>segment.endSeconds!==null&&segment.endSeconds>segment.startSeconds)
@@ -121,6 +127,7 @@ export function createInitialScenes(
 
   const total=scenePlanAudioDuration(transcript,audioDuration);
   if(!segments.length||total<=0)return [];
+  const preferMotion=productionPrefersMotion(dna);
 
   const scenes=segments.flatMap((segment,index)=>{
     const next=segments[index+1];
@@ -129,7 +136,7 @@ export function createInitialScenes(
     const end=Math.max(segment.endSeconds!,rawEnd);
     const sceneEnd=Math.min(total,end);
     const beats=sceneVisualBeats(
-      transcript,segment,start,sceneEnd,visualBeatTiming
+      transcript,segment,start,sceneEnd,visualBeatTiming,preferMotion
     );
     return beats.map(beat=>({
       id:crypto.randomUUID(),
@@ -143,7 +150,13 @@ export function createInitialScenes(
       visualIntent:'',
       shotType:'',
       characterIds:[],
-      assetMode:'image' as const,
+      assetMode:(beat.sourcePreference==='stock-video'
+        ?'video'
+        :beat.sourcePreference==='mixed'
+          ?'mixed'
+          :beat.sourcePreference==='stock-image'||beat.sourcePreference==='archive-image'
+            ?'stock'
+            :'image') as SceneTimecode['assetMode'],
       promptDirection:'',
       notes:'',
       visualBeats:[{...beat,sequence:1}]
@@ -313,8 +326,10 @@ export function scenePlanApprovalIssues(
 ){
   const structural=scenePlanStructuralIssues(payload,transcript);
   const durationWarnings=sceneDurationWarnings(payload,dna);
+  const visualStrategy=scenePlanVisualStrategyIssues(payload,dna);
   return [
     ...structural,
+    ...visualStrategy,
     ...(durationWarnings.length&&!payload.review.durationWarningsAccepted?['duration-warnings-not-accepted']:[])
   ];
 }

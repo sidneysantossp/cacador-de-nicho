@@ -146,7 +146,8 @@ export async function createScenePlanFromTranscript(transcriptId:string):Promise
     scenes:createInitialScenes(
       context.transcript,
       context.asset.durationSeconds,
-      context.dna?.format.sceneDurationSeconds
+      context.dna?.format.sceneDurationSeconds,
+      context.dna
     ),
     review:{notes:'',durationWarningsAccepted:false},
     createdAt:now,
@@ -172,7 +173,8 @@ export async function rebuildScenePlan(planId:string):Promise<ScenePlan>{
     scenes:createInitialScenes(
       context.transcript,
       context.asset.durationSeconds,
-      context.dna?.format.sceneDurationSeconds
+      context.dna?.format.sceneDurationSeconds,
+      context.dna
     ),
     review:{
       notes:'Rebuilt from approved transcript using current Production DNA.',

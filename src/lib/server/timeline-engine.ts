@@ -257,7 +257,7 @@ function currentAssetIssues(input:{
   selectedAssets:SceneAssetRow[];
 }){
   const promptMap=new Map(input.promptSet.scenePrompts.map(scene=>[scene.sceneId,scene]));
-  const selected=new Map<string,{id:string;stale:boolean;ready:boolean}>();
+  const selected=new Map<string,{id:string;stale:boolean;ready:boolean;visualQaPassed:boolean}>();
 
   for(const row of input.selectedAssets){
     const payload=(row.payload??{}) as Record<string,unknown>;
@@ -266,7 +266,15 @@ function currentAssetIssues(input:{
       promptSetVersion:Number(payload.promptSetVersion??0),
       prompt:String(payload.prompt??'')
     },input.promptSet.version,current);
-    selected.set(row.scene_id,{id:row.id,stale,ready:row.status==='ready'});
+    const qa=payload.visualQa&&typeof payload.visualQa==='object'
+      ?payload.visualQa as Record<string,unknown>
+      :{};
+    selected.set(row.scene_id,{
+      id:row.id,
+      stale,
+      ready:row.status==='ready',
+      visualQaPassed:qa.status==='pass'
+    });
   }
 
   const voiceStale=voiceLibraryItemIsStale({

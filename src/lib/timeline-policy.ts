@@ -538,7 +538,7 @@ export function timelineAssetIssues(input:{
   voiceReady:boolean;
   voiceSelected:boolean;
   voiceStale:boolean;
-  selectedSceneAssets:Map<string,{id:string;stale:boolean;ready:boolean}>;
+  selectedSceneAssets:Map<string,{id:string;stale:boolean;ready:boolean;visualQaPassed:boolean}>;
 }){
   const issues:string[]=[];
   if(input.timeline.scenePlanVersion!==input.currentScenePlanVersion)issues.push('stale-scene-plan-version');
@@ -555,6 +555,7 @@ export function timelineAssetIssues(input:{
     else{
       if(!selected.ready)issues.push('scene-asset-not-ready');
       if(selected.stale)issues.push('scene-asset-stale');
+      if(!selected.visualQaPassed)issues.push('scene-asset-visual-qa-pending');
     }
   }
 
