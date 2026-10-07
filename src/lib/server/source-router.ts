@@ -17,7 +17,8 @@ import {
   enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
 } from './verified-stock-jobs';
 import {
-  rankStockMediaResults, stockDiscoveryQuery, verifiedStockGapNeedsTransientRecovery
+  rankStockMediaResults, STOCK_DISCOVERY_POLICY_VERSION, stockDiscoveryQuery,
+  verifiedStockGapNeedsTransientRecovery
 } from '@/lib/stock-media-policy';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
@@ -359,6 +360,15 @@ export async function resolveSourceForScene(input:{
             attempts.push({
               action,status:'queued',jobId:restarted.id,
               reason:'visual-model-retired'
+            });
+            return {status:'queued' as const,route,action,job:restarted,attempts};
+          }
+          const previousPolicyVersion=String(existing.result?.discoveryPolicyVersion??'');
+          if(previousPolicyVersion!==STOCK_DISCOVERY_POLICY_VERSION){
+            const restarted=await restartVerifiedStockJob(existing.id);
+            attempts.push({
+              action,status:'queued',jobId:restarted.id,
+              reason:'stock-discovery-policy-upgraded'
             });
             return {status:'queued' as const,route,action,job:restarted,attempts};
           }
