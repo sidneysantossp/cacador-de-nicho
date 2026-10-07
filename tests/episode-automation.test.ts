@@ -457,7 +457,7 @@ test('Episode Automation cannot call provider AI in operator-first mode',()=>{
 
 test('Automation visual coverage excludes assets from an older prompt version',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,provider,status,selected,payload,updated_at'\)/);
   assert.match(source,/promptSetVersion\?:unknown/);
   assert.match(source,/Number\(promptSet\?\.version\?\?0\)/);
 });
@@ -468,6 +468,19 @@ test('Episode Automation self-hosted worker joins the infra network',()=>{
   assert.match(sync,/--network cacadores-infra/);
 });
 
+
+test('Visual-assets automation reconciles historical source repetition before Timeline',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/sourceDiversityAssessment/);
+  assert.match(source,/diversityAcceptedScenes/);
+  assert.match(source,/diversityRejectedScenes/);
+  assert.match(source,/forceSelectedReplacement:diversityRejectedScenes\.has\(sceneId\)/);
+  assert.match(source,/seleção\(ões\) antiga\(s\) serão substituídas por diversidade/);
+  const inspection=source.indexOf('const selectedReadyRowsBase=src.assets.filter');
+  const selectedReady=source.indexOf('const selectedReadyRows=selectedReadyRowsBase.filter',inspection);
+  const timeline=source.indexOf('const assetsComplete=',selectedReady);
+  assert.ok(inspection>=0&&selectedReady>inspection&&timeline>selectedReady);
+});
 
 test('Visual-assets automation accepts only motion-compatible route coverage',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
@@ -481,7 +494,7 @@ test('Visual-assets automation accepts only motion-compatible route coverage',()
 
 test('Automation reconcile accepts explicit exhausted-video still fallbacks',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,provider,status,selected,payload,updated_at'\)/);
   assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
   assert.match(source,/dnaDetail\.research\?\.documentaryMode===true/);
   assert.match(source,/motionRouteAssetSatisfied\(\{route,assetKind:String\(item\.asset_kind\?\?''\),payload:item\.payload\}\)/);

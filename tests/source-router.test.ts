@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion,
-  sourceReuseDecision, sourceRouteForScene
+  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -38,6 +38,44 @@ function scene(v:VisualBeat):SceneTimecode{
     visualBeats:[v]
   };
 }
+
+test('Existing selected assets are greedily reconciled into a diverse scene set',()=>{
+  const result=sourceDiversityAssessment([
+    {
+      sceneId:'s1',sceneSequence:1,
+      payload:{stock:{providerAssetId:'p1'},verifiedStock:{provider:'pexels',sourceStartSeconds:0,sourceEndSeconds:4}}
+    },
+    {
+      sceneId:'s2',sceneSequence:2,
+      payload:{stock:{providerAssetId:'p1'},verifiedStock:{provider:'pexels',sourceStartSeconds:5,sourceEndSeconds:9}}
+    },
+    {
+      sceneId:'s3',sceneSequence:3,
+      payload:{stock:{providerAssetId:'p1'},verifiedStock:{provider:'pexels',sourceStartSeconds:10,sourceEndSeconds:14}}
+    },
+    {
+      sceneId:'s4',sceneSequence:4,
+      payload:{owned:{assetId:'o1',sourceStartSeconds:10,sourceEndSeconds:15}}
+    },
+    {
+      sceneId:'s5',sceneSequence:5,
+      payload:{owned:{assetId:'o1',sourceStartSeconds:20,sourceEndSeconds:25}}
+    },
+    {
+      sceneId:'s6',sceneSequence:6,
+      payload:{generation:{},modelId:'generated'}
+    }
+  ]);
+
+  assert.deepEqual(result.acceptedSceneIds,['s1','s3','s4','s6']);
+  assert.deepEqual(
+    result.rejected.map(item=>[item.sceneId,item.reason]),
+    [
+      ['s2','adjacent-source-reuse'],
+      ['s5','adjacent-source-reuse']
+    ]
+  );
+});
 
 test('Source reuse allows separated microcuts but blocks adjacent, overlapping, and dominant reuse',()=>{
   const separated=sourceReuseDecision({
@@ -261,6 +299,12 @@ test('Source selection applies diversity before reusing OWNED or stock sources',
   assert.match(stock,/stage:'source-diversity'/);
   assert.match(stock,/reuseWithTrim/);
   assert.match(stock,/sourceDiversityReason/);
+});
+
+test('Source Router can bypass an already-selected asset when diversity requires replacement',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/forceSelectedReplacement\?:boolean/);
+  assert.match(source,/force:input\.forceSelectedReplacement===true/);
 });
 
 test('Source Router requeues verified stock when the enriched visual query changes',()=>{

@@ -238,6 +238,7 @@ async function resolveStillCandidates(input:{
 export async function resolveSourceForScene(input:{
   promptSetId:string;
   sceneId:string;
+  forceSelectedReplacement?:boolean;
 }){
   const promptSet=await loadVisualPromptSet(input.promptSetId);
   if(!promptSet||promptSet.status!=='approved')throw new HttpError('Visual Prompt Set aprovado não encontrado.',409);
@@ -263,7 +264,8 @@ export async function resolveSourceForScene(input:{
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
         query:route.query,
-        preferredKind:videoFirst?'video':undefined
+        preferredKind:videoFirst?'video':undefined,
+        force:input.forceSelectedReplacement===true
       });
       attempts.push({action,status:result.status,reason:result.reason});
       if(result.status==='matched'||result.status==='skipped'){

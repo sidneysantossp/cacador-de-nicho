@@ -217,6 +217,96 @@ export function sourceReuseDecision(input:{
   };
 }
 
+export type SourceDiversityItem={
+  sceneId:string;
+  sceneSequence:number;
+  payload:unknown;
+};
+
+function sourceDescriptor(payload:unknown){
+  const item=payload&&typeof payload==='object'
+    ?payload as Record<string,unknown>
+    :{};
+  const owned=item.owned&&typeof item.owned==='object'
+    ?item.owned as Record<string,unknown>
+    :{};
+  const stock=item.stock&&typeof item.stock==='object'
+    ?item.stock as Record<string,unknown>
+    :{};
+  const verified=item.verifiedStock&&typeof item.verifiedStock==='object'
+    ?item.verifiedStock as Record<string,unknown>
+    :{};
+
+  const ownedAssetId=String(owned.assetId??'').trim();
+  if(ownedAssetId){
+    return {
+      sourceType:'owned' as const,
+      sourceKey:'owned:'+ownedAssetId,
+      sourceStartSeconds:owned.sourceStartSeconds===undefined?null:Number(owned.sourceStartSeconds),
+      sourceEndSeconds:owned.sourceEndSeconds===undefined?null:Number(owned.sourceEndSeconds)
+    };
+  }
+
+  const providerAssetId=String(stock.providerAssetId??verified.providerAssetId??'').trim();
+  const provider=String(verified.provider??item.provider??'').trim();
+  if(providerAssetId){
+    return {
+      sourceType:'stock' as const,
+      sourceKey:'stock:'+(provider||'unknown')+':'+providerAssetId,
+      sourceStartSeconds:verified.sourceStartSeconds===undefined?null:Number(verified.sourceStartSeconds),
+      sourceEndSeconds:verified.sourceEndSeconds===undefined?null:Number(verified.sourceEndSeconds)
+    };
+  }
+
+  return null;
+}
+
+export function sourceDiversityAssessment(items:SourceDiversityItem[]){
+  const observations=new Map<string,SourceReuseObservation[]>();
+  const acceptedSceneIds:string[]=[];
+  const rejected:Array<{
+    sceneId:string;
+    sceneSequence:number;
+    sourceKey:string;
+    reason:'adjacent-source-reuse'|'source-reuse-cap'|'overlapping-source-trim';
+  }>=[];
+
+  const ordered=[...items].sort((a,b)=>a.sceneSequence-b.sceneSequence);
+  for(const item of ordered){
+    const descriptor=sourceDescriptor(item.payload);
+    if(!descriptor){
+      acceptedSceneIds.push(item.sceneId);
+      continue;
+    }
+    const prior=observations.get(descriptor.sourceKey)??[];
+    const decision=sourceReuseDecision({
+      sourceType:descriptor.sourceType,
+      targetSequence:item.sceneSequence,
+      observations:prior,
+      candidateStartSeconds:descriptor.sourceStartSeconds,
+      candidateEndSeconds:descriptor.sourceEndSeconds
+    });
+    if(!decision.ok){
+      rejected.push({
+        sceneId:item.sceneId,
+        sceneSequence:item.sceneSequence,
+        sourceKey:descriptor.sourceKey,
+        reason:decision.reason
+      });
+      continue;
+    }
+    acceptedSceneIds.push(item.sceneId);
+    prior.push({
+      sceneSequence:item.sceneSequence,
+      sourceStartSeconds:descriptor.sourceStartSeconds,
+      sourceEndSeconds:descriptor.sourceEndSeconds
+    });
+    observations.set(descriptor.sourceKey,prior);
+  }
+
+  return {acceptedSceneIds,rejected};
+}
+
 export function routePrefersMotion(route:SourceRoutePlan){
   const videoIndex=route.actions.indexOf('stock-video');
   const imageIndex=route.actions.indexOf('stock-image');
