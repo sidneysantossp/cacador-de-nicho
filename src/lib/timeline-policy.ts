@@ -398,7 +398,7 @@ export function buildInitialTimeline(input:{
       return beats.map(beat=>{
         let beatSourceStart=sourceStart;
         let beatSourceEnd=sourceEnd;
-        if(isVideo&&sourceStart!==null&&sourceEnd!==null){
+        if(isVideo&&sourceStart!==null&&sourceEnd!==null&&beats.length>1){
           const relativeStart=beat.startSeconds-scene.startSeconds;
           beatSourceStart=Math.min(sourceEnd,sourceStart+relativeStart);
           beatSourceEnd=Math.min(sourceEnd,beatSourceStart+beat.durationSeconds);
