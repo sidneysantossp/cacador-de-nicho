@@ -6,6 +6,25 @@ import type {
 const EPSILON=.02;
 const MAX_SAFE_SOURCE_EXPANSION_SECONDS=1.5;
 const MAX_SAFE_HOLD_SECONDS=.75;
+const MAX_VISUAL_BEAT_SECONDS=4;
+
+function visualBeatWindows(startSeconds:number,endSeconds:number){
+  const start=Math.max(0,startSeconds);
+  const end=Math.max(start,endSeconds);
+  const duration=end-start;
+  const count=Math.max(1,Math.ceil(duration/MAX_VISUAL_BEAT_SECONDS));
+  return Array.from({length:count},(_,index)=>{
+    const beatStart=start+(duration*index/count);
+    const beatEnd=index===count-1?end:start+(duration*(index+1)/count);
+    return {
+      index,
+      count,
+      startSeconds:beatStart,
+      endSeconds:beatEnd,
+      durationSeconds:Math.max(0,beatEnd-beatStart)
+    };
+  });
+}
 
 export function fitVideoSourceWindow(input:{
   sourceStartSeconds:number;
@@ -141,6 +160,18 @@ export function timelineChapters(payload:TimelinePayload):TimelineChapter[]{
     .filter(clip=>clip.sceneId)
     .sort((a,b)=>a.startSeconds-b.startSeconds);
   if(!visual.length)return [];
+  const sceneWindows=[...visual.reduce((map,clip)=>{
+    const id=clip.sceneId!;
+    const current=map.get(id);
+    if(!current){
+      map.set(id,{id,startSeconds:clip.startSeconds,endSeconds:clip.endSeconds});
+    }else{
+      current.startSeconds=Math.min(current.startSeconds,clip.startSeconds);
+      current.endSeconds=Math.max(current.endSeconds,clip.endSeconds);
+    }
+    return map;
+  },new Map<string,{id:string;startSeconds:number;endSeconds:number}>()).values()]
+    .sort((a,b)=>a.startSeconds-b.startSeconds);
   const pseudo:ScenePlan={
     kind:'scene-plan',
     id:payload.scenePlanId,
@@ -152,12 +183,12 @@ export function timelineChapters(payload:TimelinePayload):TimelineChapter[]{
     transcriptVersion:1,
     voiceTake:1,
     audioDurationSeconds:payload.durationSeconds,
-    scenes:visual.map((clip,index)=>({
-      id:clip.sceneId!,
+    scenes:sceneWindows.map((scene,index)=>({
+      id:scene.id,
       sequence:index+1,
-      startSeconds:clip.startSeconds,
-      endSeconds:clip.endSeconds,
-      durationSeconds:clip.durationSeconds,
+      startSeconds:scene.startSeconds,
+      endSeconds:scene.endSeconds,
+      durationSeconds:scene.endSeconds-scene.startSeconds,
       narration:'',
       transcriptSegmentIds:[],
       transcriptWordIds:[],
@@ -282,15 +313,21 @@ export function rebuildTimelineChapterPayload(
   const freshVisual=fresh.tracks.find(track=>track.type==='visual');
   if(!currentVisual||!freshVisual)throw new Error('timeline-visual-track-missing');
 
-  const replacement=new Map(
-    freshVisual.clips.filter(clip=>clip.sceneId&&sceneIds.has(clip.sceneId))
-      .map(clip=>[clip.sceneId!,clip])
-  );
-  const visualClips=currentVisual.clips.map(clip=>
-    clip.sceneId&&sceneIds.has(clip.sceneId)
-      ?structuredClone(replacement.get(clip.sceneId)??clip)
-      :clip
-  );
+  const replacement=new Map<string,TimelineClip[]>();
+  for(const clip of freshVisual.clips){
+    if(!clip.sceneId||!sceneIds.has(clip.sceneId))continue;
+    const list=replacement.get(clip.sceneId)??[];
+    list.push(clip);
+    replacement.set(clip.sceneId,list);
+  }
+  const emitted=new Set<string>();
+  const visualClips=currentVisual.clips.flatMap(clip=>{
+    if(!clip.sceneId||!sceneIds.has(clip.sceneId))return [clip];
+    if(emitted.has(clip.sceneId))return [];
+    emitted.add(clip.sceneId);
+    const freshClips=replacement.get(clip.sceneId);
+    return (freshClips?.length?freshClips:[clip]).map(item=>structuredClone(item));
+  });
   const now=new Date().toISOString();
   return normalizeTimeline({
     ...current,
@@ -318,10 +355,10 @@ export function buildInitialTimeline(input:{
     name:'Visual',
     locked:false,
     muted:false,
-    clips:input.scenePlan.scenes.map(scene=>{
+    clips:input.scenePlan.scenes.flatMap(scene=>{
       const asset=visualByScene.get(scene.id);
       if(!asset){
-        return {
+        return [{
           id:crypto.randomUUID(),
           sceneId:scene.id,
           clipKind:'placeholder',
@@ -335,7 +372,7 @@ export function buildInitialTimeline(input:{
           playback:'hold',
           volume:1,
           muted:false
-        } satisfies TimelineClip;
+        } satisfies TimelineClip];
       }
 
       const isVideo=asset.assetKind==='video';
@@ -356,27 +393,38 @@ export function buildInitialTimeline(input:{
       const sourceStart=fitted?.sourceStartSeconds??rawSourceStart;
       const sourceEnd=fitted?.sourceEndSeconds??rawSourceEnd;
       const playback=isVideo?(fitted?.playback??'trim'):'hold';
+      const beats=visualBeatWindows(scene.startSeconds,scene.endSeconds);
 
-      return {
-        id:crypto.randomUUID(),
-        sceneId:scene.id,
-        assetId:asset.id,
-        clipKind:isVideo?'video':'image',
-        label:'Scene '+String(scene.sequence).padStart(3,'0'),
-        startSeconds:scene.startSeconds,
-        endSeconds:scene.endSeconds,
-        durationSeconds:scene.durationSeconds,
-        sourceStartSeconds:sourceStart,
-        sourceEndSeconds:sourceEnd,
-        sourceWidth:asset.sourceWidth??null,
-        sourceHeight:asset.sourceHeight??null,
-        focusX:asset.focusX??null,
-        focusY:asset.focusY??null,
-        fit:'cover',
-        playback,
-        volume:1,
-        muted:false
-      } satisfies TimelineClip;
+      return beats.map(beat=>{
+        let beatSourceStart=sourceStart;
+        let beatSourceEnd=sourceEnd;
+        if(isVideo&&sourceStart!==null&&sourceEnd!==null){
+          const relativeStart=beat.startSeconds-scene.startSeconds;
+          beatSourceStart=Math.min(sourceEnd,sourceStart+relativeStart);
+          beatSourceEnd=Math.min(sourceEnd,beatSourceStart+beat.durationSeconds);
+        }
+        return {
+          id:crypto.randomUUID(),
+          sceneId:scene.id,
+          assetId:asset.id,
+          clipKind:isVideo?'video':'image',
+          label:'Scene '+String(scene.sequence).padStart(3,'0')+
+            (beats.length>1?' · Beat '+String(beat.index+1).padStart(2,'0')+'/'+String(beat.count).padStart(2,'0'):''),
+          startSeconds:beat.startSeconds,
+          endSeconds:beat.endSeconds,
+          durationSeconds:beat.durationSeconds,
+          sourceStartSeconds:beatSourceStart,
+          sourceEndSeconds:beatSourceEnd,
+          sourceWidth:asset.sourceWidth??null,
+          sourceHeight:asset.sourceHeight??null,
+          focusX:asset.focusX??null,
+          focusY:asset.focusY??null,
+          fit:'cover',
+          playback,
+          volume:1,
+          muted:false
+        } satisfies TimelineClip;
+      });
     })
   };
 
@@ -486,8 +534,8 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
       if(clip.sceneId)seen.set(clip.sceneId,(seen.get(clip.sceneId)??0)+1);
       const scene=clip.sceneId?scenePlan.scenes.find(item=>item.id===clip.sceneId):null;
       if(scene&&(
-        Math.abs(clip.startSeconds-scene.startSeconds)>EPSILON||
-        Math.abs(clip.endSeconds-scene.endSeconds)>EPSILON
+        clip.startSeconds<scene.startSeconds-EPSILON||
+        clip.endSeconds>scene.endSeconds+EPSILON
       ))issues.push('visual-clip-scene-time-mismatch');
 
       if(
@@ -508,7 +556,6 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
     for(const scene of scenePlan.scenes){
       const count=seen.get(scene.id)??0;
       if(count===0)issues.push('missing-scene-clip');
-      if(count>1)issues.push('duplicate-scene-clip');
     }
   }
 
