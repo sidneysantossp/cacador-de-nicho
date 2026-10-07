@@ -7,11 +7,13 @@ import { providerSecret } from './providers';
 import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
+import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery,
-  stockDownloadHostAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
-  verifiedStockSearchRelevance
+  deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
+  stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
+  stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery,
+  validStockQuery, verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
 import { sourceReuseDecision } from '@/lib/source-router-policy';
