@@ -475,6 +475,23 @@ export async function resolveOwnedMediaForScene(input:{
     };
   }
 
+  const rejectedOwnedRows=checked(await db().from('radar_scene_assets')
+    .select('payload')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('scene_id',input.sceneId)
+    .eq('source_type','owned')
+    .eq('status','rejected')
+    .limit(100));
+  const rejectedOwnedSegments=new Set((rejectedOwnedRows??[]).flatMap(row=>{
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const owned=payload.owned&&typeof payload.owned==='object'
+      ?payload.owned as Record<string,unknown>
+      :{};
+    const assetId=String(owned.assetId??'').trim();
+    const segmentId=String(owned.segmentId??'').trim();
+    return assetId&&segmentId?[assetId+':'+segmentId]:[];
+  }));
+
   const orientation=dna.format.width===dna.format.height
     ?'any'
     :dna.format.width>dna.format.height?'landscape':'portrait';
@@ -485,6 +502,7 @@ export async function resolveOwnedMediaForScene(input:{
     orientation
   });
   const best=matches.find(match=>
+    !rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)&&
     (!input.preferredKind||match.assetKind===input.preferredKind)&&
     libraryFirstMatchAccepted(
       match,
@@ -492,9 +510,14 @@ export async function resolveOwnedMediaForScene(input:{
     )
   );
   if(!best){
+    const hasRejectedCandidate=matches.some(match=>
+      rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)
+    );
     return {
       status:'gap' as const,
-      reason:matches.length?'weak-match':'no-match' as const,
+      reason:hasRejectedCandidate
+        ?'visual-qa-rejected' as const
+        :matches.length?'weak-match' as const:'no-match' as const,
       query,
       sceneId:scene.id,
       timecodeLabel:visual.timecodeLabel,
