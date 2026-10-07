@@ -31,7 +31,7 @@ import {
 import {
   createVideoEditFromTimeline, loadVideoEdit, refreshVideoEditFromTimeline, saveVideoEdit
 } from './video-editor';
-import { createRenderJob } from './render-engine';
+import { createRenderJob, retryRenderJob } from './render-engine';
 import {
   approveProductionQuality, loadProductionQualityReport, runProductionQuality
 } from './production-quality';
@@ -46,7 +46,7 @@ import { applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceRouteFor
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
-  automationTransientRetryPolicy,
+  automationRenderRetryPolicy, automationTransientRetryPolicy,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues,
   automationRenderSnapshotIssues, automationTimelineSnapshotIssues,
   automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps,
@@ -201,6 +201,7 @@ async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnT
     timeline:null,
     videoEdit:null,
     render:null,
+    renderFailureCount:0,
     quality:null,
     package:null,
     publish:null,
@@ -297,9 +298,11 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
       .select('id,status,progress,stage,error,payload,updated_at')
       .eq('video_edit_id',String(videoEdit.id))
       .eq('video_edit_version',Number(videoEdit.version))
-      .order('created_at',{ascending:false}).limit(1)
+      .order('created_at',{ascending:false}).limit(3)
     :{data:[],error:null};
-  const render=latest(checked(renderResult)??[]);
+  const renderRows=checked(renderResult)??[];
+  const render=latest(renderRows);
+  const renderFailureCount=renderRows.filter(item=>item.status==='failed').length;
 
   const qualityResult=render
     ?await client.from('radar_production_quality_reports')
@@ -336,6 +339,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
     timeline,
     videoEdit,
     render,
+    renderFailureCount,
     quality,
     package:pkg,
     publish,
@@ -657,9 +661,25 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       reason:String(render.stage??render.status)+' · '+String(render.progress??0)+'%'
     }));
   }else if(render?.status==='failed'){
-    steps.push(step('render','failed',{
-      entityId:String(render.id),reason:String(render.error??'Render falhou.')
-    }));
+    const retry=automationRenderRetryPolicy({
+      failureCount:src.renderFailureCount
+    });
+    if(run.policy.autoRender&&retry.retry){
+      steps.push(step('render','ready',{
+        entityId:String(render.id),
+        reason:'Render falhou; retry automático '+retry.failureCount+'/'+retry.maxRetries+
+          ' pode reutilizar capítulos concluídos.',
+        requiresOperator:false
+      }));
+    }else{
+      steps.push(step('render','failed',{
+        entityId:String(render.id),
+        reason:String(render.error??'Render falhou.')+
+          (retry.failureCount>retry.maxRetries
+            ?' Limite de retry automático esgotado.'
+            :'')
+      }));
+    }
   }else{
     steps.push(step('render','ready',{
       reason:'Video Edit aprovado; render pode ser enfileirado.',
@@ -1448,6 +1468,10 @@ async function executeAutomationTransition(
       if(!run.policy.autoRender)throw new HttpError('Render automático está desativado.',409);
       const videoEditId=automationStep(run,'video-edit')?.entityId;
       if(!videoEditId)throw new HttpError('Video Edit aprovado não identificado.',409);
+      if(current.entityId){
+        const job=await retryRenderJob(current.entityId);
+        return 'Render falhou; retry automático enfileirado com reaproveitamento de capítulos: '+job.id+'.';
+      }
       const job=await createRenderJob({videoEditId,preset:'hd-1080p30'});
       return 'Render enfileirado: '+job.id+'.';
     }
