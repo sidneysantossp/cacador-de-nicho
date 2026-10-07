@@ -1319,6 +1319,14 @@ export type SceneAsset = {
   sourceEndSeconds: number;
   verifiedAt: string;
  };
+ videoFirstFallback?: {
+  policyVersion: string;
+  videoExhausted: boolean;
+  reason: string;
+  query: string;
+  stockJobId?: string | null;
+  acceptedAt: string;
+ };
  owned?: {
   assetId: string;
   segmentId?: string;
