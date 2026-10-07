@@ -6,7 +6,7 @@ import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
-  automationTransientRetryPolicy,
+  automationRenderRetryPolicy, automationTransientRetryPolicy,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
   automationTargetReached, automationTimelineSnapshotIssues,
   automationVideoEditSnapshotIssues, inspectAutomationSteps,
@@ -214,6 +214,18 @@ test('Transient Automation failures retry with bounded backoff before surfacing 
   const structural=automationTransientRetryPolicy({status:409,message:'objective gate failed',attempt:1});
   assert.equal(structural.transient,false);
   assert.equal(structural.retry,false);
+});
+
+test('Golden Path retries one failed render and blocks after the retry budget is exhausted',()=>{
+  const first=automationRenderRetryPolicy({failureCount:1});
+  assert.equal(first.retry,true);
+  assert.equal(first.maxRetries,1);
+
+  const second=automationRenderRetryPolicy({failureCount:2});
+  assert.equal(second.retry,false);
+
+  const disabled=automationRenderRetryPolicy({failureCount:1,maxRetries:0});
+  assert.equal(disabled.retry,false);
 });
 
 
@@ -500,6 +512,15 @@ test('Episode Automation API exposes Golden Path arm and drain without enabling 
   assert.match(route,/drainEpisodeAutomationRun\(body\)/);
 });
 
+
+test('Golden Path automatically retries one failed render through the chapter-reuse path',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/renderFailureCount/);
+  assert.match(source,/automationRenderRetryPolicy/);
+  assert.match(source,/Render falhou; retry automático/);
+  assert.match(source,/await retryRenderJob\(current\.entityId\)/);
+  assert.match(source,/\.order\('created_at',\{ascending:false\}\)\.limit\(3\)/);
+});
 
 test('Automation retries transient transitions only after reconciling possible persisted side effects',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');

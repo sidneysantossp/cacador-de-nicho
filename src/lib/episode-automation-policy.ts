@@ -169,6 +169,19 @@ export function automationTransientRetryPolicy(input:{
   return {retry:true,delayMs,transient,maxAttempts};
 }
 
+export function automationRenderRetryPolicy(input:{
+  failureCount:number;
+  maxRetries?:number;
+}){
+  const failureCount=Math.max(0,Math.floor(input.failureCount||0));
+  const maxRetries=Math.max(0,Math.min(3,Math.floor(input.maxRetries??1)));
+  return {
+    retry:failureCount>0&&failureCount<=maxRetries,
+    failureCount,
+    maxRetries
+  };
+}
+
 export function visualAssetBatchPlan(input:{
   sceneIds:string[];
   selectedReadySceneIds:string[];
