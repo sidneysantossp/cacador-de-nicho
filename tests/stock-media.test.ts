@@ -114,6 +114,33 @@ test('Stock fallback rejects portrait candidates for a landscape production',()=
   assert.equal(ranked.length,0);
 });
 
+test('Legacy verified-stock gaps caused by transient providers are reopened once',()=>{
+  const legacy={
+    status:'gap',
+    attempts:[
+      {stage:'candidate',error:'A Google AI atingiu quota ou limite durante a análise visual.'}
+    ]
+  };
+  assert.equal(verifiedStockGapNeedsTransientRecovery(legacy),true);
+
+  const migrated={
+    status:'gap',
+    attempts:[
+      {stage:'visual-index-fallback',reason:'quota exceeded'},
+      {stage:'candidate',error:'A OpenAI atingiu o limite de uso durante a validação visual.'}
+    ]
+  };
+  assert.equal(verifiedStockGapNeedsTransientRecovery(migrated),false);
+
+  const genuineGap={
+    status:'gap',
+    attempts:[
+      {stage:'visual-verification',accepted:false,visualRelevance:.07}
+    ]
+  };
+  assert.equal(verifiedStockGapNeedsTransientRecovery(genuineGap),false);
+});
+
 test('Stock visual indexing falls back only for transient provider failures',()=>{
   assert.equal(stockVisualAnalysisFallbackAllowed({
     status:429,message:'quota exceeded'
@@ -298,6 +325,15 @@ test('Sunset intent accepts golden-hour visual evidence',()=>{
   assert.equal(result.expected,'sunset');
 });
 
+
+test('Source Router reopens only legacy transient completed stock gaps',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/verifiedStockGapNeedsTransientRecovery/);
+  assert.match(source,/reason:'legacy-transient-gap-recovery'/);
+  const recoveryIndex=source.indexOf('verifiedStockGapNeedsTransientRecovery(existing.result)');
+  const exhaustedIndex=source.indexOf('videoExhausted=true',recoveryIndex);
+  assert.ok(recoveryIndex>=0&&exhaustedIndex>recoveryIndex);
+});
 
 test('Verified Stock falls back from transient visual-index failures to mandatory Pre-Render Visual QA',()=>{
   const source=readFileSync('src/lib/server/stock-media.ts','utf8');
