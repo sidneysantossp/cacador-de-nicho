@@ -472,10 +472,13 @@ export async function resolveOwnedMediaForScene(input:{
     limit:5,
     orientation
   });
-  const best=matches.find(match=>libraryFirstMatchAccepted(
-    match,
-    Math.max(.30,Math.min(.90,input.minimumScore??.45))
-  ));
+  const best=matches.find(match=>
+    (!input.preferredKind||match.assetKind===input.preferredKind)&&
+    libraryFirstMatchAccepted(
+      match,
+      Math.max(.30,Math.min(.90,input.minimumScore??.45))
+    )
+  );
   if(!best){
     return {
       status:'gap' as const,
