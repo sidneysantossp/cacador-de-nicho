@@ -64,6 +64,7 @@ function normalizeRow(row:Row):SceneAsset{
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
     stock:payload.stock as SceneAsset['stock']|undefined,
     verifiedStock:payload.verifiedStock as SceneAsset['verifiedStock']|undefined,
+    videoFirstFallback:payload.videoFirstFallback as SceneAsset['videoFirstFallback']|undefined,
     owned:payload.owned as SceneAsset['owned']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
     error:payload.error?String(payload.error):undefined,
