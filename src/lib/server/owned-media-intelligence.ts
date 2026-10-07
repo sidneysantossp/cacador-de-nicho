@@ -599,7 +599,7 @@ export async function analyzeOwnedMediaAsset(assetId:string):Promise<OwnedMediaI
         });
       }catch(error){
         if(!googleVisionModelUnavailable(error))throw error;
-        model=await resolveGoogleVisionModel(key,{forceRefresh:true});
+        model=await resolveGoogleVisionModel(key,{forceRefresh:true,excludeModel:model});
         checked(await db().from('radar_owned_media_visual_analysis').update({
           model,
           payload:{stage:'model-fallback',reason:'configured-model-unavailable'},
