@@ -469,6 +469,19 @@ test('Episode Automation self-hosted worker joins the infra network',()=>{
 });
 
 
+test('Visual-assets automation reconciles historical source repetition before Timeline',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/sourceDiversityAssessment/);
+  assert.match(source,/diversityAcceptedScenes/);
+  assert.match(source,/diversityRejectedScenes/);
+  assert.match(source,/forceSelectedReplacement:diversityRejectedScenes\.has\(sceneId\)/);
+  assert.match(source,/seleção\(ões\) antiga\(s\) serão substituídas por diversidade/);
+  const inspection=source.indexOf('const selectedReadyRowsBase=src.assets.filter');
+  const selectedReady=source.indexOf('const selectedReadyRows=selectedReadyRowsBase.filter',inspection);
+  const timeline=source.indexOf('const assetsComplete=',selectedReady);
+  assert.ok(inspection>=0&&selectedReady>inspection&&timeline>selectedReady);
+});
+
 test('Visual-assets automation accepts only motion-compatible route coverage',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/applyDocumentarySourcePolicy/);
