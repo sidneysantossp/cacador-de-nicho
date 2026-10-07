@@ -80,6 +80,14 @@ export function googleVisionModelUnavailable(error:unknown){
   const message=error.message.toLowerCase();
   return message.includes('(http 404)')||
     message.includes('"status": "not_found"')||
+    (
+      message.includes('(http 503)')&&
+      (
+        message.includes('high demand')||
+        message.includes('"status": "unavailable"')||
+        message.includes('temporarily unavailable')
+      )
+    )||
     message.includes('model')&&(
       message.includes('no longer available')||
       message.includes('not found')||
