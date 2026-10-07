@@ -213,3 +213,12 @@ test('documentary evidence forces real sources',()=>{
   assert.equal(route.syntheticAllowed,false);
   assert.deepEqual(route.actions,['owned','stock-video','stock-image','wikimedia']);
 });
+
+
+test('Source Router revalidates existing upload before starting documentary stock backlog',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/uploadedRevalidationAttempted=true/);
+  assert.match(source,/documentary\\s\+evidence/);
+  assert.match(source,/superseded-by-upload-revalidation/);
+  assert.match(source,/upload-revalidation-rejected/);
+});
