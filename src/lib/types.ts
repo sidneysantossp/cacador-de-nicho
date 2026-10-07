@@ -1954,6 +1954,7 @@ export type ProductionQualityCheckCode =
   | 'caption-timing'
   | 'visual-cadence'
   | 'visual-coverage'
+  | 'motion-coverage'
   | 'asset-duplication'
   | 'media-diversity'
   | 'asset-provenance'
