@@ -186,7 +186,7 @@ async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnT
 
   const assetResult=promptSet
     ?await client.from('radar_scene_assets')
-      .select('id,scene_id,asset_kind,status,selected,payload,updated_at')
+      .select('id,scene_id,asset_kind,provider,status,selected,payload,updated_at')
       .eq('visual_prompt_set_id',String(promptSet.id))
       .eq('selected',true)
     :{data:[],error:null};
@@ -274,7 +274,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
 
   const assetResult=promptSet
     ?await client.from('radar_scene_assets')
-      .select('id,scene_id,asset_kind,status,selected,payload,updated_at')
+      .select('id,scene_id,asset_kind,provider,status,selected,payload,updated_at')
       .eq('visual_prompt_set_id',String(promptSet.id))
       .eq('selected',true)
     :{data:[],error:null};
@@ -543,7 +543,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     return scene?[{
       sceneId:String(item.scene_id),
       sceneSequence:Number(scene.sequence),
-      payload:item.payload
+      payload:{
+        ...((item.payload??{}) as Record<string,unknown>),
+        provider:item.provider??undefined
+      }
     }]:[];
   }));
   const diversityAcceptedScenes=new Set(diversity.acceptedSceneIds);
