@@ -14,6 +14,7 @@ import {
   verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
+import { sourceReuseDecision } from '@/lib/source-router-policy';
 import { downloadMedia } from './media-storage';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
@@ -678,7 +679,41 @@ export async function resolveVerifiedStockMediaForScene(input:{
   const discoveryQueries=stockDiscoveryQueries(editorialQuery);
   const query=discoveryQueries[0]??stockDiscoveryQuery(editorialQuery);
   const validationQuery=stockVisualValidationQuery(editorialQuery);
-  const {set}=await sceneContext(input.promptSetId,input.sceneId);
+  const {set,scene}=await sceneContext(input.promptSetId,input.sceneId);
+  const selectedStockRows=checked(await db().from('radar_scene_assets')
+    .select('scene_id,provider,payload')
+    .eq('visual_prompt_set_id',input.promptSetId)
+    .eq('source_type','stock')
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(1000));
+  const sequenceByScene=new Map(set.scenePrompts.map(item=>[item.sceneId,item.sequence]));
+  const stockUses=new Map<string,Array<{
+    sceneSequence:number;
+    sourceStartSeconds?:number|null;
+    sourceEndSeconds?:number|null;
+  }>>();
+  for(const row of selectedStockRows??[]){
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const stock=payload.stock&&typeof payload.stock==='object'
+      ?payload.stock as Record<string,unknown>
+      :{};
+    const verified=payload.verifiedStock&&typeof payload.verifiedStock==='object'
+      ?payload.verifiedStock as Record<string,unknown>
+      :{};
+    const providerAssetId=String(stock.providerAssetId??'').trim();
+    const provider=String(row.provider??'').trim();
+    const sceneSequence=sequenceByScene.get(String(row.scene_id));
+    if(!provider||!providerAssetId||!Number.isFinite(sceneSequence))continue;
+    const key=provider+':'+providerAssetId;
+    const uses=stockUses.get(key)??[];
+    uses.push({
+      sceneSequence:Number(sceneSequence),
+      sourceStartSeconds:verified.sourceStartSeconds===undefined?null:Number(verified.sourceStartSeconds),
+      sourceEndSeconds:verified.sourceEndSeconds===undefined?null:Number(verified.sourceEndSeconds)
+    });
+    stockUses.set(key,uses);
+  }
   if(!validStockQuery(query))throw new HttpError('A intenção visual stock não gerou uma query de descoberta utilizável.',400);
   const orientation=input.orientation??'landscape';
   const providerSeed:StockMediaProvider[]=input.providers?.length
@@ -757,6 +792,25 @@ export async function resolveVerifiedStockMediaForScene(input:{
       const searchRelevance=verifiedStockSearchRelevance(
         candidate.relevance,candidateIndex
       );
+      const reuseKey=provider+':'+candidate.result.providerAssetId;
+      const priorUses=stockUses.get(reuseKey)??[];
+      const reuseBeforeAcquisition=sourceReuseDecision({
+        sourceType:'stock',
+        targetSequence:scene.sequence,
+        observations:priorUses
+      });
+      if(!reuseBeforeAcquisition.ok){
+        attempts.push({
+          provider,
+          providerAssetId:candidate.result.providerAssetId,
+          stage:'source-diversity',
+          reason:reuseBeforeAcquisition.reason,
+          usageCount:reuseBeforeAcquisition.usageCount,
+          maxUses:reuseBeforeAcquisition.maxUses,
+          accepted:false
+        });
+        continue;
+      }
       let assetId:string|null=null;
       let createdCandidate=false;
       try{
@@ -865,7 +919,16 @@ export async function resolveVerifiedStockMediaForScene(input:{
           })
           :{ok:true,expected:null,observed:[],reason:null};
 
-        if(match&&constraints.ok&&stockCandidateAccepted({
+        const reuseWithTrim=match
+          ?sourceReuseDecision({
+            sourceType:'stock',
+            targetSequence:scene.sequence,
+            observations:priorUses,
+            candidateStartSeconds:match.sourceStartSeconds,
+            candidateEndSeconds:match.sourceEndSeconds
+          })
+          :reuseBeforeAcquisition;
+        if(match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
           searchScore:searchRelevance,
           visualRelevance,
           combinedScore
@@ -925,6 +988,9 @@ export async function resolveVerifiedStockMediaForScene(input:{
           visualRelevance,
           combinedScore,
           hardConstraintReason:constraints.reason,
+          sourceDiversityReason:reuseWithTrim.ok?null:reuseWithTrim.reason,
+          sourceUsageCount:reuseWithTrim.usageCount,
+          sourceMaxUses:reuseWithTrim.maxUses,
           expectedTimeOfDay:constraints.expected,
           observedTimeOfDay:constraints.observed,
           accepted:false
