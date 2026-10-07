@@ -123,10 +123,20 @@ export function motionRouteAssetSatisfied(input:{
   payload?:unknown;
 }){
   if(!routePrefersMotion(input.route))return true;
-  if(input.assetKind==='video')return true;
   const payload=input.payload&&typeof input.payload==='object'
     ?input.payload as Record<string,unknown>
     :{};
+  if(input.assetKind==='video'){
+    const rawQa=payload.visualQa;
+    const qa=rawQa&&typeof rawQa==='object'
+      ?rawQa as Record<string,unknown>
+      :{};
+    const rawMotion=qa.motion;
+    const motion=rawMotion&&typeof rawMotion==='object'
+      ?rawMotion as Record<string,unknown>
+      :{};
+    return qa.status==='pass'&&qa.staticGraphic!==true&&motion.meaningfulMotion===true;
+  }
   const raw=payload.videoFirstFallback;
   const fallback=raw&&typeof raw==='object'
     ?raw as Record<string,unknown>
