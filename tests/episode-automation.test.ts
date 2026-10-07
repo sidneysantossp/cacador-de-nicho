@@ -457,7 +457,7 @@ test('Episode Automation cannot call provider AI in operator-first mode',()=>{
 
 test('Automation visual coverage excludes assets from an older prompt version',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,provider,status,selected,payload,updated_at'\)/);
   assert.match(source,/promptSetVersion\?:unknown/);
   assert.match(source,/Number\(promptSet\?\.version\?\?0\)/);
 });
@@ -494,7 +494,7 @@ test('Visual-assets automation accepts only motion-compatible route coverage',()
 
 test('Automation reconcile accepts explicit exhausted-video still fallbacks',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,provider,status,selected,payload,updated_at'\)/);
   assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
   assert.match(source,/dnaDetail\.research\?\.documentaryMode===true/);
   assert.match(source,/motionRouteAssetSatisfied\(\{route,assetKind:String\(item\.asset_kind\?\?''\),payload:item\.payload\}\)/);
