@@ -34,3 +34,13 @@ test('Still verification uses an OpenAI-specific model variable',()=>{
   assert.match(source,/\^gpt-/);
   assert.match(source,/gpt-5\.6-luna/);
 });
+
+
+test('Gemini vision failover treats temporary high-demand 503 as model-unavailable',()=>{
+  const source=readFileSync('src/lib/server/google-vision-model.ts','utf8');
+  assert.match(source,/\(http 503\)/);
+  assert.match(source,/high demand/);
+  assert.match(source,/status": "unavailable/);
+  assert.match(source,/temporarily unavailable/);
+});
+
