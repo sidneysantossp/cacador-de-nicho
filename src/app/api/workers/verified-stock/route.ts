@@ -46,7 +46,8 @@ export async function POST(request:Request){
       throw new HttpError('Lease do job stock expirou.',409);
     }
 
-    const selected=checked(await db().from('radar_scene_assets')
+    try{
+      const selected=checked(await db().from('radar_scene_assets')
       .select('id,asset_kind,source_type,provider,payload')
       .eq('visual_prompt_set_id',String(job.visual_prompt_set_id))
       .eq('scene_id',String(job.scene_id))
@@ -94,7 +95,6 @@ export async function POST(request:Request){
       });
     }
 
-    try{
       const providers=(Array.isArray(job.providers)?job.providers:[])
         .filter((item):item is 'pexels'|'pixabay'|'unsplash'|'vecteezy'=>
           item==='pexels'||item==='pixabay'||item==='unsplash'||item==='vecteezy'

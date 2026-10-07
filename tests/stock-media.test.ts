@@ -317,3 +317,16 @@ test('Verified stock sync keeps fast workers on the promoted release and stable 
   assert.doesNotMatch(source,/prod-3102|prod-3103/);
   assert.match(source,/suffix>FAST_WORKERS/);
 });
+
+
+test('Verified Stock worker retries failures from preflight reads instead of leaving processing leases stuck',()=>{
+  const source=readFileSync('src/app/api/workers/verified-stock/route.ts','utf8');
+  const guarded=source.indexOf("try{\n      const selected=checked");
+  const providers=source.indexOf('const providers=',guarded);
+  const retryCatch=source.indexOf('}catch(error){',guarded);
+  assert.ok(guarded>0);
+  assert.ok(providers>guarded);
+  assert.ok(retryCatch>providers);
+  assert.ok(source.includes("status:'queued'"));
+  assert.ok(source.includes("status:'failed'"));
+});
