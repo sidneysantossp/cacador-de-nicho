@@ -35,6 +35,13 @@ function firstQuery(scene:SceneTimecode,beat:VisualBeat|null){
   ).slice(0,500);
 }
 
+export function documentAbsenceClaim(value:string){
+  const text=value.toLowerCase();
+  const absence=/\b(?:no|none|without|does not|doesn't|do not|not public|not publicly|unavailable|lacks?|missing)\b/.test(text);
+  const document=/\b(?:document|documentation|blueprint|technical blueprint|specification|source code|filing|paper|manual)\b/.test(text);
+  return absence&&document;
+}
+
 export function sourceRouteForScene(
   scene:SceneTimecode,
   editorialQuery?:string
@@ -52,6 +59,14 @@ export function sourceRouteForScene(
     };
   }
   if(preference==='document'){
+    if(documentAbsenceClaim(query)){
+      return {
+        sceneId:scene.id,beatId:beat?.id??null,preference,query,
+        actions:['owned','stock-video','stock-image','wikimedia'],
+        syntheticAllowed:false,
+        rationale:'Negative documentary claim: do not fabricate the missing document; use neutral real-source context, with motion footage preferred when available.'
+      };
+    }
     return {
       sceneId:scene.id,beatId:beat?.id??null,preference,query,
       actions:['owned','wikimedia','manual-document'],
