@@ -545,3 +545,11 @@ test('Portable render node documentation never embeds service-role credentials',
   assert.doesNotMatch(source,/eyJ[a-zA-Z0-9_-]{20,}/);
   assert.match(source,/exact-git-sha/);
 });
+
+
+test('Render asset lookup batches large PostgREST filters',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/render-engine.ts'),'utf8');
+  assert.match(source,/for\(let start=0;start<unique\.length;start\+=80\)/);
+  assert.match(source,/const batch=unique\.slice\(start,start\+80\)/);
+  assert.match(source,/rows\.push\(\.\.\.\(part\?\?\[\]\)\)/);
+});
