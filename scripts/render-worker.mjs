@@ -598,7 +598,7 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
   const filters=[];
   const normalized=segmentPaths.map((_,index)=>'src'+index);
   for(let i=0;i<segmentPaths.length;i++){
-    filters.push('['+i+':v]setsar=1/1['+normalized[i]+']');
+    filters.push('['+i+':v]settb=AVTB,setsar=1/1['+normalized[i]+']');
   }
   let current=normalized[0];
   let cumulative=manifest.visualClips[0].durationSeconds;
