@@ -4,10 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery,
-  stockDownloadHostAllowed,
-  stockFallbackEligible, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
-  verifiedStockSearchRelevance
+  deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
+  stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
+  stockFallbackEligible, stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied,
+  stockVisualValidationQuery, validStockQuery, verifiedStockSearchRelevance
 } from '../src/lib/stock-media-policy';
 
 test('Stock Media allows only expected Pexels media hosts',()=>{
@@ -126,6 +126,38 @@ test('Stock fallback requires both provider relevance and visual verification',(
   }),false);
 });
 
+
+test('Stock visual indexing falls back only for transient provider failures',()=>{
+  assert.equal(stockVisualAnalysisFallbackAllowed({status:429,message:'quota exceeded'}),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({status:503,message:'temporarily unavailable'}),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({status:504,message:'timeout'}),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({status:422,message:'invalid media'}),false);
+  assert.equal(stockVisualAnalysisFallbackAllowed({status:403,message:'permission denied'}),false);
+});
+
+test('Stock fallback trim is deterministic, bounded, and varies with scene seed',()=>{
+  const a=deterministicStockFallbackTrim({
+    durationSeconds:30,
+    desiredDurationSeconds:4,
+    seed:10
+  });
+  const b=deterministicStockFallbackTrim({
+    durationSeconds:30,
+    desiredDurationSeconds:4,
+    seed:11
+  });
+  assert.ok(a);
+  assert.ok(b);
+  assert.equal(Number((a!.sourceEndSeconds-a!.sourceStartSeconds).toFixed(3)),4);
+  assert.equal(Number((b!.sourceEndSeconds-b!.sourceStartSeconds).toFixed(3)),4);
+  assert.notEqual(a!.sourceStartSeconds,b!.sourceStartSeconds);
+  assert.ok(a!.sourceStartSeconds>=0&&a!.sourceEndSeconds<=30);
+  assert.equal(deterministicStockFallbackTrim({
+    durationSeconds:null,
+    desiredDurationSeconds:4,
+    seed:1
+  }),null);
+});
 
 test('Stock discovery strips production-only words but preserves semantic location',()=>{
   assert.equal(
@@ -318,6 +350,17 @@ test('Verified stock sync keeps fast workers on the promoted release and stable 
   assert.match(source,/suffix>FAST_WORKERS/);
 });
 
+
+test('Verified stock degrades from Google visual indexing to mandatory Pre-Render QA',()=>{
+  const source=readFileSync('src/lib/server/stock-media.ts','utf8');
+  assert.match(source,/ensureStockVisualIndex/);
+  assert.match(source,/stockVisualAnalysisFallbackAllowed/);
+  assert.match(source,/deterministicStockFallbackTrim/);
+  assert.match(source,/verificationMode=fallbackAccepted\?'pre-render-fallback':'visual-index'/);
+  assert.match(source,/await ensureSceneAssetVisualQa\(asset\.id\)/);
+  assert.match(source,/stage:'pre-render-fallback'/);
+  assert.match(source,/O fallback stock não passou no Pre-Render Visual QA/);
+});
 
 test('Verified Stock worker retries failures from preflight reads instead of leaving processing leases stuck',()=>{
   const source=readFileSync('src/app/api/workers/verified-stock/route.ts','utf8');

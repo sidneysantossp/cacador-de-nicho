@@ -7,11 +7,13 @@ import { providerSecret } from './providers';
 import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
+import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
-  rankStockMediaResults, stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery,
-  stockDownloadHostAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery, validStockQuery,
-  verifiedStockSearchRelevance
+  deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
+  stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
+  stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery,
+  validStockQuery, verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
 import { sourceReuseDecision } from '@/lib/source-router-policy';
@@ -657,6 +659,28 @@ async function cloneCachedStockToScene(input:{
   });
 }
 
+async function ensureStockVisualIndex(assetId:string){
+  const current=await loadVisualIntelligence(assetId);
+  if(current.status==='completed'&&current.segments.length){
+    return {available:true as const,reason:null as string|null};
+  }
+  try{
+    const analyzed=await analyzeVisualAsset(assetId);
+    return {
+      available:analyzed.status==='completed'&&analyzed.segments.length>0,
+      reason:null as string|null
+    };
+  }catch(error){
+    const status=error instanceof HttpError?error.status:500;
+    const message=error instanceof Error?error.message:'Falha desconhecida na análise visual.';
+    if(!stockVisualAnalysisFallbackAllowed({status,message}))throw error;
+    return {
+      available:false as const,
+      reason:message.slice(0,500)
+    };
+  }
+}
+
 function stockProviderSearchShouldTrip(error:unknown){
   const status=error instanceof HttpError?error.status:500;
   const message=error instanceof Error?error.message:'';
@@ -835,19 +859,27 @@ export async function resolveVerifiedStockMediaForScene(input:{
         let match:Awaited<ReturnType<typeof bestVisualSegment>>=null;
         let visualRelevance=0;
         let combinedScore=0;
+        let analysisFallbackReason:string|null=null;
 
         if(verificationAssetId){
-          const currentAnalysis=await loadVisualIntelligence(verificationAssetId);
-          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
-            await analyzeVisualAsset(verificationAssetId);
+          const index=await ensureStockVisualIndex(verificationAssetId);
+          if(index.available){
+            match=await bestVisualSegment({
+              assetId:verificationAssetId,
+              query:validationQuery,
+              desiredDurationSeconds:input.desiredDurationSeconds
+            });
+            visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+          }else{
+            analysisFallbackReason=index.reason;
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'visual-index-fallback',
+              reason:index.reason
+            });
           }
-          match=await bestVisualSegment({
-            assetId:verificationAssetId,
-            query:validationQuery,
-            desiredDurationSeconds:input.desiredDurationSeconds
-          });
-          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
         let asset=existing?{id:String(existing.id)}:null;
@@ -857,11 +889,17 @@ export async function resolveVerifiedStockMediaForScene(input:{
             timeOfDay:match.segment.semantic.timeOfDay
           })
           :{ok:true,expected:null,observed:[],reason:null};
-        if(cached&&match&&cachedConstraints.ok&&stockCandidateAccepted({
-          searchScore:searchRelevance,
-          visualRelevance,
-          combinedScore
-        })){
+        const cachedEligibleByIndex=Boolean(
+          match&&cachedConstraints.ok&&stockCandidateAccepted({
+            searchScore:searchRelevance,
+            visualRelevance,
+            combinedScore
+          })
+        );
+        const cachedEligibleByFallback=Boolean(
+          !match&&analysisFallbackReason&&searchRelevance>=.45
+        );
+        if(cached&&(cachedEligibleByIndex||cachedEligibleByFallback)){
           asset=await cloneCachedStockToScene({
             cached,
             promptSetId:input.promptSetId,
@@ -898,20 +936,39 @@ export async function resolveVerifiedStockMediaForScene(input:{
         if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
         assetId=asset.id;
 
-        if(!match||verificationAssetId!==asset.id&&!(cached&&createdCandidate)){
-          const currentAnalysis=await loadVisualIntelligence(asset.id);
-          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
-            await analyzeVisualAsset(asset.id);
+        if(
+          (!match||verificationAssetId!==asset.id&&!(cached&&createdCandidate))&&
+          !analysisFallbackReason
+        ){
+          const index=await ensureStockVisualIndex(asset.id);
+          if(index.available){
+            match=await bestVisualSegment({
+              assetId:asset.id,
+              query:validationQuery,
+              desiredDurationSeconds:input.desiredDurationSeconds
+            });
+            visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+          }else{
+            analysisFallbackReason=index.reason;
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'visual-index-fallback',
+              reason:index.reason
+            });
           }
-          match=await bestVisualSegment({
-            assetId:asset.id,
-            query:validationQuery,
-            desiredDurationSeconds:input.desiredDurationSeconds
-          });
-          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
+        const fallbackTrim=!match&&analysisFallbackReason
+          ?deterministicStockFallbackTrim({
+            durationSeconds:candidate.result.durationSeconds,
+            desiredDurationSeconds:input.desiredDurationSeconds,
+            seed:scene.sequence+candidateIndex*17
+          })
+          :null;
+        const sourceStartSeconds=match?.sourceStartSeconds??fallbackTrim?.sourceStartSeconds??null;
+        const sourceEndSeconds=match?.sourceEndSeconds??fallbackTrim?.sourceEndSeconds??null;
         const constraints=match
           ?stockVisualConstraintsSatisfied({
             query:validationQuery,
@@ -919,25 +976,33 @@ export async function resolveVerifiedStockMediaForScene(input:{
           })
           :{ok:true,expected:null,observed:[],reason:null};
 
-        const reuseWithTrim=match
+        const reuseWithTrim=sourceStartSeconds!==null&&sourceEndSeconds!==null
           ?sourceReuseDecision({
             sourceType:'stock',
             targetSequence:scene.sequence,
             observations:priorUses,
-            candidateStartSeconds:match.sourceStartSeconds,
-            candidateEndSeconds:match.sourceEndSeconds
+            candidateStartSeconds:sourceStartSeconds,
+            candidateEndSeconds:sourceEndSeconds
           })
           :reuseBeforeAcquisition;
-        if(match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
-          searchScore:searchRelevance,
-          visualRelevance,
-          combinedScore
-        })){
-          const row=checked(await db().from('radar_scene_assets')
+        const indexedAccepted=Boolean(
+          match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
+            searchScore:searchRelevance,
+            visualRelevance,
+            combinedScore
+          })
+        );
+        const fallbackAccepted=Boolean(
+          !match&&analysisFallbackReason&&fallbackTrim&&
+          searchRelevance>=.45&&reuseWithTrim.ok
+        );
+        if(indexedAccepted||fallbackAccepted){
+          let row=checked(await db().from('radar_scene_assets')
             .select('payload')
             .eq('id',asset.id)
             .maybeSingle());
-          const payload=(row?.payload??{}) as Record<string,unknown>;
+          let payload=(row?.payload??{}) as Record<string,unknown>;
+          const verificationMode=fallbackAccepted?'pre-render-fallback':'visual-index';
           await db().from('radar_scene_assets').update({
             payload:{
               ...payload,
@@ -951,14 +1016,62 @@ export async function resolveVerifiedStockMediaForScene(input:{
                 metadataRelevance:candidate.relevance,
                 visualRelevance,
                 combinedScore,
-                sourceStartSeconds:match.sourceStartSeconds,
-                sourceEndSeconds:match.sourceEndSeconds,
+                sourceStartSeconds,
+                sourceEndSeconds,
                 verifiedAt:new Date().toISOString(),
+                verificationMode,
+                visualIndexFallbackReason:analysisFallbackReason??undefined,
                 cachedFromAssetId:cached?String(cached.id):undefined
               }
             },
             updated_at:new Date().toISOString()
           }).eq('id',asset.id);
+
+          if(fallbackAccepted){
+            const review=await ensureSceneAssetVisualQa(asset.id);
+            if(review.status!=='pass'){
+              throw new HttpError('O fallback stock não passou no Pre-Render Visual QA.',422);
+            }
+            visualRelevance=review.relevance;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+            if(!stockCandidateAccepted({
+              searchScore:searchRelevance,
+              visualRelevance,
+              combinedScore
+            })){
+              throw new HttpError('O fallback stock ficou abaixo do score mínimo após o Visual QA.',422);
+            }
+            row=checked(await db().from('radar_scene_assets')
+              .select('payload')
+              .eq('id',asset.id)
+              .maybeSingle());
+            payload=(row?.payload??{}) as Record<string,unknown>;
+            const verified=payload.verifiedStock&&typeof payload.verifiedStock==='object'
+              ?payload.verifiedStock as Record<string,unknown>
+              :{};
+            await db().from('radar_scene_assets').update({
+              payload:{
+                ...payload,
+                verifiedStock:{
+                  ...verified,
+                  visualRelevance,
+                  combinedScore,
+                  verifiedAt:new Date().toISOString()
+                }
+              },
+              updated_at:new Date().toISOString()
+            }).eq('id',asset.id);
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'pre-render-fallback',
+              relevance:review.relevance,
+              qualityScore:review.qualityScore,
+              editorialUsefulness:review.editorialUsefulness,
+              accepted:true
+            });
+          }
+
           await selectSceneAsset(asset.id);
           return {
             status:'matched' as const,
@@ -968,10 +1081,12 @@ export async function resolveVerifiedStockMediaForScene(input:{
             assetId:asset.id,
             candidate:candidate.result,
             searchRelevance,
-                metadataRelevance:candidate.relevance,
+            metadataRelevance:candidate.relevance,
             visualRelevance,
             combinedScore,
             match,
+            fallbackTrim:fallbackAccepted?fallbackTrim:null,
+            verificationMode,
             cacheReuse:cached?{
               sourceAssetId:String(cached.id)
             }:null,
@@ -988,6 +1103,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
           visualRelevance,
           combinedScore,
           hardConstraintReason:constraints.reason,
+          visualIndexFallbackReason:analysisFallbackReason,
+          fallbackTrim,
           sourceDiversityReason:reuseWithTrim.ok?null:reuseWithTrim.reason,
           sourceUsageCount:reuseWithTrim.usageCount,
           sourceMaxUses:reuseWithTrim.maxUses,

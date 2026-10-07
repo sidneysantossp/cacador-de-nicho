@@ -131,6 +131,36 @@ export function verifiedStockSearchRelevance(
   return Math.max(0,Math.min(1,Math.max(metadataRelevance,providerSignal)));
 }
 
+export function stockVisualAnalysisFallbackAllowed(input:{
+  status:number;
+  message?:string;
+}){
+  const status=Math.max(0,Math.round(input.status||0));
+  const message=String(input.message??'');
+  return (
+    status===429||status===500||status===502||status===503||status===504||
+    /\b(?:timeout|timed out|temporar|unavailable|rate limit|quota|too many requests)\b/i.test(message)
+  );
+}
+
+export function deterministicStockFallbackTrim(input:{
+  durationSeconds:number|null|undefined;
+  desiredDurationSeconds:number;
+  seed:number;
+}){
+  const duration=Number(input.durationSeconds);
+  if(!Number.isFinite(duration)||duration<.25)return null;
+  const span=Math.min(duration,Math.max(.25,Number(input.desiredDurationSeconds)||.25));
+  const maxStart=Math.max(0,duration-span);
+  const normalizedSeed=Math.abs(Math.floor(Number(input.seed)||0));
+  const fraction=(normalizedSeed*.6180339887498949)%1;
+  const start=maxStart<.05?0:maxStart*fraction;
+  return {
+    sourceStartSeconds:Number(start.toFixed(3)),
+    sourceEndSeconds:Number(Math.min(duration,start+span).toFixed(3))
+  };
+}
+
 export function stockCandidateAccepted(input:{
   searchScore:number;
   visualRelevance:number;
