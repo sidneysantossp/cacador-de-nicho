@@ -24,6 +24,7 @@ import {
 } from './visual-prompt-engine';
 import { listSceneAssets } from './asset-factory';
 import { resolveSourceForScene } from './source-router';
+import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 import {
   createTimelineFromPlan, loadTimeline, refreshTimelineFromPlan, saveTimeline
 } from './timeline-engine';
@@ -1265,6 +1266,7 @@ async function executeAutomationTransition(
 
       const selectedReadySceneIds=assets
         .filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
+        .filter(asset=>asset.visualQa?.status==='pass')
         .filter(asset=>{
           const scene=scenesById.get(asset.sceneId);
           if(!scene)return false;
@@ -1303,6 +1305,33 @@ async function executeAutomationTransition(
         if(processed>0&&Date.now()-startedAt>=VISUAL_ASSET_BATCH_BUDGET_MS)break;
         const target=byScene.get(sceneId);
         if(!target)continue;
+
+        const existingSelected=assets.find(asset=>
+          asset.sceneId===sceneId&&asset.selected&&asset.status==='ready'&&!asset.stale
+        );
+        if(existingSelected&&existingSelected.visualQa?.status!=='pass'){
+          const review=await ensureSceneAssetVisualQa(existingSelected.id);
+          if(review.status==='pass'){
+            const scene=scenesById.get(sceneId);
+            const prompt=promptsByScene.get(sceneId);
+            if(scene){
+              const route=applyDocumentarySourcePolicy(
+                sourceRouteForScene(scene,prompt?.direction),
+                documentaryMode
+              );
+              if(motionRouteAssetSatisfied({
+                route,
+                assetKind:existingSelected.assetKind,
+                payload:{...existingSelected,visualQa:review}
+              })){
+                processed++;
+                matched++;
+                actions.set('visual-qa-pass',(actions.get('visual-qa-pass')??0)+1);
+                continue;
+              }
+            }
+          }
+        }
 
         const routed=await resolveSourceForScene({
           promptSetId:promptSet.id,
