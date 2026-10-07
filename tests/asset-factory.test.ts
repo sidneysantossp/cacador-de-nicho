@@ -145,3 +145,11 @@ test('Library First filters new OWNED matches by preferred media kind',()=>{
   assert.match(source,/videoFirstFallback:payload\.videoFirstFallback/);
 });
 
+
+
+test('Library First skips OWNED segments already rejected by visual QA',()=>{
+  const source=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  assert.ok(source.includes(".eq('status','rejected')"));
+  assert.ok(source.includes("rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)"));
+  assert.ok(source.includes("'visual-qa-rejected'"));
+});
