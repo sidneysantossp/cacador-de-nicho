@@ -135,10 +135,11 @@ test('Timeline structural gate accepts a fully mapped deterministic timeline',()
   assert.deepEqual(timelineStructuralIssues(t,scenePlan),[]);
 });
 
-test('Timeline structural gate detects visual gaps and scene timing drift',()=>{
+test('Timeline structural gate detects visual gaps and beats outside their narrative scene',()=>{
   const t=timeline();
   const visual=t.tracks.find(track=>track.type==='visual')!;
-  visual.clips[1]={...visual.clips[1],startSeconds:3.5};
+  visual.clips[0]={...visual.clips[0],endSeconds:2.5};
+  visual.clips[1]={...visual.clips[1],startSeconds:2.9};
   const issues=timelineStructuralIssues(normalizeTimeline(t),scenePlan);
   assert.ok(issues.includes('visual-gap'));
   assert.ok(issues.includes('visual-clip-scene-time-mismatch'));
