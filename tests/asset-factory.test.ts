@@ -153,3 +153,20 @@ test('Library First skips OWNED segments already rejected by visual QA',()=>{
   assert.ok(source.includes("rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)"));
   assert.ok(source.includes("'visual-qa-rejected'"));
 });
+
+
+test('Visual QA cache is tied to the current editorial query',()=>{
+  const preflight=readFileSync('src/lib/server/visual-asset-preflight.ts','utf8');
+  assert.ok(preflight.includes("cached.query===query"));
+  assert.ok(preflight.includes("reusedImageVerification(payload,query)"));
+  assert.ok(preflight.includes("String(source.query??'')!==query"));
+});
+
+test('Automation revalidates selected stale assets before replacement search',()=>{
+  const automation=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const factory=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  assert.ok(automation.includes("asset.sceneId===sceneId&&asset.selected&&asset.status==='ready'"));
+  assert.ok(automation.includes("refreshSceneAssetPromptContext(existingSelected.id)"));
+  assert.ok(automation.includes("'visual-qa-revalidated'"));
+  assert.ok(factory.includes("promptContextRevalidatedAt"));
+});
