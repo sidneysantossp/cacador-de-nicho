@@ -62,14 +62,14 @@ type RunRow={
 
 const runSelection='id,channel_id,episode_id,content_project_id,mode,status,current_step,attempts,payload,last_error,hold_step,hold_reason,hold_created_at,created_at,updated_at';
 
-const visualBatchConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_SIZE??4);
+const visualBatchConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_SIZE??8);
 const VISUAL_ASSET_BATCH_SIZE=Number.isFinite(visualBatchConfigured)
   ?Math.max(1,Math.min(12,Math.floor(visualBatchConfigured)))
-  :4;
-const visualBudgetConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_BUDGET_MS??210000);
+  :8;
+const visualBudgetConfigured=Number(process.env.AUTOMATION_VISUAL_ASSET_BATCH_BUDGET_MS??240000);
 const VISUAL_ASSET_BATCH_BUDGET_MS=Number.isFinite(visualBudgetConfigured)
   ?Math.max(30000,Math.min(240000,Math.floor(visualBudgetConfigured)))
-  :210000;
+  :240000;
 const providerAiAutorun=()=>process.env.CACADORES_AI_AUTORUN==='1';
 
 const visualPromptBatchConfigured=Number(process.env.AUTOMATION_VISUAL_PROMPT_BATCH_SIZE??40);
