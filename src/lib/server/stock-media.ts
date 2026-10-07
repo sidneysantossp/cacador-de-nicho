@@ -859,19 +859,27 @@ export async function resolveVerifiedStockMediaForScene(input:{
         let match:Awaited<ReturnType<typeof bestVisualSegment>>=null;
         let visualRelevance=0;
         let combinedScore=0;
+        let analysisFallbackReason:string|null=null;
 
         if(verificationAssetId){
-          const currentAnalysis=await loadVisualIntelligence(verificationAssetId);
-          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
-            await analyzeVisualAsset(verificationAssetId);
+          const index=await ensureStockVisualIndex(verificationAssetId);
+          if(index.available){
+            match=await bestVisualSegment({
+              assetId:verificationAssetId,
+              query:validationQuery,
+              desiredDurationSeconds:input.desiredDurationSeconds
+            });
+            visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+          }else{
+            analysisFallbackReason=index.reason;
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'visual-index-fallback',
+              reason:index.reason
+            });
           }
-          match=await bestVisualSegment({
-            assetId:verificationAssetId,
-            query:validationQuery,
-            desiredDurationSeconds:input.desiredDurationSeconds
-          });
-          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
         let asset=existing?{id:String(existing.id)}:null;
@@ -881,11 +889,17 @@ export async function resolveVerifiedStockMediaForScene(input:{
             timeOfDay:match.segment.semantic.timeOfDay
           })
           :{ok:true,expected:null,observed:[],reason:null};
-        if(cached&&match&&cachedConstraints.ok&&stockCandidateAccepted({
-          searchScore:searchRelevance,
-          visualRelevance,
-          combinedScore
-        })){
+        const cachedEligibleByIndex=Boolean(
+          match&&cachedConstraints.ok&&stockCandidateAccepted({
+            searchScore:searchRelevance,
+            visualRelevance,
+            combinedScore
+          })
+        );
+        const cachedEligibleByFallback=Boolean(
+          !match&&analysisFallbackReason&&searchRelevance>=.45
+        );
+        if(cached&&(cachedEligibleByIndex||cachedEligibleByFallback)){
           asset=await cloneCachedStockToScene({
             cached,
             promptSetId:input.promptSetId,
@@ -922,18 +936,28 @@ export async function resolveVerifiedStockMediaForScene(input:{
         if(!asset)throw new HttpError('O import stock não devolveu um Scene Asset.',502);
         assetId=asset.id;
 
-        if(!match||verificationAssetId!==asset.id&&!(cached&&createdCandidate)){
-          const currentAnalysis=await loadVisualIntelligence(asset.id);
-          if(currentAnalysis.status!=='completed'||!currentAnalysis.segments.length){
-            await analyzeVisualAsset(asset.id);
+        if(
+          (!match||verificationAssetId!==asset.id&&!(cached&&createdCandidate))&&
+          !analysisFallbackReason
+        ){
+          const index=await ensureStockVisualIndex(asset.id);
+          if(index.available){
+            match=await bestVisualSegment({
+              assetId:asset.id,
+              query:validationQuery,
+              desiredDurationSeconds:input.desiredDurationSeconds
+            });
+            visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
+            combinedScore=searchRelevance*.55+visualRelevance*.45;
+          }else{
+            analysisFallbackReason=index.reason;
+            attempts.push({
+              provider,
+              providerAssetId:candidate.result.providerAssetId,
+              stage:'visual-index-fallback',
+              reason:index.reason
+            });
           }
-          match=await bestVisualSegment({
-            assetId:asset.id,
-            query:validationQuery,
-            desiredDurationSeconds:input.desiredDurationSeconds
-          });
-          visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
-          combinedScore=searchRelevance*.55+visualRelevance*.45;
         }
 
         const constraints=match
