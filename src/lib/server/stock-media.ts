@@ -919,7 +919,16 @@ export async function resolveVerifiedStockMediaForScene(input:{
           })
           :{ok:true,expected:null,observed:[],reason:null};
 
-        if(match&&constraints.ok&&stockCandidateAccepted({
+        const reuseWithTrim=match
+          ?sourceReuseDecision({
+            sourceType:'stock',
+            targetSequence:scene.sequence,
+            observations:priorUses,
+            candidateStartSeconds:match.sourceStartSeconds,
+            candidateEndSeconds:match.sourceEndSeconds
+          })
+          :reuseBeforeAcquisition;
+        if(match&&constraints.ok&&reuseWithTrim.ok&&stockCandidateAccepted({
           searchScore:searchRelevance,
           visualRelevance,
           combinedScore
@@ -979,6 +988,9 @@ export async function resolveVerifiedStockMediaForScene(input:{
           visualRelevance,
           combinedScore,
           hardConstraintReason:constraints.reason,
+          sourceDiversityReason:reuseWithTrim.ok?null:reuseWithTrim.reason,
+          sourceUsageCount:reuseWithTrim.usageCount,
+          sourceMaxUses:reuseWithTrim.maxUses,
           expectedTimeOfDay:constraints.expected,
           observedTimeOfDay:constraints.observed,
           accepted:false
