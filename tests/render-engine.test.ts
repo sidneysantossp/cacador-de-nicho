@@ -568,7 +568,7 @@ test('Render worker normalizes sample aspect ratio and timebase before segment a
   const chapter=source.slice(chapterStart,source.indexOf('async function downloadItems',chapterStart));
   assert.match(prepare,/filters\.push\('setsar=1','format=yuv420p'/);
   assert.match(assemble,/setsar=1\/1\['\+normalized\[i\]\+'\]/);
-  assert.match(assemble,/settb=AVTB,setsar=1\\/1/);
+  assert.match(assemble,/settb=AVTB,setsar=1\/1/);
   assert.match(assemble,/xfade=transition=fade:[\s\S]*setsar=1\/1\['\+out\+'\]/);
   assert.match(assemble,/concat=n=2:v=1:a=0,setsar=1\/1\['\+out\+'\]/);
   assert.match(chapter,/'-vf','setsar=1'/);
