@@ -236,7 +236,7 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
         result=await analyzeFrames({key,model,items:frames});
       }catch(error){
         if(!googleVisionModelUnavailable(error))throw error;
-        model=await resolveGoogleVisionModel(key,{forceRefresh:true});
+        model=await resolveGoogleVisionModel(key,{forceRefresh:true,excludeModel:model});
         checked(await db().from('radar_asset_visual_analysis').update({
           model,
           payload:{stage:'model-fallback',reason:'configured-model-unavailable'},
