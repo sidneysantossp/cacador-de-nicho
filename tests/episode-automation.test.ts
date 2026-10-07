@@ -251,12 +251,13 @@ test('Visual-assets automation snapshot stays lightweight across repeated batche
   for(const view of [
     'radar_episode_script_list',
     'radar_voice_asset_list',
-    'radar_transcript_list',
-    'radar_scene_plan_list',
-    'radar_visual_prompt_set_list'
+    'radar_transcript_list'
   ]){
     assert.match(block,new RegExp(view));
   }
+  assert.match(block,/radar_scene_plans/);
+  assert.match(block,/radar_visual_prompt_sets/);
+  assert.match(block,/asset_kind/);
   assert.doesNotMatch(block,/radar_timelines|radar_video_edits|radar_render_jobs|radar_production_quality_reports|radar_publication_packages/);
   assert.match(block,/timeline:null/);
   assert.match(block,/videoEdit:null/);
