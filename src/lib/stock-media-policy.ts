@@ -131,6 +131,26 @@ export function verifiedStockSearchRelevance(
   return Math.max(0,Math.min(1,Math.max(metadataRelevance,providerSignal)));
 }
 
+export function verifiedStockGapNeedsTransientRecovery(result:unknown){
+  const serialized=JSON.stringify(result??{}).toLowerCase();
+  if(
+    serialized.includes('visual-index-fallback')||
+    serialized.includes('pre-render-fallback')
+  )return false;
+  return (
+    serialized.includes('quota')||
+    serialized.includes('rate limit')||
+    serialized.includes('too many requests')||
+    serialized.includes('timed out')||
+    serialized.includes('timeout')||
+    serialized.includes('http 429')||
+    serialized.includes('http 500')||
+    serialized.includes('http 502')||
+    serialized.includes('http 503')||
+    serialized.includes('http 504')
+  );
+}
+
 export function stockVisualAnalysisFallbackAllowed(input:{
   status:number;
   message?:string;
