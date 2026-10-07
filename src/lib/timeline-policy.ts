@@ -355,7 +355,7 @@ export function buildInitialTimeline(input:{
     name:'Visual',
     locked:false,
     muted:false,
-    clips:input.scenePlan.scenes.flatMap(scene=>{
+    clips:input.scenePlan.scenes.flatMap<TimelineClip>(scene=>{
       const asset=visualByScene.get(scene.id);
       if(!asset){
         return [{
