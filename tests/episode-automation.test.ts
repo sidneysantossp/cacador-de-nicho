@@ -114,6 +114,17 @@ test('Episode Automation worker prefers self-hosted database credentials',()=>{
   assert.doesNotMatch(source,/SUPABASE_URL\+'\/rest\/v1\/rpc\/'/);
 });
 
+test('Assisted Automation serializes direct advances with an exclusive operator lease',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/async function acquireOperatorAutomationLease/);
+  assert.match(source,/const operatorToken=crypto\.randomUUID\(\)/);
+  assert.match(source,/\.is\('worker_token',null\)/);
+  assert.match(source,/lease_until:new Date\(now\.getTime\(\)\+300000\)\.toISOString\(\)/);
+  assert.match(source,/Automation Run já está sendo processado por outro executor/);
+  assert.match(source,/const operatorToken=workerToken\?null:await acquireOperatorAutomationLease\(runId\)/);
+  assert.match(source,/if\(operatorToken\)await releaseAutomationLease\(runId,operatorToken\)\.catch\(\(\)=>\{\}\)/);
+});
+
 test('Automation detects stale Timeline asset selection and upstream versions',()=>{
   const payload={
     scenePlanVersion:2,
