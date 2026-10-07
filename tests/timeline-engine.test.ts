@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type {
   ProductionDNA, ScenePlan, TimelinePayload, VisualPromptSet, VoiceAsset
 } from '../src/lib/types';
@@ -363,3 +364,17 @@ test('Chapter refresh replaces only media inside the requested chapter',()=>{
     'draft'
   );
 });
+
+
+test('Timeline source loader batches long-form asset lookups',()=>{
+  const source=readFileSync('src/lib/server/timeline-engine.ts','utf8');
+  const start=source.indexOf('export async function loadTimelineSources');
+  assert.ok(start>=0,'loadTimelineSources missing');
+  const block=source.slice(start,start+2600);
+  assert.match(block,/const uniqueSceneIds=\[\.\.\.new Set\(sceneIds\)\]/);
+  assert.match(block,/for\(let start=0;start<uniqueSceneIds\.length;start\+=80\)/);
+  assert.match(block,/const batch=uniqueSceneIds\.slice\(start,start\+80\)/);
+  assert.match(block,/\.in\('id',batch\)/);
+  assert.doesNotMatch(block,/\.in\('id',sceneIds\)/);
+});
+
