@@ -113,7 +113,17 @@ export function applyDocumentarySourcePolicy(
   route:SourceRoutePlan,
   documentaryMode:boolean
 ):SourceRoutePlan{
-  if(!documentaryMode||route.preference==='generated')return route;
+  if(!documentaryMode)return route;
+  const explicitDocumentaryEvidence=/^\s*documentary\s+evidence\s+for\s*:/i.test(route.query);
+  if(route.preference==='generated'&&!explicitDocumentaryEvidence)return route;
+  if(route.preference==='generated'&&explicitDocumentaryEvidence){
+    return {
+      ...route,
+      actions:['owned','stock-video','stock-image','wikimedia'],
+      syntheticAllowed:false,
+      rationale:route.rationale+' Documentary evidence directive: real reusable sources override inherited generated preference.'
+    };
+  }
   const withoutSynthetic=route.actions.filter(action=>action!=='generated-image');
   const actions=route.preference==='stock-image'
     ?([
