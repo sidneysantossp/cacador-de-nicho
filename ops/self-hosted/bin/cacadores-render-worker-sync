@@ -35,7 +35,7 @@ CPUS="$(docker inspect "$CONTAINER" --format '{{.HostConfig.NanoCpus}}' 2>/dev/n
 CURRENT_WORKER_ID="$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "auditseo.render.worker-id"}}' 2>/dev/null || true)"
 
 TARGET_MEMORY=2147483648
-TARGET_CPUS=1500000000
+TARGET_CPUS=2500000000
 WORKER_ID="${RENDER_WORKER_ID:-$(hostname -s)}"
 
 if [[ "$CURRENT_SHA" == "$SHA" && "$RUNNING" == "true" && "$MEMORY" == "$TARGET_MEMORY" && "$CPUS" == "$TARGET_CPUS" && "$CURRENT_WORKER_ID" == "$WORKER_ID" ]]; then
@@ -82,9 +82,9 @@ Path(sys.argv[1]).write_text(json.dumps({
   "container":"cacador-de-nicho-render-worker",
   "workerId":sys.argv[4],
   "memoryBytes":2147483648,
-  "nanoCpus":1500000000,
+  "nanoCpus":2500000000,
   "syncedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
 },indent=2)+"\n")
 PY
 
-echo "RENDER_WORKER_SYNCED sha=$SHA image=$IMAGE worker=$WORKER_ID memory=2g cpus=1.5"
+echo "RENDER_WORKER_SYNCED sha=$SHA image=$IMAGE worker=$WORKER_ID memory=2g cpus=2.5"
