@@ -10,6 +10,7 @@ import { HttpError } from './auth';
 import { checked, db } from './db';
 import { downloadMedia } from './media-storage';
 import { providerSecret } from './providers';
+import { googleVisionModelUnavailable, resolveGoogleVisionModel } from './google-vision-model';
 import { normalizeMediaSemantic, normalizeMediaTags, scoreVisualSegment, visualSegmentSearchText } from '@/lib/media-library-policy';
 
 const execFile=promisify(execFileCallback);
@@ -107,28 +108,6 @@ async function detectBoundaries(file:string,duration:number){
 async function frame(file:string,target:string,time:number){
   await execFile(FFMPEG,['-hide_banner','-loglevel','error','-ss',time.toFixed(3),'-i',file,'-frames:v','1','-vf',"scale='min(960,iw)':-2",'-q:v','4','-y',target],{maxBuffer:2*1024*1024});
   return readFile(target);
-}
-
-async function resolveVisionModel(key:string){
-  const configured=(process.env.VISUAL_INTELLIGENCE_MODEL??'').trim();
-  if(configured)return configured.startsWith('models/')?configured:'models/'+configured;
-  try{
-    const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key),{signal:AbortSignal.timeout(15000),cache:'no-store'});
-    if(response.ok){
-      const body=await response.json() as {models?:Array<{name?:string;supportedGenerationMethods?:string[]}>};
-      const names=(body.models??[]).filter(item=>(item.supportedGenerationMethods??[]).includes('generateContent')).map(item=>String(item.name??''));
-      for(const wanted of [
-        'models/gemini-3.5-flash-lite',
-        'models/gemini-3.6-flash',
-        'models/gemini-3.8-flash',
-        'models/gemini-3.5-flash',
-        'models/gemini-2.5-flash-lite',
-        'models/gemini-2.5-flash'
-      ])if(names.includes(wanted))return wanted;
-      const flash=names.find(name=>/gemini.*flash/i.test(name));if(flash)return flash;
-    }
-  }catch{}
-  return 'models/gemini-2.5-flash';
 }
 
 const responseSchema={
@@ -242,7 +221,8 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
     const specs=boundaries.slice(0,-1).map((start,index)=>{const end=boundaries[index+1];return {sequence:index+1,start,end,mid:start+(end-start)/2};})
       .filter(item=>item.end-item.start>=.35);
     if(!specs.length)throw new HttpError('Nenhum segmento visual utilizável foi detectado.',422);
-    const key=await providerSecret('googleai'),model=await resolveVisionModel(key);
+    const key=await providerSecret('googleai');
+    let model=await resolveGoogleVisionModel(key);
     checked(await db().from('radar_asset_visual_analysis').update({
       model,duration_seconds:metadata.duration,payload:{stage:'extracting',segmentCount:specs.length,width:metadata.width,height:metadata.height},updated_at:new Date().toISOString()
     }).eq('asset_id',source.id));
@@ -251,7 +231,20 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
     for(let offset=0;offset<specs.length;offset+=MAX_BATCH){
       const batch=specs.slice(offset,offset+MAX_BATCH),frames=[] as Array<{sequence:number;start:number;end:number;mid:number;bytes:Buffer}>;
       for(const spec of batch){const target=path.join(root,'frame-'+String(spec.sequence).padStart(3,'0')+'.jpg');frames.push({...spec,bytes:await frame(inputFile,target,spec.mid)});}
-      const result=await analyzeFrames({key,model,items:frames}),map=new Map((result.segments??[]).map(item=>[Number(item.sequence),item]));
+      let result:Awaited<ReturnType<typeof analyzeFrames>>;
+      try{
+        result=await analyzeFrames({key,model,items:frames});
+      }catch(error){
+        if(!googleVisionModelUnavailable(error))throw error;
+        model=await resolveGoogleVisionModel(key,{forceRefresh:true});
+        checked(await db().from('radar_asset_visual_analysis').update({
+          model,
+          payload:{stage:'model-fallback',reason:'configured-model-unavailable'},
+          updated_at:new Date().toISOString()
+        }).eq('asset_id',source.id));
+        result=await analyzeFrames({key,model,items:frames});
+      }
+      const map=new Map((result.segments??[]).map(item=>[Number(item.sequence),item]));
       for(const spec of batch){
         const item=map.get(spec.sequence)??{},semantic=normalizeSemantic(item);
         analyzed.push({...spec,title:String(item.title??'Visual segment '+spec.sequence).trim().slice(0,220),
