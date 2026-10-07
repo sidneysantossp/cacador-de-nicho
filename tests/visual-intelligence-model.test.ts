@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 test('Gemini vision model resolution ignores retired pinned models when availability disagrees',()=>{
   const source=readFileSync('src/lib/server/google-vision-model.ts','utf8');
   assert.match(source,/gemini-3\.5-flash-lite/);
-  assert.match(source,/configured&&names\.includes\(configured\)/);
+  assert.match(source,/configured&&configured!==excluded&&names\.includes\(configured\)/);
   assert.match(source,/PREFERRED_MODELS\.find\(item=>names\.includes\(item\)\)/);
   assert.match(source,/forceRefresh/);
   assert.match(source,/excludeModel/);
