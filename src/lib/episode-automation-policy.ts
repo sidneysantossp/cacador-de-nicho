@@ -37,6 +37,64 @@ export const autonomousAutomationPolicy:EpisodeAutomationPolicy={
   autoPublish:false
 };
 
+/**
+ * Golden Path policy for a ChatGPT/operator-owned production run.
+ *
+ * Creative authoring remains operator-first (research/script/visual prompt writing)
+ * while every deterministic production step after those inputs is allowed to
+ * advance without repetitive approvals. Publishing and packaging stay explicit;
+ * the default production target is the QA-approved master.
+ */
+export const operatorFactoryAutomationPolicy:EpisodeAutomationPolicy={
+  autoGenerateResearch:false,
+  autoGenerateScript:false,
+  autoApproveObjectiveGates:true,
+  autoGenerateVoice:true,
+  autoCreateTranscript:true,
+  autoCreateScenes:true,
+  autoGenerateVisualPrompts:false,
+  autoGenerateVisualAssets:true,
+  autoBuildTimeline:true,
+  autoCreateVideoEdit:true,
+  autoRender:true,
+  autoRunQuality:true,
+  autoCreatePackage:false,
+  autoPublish:false
+};
+
+export type OperatorDrainTarget='master'|'package'|'publish';
+
+export function automationTargetReached(
+  steps:EpisodeAutomationStepState[],
+  target:OperatorDrainTarget
+){
+  const completed=(name:EpisodeAutomationStep)=>
+    steps.some(item=>item.step===name&&item.status==='completed');
+  if(target==='master')return completed('quality');
+  if(target==='package')return completed('packaging');
+  return completed('done')||completed('publish');
+}
+
+export function automationDrainStopReason(input:{
+  status:EpisodeAutomationStatus;
+  currentStep:EpisodeAutomationStep;
+  holdStep?:EpisodeAutomationStep;
+  steps:EpisodeAutomationStepState[];
+  target:OperatorDrainTarget;
+}):string|null{
+  if(automationTargetReached(input.steps,input.target))return 'target-reached';
+  if(input.status==='completed')return 'completed';
+  if(input.status==='cancelled')return 'cancelled';
+  if(input.status==='failed')return 'failed';
+  if(input.holdStep)return 'hold';
+  const current=input.steps.find(item=>item.step===input.currentStep);
+  if(!current)return 'missing-current-step';
+  if(current.status==='running')return 'external-work-running';
+  if(current.requiresOperator)return 'operator-input-required';
+  if(!['ready','waiting'].includes(current.status))return 'step-not-actionable';
+  return null;
+}
+
 export const episodeAutomationLabels:Record<EpisodeAutomationStep,string>={
   content:'Content Project',
   script:'Script',
