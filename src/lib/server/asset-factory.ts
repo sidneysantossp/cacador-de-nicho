@@ -105,6 +105,30 @@ async function eligibleContext(promptSetId:string,sceneId:string){
   return {promptSet,plan,dna,scene,visual};
 }
 
+export async function refreshSceneAssetPromptContext(assetId:string){
+  const asset=await rawAsset(assetId);
+  if(!asset)throw new HttpError('Asset não encontrado para revalidação.',404);
+  const {promptSet,visual}=await eligibleContext(asset.visualPromptSetId,asset.sceneId);
+  const row=checked(await db().from('radar_scene_assets')
+    .select('payload')
+    .eq('id',assetId)
+    .maybeSingle());
+  if(!row)throw new HttpError('Asset não encontrado para revalidação.',404);
+  const payload=(row.payload??{}) as Record<string,unknown>;
+  checked(await db().from('radar_scene_assets').update({
+    payload:{
+      ...payload,
+      timecodeLabel:visual.timecodeLabel,
+      promptSetVersion:promptSet.version,
+      prompt:visual.prompt,
+      promptHash:sha(visual.prompt),
+      promptContextRevalidatedAt:new Date().toISOString()
+    },
+    updated_at:new Date().toISOString()
+  }).eq('id',assetId));
+  return rawAsset(assetId);
+}
+
 function metadataFor(
   promptSet:VisualPromptSet,
   visual:VisualScenePrompt,
