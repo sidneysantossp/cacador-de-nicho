@@ -65,13 +65,21 @@ async function persistImageVerification(assetId:string,query:string,verification
       ...payload,
       sourceRouterVerification:{
         query,
+        model:verification.model,
         relevance:verification.relevance,
+        qualityScore:verification.qualityScore,
+        editorialUsefulness:verification.editorialUsefulness,
         summary:verification.summary,
         matchedEvidence:verification.matchedEvidence,
         mismatchReason:verification.mismatchReason,
         focusX:verification.focusX,
         focusY:verification.focusY,
         focusLabel:verification.focusLabel,
+        placeholderLike:verification.placeholderLike,
+        templateLike:verification.templateLike,
+        staticGraphic:verification.staticGraphic,
+        visualClass:verification.visualClass,
+        issues:verification.issues,
         verifiedAt:new Date().toISOString()
       }
     },
