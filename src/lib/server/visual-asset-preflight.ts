@@ -56,8 +56,12 @@ async function assetRow(assetId:string){
   return row as AssetRow|null;
 }
 
-function reusedImageVerification(payload:Record<string,unknown>):ImageVerification|null{
+function reusedImageVerification(
+  payload:Record<string,unknown>,
+  query:string
+):ImageVerification|null{
   const source=object(payload.sourceRouterVerification);
+  if(String(source.query??'')!==query)return null;
   if(
     typeof source.relevance!=='number'||
     typeof source.qualityScore!=='number'||
@@ -260,9 +264,6 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
   if(!row)throw new HttpError('Asset visual não encontrado para Pre-Render Visual QA.',404);
   const payload=object(row.payload);
   const cached=visualQa(payload);
-  if(cached?.policyVersion===VISUAL_QA_POLICY_VERSION&&cached.status!=='blocked'){
-    return cached;
-  }
   if(row.status!=='ready'){
     if(row.status==='rejected'&&cached)return cached;
     throw new HttpError('O asset precisa estar pronto antes do Pre-Render Visual QA.',409);
@@ -292,6 +293,14 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
     visual.direction
   ].map(value=>value?.trim()).filter(Boolean).join(' | ').slice(0,1800);
 
+  if(
+    cached?.policyVersion===VISUAL_QA_POLICY_VERSION&&
+    cached.status!=='blocked'&&
+    cached.query===query
+  ){
+    return cached;
+  }
+
   let motion:SceneAssetVisualQa['motion']=undefined;
   let verification:ImageVerification;
   try{
@@ -304,7 +313,7 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
         motionExpected
       });
     }else{
-      const reused=reusedImageVerification(payload);
+      const reused=reusedImageVerification(payload,query);
       verification=reused??await verifyVisualFramesWithOpenAI({
         frames:[{
           bytes:await downloadMedia(row.storage_path),
