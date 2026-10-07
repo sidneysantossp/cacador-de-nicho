@@ -26,9 +26,33 @@ test('Visual Beat routes records and reports to documentary source material',()=
 });
 
 test('Visual Beat routes geographic narration to maps',()=>{
-  const result=classifyVisualBeat('The route followed the James River to the port below Richmond.');
+  const result=classifyVisualBeat('The route followed the James River to the port below Richmond.',true);
   assert.equal(result.type,'map');
   assert.equal(result.sourcePreference,'map');
+});
+
+test('Visual Beat does not invent a document requirement from negated blueprint language',()=>{
+  const result=classifyVisualBeat('It does not give us a public technical blueprint.',true);
+  assert.equal(result.type,'literal');
+  assert.equal(result.sourcePreference,'stock-video');
+});
+
+test('Visual Beat treats a negated technical diagram as motion-first context',()=>{
+  const result=classifyVisualBeat('Those statements are design goals, not a technical diagram.',true);
+  assert.equal(result.type,'literal');
+  assert.equal(result.sourcePreference,'stock-video');
+});
+
+test('Visual Beat does not treat abstract pathfinding routes as geographic maps in motion-first mode',()=>{
+  for(const text of [
+    'Which route is valid?',
+    'How should the route change when traffic or speed changes?',
+    'A route that in an empty test environment can look correct.'
+  ]){
+    const result=classifyVisualBeat(text,true);
+    assert.notEqual(result.type,'map');
+    assert.equal(result.sourcePreference,'stock-video');
+  }
 });
 
 test('Visual Beat extracts search candidates and explicit entities',()=>{
