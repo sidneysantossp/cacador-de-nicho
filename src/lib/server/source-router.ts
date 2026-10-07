@@ -127,7 +127,6 @@ async function resolveStillCandidates(input:{
     orientation:'landscape'
   }).slice(0,4);
   const attempts:Array<Record<string,unknown>>=[];
-  let uploadedRevalidationAttempted=false;
 
   for(const candidate of ranked){
     let asset:SceneAsset|null=null;
@@ -207,6 +206,7 @@ export async function resolveSourceForScene(input:{
     dna?.research?.documentaryMode===true
   );
   const attempts:Array<Record<string,unknown>>=[];
+  let uploadedRevalidationAttempted=false;
 
   for(const action of route.actions){
     if(action==='owned'){
