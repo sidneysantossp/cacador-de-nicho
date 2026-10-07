@@ -288,3 +288,9 @@ test('Automation visual coverage excludes assets from an older prompt version',(
   assert.match(source,/promptSetVersion\?:unknown/);
   assert.match(source,/Number\(promptSet\?\.version\?\?0\)/);
 });
+
+
+test('Episode Automation self-hosted worker joins the infra network',()=>{
+  const sync=readFileSync('ops/self-hosted/bin/cacadores-episode-automation-worker-sync','utf8');
+  assert.match(sync,/--network cacadores-infra/);
+});
