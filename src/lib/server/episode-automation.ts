@@ -1564,10 +1564,13 @@ async function releaseAutomationLease(runId:string,workerToken:string){
   if(result.error)throw new HttpError('Falha ao liberar lease do Automation Worker.',502);
 }
 
-async function advanceEpisodeAutomationRunUnderLease(runId:string){
+async function advanceEpisodeAutomationRunUnderLease(
+  runId:string,
+  options:{claimedWorker?:boolean}={}
+){
   let run=await reconcileEpisodeAutomationRun(runId);
-    if(run.status==='completed'||run.status==='cancelled')return run;
-    if(workerToken&&run.status==='waiting')return run;
+  if(run.status==='completed'||run.status==='cancelled')return run;
+  if(options.claimedWorker&&run.status==='waiting')return run;
     if(run.holdStep){
       throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
     }
@@ -1614,7 +1617,7 @@ export async function advanceEpisodeAutomationRun(runId:string,workerToken?:stri
   const operatorToken=workerToken?null:await acquireOperatorAutomationLease(runId);
   try{
     if(workerToken)await assertAutomationWorkerLease(runId,workerToken);
-    return await advanceEpisodeAutomationRunUnderLease(runId);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:Boolean(workerToken)});
   }finally{
     if(operatorToken)await releaseAutomationLease(runId,operatorToken).catch(()=>{});
   }
