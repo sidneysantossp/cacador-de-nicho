@@ -6,6 +6,7 @@ import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationTransientRetryPolicy,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
   automationTargetReached, automationTimelineSnapshotIssues,
   automationVideoEditSnapshotIssues, inspectAutomationSteps,
@@ -131,13 +132,32 @@ test('Failed step marks the run failed and completed line becomes done',()=>{
   assert.equal(done.lastDecision,'Episódio concluiu toda a linha de produção.');
 });
 
-test('Recoverable HTTP errors become durable Automation holds',()=>{
-  for(const status of [400,409,422,429,503]){
+test('Only structural/operator HTTP errors become durable Automation holds',()=>{
+  for(const status of [400,409,422]){
     assert.equal(automationHttpErrorShouldHold(status),true,status+' should hold');
   }
-  for(const status of [401,403,404,500,502,504]){
-    assert.equal(automationHttpErrorShouldHold(status),false,status+' should fail');
+  for(const status of [401,403,404,429,500,502,503,504]){
+    assert.equal(automationHttpErrorShouldHold(status),false,status+' should not hold directly');
   }
+});
+
+test('Transient Automation failures retry with bounded backoff before surfacing a blocker',()=>{
+  const first=automationTransientRetryPolicy({status:503,message:'temporarily unavailable',attempt:1});
+  assert.equal(first.transient,true);
+  assert.equal(first.retry,true);
+  assert.equal(first.delayMs,2000);
+
+  const exhausted=automationTransientRetryPolicy({status:503,message:'temporarily unavailable',attempt:2});
+  assert.equal(exhausted.transient,true);
+  assert.equal(exhausted.retry,false);
+
+  const rateLimited=automationTransientRetryPolicy({status:429,message:'too many requests',attempt:2});
+  assert.equal(rateLimited.retry,true);
+  assert.equal(rateLimited.delayMs,10000);
+
+  const structural=automationTransientRetryPolicy({status:409,message:'objective gate failed',attempt:1});
+  assert.equal(structural.transient,false);
+  assert.equal(structural.retry,false);
 });
 
 
@@ -399,4 +419,18 @@ test('Episode Automation API exposes Golden Path arm and drain without enabling 
   assert.match(route,/action:z\.literal\('drain'\)/);
   assert.match(route,/target:z\.enum\(\['master','package','publish'\]\)/);
   assert.match(route,/drainEpisodeAutomationRun\(body\)/);
+});
+
+
+test('Automation retries transient transitions only after reconciling possible persisted side effects',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/automationTransientRetryPolicy/);
+  assert.match(source,/kind:'automation-transient-retry'/);
+  assert.match(source,/kind:'automation-retry-reconciled'/);
+  assert.match(source,/Falha transitória persistiu após/);
+  const retryBlock=source.slice(
+    source.indexOf('let transitionAttempt=1'),
+    source.indexOf('export async function advanceEpisodeAutomationRun',source.indexOf('let transitionAttempt=1'))
+  );
+  assert.ok(retryBlock.indexOf('reconcileEpisodeAutomationRun(run.id)')<retryBlock.indexOf('await sleep(retry.delayMs)'));
 });
