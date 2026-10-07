@@ -16,7 +16,9 @@ import {
 import {
   enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
 } from './verified-stock-jobs';
-import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
+import {
+  rankStockMediaResults, stockDiscoveryQuery, verifiedStockGapNeedsTransientRecovery
+} from '@/lib/stock-media-policy';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
   VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction
@@ -344,6 +346,14 @@ export async function resolveSourceForScene(input:{
       if(existing?.status==='completed'){
         const completedStatus=String(existing.result?.status??'');
         if(completedStatus==='gap'){
+          if(verifiedStockGapNeedsTransientRecovery(existing.result)){
+            const restarted=await restartVerifiedStockJob(existing.id);
+            attempts.push({
+              action,status:'queued',jobId:restarted.id,
+              reason:'legacy-transient-gap-recovery'
+            });
+            return {status:'queued' as const,route,action,job:restarted,attempts};
+          }
           if(verifiedStockGapNeedsVisualModelRetry(existing.result)){
             const restarted=await restartVerifiedStockJob(existing.id);
             attempts.push({
