@@ -28,11 +28,16 @@ function requireWorker(request:Request){
 }
 
 export async function POST(request:Request){
+  let claimedLease:{jobId:string;workerToken:string}|null=null;
   try{
     requireWorker(request);
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar o worker stock.',503);
     const parsed=schema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Job stock inválido.',400);
+    claimedLease={
+      jobId:parsed.data.jobId,
+      workerToken:parsed.data.workerToken
+    };
 
     const job=checked(await db().from('radar_verified_stock_jobs')
       .select('id,visual_prompt_set_id,scene_id,status,worker_token,lease_until,attempts,query,desired_duration_seconds,orientation,providers,max_candidates_per_provider')
@@ -164,6 +169,26 @@ export async function POST(request:Request){
       throw error;
     }
   }catch(error){
+    const status=error instanceof HttpError?error.status:500;
+    if(claimedLease&&status>=500&&dbConfigured()){
+      const message=error instanceof Error?error.message:'Falha desconhecida.';
+      try{
+        await db().from('radar_verified_stock_jobs').update({
+          status:'queued',
+          worker_token:null,
+          lease_until:null,
+          available_at:new Date(Date.now()+5000).toISOString(),
+          last_error:('worker-route-unhandled: '+message).slice(0,4000),
+          completed_at:null,
+          updated_at:new Date().toISOString()
+        })
+          .eq('id',claimedLease.jobId)
+          .eq('status','processing')
+          .eq('worker_token',claimedLease.workerToken);
+      }catch{
+        // The existing lease-expiry recovery remains the final safety net.
+      }
+    }
     return errorResponse(error);
   }
 }
