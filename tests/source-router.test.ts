@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion, sourceRouteForScene
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion,
+  sourceReuseDecision, sourceRouteForScene
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -37,6 +38,55 @@ function scene(v:VisualBeat):SceneTimecode{
     visualBeats:[v]
   };
 }
+
+test('Source reuse allows separated microcuts but blocks adjacent, overlapping, and dominant reuse',()=>{
+  const separated=sourceReuseDecision({
+    sourceType:'stock',
+    targetSequence:20,
+    observations:[
+      {sceneSequence:3,sourceStartSeconds:0,sourceEndSeconds:4},
+      {sceneSequence:10,sourceStartSeconds:8,sourceEndSeconds:12}
+    ],
+    candidateStartSeconds:20,
+    candidateEndSeconds:24
+  });
+  assert.equal(separated.ok,true);
+
+  const adjacent=sourceReuseDecision({
+    sourceType:'stock',
+    targetSequence:20,
+    observations:[{sceneSequence:19,sourceStartSeconds:0,sourceEndSeconds:4}],
+    candidateStartSeconds:12,
+    candidateEndSeconds:16
+  });
+  assert.equal(adjacent.ok,false);
+  assert.equal(adjacent.reason,'adjacent-source-reuse');
+
+  const overlapping=sourceReuseDecision({
+    sourceType:'owned',
+    targetSequence:20,
+    observations:[{sceneSequence:5,sourceStartSeconds:10,sourceEndSeconds:15}],
+    candidateStartSeconds:13,
+    candidateEndSeconds:17
+  });
+  assert.equal(overlapping.ok,false);
+  assert.equal(overlapping.reason,'overlapping-source-trim');
+
+  const stockCap=sourceReuseDecision({
+    sourceType:'stock',
+    targetSequence:30,
+    observations:[2,8,14,22].map(sceneSequence=>({sceneSequence}))
+  });
+  assert.equal(stockCap.ok,false);
+  assert.equal(stockCap.reason,'source-reuse-cap');
+
+  const ownedStillAllowed=sourceReuseDecision({
+    sourceType:'owned',
+    targetSequence:30,
+    observations:[2,5,8,11,14,17,20].map(sceneSequence=>({sceneSequence}))
+  });
+  assert.equal(ownedStillAllowed.ok,true);
+});
 
 test('Source Router keeps archive beats on real-source routes',()=>{
   const route=sourceRouteForScene(scene(beat()));
@@ -199,6 +249,18 @@ test('Documentary mode keeps archive document and map routes factual rather than
     assert.equal(route.actions.includes('generated-image'),false);
     assert.equal(route.syntheticAllowed,false);
   }
+});
+
+test('Source selection applies diversity before reusing OWNED or stock sources',()=>{
+  const assetFactory=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  const stock=readFileSync('src/lib/server/stock-media.ts','utf8');
+  assert.match(assetFactory,/sourceReuseDecision/);
+  assert.match(assetFactory,/sourceType:'owned'/);
+  assert.match(assetFactory,/source-diversity-exhausted/);
+  assert.match(stock,/sourceType:'stock'/);
+  assert.match(stock,/stage:'source-diversity'/);
+  assert.match(stock,/reuseWithTrim/);
+  assert.match(stock,/sourceDiversityReason/);
 });
 
 test('Source Router requeues verified stock when the enriched visual query changes',()=>{
