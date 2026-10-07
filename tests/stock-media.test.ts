@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
-  stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
+  deterministicStockFallbackTrim, rankStockMediaResults, STOCK_DISCOVERY_POLICY_VERSION,
+  stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockFallbackEligible, stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied,
   stockVisualValidationQuery, validStockQuery, verifiedStockGapNeedsTransientRecovery,
   verifiedStockSearchRelevance
@@ -235,6 +235,18 @@ test('Stock fallback trim is deterministic, bounded, and varies with scene seed'
   }),null);
 });
 
+test('Stock discovery v2 expands abstract routing concepts into filmable search variants',()=>{
+  const queries=stockDiscoveryQueries(
+    'pedestrian pathfinding adapting route to traffic speed'
+  );
+  assert.equal(STOCK_DISCOVERY_POLICY_VERSION,'filmable-v2');
+  assert.equal(queries[0],'pedestrian pathfinding adapting route to traffic speed');
+  assert.ok(queries.includes('pedestrians crossing busy city intersection'));
+  assert.ok(queries.includes('people walking city crosswalk traffic'));
+  assert.ok(queries.includes('crowd navigating urban sidewalk'));
+  assert.ok(queries.includes('busy city intersection traffic pedestrians'));
+});
+
 test('Stock discovery strips production-only words but preserves semantic location',()=>{
   assert.equal(
     stockDiscoveryQuery('Present-day Fremont Street / Las Vegas establishing shot. Real current-location stock only.'),
@@ -326,6 +338,14 @@ test('Sunset intent accepts golden-hour visual evidence',()=>{
   assert.equal(result.expected,'sunset');
 });
 
+
+test('Verified Stock persists discovery policy version and Source Router reopens older compiler gaps once',()=>{
+  const stock=readFileSync('src/lib/server/stock-media.ts','utf8');
+  const router=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(stock,/discoveryPolicyVersion:STOCK_DISCOVERY_POLICY_VERSION/);
+  assert.match(router,/previousPolicyVersion!==STOCK_DISCOVERY_POLICY_VERSION/);
+  assert.match(router,/reason:'stock-discovery-policy-upgraded'/);
+});
 
 test('Source Router reopens only legacy transient completed stock gaps',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');

@@ -11,7 +11,7 @@ import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
   deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
-  stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
+  STOCK_DISCOVERY_POLICY_VERSION, stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied, stockVisualValidationQuery,
   validStockQuery, verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
@@ -1075,6 +1075,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
           await selectSceneAsset(asset.id);
           return {
             status:'matched' as const,
+            discoveryPolicyVersion:STOCK_DISCOVERY_POLICY_VERSION,
             query,
             editorialQuery,
             provider,
@@ -1130,6 +1131,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
 
   return {
     status:'gap' as const,
+    discoveryPolicyVersion:STOCK_DISCOVERY_POLICY_VERSION,
     query,
     editorialQuery,
     provider:null,

@@ -31,6 +31,8 @@ export function stockFallbackEligible(value:string){
   return /\b(?:stock|footage|documentary|real[- ]life|realistic|photoreal|photo|present[- ]day|current[- ]location|live action)\b/.test(text);
 }
 
+export const STOCK_DISCOVERY_POLICY_VERSION='filmable-v2';
+
 const providerQueryStopWords=new Set([
   'a','an','and','are','as','at','be','been','being','but','by','can','does','for','from',
   'had','has','have','in','into','is','it','its','just','less','major','middle','of','on',
@@ -251,6 +253,44 @@ export function stockVisualConstraintsSatisfied(input:{
   };
 }
 
+function filmableStockDiscoveryVariants(value:string){
+  const text=normalizedWords(value);
+  const variants:string[]=[];
+
+  if(
+    /\b(?:pedestrian|pedestrians|people|crowd)\b/.test(text)&&
+    /\b(?:pathfind\w*|route\w*|navigat\w*|traffic|speed)\b/.test(text)
+  ){
+    variants.push(
+      'pedestrians crossing busy city intersection',
+      'people walking city crosswalk traffic',
+      'crowd navigating urban sidewalk'
+    );
+  }
+
+  if(
+    /\b(?:traffic|congestion)\b/.test(text)&&
+    /\b(?:route\w*|speed|flow|adapt\w*)\b/.test(text)
+  ){
+    variants.push(
+      'busy city intersection traffic pedestrians',
+      'urban traffic moving through intersection'
+    );
+  }
+
+  if(
+    /\b(?:pathfind\w*|navigat\w*|route\w*)\b/.test(text)&&
+    !variants.length
+  ){
+    variants.push(
+      'people navigating city streets',
+      'pedestrians walking urban street'
+    );
+  }
+
+  return [...new Set(variants.map(item=>item.slice(0,100)))];
+}
+
 export function stockDiscoveryQueries(value:string){
   const primary=stockDiscoveryQuery(value);
   const taxonomy=classifyMediaTaxonomy(value);
@@ -269,6 +309,7 @@ export function stockDiscoveryQueries(value:string){
   const nonCity=primaryWords.filter(word=>!cityWords.has(word.toLowerCase()));
   const variants=[
     primary,
+    ...filmableStockDiscoveryVariants(value),
     city&&mechanisms.length
       ?[city,...mechanisms.slice(0,4)].join(' ')
       :'',
