@@ -330,3 +330,14 @@ test('Verified Stock worker retries failures from preflight reads instead of lea
   assert.ok(source.includes("status:'queued'"));
   assert.ok(source.includes("status:'failed'"));
 });
+
+test('Verified Stock worker route recovers its own lease after unhandled 5xx failures',()=>{
+  const source=readFileSync('src/app/api/workers/verified-stock/route.ts','utf8');
+  assert.match(source,/let claimedLease:\{jobId:string;workerToken:string\}\|null=null/);
+  assert.match(source,/claimedLease=\{/);
+  assert.match(source,/claimedLease&&status>=500/);
+  assert.match(source,/worker-route-unhandled/);
+  assert.match(source,/\.eq\('status','processing'\)/);
+  assert.match(source,/\.eq\('worker_token',claimedLease\.workerToken\)/);
+  assert.match(source,/available_at:new Date\(Date\.now\(\)\+5000\)\.toISOString\(\)/);
+});
