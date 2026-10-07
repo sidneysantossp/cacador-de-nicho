@@ -5,10 +5,11 @@ import { readFileSync } from 'node:fs';
 import type { EpisodeAutomationStepState } from '../src/lib/types';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
-  automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues, automationRenderSnapshotIssues,
-  automationTimelineSnapshotIssues, automationVideoEditSnapshotIssues, inspectAutomationSteps,
-  visualAssetBatchPlan
+  automationTargetReached, automationTimelineSnapshotIssues,
+  automationVideoEditSnapshotIssues, inspectAutomationSteps,
+  operatorFactoryAutomationPolicy, visualAssetBatchPlan
 } from '../src/lib/episode-automation-policy';
 
 function step(
@@ -33,6 +34,46 @@ test('Autonomous Automation enables production but keeps publishing human-contro
   assert.equal(autonomousAutomationPolicy.autoRunQuality,true);
   assert.equal(autonomousAutomationPolicy.autoCreatePackage,true);
   assert.equal(autonomousAutomationPolicy.autoPublish,false);
+});
+
+test('Operator Factory automates deterministic production but keeps creative authoring and publishing explicit',()=>{
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateResearch,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateScript,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVisualPrompts,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoApproveObjectiveGates,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVoice,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateTranscript,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateScenes,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVisualAssets,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoBuildTimeline,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateVideoEdit,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoRender,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoRunQuality,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreatePackage,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoPublish,false);
+});
+
+test('Golden Path drain stops on external work, operator input, or target completion',()=>{
+  const running=[step('visual-assets','running',{reason:'stock processing'})];
+  assert.equal(automationDrainStopReason({
+    status:'running',currentStep:'visual-assets',steps:running,target:'master'
+  }),'external-work-running');
+
+  const operator=[step('script','ready',{requiresOperator:true,reason:'ChatGPT script required'})];
+  assert.equal(automationDrainStopReason({
+    status:'waiting',currentStep:'script',steps:operator,target:'master'
+  }),'operator-input-required');
+
+  const passed=[
+    step('render','completed'),
+    step('quality','completed'),
+    step('packaging','ready',{requiresOperator:true})
+  ];
+  assert.equal(automationTargetReached(passed,'master'),true);
+  assert.equal(automationTargetReached(passed,'package'),false);
+  assert.equal(automationDrainStopReason({
+    status:'waiting',currentStep:'packaging',steps:passed,target:'master'
+  }),'target-reached');
 });
 
 test('Automation inspection picks first unfinished step and marks ready work active',()=>{
@@ -335,3 +376,27 @@ test('Automation reconcile accepts explicit exhausted-video still fallbacks',()=
   assert.match(source,/motionRouteAssetSatisfied\(\{route,assetKind:String\(item\.asset_kind\?\?''\),payload:item\.payload\}\)/);
 });
 
+
+
+test('Operator Golden Path drain holds one exclusive lease across bounded transitions',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/export async function armOperatorFactoryAutomationRun/);
+  assert.match(source,/operatorFactoryAutomationPolicy/);
+  assert.match(source,/export async function drainEpisodeAutomationRun/);
+  assert.match(source,/const operatorToken=await acquireOperatorAutomationLease\(input\.runId\)/);
+  assert.match(source,/while\(transitions<maxTransitions\)/);
+  assert.match(source,/advanceEpisodeAutomationRunUnderLease\(run\.id\)/);
+  assert.match(source,/await releaseAutomationLease\(input\.runId,operatorToken\)/);
+  assert.doesNotMatch(
+    source.slice(source.indexOf('export async function drainEpisodeAutomationRun'),source.indexOf('export async function advanceClaimedEpisodeAutomationRun')),
+    /advanceEpisodeAutomationRun\(run\.id\)/
+  );
+});
+
+test('Episode Automation API exposes Golden Path arm and drain without enabling publish',()=>{
+  const route=readFileSync('src/app/api/episode-automation/route.ts','utf8');
+  assert.match(route,/action:z\.literal\('armFactory'\)/);
+  assert.match(route,/action:z\.literal\('drain'\)/);
+  assert.match(route,/target:z\.enum\(\['master','package','publish'\]\)/);
+  assert.match(route,/drainEpisodeAutomationRun\(body\)/);
+});
