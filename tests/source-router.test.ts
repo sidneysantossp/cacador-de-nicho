@@ -133,6 +133,25 @@ test('Archive temporal provenance does not require a date for undated archive qu
 });
 
 
+test('Source Router ignores stale media-class wording in visual prompts when a canonical stock-video beat exists',()=>{
+  const route=sourceRouteForScene(
+    scene(beat({
+      type:'literal',
+      sourcePreference:'stock-video',
+      narration:'How should the route change when traffic or speed changes?',
+      queries:[
+        'How should the route change when traffic or speed changes?',
+        'pedestrian pathfinding adapting route to traffic speed'
+      ]
+    })),
+    'authentic geographic map map how should route change traffic speed changes'
+  );
+  assert.equal(route.preference,'stock-video');
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image']);
+  assert.equal(route.query,'pedestrian pathfinding adapting route to traffic speed');
+  assert.doesNotMatch(route.query,/authentic geographic map/i);
+});
+
 test('Source Router uses enriched editorial direction when supplied',()=>{
   const route=sourceRouteForScene(
     scene(beat({queries:['Then it spent years putting that highway underground.']})),
