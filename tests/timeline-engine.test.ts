@@ -69,6 +69,43 @@ test('Timeline Engine builds visual and narration tracks from approved upstream 
   assert.equal(t.format.width,1920);
 });
 
+test('Timeline splits long narrative scenes into balanced visual beats at or below four seconds',()=>{
+  const plan={
+    ...scenePlan,
+    audioDurationSeconds:7,
+    scenes:[{
+      ...scenePlan.scenes[0],
+      id:'65656565-6565-4656-8656-656565656565',
+      startSeconds:0,
+      endSeconds:7,
+      durationSeconds:7
+    }]
+  } as ScenePlan;
+  const value=buildInitialTimeline({
+    scenePlan:plan,
+    productionDna:dna,
+    visualPromptSet:promptSet,
+    visualAssets:[{
+      id:'97979797-9797-4979-8979-979797979797',
+      sceneId:plan.scenes[0].id,
+      assetKind:'video',
+      durationSeconds:12,
+      sourceStartSeconds:1,
+      sourceEndSeconds:8
+    }],
+    voiceAsset:{...voice,durationSeconds:7} as VoiceAsset
+  });
+  const clips=value.tracks.find(track=>track.type==='visual')!.clips;
+  assert.equal(clips.length,2);
+  assert.ok(clips.every(clip=>clip.durationSeconds<=4));
+  assert.ok(clips.every(clip=>clip.sceneId===plan.scenes[0].id));
+  assert.equal(clips[0].sourceStartSeconds,1);
+  assert.equal(clips[0].sourceEndSeconds,4.5);
+  assert.equal(clips[1].sourceStartSeconds,4.5);
+  assert.equal(clips[1].sourceEndSeconds,8);
+  assert.deepEqual(timelineStructuralIssues(value,plan),[]);
+});
+
 test('Long video shortfall cannot silently pass approval as a loop',()=>{
   const shortAssets=[
     assets[0],
@@ -98,10 +135,11 @@ test('Timeline structural gate accepts a fully mapped deterministic timeline',()
   assert.deepEqual(timelineStructuralIssues(t,scenePlan),[]);
 });
 
-test('Timeline structural gate detects visual gaps and scene timing drift',()=>{
+test('Timeline structural gate detects visual gaps and beats outside their narrative scene',()=>{
   const t=timeline();
   const visual=t.tracks.find(track=>track.type==='visual')!;
-  visual.clips[1]={...visual.clips[1],startSeconds:3.5};
+  visual.clips[0]={...visual.clips[0],endSeconds:2.5};
+  visual.clips[1]={...visual.clips[1],startSeconds:2.9};
   const issues=timelineStructuralIssues(normalizeTimeline(t),scenePlan);
   assert.ok(issues.includes('visual-gap'));
   assert.ok(issues.includes('visual-clip-scene-time-mismatch'));
@@ -368,10 +406,11 @@ test('Chapter refresh replaces only media inside the requested chapter',()=>{
   });
   const rebuilt=rebuildTimelineChapterPayload(current,fresh,chapters[0].id);
   const visual=rebuilt.tracks.find(track=>track.type==='visual')!;
-  assert.equal(
-    visual.clips.find(clip=>clip.sceneId===firstScene)?.assetId,
-    '33333333-0000-4000-8000-000000000001'
-  );
+  const firstSceneClips=visual.clips.filter(clip=>clip.sceneId===firstScene);
+  assert.equal(firstSceneClips.length,2);
+  assert.ok(firstSceneClips.every(
+    clip=>clip.assetId==='33333333-0000-4000-8000-000000000001'
+  ));
   assert.equal(
     visual.clips.find(clip=>clip.sceneId===secondChapterScene)?.assetId,
     baseAssets.find(asset=>asset.sceneId===secondChapterScene)?.id
