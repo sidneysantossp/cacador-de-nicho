@@ -41,7 +41,7 @@ async function availableModels(key:string){
 
 export async function resolveGoogleVisionModel(
   key:string,
-  options:{forceRefresh?:boolean}={}
+  options:{forceRefresh?:boolean;excludeModel?:string}={}
 ){
   const configured=normalizedConfigured();
   const now=Date.now();
@@ -55,18 +55,20 @@ export async function resolveGoogleVisionModel(
   let model='';
   try{
     const names=await availableModels(key);
-    if(configured&&names.includes(configured)){
+    const excluded=options.excludeModel??'';
+    if(configured&&configured!==excluded&&names.includes(configured)){
       model=configured;
     }else{
-      model=PREFERRED_MODELS.find(item=>names.includes(item))??'';
-      if(!model)model=names.find(name=>/gemini.*flash/i.test(name))??'';
+      model=PREFERRED_MODELS.find(item=>item!==excluded&&names.includes(item))??'';
+      if(!model)model=names.find(name=>name!==excluded&&/gemini.*flash/i.test(name))??'';
     }
   }catch{}
 
   if(!model){
-    model=/^models\/gemini-3\./i.test(configured)
+    const excluded=options.excludeModel??'';
+    model=/^models\/gemini-3\./i.test(configured)&&configured!==excluded
       ?configured
-      :PREFERRED_MODELS[0];
+      :PREFERRED_MODELS.find(item=>item!==excluded)??PREFERRED_MODELS[0];
   }
 
   cached={configured,model,expiresAt:now+CACHE_MS};
