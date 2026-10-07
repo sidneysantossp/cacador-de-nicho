@@ -225,7 +225,13 @@ test('Operator Golden Path exposes bounded arm and drain API without enabling gl
   assert.match(route,/action:z\.literal\('drain'\)/);
   assert.match(agent,/armFactory/);
   assert.match(agent,/drain/);
-  assert.doesNotMatch(source,/armOperatorFactoryAutomationRun[\s\S]{0,1200}assertAutopilotControlRunning/);
+  const armStart=source.indexOf('export async function armOperatorFactoryAutomationRun');
+  const armEnd=source.indexOf('export async function resumeEpisodeAutomationRun',armStart);
+  assert.ok(armStart>=0&&armEnd>armStart,'armFactory function boundary missing');
+  const armBlock=source.slice(armStart,armEnd);
+  assert.match(armBlock,/mode:'assisted'/);
+  assert.match(armBlock,/operatorFactoryAutomationPolicy/);
+  assert.doesNotMatch(armBlock,/assertAutopilotControlRunning/);
 });
 
 test('Assisted Automation serializes direct advances with an exclusive operator lease',()=>{
