@@ -46,6 +46,7 @@ import { applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceRouteFor
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationTransientRetryPolicy,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues,
   automationRenderSnapshotIssues, automationTimelineSnapshotIssues,
   automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps,
@@ -71,6 +72,7 @@ const VISUAL_ASSET_BATCH_BUDGET_MS=Number.isFinite(visualBudgetConfigured)
   ?Math.max(30000,Math.min(240000,Math.floor(visualBudgetConfigured)))
   :240000;
 const providerAiAutorun=()=>process.env.CACADORES_AI_AUTORUN==='1';
+const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
 const visualPromptBatchConfigured=Number(process.env.AUTOMATION_VISUAL_PROMPT_BATCH_SIZE??40);
 const VISUAL_PROMPT_BATCH_SIZE=Number.isFinite(visualPromptBatchConfigured)
@@ -1594,22 +1596,75 @@ async function advanceEpisodeAutomationRunUnderLease(
       payload:{stepStatus:current.status}
     });
 
-    try{
-      const message=await executeAutomationTransition(run,current);
-      await appendEvent(run.id,{
-        step:current.step,
-        status:'completed',
-        message,
-        payload:{stepStatus:current.status}
-      });
-      run=await reconcileEpisodeAutomationRun(run.id);
-      return run;
-    }catch(error){
-      const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
-      if(automationOperatorHold(error)){
-        return holdAutomationRun(run,current.step,message);
+    let transitionAttempt=1;
+    while(true){
+      try{
+        const message=await executeAutomationTransition(run,current);
+        await appendEvent(run.id,{
+          step:current.step,
+          status:'completed',
+          message,
+          payload:{stepStatus:current.status,transitionAttempt}
+        });
+        run=await reconcileEpisodeAutomationRun(run.id);
+        return run;
+      }catch(error){
+        const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
+        const status=error instanceof HttpError?error.status:500;
+        const retry=automationTransientRetryPolicy({
+          status,message,attempt:transitionAttempt
+        });
+
+        if(retry.transient){
+          // Reconcile before retrying: if the failing request persisted its side effect
+          // (voice take, render job, transcript, etc.), do not duplicate paid work.
+          const reconciled=await reconcileEpisodeAutomationRun(run.id).catch(()=>null);
+          if(reconciled&&(
+            reconciled.currentStep!==current.step||
+            reconciled.steps.find(item=>item.step===current.step)?.status==='running'||
+            reconciled.steps.find(item=>item.step===current.step)?.status==='completed'
+          )){
+            await appendEvent(run.id,{
+              step:current.step,
+              status:'info',
+              message:'Falha transitória ocorreu após persistência detectada; retry duplicado foi evitado.',
+              payload:{kind:'automation-retry-reconciled',status,message,transitionAttempt}
+            });
+            return reconciled;
+          }
+        }
+
+        if(retry.retry){
+          await appendEvent(run.id,{
+            step:current.step,
+            status:'info',
+            message:'Falha transitória; retry automático '+(transitionAttempt+1)+'/'+retry.maxAttempts+
+              ' em '+Math.round(retry.delayMs/1000)+'s.',
+            payload:{
+              kind:'automation-transient-retry',
+              status,message,transitionAttempt,
+              nextAttempt:transitionAttempt+1,
+              retryDelayMs:retry.delayMs
+            }
+          });
+          await sleep(retry.delayMs);
+          transitionAttempt++;
+          continue;
+        }
+
+        if(retry.transient){
+          return holdAutomationRun(
+            run,
+            current.step,
+            'Falha transitória persistiu após '+transitionAttempt+
+              ' tentativa(s) automáticas: '+message
+          );
+        }
+        if(automationOperatorHold(error)){
+          return holdAutomationRun(run,current.step,message);
+        }
+        return failAutomationRun(run,current.step,message);
       }
-      return failAutomationRun(run,current.step,message);
     }
 }
 
