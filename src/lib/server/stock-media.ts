@@ -14,6 +14,7 @@ import {
   verifiedStockSearchRelevance
 } from '@/lib/stock-media-policy';
 import { scoreVisualSegment } from '@/lib/media-library-policy';
+import { sourceReuseDecision } from '@/lib/source-router-policy';
 import { downloadMedia } from './media-storage';
 
 const PEXELS_LICENSE='https://www.pexels.com/license/';
