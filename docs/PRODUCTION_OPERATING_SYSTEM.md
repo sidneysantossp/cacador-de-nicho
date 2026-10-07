@@ -103,6 +103,22 @@ This rule is mandatory for **every channel, every episode and every visual media
 
 The objective is to keep the viewer experience active, reduce slideshow-like or low-effort presentation patterns, and make the editing language visibly intentional across both image-led and video-led channels.
 
+## 5B. Mandatory Pre-Render Visual QA
+
+Asset acceptance happens **before** final render and before expensive generation is scaled across an episode or batch.
+
+- File/container type is not proof of editorial motion. An MP4 made from a still, template, slide, interface card or decorative animation remains **static** for motion-coverage purposes unless sampled frames and local motion analysis prove meaningful visual progression.
+- Every selected scene asset must have a current Visual QA result before Timeline approval and render eligibility.
+- Image review must evaluate semantic match, production quality, editorial usefulness, placeholder/template risk and visual class.
+- Video review must sample multiple temporal frames and combine semantic review with a local motion/freeze measurement. Decorative zooms, line movement, text reveals or small UI animation must not satisfy a motion-first requirement by themselves.
+- Placeholder-like, weakly relevant, low-quality or low-usefulness assets are rejected before they can become selected Timeline media.
+- The episode-level preflight must also detect visual monoculture: excessive static graphics, repeated template classes, repeated shot types or routing concentration incompatible with the channel Production DNA.
+- Scene Plan approval must reject pathological sourcing strategies before asset spend, including generated/static monoculture in a channel whose DNA explicitly prefers motion.
+- Expensive AI video generation must run in bounded batches. Validate a small batch first, then scale only after the same visual decision passes the QA gate. Do not generate hundreds of costly clips before validating the visual mechanism.
+- The final Render Engine is a defense-in-depth gate and must refuse an internal render whenever required Visual QA is missing or failed.
+
+The goal is to move visual failure detection to the cheapest possible stage: plan first, asset second, proxy/timeline third, final render last.
+
 ## 6. Parallel production
 
 Never treat the batch as five sequential projects.
