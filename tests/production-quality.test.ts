@@ -452,3 +452,22 @@ test('External AutoEditor master uses explicit manual editorial gates instead of
   assert.equal(checks.find(check=>check.code==='visual-coverage')?.status,'manual-review');
   assert.equal(checks.some(check=>check.status==='blocker'),false);
 });
+
+
+test('Production QA batches long-form asset and segment lookups',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
+  const start=source.indexOf('async function projectFacts');
+  const end=source.indexOf('export async function runProductionQuality',start);
+  assert.ok(start>=0&&end>start,'projectFacts block missing');
+  const block=source.slice(start,end);
+  assert.match(block,/for\(let start=0;start<ids\.length;start\+=80\)/);
+  assert.match(block,/\.in\('id',batch\)/);
+  assert.match(block,/for\(let start=0;start<ownedSegmentIds\.length;start\+=80\)/);
+  assert.match(block,/radar_owned_media_segments[\s\S]*\.in\('id',batch\)/);
+  assert.match(block,/for\(let start=0;start<stockAnalysisIds\.length;start\+=80\)/);
+  assert.match(block,/radar_asset_segments[\s\S]*\.in\('asset_id',batch\)/);
+  assert.doesNotMatch(block,/\.in\('id',ids\)/);
+  assert.doesNotMatch(block,/\.in\('id',ownedSegmentIds\)/);
+  assert.doesNotMatch(block,/\.in\('asset_id',stockAnalysisIds\)/);
+});
+

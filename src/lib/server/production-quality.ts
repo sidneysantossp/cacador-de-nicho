@@ -564,12 +564,15 @@ async function projectFacts(job:RenderJob):Promise<{
   }
   const clips=job.payload.manifest.visualClips;
   const ids=[...new Set(clips.map(clip=>clip.assetId))];
-  const rows=ids.length
-    ?checked(await db().from('radar_scene_assets')
+  const rows:Array<Record<string,unknown>>=[];
+  for(let start=0;start<ids.length;start+=80){
+    const batch=ids.slice(start,start+80);
+    const part=checked(await db().from('radar_scene_assets')
       .select('id,scene_id,status,storage_path,source_type,provider,payload')
-      .in('id',ids))
-    :[];
-  const rowMap=new Map((rows??[]).map(row=>[String(row.id),row]));
+      .in('id',batch)) as Array<Record<string,unknown>>;
+    rows.push(...(part??[]));
+  }
+  const rowMap=new Map(rows.map(row=>[String(row.id),row]));
 
   let exactContext:false|{
     promptSet:Awaited<ReturnType<typeof loadVisualPromptSet>>;
@@ -613,13 +616,16 @@ async function projectFacts(job:RenderJob):Promise<{
     const id=String(owned.segmentId??'').trim();
     return id?[id]:[];
   }))];
-  const ownedSegments=ownedSegmentIds.length
-    ?checked(await db().from('radar_owned_media_segments')
+  const ownedSegments:Array<Record<string,unknown>>=[];
+  for(let start=0;start<ownedSegmentIds.length;start+=80){
+    const batch=ownedSegmentIds.slice(start,start+80);
+    const part=checked(await db().from('radar_owned_media_segments')
       .select('id,semantic')
-      .in('id',ownedSegmentIds))
-    :[];
+      .in('id',batch)) as Array<Record<string,unknown>>;
+    ownedSegments.push(...(part??[]));
+  }
   const ownedSemanticBySegment=new Map(
-    (ownedSegments??[]).map(row=>[
+    ownedSegments.map(row=>[
       String(row.id),
       objectField(row.semantic)
     ])
@@ -631,15 +637,18 @@ async function projectFacts(job:RenderJob):Promise<{
     const id=String(verified.cachedFromAssetId??row.id??'').trim();
     return id?[id]:[];
   }))];
-  const stockSegments=stockAnalysisIds.length
-    ?checked(await db().from('radar_asset_segments')
+  const stockSegments:Array<Record<string,unknown>>=[];
+  for(let start=0;start<stockAnalysisIds.length;start+=80){
+    const batch=stockAnalysisIds.slice(start,start+80);
+    const part=checked(await db().from('radar_asset_segments')
       .select('asset_id,start_seconds,end_seconds,semantic')
-      .in('asset_id',stockAnalysisIds))
-    :[];
+      .in('asset_id',batch)) as Array<Record<string,unknown>>;
+    stockSegments.push(...(part??[]));
+  }
   const stockSegmentsByAsset=new Map<string,Array<{
     start:number;end:number;semantic:Record<string,unknown>;
   }>>();
-  for(const row of stockSegments??[]){
+  for(const row of stockSegments){
     const key=String(row.asset_id);
     const list=stockSegmentsByAsset.get(key)??[];
     list.push({

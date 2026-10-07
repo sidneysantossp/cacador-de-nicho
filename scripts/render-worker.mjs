@@ -571,7 +571,7 @@ async function prepareSegment(clip,inputPath,outputPath,manifest,index,payload){
     const d=Math.min(clip.style.transitionSeconds,nominal/2);
     filters.push('fade=t=out:st='+rounded(Math.max(0,nominal-d))+':d='+rounded(d));
   }
-  filters.push('format=yuv420p','setpts=PTS-STARTPTS');
+  filters.push('setsar=1','format=yuv420p','setpts=PTS-STARTPTS');
 
   args.push(
     '-vf',filters.join(','),
@@ -596,7 +596,11 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
   }
 
   const filters=[];
-  let current='0:v';
+  const normalized=segmentPaths.map((_,index)=>'src'+index);
+  for(let i=0;i<segmentPaths.length;i++){
+    filters.push('['+i+':v]setsar=1['+normalized[i]+']');
+  }
+  let current=normalized[0];
   let cumulative=manifest.visualClips[0].durationSeconds;
 
   for(let i=1;i<manifest.visualClips.length;i++){
@@ -605,10 +609,10 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
     const cross=effectiveCrossDuration(left,right);
     const out='v'+i;
     if(cross>0){
-      filters.push('['+current+']['+i+':v]xfade=transition=fade:duration='+rounded(cross)+
+      filters.push('['+current+']['+normalized[i]+']xfade=transition=fade:duration='+rounded(cross)+
         ':offset='+rounded(cumulative)+'['+out+']');
     }else{
-      filters.push('['+current+']['+i+':v]concat=n=2:v=1:a=0['+out+']');
+      filters.push('['+current+']['+normalized[i]+']concat=n=2:v=1:a=0['+out+']');
     }
     current=out;
     cumulative+=right.durationSeconds;
@@ -829,24 +833,11 @@ async function concatChapterVideos(paths,outputPath,root,payload){
     paths.map(file=>"file '"+concatEscape(file)+"'").join('\n')+'\n',
     'utf8'
   );
-  try{
-    await run(FFMPEG,[
-      '-hide_banner','-loglevel','error','-y',
-      '-f','concat','-safe','0','-i',listPath,
-      '-map','0:v:0','-c:v','copy','-an','-movflags','+faststart',
-      outputPath
-    ]);
-  }catch(error){
-    console.error(JSON.stringify({
-      event:'render-v4-concat-copy-fallback',
-      error:safeError(error)
-    }));
-    await runVideoEncode([
-      '-hide_banner','-loglevel','error','-y',
-      '-f','concat','-safe','0','-i',listPath,
-      '-map','0:v:0','-an','-movflags','+faststart'
-    ],outputPath,payload,{crf:payload.crf,preset:renderEncodePreset(payload)});
-  }
+  await runVideoEncode([
+    '-hide_banner','-loglevel','error','-y',
+    '-f','concat','-safe','0','-i',listPath,
+    '-map','0:v:0','-vf','setsar=1','-an','-movflags','+faststart'
+  ],outputPath,payload,{crf:payload.crf,preset:renderEncodePreset(payload)});
 }
 
 async function downloadItems(items,inputDir,paths,lease=null){

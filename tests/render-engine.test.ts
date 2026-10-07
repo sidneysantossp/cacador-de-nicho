@@ -276,7 +276,7 @@ test('Render-v4 chapter boundaries do not inject artificial fades',()=>{
   assert.match(source,/style\.transitionOut==='cross-dissolve'/);
   assert.doesNotMatch(source,/style\.transitionIn='fade';/);
   assert.doesNotMatch(source,/style\.transitionOut='fade';/);
-  assert.match(source,/render-v4-concat-copy-fallback/);
+  assert.match(source,/setsar=1/);
 });
 
 
@@ -555,3 +555,20 @@ test('Render asset lookup batches large PostgREST filters',()=>{
   assert.match(source,/const batch=unique\.slice\(start,start\+80\)/);
   assert.match(source,/rows\.push\(\.\.\.\(part\?\?\[\]\)\)/);
 });
+
+
+test('Render worker normalizes sample aspect ratio before segment and chapter concatenation',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  const prepareStart=source.indexOf('async function prepareSegment');
+  const assembleStart=source.indexOf('async function assembleSegments');
+  const chapterStart=source.indexOf('async function concatChapterVideos');
+  assert.ok(prepareStart>=0&&assembleStart>prepareStart&&chapterStart>assembleStart);
+  const prepare=source.slice(prepareStart,assembleStart);
+  const assemble=source.slice(assembleStart,chapterStart);
+  const chapter=source.slice(chapterStart,source.indexOf('async function downloadItems',chapterStart));
+  assert.match(prepare,/filters\.push\('setsar=1','format=yuv420p'/);
+  assert.match(assemble,/setsar=1\['\+normalized\[i\]\+'\]/);
+  assert.match(chapter,/'-vf','setsar=1'/);
+  assert.doesNotMatch(chapter,/'-c:v','copy'/);
+});
+
