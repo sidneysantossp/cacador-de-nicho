@@ -145,6 +145,78 @@ export function sourceRouteForScene(
 }
 
 
+export type SourceReuseObservation={
+  sceneSequence:number;
+  sourceStartSeconds?:number|null;
+  sourceEndSeconds?:number|null;
+};
+
+export function sourceReuseDecision(input:{
+  sourceType:'owned'|'stock';
+  targetSequence:number;
+  observations:SourceReuseObservation[];
+  candidateStartSeconds?:number|null;
+  candidateEndSeconds?:number|null;
+}){
+  const observations=input.observations.filter(item=>
+    Number.isFinite(item.sceneSequence)&&item.sceneSequence!==input.targetSequence
+  );
+  const maxUses=input.sourceType==='owned'?8:4;
+
+  if(observations.some(item=>Math.abs(item.sceneSequence-input.targetSequence)<=1)){
+    return {
+      ok:false as const,
+      reason:'adjacent-source-reuse' as const,
+      usageCount:observations.length,
+      maxUses
+    };
+  }
+
+  if(observations.length>=maxUses){
+    return {
+      ok:false as const,
+      reason:'source-reuse-cap' as const,
+      usageCount:observations.length,
+      maxUses
+    };
+  }
+
+  const start=Number(input.candidateStartSeconds);
+  const end=Number(input.candidateEndSeconds);
+  if(Number.isFinite(start)&&Number.isFinite(end)&&end-start>=.20){
+    const span=end-start;
+    const overlap=observations.some(item=>{
+      const observedStart=Number(item.sourceStartSeconds);
+      const observedEnd=Number(item.sourceEndSeconds);
+      if(
+        !Number.isFinite(observedStart)||!Number.isFinite(observedEnd)||
+        observedEnd-observedStart<.20
+      )return false;
+      const overlapSeconds=Math.max(
+        0,
+        Math.min(end,observedEnd)-Math.max(start,observedStart)
+      );
+      const smaller=Math.min(span,observedEnd-observedStart);
+      return smaller>0&&overlapSeconds/smaller>.25;
+    });
+    if(overlap){
+      return {
+        ok:false as const,
+        reason:'overlapping-source-trim' as const,
+        usageCount:observations.length,
+        maxUses
+      };
+    }
+  }
+
+  return {
+    ok:true as const,
+    reason:null,
+    usageCount:observations.length,
+    maxUses
+  };
+}
+
 export function routePrefersMotion(route:SourceRoutePlan){
   const videoIndex=route.actions.indexOf('stock-video');
   const imageIndex=route.actions.indexOf('stock-image');
