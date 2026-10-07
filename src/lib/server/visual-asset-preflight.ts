@@ -135,7 +135,7 @@ async function videoSamples(storagePath:string){
         '-vf','freezedetect=n=-45dB:d=0.5',
         '-f','null','-'
       ],{timeout:120000,maxBuffer:4*1024*1024});
-      freezeSeconds=Math.max(0,sumFreezeSeconds(result.stderr??''));
+      freezeSeconds=Math.max(0,sumFreezeSeconds(String(result.stderr??'')));
       freezeRatio=Math.max(0,Math.min(1,freezeSeconds/duration));
       meaningfulMotion=freezeRatio<.60;
     }catch{
@@ -239,12 +239,13 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
   }
   if(!row.storage_path)throw new HttpError('O asset visual não possui arquivo para revisão.',409);
 
-  const [plan,promptSet,dna]=await Promise.all([
-    loadScenePlan(row.scene_plan_id),
+  const plan=await loadScenePlan(row.scene_plan_id);
+  if(!plan)throw new HttpError('Contexto visual do asset não está disponível para QA.',409);
+  const [promptSet,dna]=await Promise.all([
     loadVisualPromptSet(row.visual_prompt_set_id),
-    loadProductionDna((await loadScenePlan(row.scene_plan_id))?.channelId??'')
+    loadProductionDna(plan.channelId)
   ]);
-  if(!plan||!promptSet)throw new HttpError('Contexto visual do asset não está disponível para QA.',409);
+  if(!promptSet)throw new HttpError('Contexto visual do asset não está disponível para QA.',409);
   const scene=plan.scenes.find(item=>item.id===row.scene_id);
   const visual=promptSet.scenePrompts.find(item=>item.sceneId===row.scene_id);
   if(!scene||!visual)throw new HttpError('Cena/prompt do asset não estão disponíveis para QA.',409);
