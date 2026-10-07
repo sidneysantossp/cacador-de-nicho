@@ -410,6 +410,7 @@ export async function resolveOwnedMediaForScene(input:{
   sceneId:string;
   query?:string;
   minimumScore?:number;
+  preferredKind?:'video'|'image';
   force?:boolean;
   dryRun?:boolean;
 }){
@@ -424,7 +425,10 @@ export async function resolveOwnedMediaForScene(input:{
     .maybeSingle()) as Row|null;
   if(selectedRow&&!input.force){
     const selected=normalizeRow(selectedRow);
-    if(!assetIsStale(selected,promptSet.version,visual)){
+    if(
+      !assetIsStale(selected,promptSet.version,visual)&&
+      (!input.preferredKind||selected.assetKind===input.preferredKind)
+    ){
       return {
         status:'skipped' as const,
         reason:'selected-ready' as const,
