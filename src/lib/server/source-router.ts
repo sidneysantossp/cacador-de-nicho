@@ -67,6 +67,43 @@ async function persistImageVerification(assetId:string,query:string,verification
   }).eq('id',assetId));
 }
 
+async function revalidateExistingUploadedStill(input:{
+  promptSetId:string;
+  sceneId:string;
+  query:string;
+}){
+  const promptSet=await loadVisualPromptSet(input.promptSetId);
+  if(!promptSet)return null;
+  const visual=promptSet.scenePrompts.find(item=>item.sceneId===input.sceneId);
+  if(!visual)return null;
+  const row=checked(await db().from('radar_scene_assets')
+    .select('id,source_type,asset_kind,status,selected,payload')
+    .eq('visual_prompt_set_id',input.promptSetId)
+    .eq('scene_id',input.sceneId)
+    .eq('selected',true)
+    .eq('status','ready')
+    .maybeSingle());
+  if(!row||row.source_type!=='uploaded'||row.asset_kind!=='image'||!row.selected)return null;
+
+  const verification=await verifyStillImage(String(row.id),input.query);
+  await persistImageVerification(String(row.id),input.query,verification);
+  if(verification.relevance<.46)return {status:'rejected' as const,verification};
+
+  const fresh=checked(await db().from('radar_scene_assets')
+    .select('payload').eq('id',String(row.id)).maybeSingle());
+  const payload=(fresh?.payload??row.payload??{}) as Record<string,unknown>;
+  checked(await db().from('radar_scene_assets').update({
+    payload:{
+      ...payload,
+      promptSetVersion:promptSet.version,
+      prompt:visual.prompt,
+      sourceRouterRevalidatedAt:new Date().toISOString()
+    },
+    updated_at:new Date().toISOString()
+  }).eq('id',String(row.id)));
+  return {status:'matched' as const,assetId:String(row.id),verification};
+}
+
 async function resolveStillCandidates(input:{
   promptSetId:string;
   sceneId:string;
@@ -299,6 +336,23 @@ export async function resolveSourceForScene(input:{
         attempts
       };
     }
+  }
+
+  try{
+    const reused=await revalidateExistingUploadedStill({
+      promptSetId:input.promptSetId,
+      sceneId:input.sceneId,
+      query:route.query
+    });
+    if(reused?.status==='matched'){
+      attempts.push({action:'uploaded-revalidation',status:'matched',assetId:reused.assetId,relevance:reused.verification.relevance});
+      return {status:'matched' as const,route,action:'owned' as const,result:reused,attempts};
+    }
+    if(reused?.status==='rejected'){
+      attempts.push({action:'uploaded-revalidation',status:'rejected',relevance:reused.verification.relevance});
+    }
+  }catch(error){
+    attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
   }
 
   return {
