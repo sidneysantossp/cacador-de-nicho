@@ -962,7 +962,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
 
         const fallbackTrim=!match&&analysisFallbackReason
           ?deterministicStockFallbackTrim({
-            durationSeconds:asset.durationSeconds??candidate.result.durationSeconds,
+            durationSeconds:candidate.result.durationSeconds,
             desiredDurationSeconds:input.desiredDurationSeconds,
             seed:scene.sequence+candidateIndex*17
           })
