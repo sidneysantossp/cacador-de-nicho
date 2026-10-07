@@ -144,7 +144,29 @@ export function inspectAutomationSteps(steps:EpisodeAutomationStepState[]):{
 }
 
 export function automationHttpErrorShouldHold(status:number){
-  return [400,409,422,429,503].includes(status);
+  return [400,409,422].includes(status);
+}
+
+export function automationTransientRetryPolicy(input:{
+  status:number;
+  message:string;
+  attempt:number;
+}){
+  const status=Math.max(0,Math.round(input.status||0));
+  const attempt=Math.max(1,Math.round(input.attempt||1));
+  const message=String(input.message??'');
+  const transient=
+    status===429||status===500||status===502||status===503||status===504||status===507||
+    /\b(?:econnreset|econnrefused|etimedout|enotfound|fetch failed|socket hang up)\b/i.test(message)||
+    /\b(?:timeout|timed out|temporar|unavailable|high demand|rate limit|too many requests)\b/i.test(message);
+  const maxAttempts=status===429?3:2;
+  if(!transient||attempt>=maxAttempts){
+    return {retry:false,delayMs:0,transient,maxAttempts};
+  }
+  const delayMs=status===429
+    ?Math.min(15000,5000*Math.pow(2,attempt-1))
+    :Math.min(8000,2000*Math.pow(2,attempt-1));
+  return {retry:true,delayMs,transient,maxAttempts};
 }
 
 export function visualAssetBatchPlan(input:{

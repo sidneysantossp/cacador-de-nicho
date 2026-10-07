@@ -341,3 +341,13 @@ test('Verified Stock worker route recovers its own lease after unhandled 5xx fai
   assert.match(source,/\.eq\('worker_token',claimedLease\.workerToken\)/);
   assert.match(source,/available_at:new Date\(Date\.now\(\)\+5000\)\.toISOString\(\)/);
 });
+
+
+test('Verified stock opens a per-job circuit breaker after transient provider search failures',()=>{
+  const source=readFileSync('src/lib/server/stock-media.ts','utf8');
+  assert.match(source,/function stockProviderSearchShouldTrip/);
+  assert.match(source,/status===429\|\|status===500\|\|status===502\|\|status===503\|\|status===504/);
+  assert.match(source,/let providerCircuitOpen=false/);
+  assert.match(source,/stage:'provider-circuit-breaker'/);
+  assert.match(source,/if\(providerCircuitOpen\)continue/);
+});
