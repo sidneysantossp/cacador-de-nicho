@@ -251,12 +251,13 @@ test('Visual-assets automation snapshot stays lightweight across repeated batche
   for(const view of [
     'radar_episode_script_list',
     'radar_voice_asset_list',
-    'radar_transcript_list',
-    'radar_scene_plan_list',
-    'radar_visual_prompt_set_list'
+    'radar_transcript_list'
   ]){
     assert.match(block,new RegExp(view));
   }
+  assert.match(block,/radar_scene_plans/);
+  assert.match(block,/radar_visual_prompt_sets/);
+  assert.match(block,/asset_kind/);
   assert.doesNotMatch(block,/radar_timelines|radar_video_edits|radar_render_jobs|radar_production_quality_reports|radar_publication_packages/);
   assert.match(block,/timeline:null/);
   assert.match(block,/videoEdit:null/);
@@ -293,7 +294,7 @@ test('Episode Automation cannot call provider AI in operator-first mode',()=>{
 
 test('Automation visual coverage excludes assets from an older prompt version',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
   assert.match(source,/promptSetVersion\?:unknown/);
   assert.match(source,/Number\(promptSet\?\.version\?\?0\)/);
 });
@@ -311,5 +312,15 @@ test('Visual-assets automation reopens selected stills on video-first routes',()
   assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
   assert.match(source,/routePrefersMotion\(route\)/);
   assert.match(source,/!routePrefersMotion\(route\)\|\|asset\.assetKind==='video'/);
+});
+
+
+
+test('Automation reconcile treats selected stills as incomplete on video-first routes',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
+  assert.match(source,/dnaDetail\.research\?\.documentaryMode===true/);
+  assert.match(source,/!routePrefersMotion\(route\)\|\|String\(item\.asset_kind\)==='video'/);
 });
 

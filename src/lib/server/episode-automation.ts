@@ -3,7 +3,7 @@ import 'server-only';
 import type {
   ContentProjectPayload, EpisodeAutomationEvent, EpisodeAutomationMode, EpisodeAutomationPolicy,
   EpisodeAutomationRun, EpisodeAutomationRunPayload, EpisodeAutomationStatus,
-  EpisodeAutomationStep, EpisodeAutomationStepState, EpisodeScriptPayload, VisualPromptSetPayload
+  EpisodeAutomationStep, EpisodeAutomationStepState, EpisodeScriptPayload, SceneTimecode, VisualPromptSetPayload
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
@@ -164,16 +164,16 @@ async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnT
   const transcript=latest(checked(transcriptResult)??[]);
 
   const sceneResult=transcript
-    ?await client.from('radar_scene_plan_list')
-      .select('id,version,status,transcript_id,scene_ids,updated_at')
+    ?await client.from('radar_scene_plans')
+      .select('id,version,status,transcript_id,payload,updated_at')
       .eq('transcript_id',String(transcript.id))
       .order('updated_at',{ascending:false}).limit(1)
     :{data:[],error:null};
   const scenePlan=latest(checked(sceneResult)??[]);
 
   const promptResult=scenePlan
-    ?await client.from('radar_visual_prompt_set_list')
-      .select('id,version,status,scene_plan_id,updated_at')
+    ?await client.from('radar_visual_prompt_sets')
+      .select('id,version,status,scene_plan_id,payload,updated_at')
       .eq('scene_plan_id',String(scenePlan.id))
       .order('updated_at',{ascending:false}).limit(1)
     :{data:[],error:null};
@@ -181,7 +181,7 @@ async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnT
 
   const assetResult=promptSet
     ?await client.from('radar_scene_assets')
-      .select('id,scene_id,status,selected,payload,updated_at')
+      .select('id,scene_id,asset_kind,status,selected,payload,updated_at')
       .eq('visual_prompt_set_id',String(promptSet.id))
       .eq('selected',true)
     :{data:[],error:null};
@@ -268,7 +268,7 @@ async function sourceSnapshot(run:EpisodeAutomationRun){
 
   const assetResult=promptSet
     ?await client.from('radar_scene_assets')
-      .select('id,scene_id,status,selected,payload,updated_at')
+      .select('id,scene_id,asset_kind,status,selected,payload,updated_at')
       .eq('visual_prompt_set_id',String(promptSet.id))
       .eq('selected',true)
     :{data:[],error:null};
@@ -505,18 +505,30 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     }));
   }
 
-  const scenePayload=rowPayload<{scenes?:Array<{id?:string}>}>(scenePlan);
+  const scenePayload=rowPayload<{scenes?:SceneTimecode[]}>(scenePlan);
   const sceneSummary=scenePlan as {scene_ids?:string[]}|null;
   const sceneIds=new Set(
     (sceneSummary?.scene_ids??(scenePayload.scenes??[]).map(item=>String(item.id??'')))
       .map(String)
       .filter(Boolean)
   );
-  const selectedReadyRows=src.assets.filter(item=>
-    item.selected&&
-    item.status==='ready'&&
-    Number((item.payload as {promptSetVersion?:unknown}|undefined)?.promptSetVersion??0)===Number(promptSet?.version??0)
-  );
+  const scenesById=new Map((scenePayload.scenes??[]).map(scene=>[scene.id,scene]));
+  const promptsByScene=new Map((promptPayload.scenePrompts??[]).map(prompt=>[prompt.sceneId,prompt]));
+  const selectedReadyRows=src.assets.filter(item=>{
+    if(
+      !item.selected||
+      item.status!=='ready'||
+      Number((item.payload as {promptSetVersion?:unknown}|undefined)?.promptSetVersion??0)!==Number(promptSet?.version??0)
+    )return false;
+    const scene=scenesById.get(String(item.scene_id));
+    if(!scene)return false;
+    const prompt=promptsByScene.get(scene.id);
+    const route=applyDocumentarySourcePolicy(
+      sourceRouteForScene(scene,prompt?.direction),
+      dnaDetail.research?.documentaryMode===true
+    );
+    return !routePrefersMotion(route)||String(item.asset_kind)==='video';
+  });
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
