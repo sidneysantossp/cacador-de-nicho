@@ -68,10 +68,13 @@ export function scenePlanVisualStrategyIssues(
   if(motionFirst&&ratio(imageModes,scenes.length)>.60){
     issues.push('visual-strategy-image-heavy');
   }
-  if(shot.value&&shot.share>.55){
+  const documentary=dna?.research?.documentaryMode===true;
+  const genericShot=/(diagram|system|visualization|illustration|template|slide|card)/i.test(shot.value);
+  if(shot.value&&shot.share>.55&&(motionFirst||documentary||genericShot)){
     issues.push('visual-strategy-shot-type-concentration');
   }
-  if(direction.value&&direction.share>.55){
+  const directionLimit=motionFirst||documentary?.55:.80;
+  if(direction.value&&direction.share>directionLimit){
     issues.push('visual-strategy-direction-repetition');
   }
 
