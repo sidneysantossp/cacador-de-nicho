@@ -18,7 +18,7 @@ import {
 } from './verified-stock-jobs';
 import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, sourceRouteForScene,
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
   type SourceRouteAction
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
@@ -206,55 +206,21 @@ export async function resolveSourceForScene(input:{
     dna?.research?.documentaryMode===true
   );
   const attempts:Array<Record<string,unknown>>=[];
-  let uploadedRevalidationAttempted=false;
+  const videoFirst=routePrefersMotion(route);
 
   for(const action of route.actions){
     if(action==='owned'){
       const result=await resolveOwnedMediaForScene({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        query:route.query
+        query:route.query,
+        preferredKind:videoFirst?'video':undefined
       });
       attempts.push({action,status:result.status,reason:result.reason});
       if(result.status==='matched'||result.status==='skipped'){
         return {status:'matched' as const,route,action,result,attempts};
       }
 
-      if(
-        route.preference==='generated'&&
-        /^\s*documentary\s+evidence\s+for\s*:/i.test(route.query)
-      ){
-        uploadedRevalidationAttempted=true;
-        try{
-          const reused=await revalidateExistingUploadedStill({
-            promptSetId:input.promptSetId,
-            sceneId:input.sceneId,
-            query:route.query
-          });
-          if(reused?.status==='matched'){
-            attempts.push({
-              action:'uploaded-revalidation',
-              status:'matched',
-              assetId:reused.assetId,
-              relevance:reused.verification.relevance
-            });
-            return {status:'matched' as const,route,action:'owned' as const,result:reused,attempts};
-          }
-          if(reused?.status==='rejected'){
-            attempts.push({
-              action:'uploaded-revalidation',
-              status:'rejected',
-              relevance:reused.verification.relevance
-            });
-          }
-        }catch(error){
-          attempts.push({
-            action:'uploaded-revalidation',
-            status:'failed',
-            error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'
-          });
-        }
-      }
       continue;
     }
 
@@ -383,8 +349,7 @@ export async function resolveSourceForScene(input:{
     }
   }
 
-  if(!uploadedRevalidationAttempted){
-    try{
+  try{
       const reused=await revalidateExistingUploadedStill({
       promptSetId:input.promptSetId,
       sceneId:input.sceneId,
@@ -397,9 +362,8 @@ export async function resolveSourceForScene(input:{
     if(reused?.status==='rejected'){
       attempts.push({action:'uploaded-revalidation',status:'rejected',relevance:reused.verification.relevance});
     }
-    }catch(error){
-      attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
-    }
+  }catch(error){
+    attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
   }
 
   return {

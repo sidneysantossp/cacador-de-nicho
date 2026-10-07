@@ -52,11 +52,24 @@ export type ProductionQualityMediaDiversity = {
   clipCount:number;
 };
 
+export type ProductionQualityMotionCoverage = {
+  required:boolean;
+  videoFirstSceneCount:number;
+  clipCount:number;
+  videoClipCount:number;
+  imageClipCount:number;
+  videoSeconds:number;
+  imageSeconds:number;
+  videoRatio:number;
+  longestImageRunSeconds:number;
+};
+
 export function structuralQualityChecks(input:{
   job:RenderJob;
   assetFacts?:ProductionQualityAssetFact[];
   characterFacts?:ProductionQualityCharacterFact[];
   mediaDiversity?:ProductionQualityMediaDiversity;
+  motionCoverage?:ProductionQualityMotionCoverage;
 }):ProductionQualityCheck[]{
   const {job}=input;
   const manifest=job.payload.manifest;
@@ -183,6 +196,42 @@ export function structuralQualityChecks(input:{
       :[`max=${maxVisualDuration.toFixed(2)}s · target=3–4s`],
     {hardCeilingSeconds:4,maxVisualDuration:Number(maxVisualDuration.toFixed(3)),violations:cadenceViolations.length}
   ));
+
+  const motion=input.motionCoverage;
+  if(motion?.required){
+    const blocker=motion.videoRatio<.50||motion.longestImageRunSeconds>30;
+    const warning=!blocker&&(motion.videoRatio<.70||motion.longestImageRunSeconds>15);
+    checks.push(check(
+      'motion-coverage','visual','Cobertura de vídeo em cenas video-first',
+      blocker?'blocker':warning?'warning':'pass',
+      blocker
+        ?'A montagem video-first foi dominada por imagens estáticas; aumente footage real antes da publicação.'
+        :warning
+          ?'A cobertura de vídeo está abaixo do alvo ou há uma sequência longa de imagens; revise a montagem.'
+          :'As cenas video-first mantêm predominância adequada de footage em movimento.',
+      [
+        `video=${(motion.videoRatio*100).toFixed(1)}%`,
+        `videoSeconds=${motion.videoSeconds.toFixed(1)}s`,
+        `imageSeconds=${motion.imageSeconds.toFixed(1)}s`,
+        `longestImageRun=${motion.longestImageRunSeconds.toFixed(1)}s`,
+        `videoFirstScenes=${motion.videoFirstSceneCount}`
+      ],
+      {
+        videoRatio:Number(motion.videoRatio.toFixed(4)),
+        videoSeconds:Number(motion.videoSeconds.toFixed(3)),
+        imageSeconds:Number(motion.imageSeconds.toFixed(3)),
+        longestImageRunSeconds:Number(motion.longestImageRunSeconds.toFixed(3)),
+        videoClipCount:motion.videoClipCount,
+        imageClipCount:motion.imageClipCount,
+        clipCount:motion.clipCount,
+        videoFirstSceneCount:motion.videoFirstSceneCount,
+        blockerVideoRatio:.50,
+        warningVideoRatio:.70,
+        blockerImageRunSeconds:30,
+        warningImageRunSeconds:15
+      }
+    ));
+  }
 
   const cues=manifest.captions.cues??[];
   let captionsOk=true;

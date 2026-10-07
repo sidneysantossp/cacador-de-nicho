@@ -14,11 +14,12 @@ import { loadVideoEdit, loadVideoEditWorkspace } from './video-editor';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { assetIsStale } from '@/lib/asset-factory-policy';
 import { stockVisualConstraintsSatisfied } from '@/lib/stock-media-policy';
+import { applyDocumentarySourcePolicy, routePrefersMotion, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
   structuralQualityChecks, technicalQualityChecks,
   type ProductionQualityAssetFact, type ProductionQualityCharacterFact,
-  type ProductionQualityMediaDiversity
+  type ProductionQualityMediaDiversity, type ProductionQualityMotionCoverage
 } from '@/lib/production-quality-policy';
 import { ownedMediaDiversityMetrics } from './media-embeddings';
 
@@ -548,6 +549,7 @@ async function projectFacts(job:RenderJob):Promise<{
   assetFacts:ProductionQualityAssetFact[];
   characterFacts?:ProductionQualityCharacterFact[];
   mediaDiversity:ProductionQualityMediaDiversity;
+  motionCoverage?:ProductionQualityMotionCoverage;
 }>{
   if(job.payload.source==='external-master'){
     return {
@@ -599,6 +601,65 @@ async function projectFacts(job:RenderJob):Promise<{
   const promptMap=exactContext
     ?new Map(exactContext.promptSet!.scenePrompts.map(prompt=>[prompt.sceneId,prompt]))
     :new Map();
+
+  let motionCoverage:ProductionQualityMotionCoverage|undefined;
+  if(exactContext){
+    const videoFirstSceneIds=new Set<string>();
+    const documentaryMode=exactContext.workspace.productionDna?.research?.documentaryMode===true;
+    for(const scene of exactContext.workspace.scenePlan.scenes){
+      const prompt=promptMap.get(scene.id);
+      const route=applyDocumentarySourcePolicy(
+        sourceRouteForScene(scene,prompt?.direction),
+        documentaryMode
+      );
+      if(routePrefersMotion(route))videoFirstSceneIds.add(scene.id);
+    }
+
+    const ordered=[...clips].sort((a,b)=>a.startSeconds-b.startSeconds);
+    let videoSeconds=0;
+    let imageSeconds=0;
+    let videoClipCount=0;
+    let imageClipCount=0;
+    let currentImageRun=0;
+    let longestImageRunSeconds=0;
+    let lastImageEnd:number|null=null;
+
+    for(const clip of ordered){
+      if(!videoFirstSceneIds.has(clip.sceneId)){
+        currentImageRun=0;
+        lastImageEnd=null;
+        continue;
+      }
+      if(clip.kind==='video'){
+        videoSeconds+=clip.durationSeconds;
+        videoClipCount++;
+        currentImageRun=0;
+        lastImageEnd=null;
+        continue;
+      }
+
+      imageSeconds+=clip.durationSeconds;
+      imageClipCount++;
+      currentImageRun=lastImageEnd!==null&&clip.startSeconds<=lastImageEnd+.05
+        ?currentImageRun+clip.durationSeconds
+        :clip.durationSeconds;
+      longestImageRunSeconds=Math.max(longestImageRunSeconds,currentImageRun);
+      lastImageEnd=clip.endSeconds;
+    }
+
+    const total=videoSeconds+imageSeconds;
+    motionCoverage={
+      required:videoFirstSceneIds.size>0,
+      videoFirstSceneCount:videoFirstSceneIds.size,
+      clipCount:videoClipCount+imageClipCount,
+      videoClipCount,
+      imageClipCount,
+      videoSeconds,
+      imageSeconds,
+      videoRatio:total>0?videoSeconds/total:0,
+      longestImageRunSeconds
+    };
+  }
 
   const payloadOf=(row:Record<string,unknown>)=>(
     row.payload&&typeof row.payload==='object'
@@ -816,7 +877,7 @@ async function projectFacts(job:RenderJob):Promise<{
     } satisfies ProductionQualityAssetFact;
   });
 
-  if(!exactContext)return {assetFacts,characterFacts:undefined,mediaDiversity};
+  if(!exactContext)return {assetFacts,characterFacts:undefined,mediaDiversity,motionCoverage};
 
   const counts=new Map<string,number>();
   for(const scene of exactContext.workspace.scenePlan.scenes){
@@ -833,7 +894,7 @@ async function projectFacts(job:RenderJob):Promise<{
     referenceReady:refs.get(characterId)?.assetReady??false
   }));
 
-  return {assetFacts,characterFacts,mediaDiversity};
+  return {assetFacts,characterFacts,mediaDiversity,motionCoverage};
 }
 
 export async function runProductionQuality(renderJobId:string):Promise<ProductionQualityReport>{

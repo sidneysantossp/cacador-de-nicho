@@ -47,7 +47,7 @@ export async function POST(request:Request){
     }
 
     const selected=checked(await db().from('radar_scene_assets')
-      .select('id,source_type,provider,payload')
+      .select('id,asset_kind,source_type,provider,payload')
       .eq('visual_prompt_set_id',String(job.visual_prompt_set_id))
       .eq('scene_id',String(job.scene_id))
       .eq('selected',true)
@@ -69,7 +69,7 @@ export async function POST(request:Request){
       )
     );
 
-    if(selectedCurrent&&selected){
+    if(selectedCurrent&&selected&&String(selected.asset_kind)==='video'){
       const result={
         status:'skipped',
         reason:'selected-ready',

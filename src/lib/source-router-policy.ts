@@ -109,6 +109,12 @@ export function sourceRouteForScene(
 }
 
 
+export function routePrefersMotion(route:SourceRoutePlan){
+  const videoIndex=route.actions.indexOf('stock-video');
+  const imageIndex=route.actions.indexOf('stock-image');
+  return videoIndex>=0&&(imageIndex<0||videoIndex<imageIndex);
+}
+
 export function applyDocumentarySourcePolicy(
   route:SourceRoutePlan,
   documentaryMode:boolean
