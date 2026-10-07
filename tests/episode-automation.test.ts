@@ -306,21 +306,21 @@ test('Episode Automation self-hosted worker joins the infra network',()=>{
 });
 
 
-test('Visual-assets automation reopens selected stills on video-first routes',()=>{
+test('Visual-assets automation accepts only motion-compatible route coverage',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/applyDocumentarySourcePolicy/);
   assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
-  assert.match(source,/routePrefersMotion\(route\)/);
-  assert.match(source,/!routePrefersMotion\(route\)\|\|asset\.assetKind==='video'/);
+  assert.match(source,/motionRouteAssetSatisfied/);
+  assert.match(source,/assetKind:asset\.assetKind,payload:asset/);
 });
 
 
 
-test('Automation reconcile treats selected stills as incomplete on video-first routes',()=>{
+test('Automation reconcile accepts explicit exhausted-video still fallbacks',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
   assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
   assert.match(source,/dnaDetail\.research\?\.documentaryMode===true/);
-  assert.match(source,/!routePrefersMotion\(route\)\|\|String\(item\.asset_kind\)==='video'/);
+  assert.match(source,/motionRouteAssetSatisfied\(\{route,assetKind:String\(item\.asset_kind\?\?''\),payload:item\.payload\}\)/);
 });
 
