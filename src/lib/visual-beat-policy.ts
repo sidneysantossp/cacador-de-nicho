@@ -38,8 +38,14 @@ export function classifyVisualBeat(
   const value=text.toLowerCase();
   const historical=/\b(?:war|battle|railway|railroad|locomotive|tunnel|century|historic|historical|civil war|world war|19th|18th|192\d|193\d|194\d|195\d)\b/.test(value)
     || /\b(?:18|19)\d{2}\b/.test(value);
-  const document=/\b(?:newspaper|record|records|document|report|letter|photograph|photo|archive|archives|blueprint|plan|diagram)\b/.test(value);
-  const map=/\b(?:route|map|border|river|port|harbor|harbour|coast|miles|kilometers|km|rail line|railroad line|from .{0,40} to )\b/.test(value);
+  const documentTerm=/\b(?:newspaper|record|records|document|report|letter|photograph|photo|archive|archives|blueprint|plan|diagram)\b/;
+  const unavailableDocument=
+    /\b(?:no|not|without|lacks?|missing|unavailable|does\s+not|do\s+not|is\s+not|are\s+not|was\s+not|were\s+not|cannot|can't|doesn't|isn't|aren't)\b[^.!?]{0,80}\b(?:newspaper|record|records|document|report|letter|photograph|photo|archive|archives|blueprint|plan|diagram)\b/.test(value)
+    ||/\b(?:newspaper|record|records|document|report|letter|photograph|photo|archive|archives|blueprint|plan|diagram)\b[^.!?]{0,80}\b(?:not\s+public|not\s+available|unavailable|missing|does\s+not\s+exist|doesn't\s+exist)\b/.test(value);
+  const document=documentTerm.test(value)&&!unavailableDocument;
+  const geographicMap=/\b(?:map|border|river|port|harbor|harbour|coast|miles|kilometers|km|rail line|railroad line|from .{0,40} to )\b/.test(value);
+  const routeMention=/\broute\b/.test(value);
+  const map=geographicMap||(!preferMotion&&routeMention);
   const motion=/\b(?:walking|running|driving|traffic|train|trains|moving|commuting|flying|construction|digging|collapse|explosion|rising|falling)\b/.test(value);
   const atmosphere=/\b(?:sunset|night|morning|crowd|quiet|empty|busy|atmosphere|skyline|street|streets)\b/.test(value);
 
