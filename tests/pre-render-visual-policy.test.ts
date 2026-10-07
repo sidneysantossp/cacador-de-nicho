@@ -4,6 +4,7 @@ import type { ProductionDNA, ScenePlanPayload } from '../src/lib/types';
 import {
   preRenderVisualQaIssues, productionPrefersMotion, scenePlanVisualStrategyIssues
 } from '../src/lib/pre-render-visual-policy';
+import { classifyVisualBeat } from '../src/lib/visual-beat-policy';
 
 const motionDna={
   visual:{
@@ -122,4 +123,16 @@ test('Pre-render gate blocks missing QA instead of discovering it after render',
     dna:motionDna
   });
   assert.ok(issues.includes('visual-qa-incomplete'));
+});
+
+
+test('Motion-first planning routes generic literal beats to video before stills',()=>{
+  assert.equal(
+    classifyVisualBeat('NPC behavior reveals another layer of the simulation',true).sourcePreference,
+    'stock-video'
+  );
+  assert.equal(
+    classifyVisualBeat('A 1947 archive photograph documents the original system',true).sourcePreference,
+    'archive-image'
+  );
 });
