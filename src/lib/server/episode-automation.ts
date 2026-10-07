@@ -45,11 +45,11 @@ import { documentaryScriptClaimIssues } from '@/lib/script-policy';
 import { applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
-  automationHttpErrorShouldHold, automationPackageSnapshotIssues,
+  automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
   automationPublishSnapshotIssues, automationQualitySnapshotIssues,
   automationRenderSnapshotIssues, automationTimelineSnapshotIssues,
   automationVideoEditSnapshotIssues, episodeAutomationLabels, inspectAutomationSteps,
-  visualAssetBatchPlan
+  operatorFactoryAutomationPolicy, type OperatorDrainTarget, visualAssetBatchPlan
 } from '@/lib/episode-automation-policy';
 
 type RunRow={
@@ -995,6 +995,25 @@ export async function updateEpisodeAutomationRun(input:{
   return reconcileEpisodeAutomationRun(run.id);
 }
 
+export async function armOperatorFactoryAutomationRun(runId:string){
+  const run=await updateEpisodeAutomationRun({
+    runId,
+    mode:'assisted',
+    policy:operatorFactoryAutomationPolicy
+  });
+  await appendEvent(run.id,{
+    step:run.currentStep,
+    status:'info',
+    message:'Golden Path armado para operação pelo ChatGPT: gates objetivos e produção determinística automáticos; criação editorial e publicação permanecem explícitas.',
+    payload:{
+      kind:'operator-factory-armed',
+      target:'master',
+      policy:operatorFactoryAutomationPolicy
+    }
+  });
+  return reconcileEpisodeAutomationRun(run.id);
+}
+
 export async function resumeEpisodeAutomationRun(runId:string){
   const run=await loadEpisodeAutomationRun(runId);
   if(!run)throw new HttpError('Automation Run não encontrado.',404);
@@ -1545,14 +1564,13 @@ async function releaseAutomationLease(runId:string,workerToken:string){
   if(result.error)throw new HttpError('Falha ao liberar lease do Automation Worker.',502);
 }
 
-export async function advanceEpisodeAutomationRun(runId:string,workerToken?:string){
-  const operatorToken=workerToken?null:await acquireOperatorAutomationLease(runId);
-  try{
-    if(workerToken)await assertAutomationWorkerLease(runId,workerToken);
-
-    let run=await reconcileEpisodeAutomationRun(runId);
-    if(run.status==='completed'||run.status==='cancelled')return run;
-    if(workerToken&&run.status==='waiting')return run;
+async function advanceEpisodeAutomationRunUnderLease(
+  runId:string,
+  options:{claimedWorker?:boolean}={}
+){
+  let run=await reconcileEpisodeAutomationRun(runId);
+  if(run.status==='completed'||run.status==='cancelled')return run;
+  if(options.claimedWorker&&run.status==='waiting')return run;
     if(run.holdStep){
       throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
     }
@@ -1593,8 +1611,67 @@ export async function advanceEpisodeAutomationRun(runId:string,workerToken?:stri
       }
       return failAutomationRun(run,current.step,message);
     }
+}
+
+export async function advanceEpisodeAutomationRun(runId:string,workerToken?:string){
+  const operatorToken=workerToken?null:await acquireOperatorAutomationLease(runId);
+  try{
+    if(workerToken)await assertAutomationWorkerLease(runId,workerToken);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:Boolean(workerToken)});
   }finally{
     if(operatorToken)await releaseAutomationLease(runId,operatorToken).catch(()=>{});
+  }
+}
+
+export async function drainEpisodeAutomationRun(input:{
+  runId:string;
+  target?:OperatorDrainTarget;
+  maxTransitions?:number;
+  maxDurationMs?:number;
+}){
+  const target=input.target??'master';
+  const maxTransitions=Math.max(1,Math.min(100,Math.floor(input.maxTransitions??24)));
+  const maxDurationMs=Math.max(5000,Math.min(280000,Math.floor(input.maxDurationMs??240000)));
+  const operatorToken=await acquireOperatorAutomationLease(input.runId);
+  const startedAt=Date.now();
+  let transitions=0;
+  let stopReason='max-transitions';
+
+  try{
+    let run=await reconcileEpisodeAutomationRun(input.runId);
+    while(transitions<maxTransitions){
+      const stop=automationDrainStopReason({
+        status:run.status,
+        currentStep:run.currentStep,
+        holdStep:run.holdStep,
+        steps:run.steps,
+        target
+      });
+      if(stop){
+        stopReason=stop;
+        return {
+          run,target,targetReached:stop==='target-reached'||stop==='completed',
+          transitions,stopReason,durationMs:Date.now()-startedAt
+        };
+      }
+      if(Date.now()-startedAt>=maxDurationMs){
+        stopReason='time-budget';
+        return {
+          run,target,targetReached:false,
+          transitions,stopReason,durationMs:Date.now()-startedAt
+        };
+      }
+
+      run=await advanceEpisodeAutomationRunUnderLease(run.id);
+      transitions++;
+    }
+
+    return {
+      run,target,targetReached:false,
+      transitions,stopReason,durationMs:Date.now()-startedAt
+    };
+  }finally{
+    await releaseAutomationLease(input.runId,operatorToken).catch(()=>{});
   }
 }
 

@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
 import {
-  advanceEpisodeAutomationRun, cancelEpisodeAutomationRun, createEpisodeAutomationRun,
+  advanceEpisodeAutomationRun, armOperatorFactoryAutomationRun,
+  cancelEpisodeAutomationRun, createEpisodeAutomationRun, drainEpisodeAutomationRun,
   episodeAutomationChannelState, listEpisodeAutomationEvents,
   loadEpisodeAutomationRun, reconcileEpisodeAutomationRun, resumeEpisodeAutomationRun,
   updateEpisodeAutomationRun
@@ -10,7 +11,7 @@ import {
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=120;
+export const maxDuration=300;
 
 const policySchema=z.object({
   autoGenerateResearch:z.boolean().optional(),
@@ -37,6 +38,14 @@ const schema=z.discriminatedUnion('action',[
   }).strict(),
   z.object({action:z.literal('reconcile'),runId:z.string().uuid()}).strict(),
   z.object({action:z.literal('advance'),runId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('armFactory'),runId:z.string().uuid()}).strict(),
+  z.object({
+    action:z.literal('drain'),
+    runId:z.string().uuid(),
+    target:z.enum(['master','package','publish']).optional(),
+    maxTransitions:z.number().int().min(1).max(100).optional(),
+    maxDurationMs:z.number().int().min(5000).max(280000).optional()
+  }).strict(),
   z.object({action:z.literal('resume'),runId:z.string().uuid()}).strict(),
   z.object({
     action:z.literal('update'),
@@ -91,6 +100,22 @@ export async function POST(request:Request){
     if(body.action==='advance'){
       const run=await advanceEpisodeAutomationRun(body.runId);
       return Response.json({message:'Uma transição segura foi executada.',run});
+    }
+    if(body.action==='armFactory'){
+      const run=await armOperatorFactoryAutomationRun(body.runId);
+      return Response.json({
+        message:'Golden Path armado para operação pelo ChatGPT até o master aprovado.',
+        run
+      });
+    }
+    if(body.action==='drain'){
+      const result=await drainEpisodeAutomationRun(body);
+      return Response.json({
+        message:result.targetReached
+          ?'Golden Path atingiu o alvo '+result.target+'.'
+          :'Golden Path drenado até '+result.stopReason+'.',
+        ...result
+      });
     }
     if(body.action==='resume'){
       const run=await resumeEpisodeAutomationRun(body.runId);
