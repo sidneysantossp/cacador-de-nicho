@@ -5,26 +5,59 @@ import { z } from 'zod';
 import { HttpError } from './auth';
 import { providerSecret } from './providers';
 import { withFactoryInstructions } from '@/lib/production-operating-system';
+import type { SceneAssetVisualClass } from '@/lib/types';
 
 export type ImageVerification={
+  model:string;
   relevance:number;
+  qualityScore:number;
+  editorialUsefulness:number;
   summary:string;
   matchedEvidence:string[];
   mismatchReason:string;
   focusX:number;
   focusY:number;
   focusLabel:string;
+  placeholderLike:boolean;
+  templateLike:boolean;
+  staticGraphic:boolean;
+  visualClass:SceneAssetVisualClass;
+  issues:string[];
 };
+
+export type VisualVerificationFrame={
+  bytes:Buffer;
+  mimeType:string;
+  label?:string;
+};
+
+const visualClasses=[
+  'live-footage','cinematic-scene','map','diagram','interface-card',
+  'text-card','evidence-board','document','other'
+] as const;
 
 const imageVerificationSchema=z.object({
   relevance:z.number().min(0).max(1),
+  qualityScore:z.number().min(0).max(1),
+  editorialUsefulness:z.number().min(0).max(1),
   summary:z.string().max(1200),
   matchedEvidence:z.array(z.string()).max(20),
   mismatchReason:z.string().max(1200),
   focusX:z.number().min(0).max(1),
   focusY:z.number().min(0).max(1),
-  focusLabel:z.string().max(240)
+  focusLabel:z.string().max(240),
+  placeholderLike:z.boolean(),
+  templateLike:z.boolean(),
+  staticGraphic:z.boolean(),
+  visualClass:z.enum(visualClasses),
+  issues:z.array(z.string().max(120)).max(20)
 });
+
+function verificationModel(){
+  const configured=(process.env.VISUAL_IMAGE_VERIFICATION_MODEL??'').trim();
+  const legacy=(process.env.VISUAL_INTELLIGENCE_MODEL??'').trim();
+  return configured||(/^gpt-/i.test(legacy)?legacy:'gpt-5.6-luna');
+}
 
 function openAiError(error:unknown){
   const item=(error??{}) as {status?:number;name?:string;message?:string};
@@ -35,55 +68,108 @@ function openAiError(error:unknown){
   if(status===429)return new HttpError('A OpenAI atingiu o limite de uso durante a validação visual.',429);
   if(status===404||message.includes('model')&&message.includes('not found'))return new HttpError('O modelo de validação visual não está disponível nesta conta.',422);
   if(message.includes('timeout')||item.name?.toLowerCase().includes('timeout'))return new HttpError('A OpenAI excedeu o tempo durante a validação visual.',504);
-  return new HttpError('A OpenAI falhou ao validar a imagem candidata.',502);
+  return new HttpError('A OpenAI falhou ao validar o asset visual candidato.',502);
 }
 
-export async function verifyStillImageWithOpenAI(input:{bytes:Buffer;mimeType:string;query:string}):Promise<ImageVerification>{
+export async function verifyVisualFramesWithOpenAI(input:{
+  frames:VisualVerificationFrame[];
+  query:string;
+  motionExpected?:boolean;
+}):Promise<ImageVerification>{
+  if(!input.frames.length)throw new HttpError('A validação visual não recebeu frames.',422);
   const key=await providerSecret('openai');
   const client=new OpenAI({apiKey:key,timeout:90000,maxRetries:1});
-  const configured=(process.env.VISUAL_IMAGE_VERIFICATION_MODEL??'').trim();
-  const legacy=(process.env.VISUAL_INTELLIGENCE_MODEL??'').trim();
-  const model=configured||(/^gpt-/i.test(legacy)?legacy:'gpt-5.6-luna');
-  const imageUrl='data:'+(input.mimeType||'image/jpeg')+';base64,'+input.bytes.toString('base64');
+  const model=verificationModel();
+  const content:Array<Record<string,unknown>>=[{
+    type:'input_text',
+    text:[
+      'EDITORIAL INTENT: '+input.query,
+      'MOTION EXPECTED: '+(input.motionExpected===true?'yes':input.motionExpected===false?'no':'unknown')
+    ].join('\n')
+  }];
+  input.frames.forEach((frame,index)=>{
+    content.push({
+      type:'input_text',
+      text:'FRAME '+String(index+1)+' · '+(frame.label?.trim()||'sample')
+    });
+    content.push({
+      type:'input_image',
+      image_url:'data:'+(frame.mimeType||'image/jpeg')+';base64,'+frame.bytes.toString('base64'),
+      detail:'high'
+    });
+  });
+
   try{
     const response=await client.responses.parse({
       model,
       store:false,
       instructions:withFactoryInstructions([
-        'Validate this candidate image against the editorial visual intent below.',
-        'Judge only what is visibly supported. Do not infer an exact person, place, event or date unless visual evidence supports it.',
-        'relevance is 0..1. Use high scores only when the image clearly satisfies the requested subject and context.',
-        'focusX and focusY are normalized 0..1 coordinates for the center of the primary visible subject relevant to the editorial intent.',
-        'Use 0.5,0.5 when the relevant subject is centered or no safer focal point is visible. focusLabel names the visible subject used as focus.',
+        'You are the mandatory Pre-Render Visual QA reviewer for a professional YouTube production pipeline.',
+        'Validate the supplied frame or ordered video frame samples against the editorial intent.',
+        'Judge only what is visibly supported. Do not infer an exact person, place, event or date unless the frames support it.',
+        'relevance is 0..1 for semantic match to the requested narration/visual intent.',
+        'qualityScore is 0..1 for sharpness, framing, readability, compression, composition and production readiness.',
+        'editorialUsefulness is 0..1 for whether this visual genuinely explains or advances the narration instead of merely filling screen time.',
+        'placeholderLike=true for test cards, generic system-model slides, meaningless numbered graphics, obvious filler, unfinished templates or visuals whose main function is only to occupy runtime.',
+        'templateLike=true when the composition looks like a generic reusable layout where labels/objects could be swapped with little loss of meaning. A purposeful diagram is not automatically template-like.',
+        'staticGraphic=true when the supplied samples are predominantly the same graphic/slide/interface composition rather than meaningful live-action/cinematic progression. A legitimate diagram can still have high editorialUsefulness.',
+        'For multiple ordered frames, compare START/MIDDLE/END progression. Do not call a video meaningful motion merely because text, a line, zoom or minor decorative elements move.',
+        'visualClass must use exactly one allowed class.',
+        'focusX and focusY are normalized 0..1 coordinates for the primary visible subject. Use 0.5,0.5 when centered or uncertain.',
+        'issues contains short objective labels such as blur, low-contrast, generic-template, placeholder, weak-semantic-match, synthetic-artifact, text-heavy or static-graphic.',
         'Return only the requested structured result.'
-      ].join('\\n')),
-      input:[{role:'user',content:[
-        {type:'input_text',text:'EDITORIAL INTENT: '+input.query},
-        {type:'input_image',image_url:imageUrl,detail:'high'}
-      ]}],
-      text:{format:{type:'json_schema',name:'image_verification',strict:true,schema:{
+      ].join('\n')),
+      input:[{role:'user',content:content as never}],
+      text:{format:{type:'json_schema',name:'visual_verification',strict:true,schema:{
         type:'object',
         properties:{
           relevance:{type:'number',minimum:0,maximum:1},
+          qualityScore:{type:'number',minimum:0,maximum:1},
+          editorialUsefulness:{type:'number',minimum:0,maximum:1},
           summary:{type:'string'},
           matchedEvidence:{type:'array',items:{type:'string'}},
           mismatchReason:{type:'string'},
           focusX:{type:'number',minimum:0,maximum:1},
           focusY:{type:'number',minimum:0,maximum:1},
-          focusLabel:{type:'string'}
+          focusLabel:{type:'string'},
+          placeholderLike:{type:'boolean'},
+          templateLike:{type:'boolean'},
+          staticGraphic:{type:'boolean'},
+          visualClass:{type:'string',enum:[...visualClasses]},
+          issues:{type:'array',items:{type:'string'}}
         },
-        required:['relevance','summary','matchedEvidence','mismatchReason','focusX','focusY','focusLabel'],
+        required:[
+          'relevance','qualityScore','editorialUsefulness','summary','matchedEvidence',
+          'mismatchReason','focusX','focusY','focusLabel','placeholderLike','templateLike',
+          'staticGraphic','visualClass','issues'
+        ],
         additionalProperties:false
       }}},
-      max_output_tokens:1800,
+      max_output_tokens:2400,
       prompt_cache_options:{mode:'explicit'}
     });
     const parsed=response.output_text?.trim();
     if(!parsed)throw new HttpError('A validação visual não retornou resultado.',502);
-    return imageVerificationSchema.parse(JSON.parse(parsed));
+    return {...imageVerificationSchema.parse(JSON.parse(parsed)),model};
   }catch(error){
     if(error instanceof HttpError)throw error;
-    try{ return imageVerificationSchema.parse(JSON.parse(String((error as {message?:string})?.message??''))); }
-    catch{ throw openAiError(error); }
+    try{
+      const parsed=imageVerificationSchema.parse(JSON.parse(String((error as {message?:string})?.message??'')));
+      return {...parsed,model};
+    }catch{
+      throw openAiError(error);
+    }
   }
+}
+
+export async function verifyStillImageWithOpenAI(input:{
+  bytes:Buffer;
+  mimeType:string;
+  query:string;
+}):Promise<ImageVerification>{
+  return verifyVisualFramesWithOpenAI({
+    frames:[{bytes:input.bytes,mimeType:input.mimeType,label:'STILL'}],
+    query:input.query,
+    motionExpected:false
+  });
 }
