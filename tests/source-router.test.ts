@@ -60,6 +60,21 @@ test('Source Router blocks synthetic fallback for documents and maps',()=>{
   assert.equal(mapRoute.actions.at(-1),'manual-map');
 });
 
+test('Source Router does not fabricate a document to illustrate the absence of public documentation',()=>{
+  const route=sourceRouteForScene(scene(beat({
+    type:'document',
+    sourcePreference:'document',
+    narration:'it does not give us a public technical blueprint',
+    queries:['authentic source document archive document does not give public technical blueprint']
+  })));
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image','wikimedia']);
+  assert.equal(route.syntheticAllowed,false);
+  assert.equal(route.actions.includes('manual-document'),false);
+  assert.equal(routePrefersMotion(route),true);
+  assert.match(route.rationale,/do not fabricate/i);
+});
+
+
 test('Source Router prefers motion for live-action stock video beats',()=>{
   const route=sourceRouteForScene(scene(beat({
     type:'literal',sourcePreference:'stock-video',
