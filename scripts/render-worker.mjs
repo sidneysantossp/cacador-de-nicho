@@ -3,7 +3,7 @@ import {
   AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand,
   GetObjectCommand, PutObjectCommand, S3Client, UploadPartCommand
 } from '@aws-sdk/client-s3';
-import { randomUUID } from 'node:crypto';
+import { createDecipheriv, randomUUID } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { createReadStream, createWriteStream, statfsSync } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -11,8 +11,10 @@ import { pipeline } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const SUPABASE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
-const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
+const DATABASE_URL=(process.env.DATABASE_API_URL||process.env.SUPABASE_URL||'').replace(/\/$/,'');
+const SERVICE_KEY=process.env.DATABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'';
+const SUPABASE_STORAGE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
+const SUPABASE_STORAGE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const BUCKET='cacadores-media';
 const POLL_MS=Math.max(2000,Number(process.env.RENDER_WORKER_POLL_MS||5000));
 const MIN_FREE_DISK_BYTES=Math.max(4,Number(process.env.RENDER_MIN_FREE_DISK_GB||10))*1024*1024*1024;
@@ -50,14 +52,18 @@ function renderDiskReady(requiredAdditionalBytes=0){
 }
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
 
-if(!SUPABASE_URL||!SERVICE_KEY){
-  console.error('Render worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+if(!DATABASE_URL||!SERVICE_KEY){
+  console.error('Render worker requires database service credentials.');
   process.exit(1);
 }
 
 const authHeaders={
   apikey:SERVICE_KEY,
   Authorization:'Bearer '+SERVICE_KEY
+};
+const storageAuthHeaders={
+  apikey:SUPABASE_STORAGE_KEY,
+  Authorization:'Bearer '+SUPABASE_STORAGE_KEY
 };
 let r2StorageCache=null;
 
@@ -99,13 +105,13 @@ async function withLeaseHeartbeat(jobId,token,progress,stage,task){
 }
 
 async function rest(pathname,options={}){
-  const response=await fetch(SUPABASE_URL+pathname,{
+  const response=await fetch(DATABASE_URL+pathname,{
     ...options,
     headers:{...authHeaders,...(options.headers||{})}
   });
   if(!response.ok){
     const text=await response.text().catch(()=>'');
-    throw new Error('Supabase '+response.status+' '+pathname+' '+text.slice(0,800));
+    throw new Error('Database '+response.status+' '+pathname+' '+text.slice(0,800));
   }
   if(response.status===204)return null;
   const text=await response.text();
@@ -213,9 +219,55 @@ async function updateOwned(jobId,token,fields){
   });
 }
 
+function providerSecretsKey(){
+  const raw=(process.env.PROVIDER_SECRETS_KEY||'').trim();
+  if(!raw)throw new Error('PROVIDER_SECRETS_KEY is not configured.');
+  const candidates=[
+    Buffer.from(raw,'base64'),
+    /^[0-9a-f]{64}$/i.test(raw)?Buffer.from(raw,'hex'):Buffer.alloc(0)
+  ];
+  const key=candidates.find(item=>item.length===32);
+  if(!key)throw new Error('PROVIDER_SECRETS_KEY must represent exactly 32 bytes.');
+  return key;
+}
+
+async function decryptLocalProviderSecret(ciphertext){
+  const value=String(ciphertext||'');
+  if(value.startsWith('pgp1:')){
+    const passphraseFile=(process.env.PROVIDER_SECRETS_LEGACY_PGP_PASSPHRASE_FILE||'').trim();
+    if(!passphraseFile)throw new Error('Legacy provider secret passphrase file is not configured.');
+    const passphrase=(await readFile(passphraseFile,'utf8')).trim();
+    const decrypted=await rpc('radar_decrypt_provider_secret',{
+      p_ciphertext:value.slice(5),
+      p_passphrase:passphrase
+    });
+    if(typeof decrypted!=='string'||!decrypted)throw new Error('Legacy provider secret decrypted empty.');
+    return decrypted;
+  }
+  const [version,ivRaw,tagRaw,cipherRaw]=value.split('.');
+  if(version!=='v1'||!ivRaw||!tagRaw||!cipherRaw)throw new Error('Local provider secret has invalid format.');
+  const decipher=createDecipheriv('aes-256-gcm',providerSecretsKey(),Buffer.from(ivRaw,'base64url'));
+  decipher.setAuthTag(Buffer.from(tagRaw,'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(cipherRaw,'base64url')),
+    decipher.final()
+  ]).toString('utf8');
+}
+
+async function localProviderSecret(provider){
+  const rows=await rest(
+    '/rest/v1/radar_provider_secrets?provider=eq.'+encodeURIComponent(provider)+'&select=ciphertext'
+  );
+  const ciphertext=Array.isArray(rows)?rows[0]?.ciphertext:null;
+  if(!ciphertext)return null;
+  return decryptLocalProviderSecret(ciphertext);
+}
+
 async function r2Storage(){
   if(r2StorageCache)return r2StorageCache;
-  const secret=await rpc('radar_get_secret',{p_secret_name:'cloudflare_r2_config'});
+  const secret=process.env.DATABASE_API_URL
+    ?await localProviderSecret('r2')
+    :await rpc('radar_get_secret',{p_secret_name:'cloudflare_r2_config'});
   if(typeof secret!=='string'||!secret)return null;
   let config;
   try{config=JSON.parse(secret);}catch{throw new Error('Cloudflare R2 vault config is invalid.');}
@@ -243,9 +295,12 @@ async function downloadStorage(storagePath,destination){
     return streamToFile(result.Body,destination);
   }
 
+  if(!SUPABASE_STORAGE_URL||!SUPABASE_STORAGE_KEY){
+    throw new Error('Legacy Supabase storage is not configured for '+storagePath);
+  }
   const response=await fetch(
-    SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
-    {headers:authHeaders}
+    SUPABASE_STORAGE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
+    {headers:storageAuthHeaders}
   );
   if(!response.ok)throw new Error('Storage download failed '+response.status+' '+storagePath);
   if(!response.body)throw new Error('Storage download returned no body: '+storagePath);
@@ -315,12 +370,15 @@ async function uploadStorage(storagePath,filePath){
     return {bytes:info.size,path:'r2:'+storagePath};
   }
 
+  if(!SUPABASE_STORAGE_URL||!SUPABASE_STORAGE_KEY){
+    throw new Error('Legacy Supabase storage is not configured for render upload.');
+  }
   const response=await fetch(
-    SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
+    SUPABASE_STORAGE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
     {
       method:'POST',
       headers:{
-        ...authHeaders,
+        ...storageAuthHeaders,
         'Content-Type':'video/mp4',
         'Content-Length':String(info.size),
         'x-upsert':'false'

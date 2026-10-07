@@ -203,6 +203,23 @@ test('Render worker script is valid Node ESM syntax',()=>{
 });
 
 
+
+test('Render worker prefers self-hosted database and local provider vault',()=>{
+  const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
+  assert.match(source,/process\.env\.DATABASE_API_URL\|\|process\.env\.SUPABASE_URL/);
+  assert.match(source,/process\.env\.DATABASE_SERVICE_ROLE_KEY\|\|process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source,/fetch\(DATABASE_URL\+pathname/);
+  assert.match(source,/radar_provider_secrets\?provider=eq\./);
+  assert.match(source,/createDecipheriv\('aes-256-gcm'/);
+  assert.match(source,/process\.env\.DATABASE_API_URL[\s\S]*localProviderSecret\('r2'\)/);
+  assert.match(source,/SUPABASE_STORAGE_URL\+'\/storage\/v1\/object\/'/);
+});
+
+test('Self-hosted render worker joins the infra network',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-render-worker-sync'),'utf8');
+  assert.match(source,/--network cacadores-infra/);
+});
+
 test('Render manifest validates normalized documentary focus coordinates',()=>{
   const value=manifest();
   value.visualClips[0]={...value.visualClips[0],focusX:.2,focusY:.8};
