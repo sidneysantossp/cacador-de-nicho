@@ -1243,6 +1243,38 @@ export type VisualPromptSetListItem = {
 export type SceneAssetKind = 'image' | 'video' | 'graphic';
 export type SceneAssetSource = 'generated' | 'uploaded' | 'stock' | 'owned';
 export type SceneAssetStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'rejected';
+export type SceneAssetVisualClass =
+ | 'live-footage'
+ | 'cinematic-scene'
+ | 'map'
+ | 'diagram'
+ | 'interface-card'
+ | 'text-card'
+ | 'evidence-board'
+ | 'document'
+ | 'other';
+export type SceneAssetVisualQa = {
+ policyVersion: string;
+ status: 'pass' | 'reject' | 'blocked';
+ reviewedAt: string;
+ model: string;
+ query: string;
+ relevance: number;
+ qualityScore: number;
+ editorialUsefulness: number;
+ placeholderLike: boolean;
+ templateLike: boolean;
+ staticGraphic: boolean;
+ visualClass: SceneAssetVisualClass;
+ issues: string[];
+ summary: string;
+ motion?: {
+  sampledFrames: number;
+  freezeSeconds: number | null;
+  freezeRatio: number | null;
+  meaningfulMotion: boolean | null;
+ };
+};
 export type SceneAssetLicense = {
  type: 'provider-terms' | 'owned' | 'licensed' | 'unknown';
  label: string;
@@ -1319,6 +1351,7 @@ export type SceneAsset = {
   sourceEndSeconds: number;
   verifiedAt: string;
  };
+ visualQa?: SceneAssetVisualQa;
  videoFirstFallback?: {
   policyVersion: string;
   videoExhausted: boolean;
