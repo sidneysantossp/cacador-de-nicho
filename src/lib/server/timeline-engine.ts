@@ -435,11 +435,17 @@ export async function loadTimelineSources(timeline:Timeline,chapterId?:string){
     .filter(clip=>!sceneScope||Boolean(clip.sceneId&&sceneScope.has(clip.sceneId)))
     .map(clip=>clip.assetId)
     .filter((id):id is string=>!!id);
-  const sceneRows=sceneIds.length
-    ?checked(await db().from('radar_scene_assets')
+  const uniqueSceneIds=[...new Set(sceneIds)];
+  const sceneRows:Array<{
+    id:string;storage_path:string|null;mime_type:string|null;original_name:string|null;
+  }>=[];
+  for(let start=0;start<uniqueSceneIds.length;start+=80){
+    const batch=uniqueSceneIds.slice(start,start+80);
+    const part=checked(await db().from('radar_scene_assets')
       .select('id,storage_path,mime_type,original_name')
-      .in('id',sceneIds))
-    :[];
+      .in('id',batch));
+    sceneRows.push(...(part??[]));
+  }
 
   const voice=await loadVoiceAsset(timeline.voiceAssetId);
   const sources:Array<{
