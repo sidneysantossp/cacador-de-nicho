@@ -294,7 +294,7 @@ test('Episode Automation cannot call provider AI in operator-first mode',()=>{
 
 test('Automation visual coverage excludes assets from an older prompt version',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
-  assert.match(source,/select\('id,scene_id,status,selected,payload,updated_at'\)/);
+  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
   assert.match(source,/promptSetVersion\?:unknown/);
   assert.match(source,/Number\(promptSet\?\.version\?\?0\)/);
 });
