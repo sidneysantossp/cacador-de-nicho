@@ -31,7 +31,10 @@ function numbers(text:string){
   return unique(text.match(/(?:[$£€]\s?\d[\d,.]*|\b\d+(?:\.\d+)?%|\b\d{2,}\b)/g)??[]).slice(0,8);
 }
 
-export function classifyVisualBeat(text:string):Pick<VisualBeat,'type'|'sourcePreference'>{
+export function classifyVisualBeat(
+  text:string,
+  preferMotion=false
+):Pick<VisualBeat,'type'|'sourcePreference'>{
   const value=text.toLowerCase();
   const historical=/\b(?:war|battle|railway|railroad|locomotive|tunnel|century|historic|historical|civil war|world war|19th|18th|192\d|193\d|194\d|195\d)\b/.test(value)
     || /\b(?:18|19)\d{2}\b/.test(value);
@@ -43,17 +46,18 @@ export function classifyVisualBeat(text:string):Pick<VisualBeat,'type'|'sourcePr
   if(document)return {type:'document',sourcePreference:'document'};
   if(map)return {type:'map',sourcePreference:'map'};
   if(historical)return {type:'archive',sourcePreference:'archive-image'};
-  if(atmosphere)return {type:'atmosphere',sourcePreference:motion?'stock-video':'stock-image'};
-  if(motion)return {type:'literal',sourcePreference:'stock-video'};
+  if(atmosphere)return {type:'atmosphere',sourcePreference:motion||preferMotion?'stock-video':'stock-image'};
+  if(motion||preferMotion)return {type:'literal',sourcePreference:'stock-video'};
   return {type:'literal',sourcePreference:'stock-image'};
 }
 
 export function buildVisualBeat(input:{
   segment:TranscriptSegment;
   sequence:number;
+  preferMotion?:boolean;
 }):VisualBeat{
   const narration=compact(input.segment.text);
-  const classification=classifyVisualBeat(narration);
+  const classification=classifyVisualBeat(narration,input.preferMotion===true);
   const entityValues=namedEntities(narration);
   const yearValues=dates(narration);
   const numberValues=numbers(narration);
