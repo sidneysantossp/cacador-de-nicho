@@ -41,7 +41,9 @@ function openAiError(error:unknown){
 export async function verifyStillImageWithOpenAI(input:{bytes:Buffer;mimeType:string;query:string}):Promise<ImageVerification>{
   const key=await providerSecret('openai');
   const client=new OpenAI({apiKey:key,timeout:90000,maxRetries:1});
-  const model=(process.env.VISUAL_INTELLIGENCE_MODEL??'gpt-5.6-luna').trim();
+  const configured=(process.env.VISUAL_IMAGE_VERIFICATION_MODEL??'').trim();
+  const legacy=(process.env.VISUAL_INTELLIGENCE_MODEL??'').trim();
+  const model=configured||(/^gpt-/i.test(legacy)?legacy:'gpt-5.6-luna');
   const imageUrl='data:'+(input.mimeType||'image/jpeg')+';base64,'+input.bytes.toString('base64');
   try{
     const response=await client.responses.parse({

@@ -26,6 +26,18 @@ import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 
+function verifiedStockGapNeedsVisualModelRetry(result:Record<string,unknown>){
+  const serialized=JSON.stringify(result).toLowerCase();
+  return (
+    serialized.includes('gemini-2.5-flash-lite')&&
+    (
+      serialized.includes('no longer available')||
+      serialized.includes('not_found')||
+      serialized.includes('http 404')
+    )
+  );
+}
+
 async function imageAsset(assetId:string){
   const row=checked(await db().from('radar_scene_assets')
     .select('id,asset_kind,status,storage_path,mime_type,bytes,payload')
@@ -324,6 +336,14 @@ export async function resolveSourceForScene(input:{
       if(existing?.status==='completed'){
         const completedStatus=String(existing.result?.status??'');
         if(completedStatus==='gap'){
+          if(verifiedStockGapNeedsVisualModelRetry(existing.result)){
+            const restarted=await restartVerifiedStockJob(existing.id);
+            attempts.push({
+              action,status:'queued',jobId:restarted.id,
+              reason:'visual-model-retired'
+            });
+            return {status:'queued' as const,route,action,job:restarted,attempts};
+          }
           const previousCompiledQuery=String(existing.result?.query??'');
           const currentCompiledQuery=stockDiscoveryQuery(route.query);
           if(previousCompiledQuery!==currentCompiledQuery){

@@ -287,3 +287,14 @@ test('Source Router reopens frozen legacy stock jobs during video-first reproces
   assert.match(source,/markVideoFirstFallback/);
   assert.match(source,/VIDEO_FIRST_FALLBACK_POLICY_VERSION/);
 });
+
+
+test('Source Router reopens completed stock gaps caused by a retired visual model',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/verifiedStockGapNeedsVisualModelRetry/);
+  assert.match(source,/gemini-2\.5-flash-lite/);
+  assert.match(source,/reason:'visual-model-retired'/);
+  const retryIndex=source.indexOf('verifiedStockGapNeedsVisualModelRetry(existing.result)');
+  const exhaustedIndex=source.indexOf('videoExhausted=true',retryIndex);
+  assert.ok(retryIndex>=0&&exhaustedIndex>retryIndex);
+});
