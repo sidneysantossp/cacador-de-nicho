@@ -202,3 +202,14 @@ test('Source Router prioritizes Vecteezy in autonomous stock provider order',()=
   assert.match(source,/for\(const provider of STOCK_IMAGE_PROVIDERS\)/);
   assert.match(source,/providers:STOCK_VIDEO_PROVIDERS/);
 });
+
+
+test('documentary evidence forces real sources',()=>{
+  const base=sourceRouteForScene(
+    scene(beat({type:'illustration',sourcePreference:'generated'})),
+    'Documentary evidence for: layered city systems visualization'
+  );
+  const route=applyDocumentarySourcePolicy(base,true);
+  assert.equal(route.syntheticAllowed,false);
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image','wikimedia']);
+});
