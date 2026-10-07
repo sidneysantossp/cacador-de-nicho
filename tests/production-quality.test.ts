@@ -471,3 +471,58 @@ test('Production QA batches long-form asset and segment lookups',()=>{
   assert.doesNotMatch(block,/\.in\('asset_id',stockAnalysisIds\)/);
 });
 
+
+
+test('Video-first QA blocks an image-dominated internal montage',()=>{
+  const value=job();
+  const checks=structuralQualityChecks({
+    job:value,
+    assetFacts:goodAssetFacts(),
+    characterFacts:[],
+    motionCoverage:{
+      required:true,
+      videoFirstSceneCount:2,
+      clipCount:2,
+      videoClipCount:0,
+      imageClipCount:2,
+      videoSeconds:0,
+      imageSeconds:6,
+      videoRatio:0,
+      longestImageRunSeconds:6
+    }
+  });
+  const motion=checks.find(check=>check.code==='motion-coverage');
+  assert.equal(motion?.status,'blocker');
+  assert.equal(motion?.metrics.videoRatio,0);
+});
+
+test('Video-first QA passes when footage dominates and static runs stay short',()=>{
+  const value=job();
+  const checks=structuralQualityChecks({
+    job:value,
+    assetFacts:goodAssetFacts(),
+    characterFacts:[],
+    motionCoverage:{
+      required:true,
+      videoFirstSceneCount:8,
+      clipCount:8,
+      videoClipCount:6,
+      imageClipCount:2,
+      videoSeconds:18,
+      imageSeconds:6,
+      videoRatio:.75,
+      longestImageRunSeconds:6
+    }
+  });
+  const motion=checks.find(check=>check.code==='motion-coverage');
+  assert.equal(motion?.status,'pass');
+});
+
+test('Production QA derives motion coverage from the same Source Router policy',()=>{
+  const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
+  assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
+  assert.match(source,/applyDocumentarySourcePolicy/);
+  assert.match(source,/routePrefersMotion\(route\)/);
+  assert.match(source,/videoRatio:total>0\?videoSeconds\/total:0/);
+});
+
