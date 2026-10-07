@@ -17,6 +17,7 @@ import {
 } from './visual-asset-preflight';
 import { matchOwnedMediaSegments } from './owned-media-intelligence';
 import { libraryFirstMatchAccepted, libraryFirstSceneQuery } from '@/lib/media-library-policy';
+import { sourceReuseDecision } from '@/lib/source-router-policy';
 import {
   assetIsStale, assetKindForMime, googleImageModels, googleVideoModels, ownedReferenceAssetIds, sceneAssetOwnsStorage,
   type GoogleImageModel, type GoogleVideoModel, validVideoGeneration
@@ -492,6 +493,36 @@ export async function resolveOwnedMediaForScene(input:{
     return assetId&&segmentId?[assetId+':'+segmentId]:[];
   }));
 
+  const selectedOwnedRows=checked(await db().from('radar_scene_assets')
+    .select('scene_id,payload')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('source_type','owned')
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(1000));
+  const sequenceByScene=new Map(plan.scenes.map(item=>[item.id,item.sequence]));
+  const ownedUses=new Map<string,Array<{
+    sceneSequence:number;
+    sourceStartSeconds?:number|null;
+    sourceEndSeconds?:number|null;
+  }>>();
+  for(const row of selectedOwnedRows??[]){
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const owned=payload.owned&&typeof payload.owned==='object'
+      ?payload.owned as Record<string,unknown>
+      :{};
+    const assetId=String(owned.assetId??'').trim();
+    const sceneSequence=sequenceByScene.get(String(row.scene_id));
+    if(!assetId||!Number.isFinite(sceneSequence))continue;
+    const uses=ownedUses.get(assetId)??[];
+    uses.push({
+      sceneSequence:Number(sceneSequence),
+      sourceStartSeconds:owned.sourceStartSeconds===undefined?null:Number(owned.sourceStartSeconds),
+      sourceEndSeconds:owned.sourceEndSeconds===undefined?null:Number(owned.sourceEndSeconds)
+    });
+    ownedUses.set(assetId,uses);
+  }
+
   const orientation=dna.format.width===dna.format.height
     ?'any'
     :dna.format.width>dna.format.height?'landscape':'portrait';
@@ -501,7 +532,7 @@ export async function resolveOwnedMediaForScene(input:{
     limit:5,
     orientation
   });
-  const best=matches.find(match=>
+  const acceptedMatches=matches.filter(match=>
     !rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)&&
     (!input.preferredKind||match.assetKind===input.preferredKind)&&
     libraryFirstMatchAccepted(
@@ -509,15 +540,35 @@ export async function resolveOwnedMediaForScene(input:{
       Math.max(.30,Math.min(.90,input.minimumScore??.45))
     )
   );
+  const best=acceptedMatches.find(match=>
+    sourceReuseDecision({
+      sourceType:'owned',
+      targetSequence:scene.sequence,
+      observations:ownedUses.get(match.assetId)??[],
+      candidateStartSeconds:match.sourceStartSeconds,
+      candidateEndSeconds:match.sourceEndSeconds
+    }).ok
+  );
   if(!best){
     const hasRejectedCandidate=matches.some(match=>
       rejectedOwnedSegments.has(match.assetId+':'+match.segment.id)
     );
+    const hasDiversityBlocked=acceptedMatches.some(match=>
+      !sourceReuseDecision({
+        sourceType:'owned',
+        targetSequence:scene.sequence,
+        observations:ownedUses.get(match.assetId)??[],
+        candidateStartSeconds:match.sourceStartSeconds,
+        candidateEndSeconds:match.sourceEndSeconds
+      }).ok
+    );
     return {
       status:'gap' as const,
-      reason:hasRejectedCandidate
-        ?'visual-qa-rejected' as const
-        :matches.length?'weak-match' as const:'no-match' as const,
+      reason:hasDiversityBlocked
+        ?'source-diversity-exhausted' as const
+        :hasRejectedCandidate
+          ?'visual-qa-rejected' as const
+          :matches.length?'weak-match' as const:'no-match' as const,
       query,
       sceneId:scene.id,
       timecodeLabel:visual.timecodeLabel,
