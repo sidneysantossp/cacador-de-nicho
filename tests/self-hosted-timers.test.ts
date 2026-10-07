@@ -22,9 +22,12 @@ test('recurring self-hosted timers re-arm relative to activation',()=>{
   }
 });
 
-test('promotion restarts enabled timers so changed definitions are re-armed',()=>{
+test('promotion rearms enabled timers without restarting its own auto-deploy trigger',()=>{
   const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-promote'),'utf8');
   assert.match(source,/systemctl daemon-reload/);
+  assert.match(source,/systemctl enable "\$TIMER"/);
+  assert.match(source,/if \[\[ "\$TIMER" == "cacadores-auto-deploy\.timer" \]\]; then/);
+  assert.match(source,/Never restart the timer that triggered this promotion/);
   assert.match(source,/systemctl restart "\$TIMER"/);
   assert.match(source,/cacadores-youtube-publish-worker-sync\.timer/);
   assert.match(source,/systemctl disable --now "\$TIMER"/);
