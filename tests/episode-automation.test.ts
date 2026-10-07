@@ -105,6 +105,15 @@ test('Episode Automation worker is valid Node ESM syntax',()=>{
 });
 
 
+
+test('Episode Automation worker prefers self-hosted database credentials',()=>{
+  const source=readFileSync('scripts/episode-automation-worker.mjs','utf8');
+  assert.match(source,/process\.env\.DATABASE_API_URL\|\|process\.env\.SUPABASE_URL/);
+  assert.match(source,/process\.env\.DATABASE_SERVICE_ROLE_KEY\|\|process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source,/DATABASE_URL\+'\/rest\/v1\/rpc\/'/);
+  assert.doesNotMatch(source,/SUPABASE_URL\+'\/rest\/v1\/rpc\/'/);
+});
+
 test('Automation detects stale Timeline asset selection and upstream versions',()=>{
   const payload={
     scenePlanVersion:2,
