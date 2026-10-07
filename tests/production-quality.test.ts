@@ -434,8 +434,29 @@ test('Static image cadence blocks any image beat above four seconds',()=>{
   const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
   const cadence=checks.find(check=>check.code==='visual-cadence');
   assert.equal(cadence?.status,'blocker');
-  assert.equal(cadence?.metrics.imageViolations,1);
+  assert.equal(cadence?.metrics.staticImageViolations,1);
   assert.equal(cadence?.metrics.violations,1);
+});
+
+test('Animated still with Ken Burns can run longer than four seconds without a cadence blocker',()=>{
+  const value=job();
+  value.payload.manifest.visualClips[0]={
+    ...value.payload.manifest.visualClips[0],
+    kind:'image',
+    endSeconds:7.5,
+    durationSeconds:7.5,
+    style:{
+      ...value.payload.manifest.visualClips[0].style,
+      motionPreset:'zoom-in',
+      scaleStart:1,
+      scaleEnd:1.08
+    }
+  };
+  const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
+  const cadence=checks.find(check=>check.code==='visual-cadence');
+  assert.equal(cadence?.status,'pass');
+  assert.equal(cadence?.metrics.animatedImageCount,1);
+  assert.equal(cadence?.metrics.staticImageViolations,0);
 });
 
 test('Moving video can run longer than four seconds without a cadence blocker',()=>{
@@ -449,7 +470,7 @@ test('Moving video can run longer than four seconds without a cadence blocker',(
   const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
   const cadence=checks.find(check=>check.code==='visual-cadence');
   assert.equal(cadence?.status,'pass');
-  assert.equal(cadence?.metrics.videoViolations,0);
+  assert.equal(cadence?.metrics.movingVisualViolations,0);
 });
 
 test('Moving video between eight and ten seconds is a cadence warning',()=>{
@@ -463,7 +484,7 @@ test('Moving video between eight and ten seconds is a cadence warning',()=>{
   const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
   const cadence=checks.find(check=>check.code==='visual-cadence');
   assert.equal(cadence?.status,'warning');
-  assert.equal(cadence?.metrics.videoWarnings,1);
+  assert.equal(cadence?.metrics.movingVisualWarnings,1);
 });
 
 test('Moving video above ten seconds remains a cadence blocker',()=>{
@@ -477,7 +498,7 @@ test('Moving video above ten seconds remains a cadence blocker',()=>{
   const checks=structuralQualityChecks({job:value,assetFacts:goodAssetFacts(),characterFacts:[]});
   const cadence=checks.find(check=>check.code==='visual-cadence');
   assert.equal(cadence?.status,'blocker');
-  assert.equal(cadence?.metrics.videoViolations,1);
+  assert.equal(cadence?.metrics.movingVisualViolations,1);
 });
 
 test('External AutoEditor master uses explicit manual editorial gates instead of false timeline blockers',()=>{
