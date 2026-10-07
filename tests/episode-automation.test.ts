@@ -280,3 +280,9 @@ test('Episode Automation cannot call provider AI in operator-first mode',()=>{
   assert.match(source,/Operator-first ativo: importe o roteiro produzido pelo ChatGPT/);
   assert.match(source,/Operator-first ativo: importe as direções visuais produzidas pelo ChatGPT/);
 });
+
+
+test('Automation visual coverage excludes stale selected assets',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/selectedReadyRows=src\.assets\.filter\(item=>item\.selected&&item\.status==='ready'&&!item\.stale\)/);
+});
