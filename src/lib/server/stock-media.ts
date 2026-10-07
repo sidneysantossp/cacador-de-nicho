@@ -659,6 +659,28 @@ async function cloneCachedStockToScene(input:{
   });
 }
 
+async function ensureStockVisualIndex(assetId:string){
+  const current=await loadVisualIntelligence(assetId);
+  if(current.status==='completed'&&current.segments.length){
+    return {available:true as const,reason:null as string|null};
+  }
+  try{
+    const analyzed=await analyzeVisualAsset(assetId);
+    return {
+      available:analyzed.status==='completed'&&analyzed.segments.length>0,
+      reason:null as string|null
+    };
+  }catch(error){
+    const status=error instanceof HttpError?error.status:500;
+    const message=error instanceof Error?error.message:'Falha desconhecida na análise visual.';
+    if(!stockVisualAnalysisFallbackAllowed({status,message}))throw error;
+    return {
+      available:false as const,
+      reason:message.slice(0,500)
+    };
+  }
+}
+
 function stockProviderSearchShouldTrip(error:unknown){
   const status=error instanceof HttpError?error.status:500;
   const message=error instanceof Error?error.message:'';
