@@ -218,6 +218,8 @@ test('Render worker prefers self-hosted database and local provider vault',()=>{
 test('Self-hosted render worker joins the infra network',()=>{
   const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-render-worker-sync'),'utf8');
   assert.match(source,/--network cacadores-infra/);
+  assert.match(source,/TARGET_CPUS=2500000000/);
+  assert.match(source,/--cpus 2\.5/);
 });
 
 test('Render manifest validates normalized documentary focus coordinates',()=>{
