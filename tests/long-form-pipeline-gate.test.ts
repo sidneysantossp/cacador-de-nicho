@@ -177,7 +177,7 @@ test('Synthetic 60-minute pipeline compiles Transcript through Video Edit withou
     scenePlan,productionDna:dna,visualPromptSet:promptSet,
     visualAssets:assets,voiceAsset:voice
   });
-  assert.equal(timelinePayload.tracks.find(track=>track.type==='visual')?.clips.length,SCENE_COUNT);
+  assert.equal(timelinePayload.tracks.find(track=>track.type==='visual')?.clips.length,SCENE_COUNT*2);
   assert.equal(timelineChapters(timelinePayload).length,6);
   assert.doesNotThrow(()=>timelinePayloadSchema.parse(timelinePayload));
   assert.deepEqual(timelineStructuralIssues(timelinePayload,scenePlan),[]);
@@ -186,7 +186,7 @@ test('Synthetic 60-minute pipeline compiles Transcript through Video Edit withou
   } as Timeline;
 
   const edit=buildInitialVideoEdit(timeline,transcript,dna);
-  assert.equal(edit.clipStyles.length,SCENE_COUNT);
+  assert.equal(edit.clipStyles.length,SCENE_COUNT*2);
   assert.ok(edit.captions.cues.length>=SCENE_COUNT);
   assert.equal(
     edit.captions.cues.flatMap(cue=>cue.words).length,
