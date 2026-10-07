@@ -77,6 +77,62 @@ test('Golden Path drain stops on external work, operator input, or target comple
   }),'target-reached');
 });
 
+test('Operator Factory policy automates deterministic production through QA but never packaging or publish',()=>{
+  assert.equal(operatorFactoryAutomationPolicy.autoApproveObjectiveGates,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVoice,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateTranscript,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateScenes,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVisualAssets,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoBuildTimeline,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreateVideoEdit,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoRender,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoRunQuality,true);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateResearch,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateScript,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoGenerateVisualPrompts,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoCreatePackage,false);
+  assert.equal(operatorFactoryAutomationPolicy.autoPublish,false);
+});
+
+test('Golden Path drain stops at approved master before packaging',()=>{
+  const steps=[
+    step('quality','completed'),
+    step('packaging','ready'),
+    step('publish','pending')
+  ];
+  assert.equal(automationDrainStopReason({
+    status:'active',
+    currentStep:'packaging',
+    steps,
+    target:'master'
+  }),'target-reached');
+});
+
+test('Golden Path drain waits for async work and genuine operator input',()=>{
+  assert.equal(automationDrainStopReason({
+    status:'running',
+    currentStep:'visual-assets',
+    steps:[step('visual-assets','running',{reason:'stock jobs processing'})],
+    target:'master'
+  }),'external-work-running');
+
+  assert.equal(automationDrainStopReason({
+    status:'waiting',
+    currentStep:'script',
+    steps:[step('script','ready',{requiresOperator:true,reason:'Import ChatGPT script'})],
+    target:'master'
+  }),'operator-input-required');
+});
+
+test('Golden Path drain keeps deterministic ready work actionable',()=>{
+  assert.equal(automationDrainStopReason({
+    status:'active',
+    currentStep:'timeline',
+    steps:[step('timeline','ready',{requiresOperator:false})],
+    target:'master'
+  }),null);
+});
+
 test('Automation inspection picks first unfinished step and marks ready work active',()=>{
   const result=inspectAutomationSteps([
     step('content','completed'),
@@ -173,6 +229,29 @@ test('Episode Automation worker prefers self-hosted database credentials',()=>{
   assert.match(source,/process\.env\.DATABASE_SERVICE_ROLE_KEY\|\|process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(source,/DATABASE_URL\+'\/rest\/v1\/rpc\/'/);
   assert.doesNotMatch(source,/SUPABASE_URL\+'\/rest\/v1\/rpc\/'/);
+});
+
+test('Operator Golden Path exposes bounded arm and drain API without enabling global autopilot',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const route=readFileSync('src/app/api/episode-automation/route.ts','utf8');
+  const agent=readFileSync('src/app/api/episode-automation/agent/route.ts','utf8');
+  assert.match(source,/export async function armOperatorFactoryAutomationRun/);
+  assert.match(source,/export async function drainEpisodeAutomationRun/);
+  assert.match(source,/const operatorToken=await acquireOperatorAutomationLease\(input\.runId\)/);
+  assert.match(source,/advanceEpisodeAutomationRunUnderLease/);
+  assert.match(source,/maxTransitions=Math\.max\(1,Math\.min\(100/);
+  assert.match(source,/maxDurationMs=Math\.max\(5000,Math\.min\(280000/);
+  assert.match(route,/action:z\.literal\('armFactory'\)/);
+  assert.match(route,/action:z\.literal\('drain'\)/);
+  assert.match(agent,/armFactory/);
+  assert.match(agent,/drain/);
+  const armStart=source.indexOf('export async function armOperatorFactoryAutomationRun');
+  const armEnd=source.indexOf('export async function resumeEpisodeAutomationRun',armStart);
+  assert.ok(armStart>=0&&armEnd>armStart,'armFactory function boundary missing');
+  const armBlock=source.slice(armStart,armEnd);
+  assert.match(armBlock,/mode:'assisted'/);
+  assert.match(armBlock,/operatorFactoryAutomationPolicy/);
+  assert.doesNotMatch(armBlock,/assertAutopilotControlRunning/);
 });
 
 test('Assisted Automation serializes direct advances with an exclusive operator lease',()=>{
