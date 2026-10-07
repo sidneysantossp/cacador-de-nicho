@@ -42,7 +42,9 @@ import {
 } from './autopilot-control';
 import { recordAutopilotIncident } from './autopilot-incidents';
 import { documentaryScriptClaimIssues } from '@/lib/script-policy';
-import { applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceRouteForScene } from '@/lib/source-router-policy';
+import {
+  applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceDiversityAssessment, sourceRouteForScene
+} from '@/lib/source-router-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -521,7 +523,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   );
   const scenesById=new Map((scenePayload.scenes??[]).map(scene=>[scene.id,scene]));
   const promptsByScene=new Map((promptPayload.scenePrompts??[]).map(prompt=>[prompt.sceneId,prompt]));
-  const selectedReadyRows=src.assets.filter(item=>{
+  const selectedReadyRowsBase=src.assets.filter(item=>{
     if(
       !item.selected||
       item.status!=='ready'||
@@ -536,6 +538,18 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
     );
     return motionRouteAssetSatisfied({route,assetKind:String(item.asset_kind??''),payload:item.payload});
   });
+  const diversity=sourceDiversityAssessment(selectedReadyRowsBase.flatMap(item=>{
+    const scene=scenesById.get(String(item.scene_id));
+    return scene?[{
+      sceneId:String(item.scene_id),
+      sceneSequence:Number(scene.sequence),
+      payload:item.payload
+    }]:[];
+  }));
+  const diversityAcceptedScenes=new Set(diversity.acceptedSceneIds);
+  const selectedReadyRows=selectedReadyRowsBase.filter(item=>
+    diversityAcceptedScenes.has(String(item.scene_id))
+  );
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
@@ -554,7 +568,10 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
   }else{
     steps.push(step('visual-assets','ready',{
       reason:missingAssets.length
-        ?String(missingAssets.length)+' cena(s) ainda sem asset selecionado.'
+        ?String(missingAssets.length)+' cena(s) ainda sem asset selecionado/diverso.'+
+          (diversity.rejected.length
+            ?' '+String(diversity.rejected.length)+' seleção(ões) antiga(s) serão substituídas por diversidade.'
+            :'')
         :'Nenhuma cena utilizável encontrada para assets.',
       requiresOperator:!run.policy.autoGenerateVisualAssets
     }));
@@ -1305,7 +1322,7 @@ async function executeAutomationTransition(
       const promptsByScene=new Map(promptSet.scenePrompts.map(prompt=>[prompt.sceneId,prompt]));
       const documentaryMode=dna?.research?.documentaryMode===true;
 
-      const selectedReadySceneIds=assets
+      const selectedReadyAssetsBase=assets
         .filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
         .filter(asset=>asset.visualQa?.status==='pass')
         .filter(asset=>{
@@ -1317,7 +1334,19 @@ async function executeAutomationTransition(
             documentaryMode
           );
           return motionRouteAssetSatisfied({route,assetKind:asset.assetKind,payload:asset});
-        })
+        });
+      const diversity=sourceDiversityAssessment(selectedReadyAssetsBase.flatMap(asset=>{
+        const scene=scenesById.get(asset.sceneId);
+        return scene?[{
+          sceneId:asset.sceneId,
+          sceneSequence:Number(scene.sequence),
+          payload:asset
+        }]:[];
+      }));
+      const diversityAcceptedScenes=new Set(diversity.acceptedSceneIds);
+      const diversityRejectedScenes=new Set(diversity.rejected.map(item=>item.sceneId));
+      const selectedReadySceneIds=selectedReadyAssetsBase
+        .filter(asset=>diversityAcceptedScenes.has(asset.sceneId))
         .map(asset=>asset.sceneId);
       const activeStockSceneIds=(checked(activeStockRows)??[])
         .map(row=>String(row.scene_id??''))
@@ -1376,7 +1405,8 @@ async function executeAutomationTransition(
 
         const routed=await resolveSourceForScene({
           promptSetId:promptSet.id,
-          sceneId:target.sceneId
+          sceneId:target.sceneId,
+          forceSelectedReplacement:diversityRejectedScenes.has(sceneId)
         });
         processed++;
         const action=String(routed.action??'none');
