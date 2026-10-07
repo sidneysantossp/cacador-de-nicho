@@ -17,6 +17,9 @@ import { assetIsStale } from '@/lib/asset-factory-policy';
 import { voiceLibraryItemIsStale } from '@/lib/media-library-policy';
 import { videoEditApprovalIssues } from '@/lib/video-editor-policy';
 import { timelineChapters } from '@/lib/timeline-policy';
+import {
+  preRenderVisualQaIssues, scenePlanVisualStrategyIssues
+} from '@/lib/pre-render-visual-policy';
 import { loadAudioAssetsByIds } from './audio-library';
 import {
   buildRenderChapterPlan, DEFAULT_RENDER_AUDIO_KBPS,
@@ -188,6 +191,31 @@ export async function buildRenderManifest(videoEditId:string):Promise<RenderMani
   if(!script||script.status!=='approved')throw new HttpError('O roteiro deixou de estar aprovado.',409);
   if(!promptSet||promptSet.status!=='approved')throw new HttpError('O Visual Prompt Set deixou de estar aprovado.',409);
   if(promptSet.version!==timeline.visualPromptSetVersion)throw new HttpError('A Timeline usa uma versão antiga dos prompts visuais. Revise a Timeline antes de renderizar.',409);
+
+  const assetMapForQa=new Map(assetRows.map(row=>[row.id,row]));
+  const visualGateIssues=[
+    ...scenePlanVisualStrategyIssues(workspace.scenePlan,workspace.productionDna),
+    ...preRenderVisualQaIssues({
+      assets:clips.flatMap(clip=>{
+        const row=assetMapForQa.get(clip.assetId!);
+        if(!row)return [];
+        const payload=(row.payload??{}) as Record<string,unknown>;
+        return [{
+          assetId:row.id,
+          sceneId:row.scene_id,
+          assetKind:row.asset_kind,
+          visualQa:payload.visualQa as SceneAsset['visualQa']|undefined
+        }];
+      }),
+      dna:workspace.productionDna
+    })
+  ];
+  if(visualGateIssues.length){
+    throw new HttpError(
+      'Pre-Render Visual QA bloqueou o render: '+[...new Set(visualGateIssues)].join(' · ')+'.',
+      409
+    );
+  }
 
   if(voiceLibraryItemIsStale({
     assetScriptVersion:voice.scriptVersion,
