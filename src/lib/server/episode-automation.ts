@@ -511,7 +511,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       .map(String)
       .filter(Boolean)
   );
-  const selectedReadyRows=src.assets.filter(item=>item.selected&&item.status==='ready');
+  const selectedReadyRows=src.assets.filter(item=>item.selected&&item.status==='ready'&&!item.stale);
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
