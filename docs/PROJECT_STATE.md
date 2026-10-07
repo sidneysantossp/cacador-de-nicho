@@ -996,3 +996,29 @@ Fluxo aprovado e implementado para os 15 vídeos de validação GRUG + Dino:
 - migration `external_episode_master_r2` aplicada ao Supabase para permitir render/QA sem `video_edit_id` em masters externos;
 - validação DB confirmou criação versionada de QA para master externo com `video_edit_id=null`;
 - TypeScript PASS; Production Quality tests 16/16 PASS; Next.js production build PASS.
+
+
+## Pre-Render Visual QA / Motion Truth Gate — 07/10/2026
+
+Production blocker confirmed during review of Metropolis Mechanics EP01 — "How Rockstar Makes NPCs Feel Alive": the rendered master contained repeated generic "SYSTEMS / ILLUSTRATIVE SYSTEM MODEL" compositions even though motion-first bookkeeping reported substantial video coverage.
+
+Root cause evidence:
+- the active EP01 Scene Plan contained 348/348 scenes with `assetMode=image`;
+- 348/348 scenes used `shotType=editorial systems visualization`;
+- 348/348 visual beats used `sourcePreference=generated`;
+- downstream Timeline media contained 215 MP4 assets and 133 images, but some MP4 assets were effectively static/template graphics rather than meaningful motion;
+- Production QA could validate decode/FPS/black frames while still missing this editorial failure, so file type had become a false proxy for visual quality and motion.
+
+Operator-approved architecture hardening:
+- Scene Plan now receives Production DNA and routes generic literal beats to motion-first sources when the DNA explicitly prefers motion, while preserving factual archive/document/map exceptions;
+- Scene Plan approval adds deterministic anti-monoculture checks for generated concentration, motion underplanning, image-heavy strategies, repeated shot types and repeated directions;
+- each selected scene asset receives persistent `visualQa` metadata before Timeline approval;
+- still/image review scores semantic relevance, production quality and editorial usefulness and detects placeholder/template/static-graphic patterns;
+- video review samples START/MIDDLE/END frames and combines visual review with local ffmpeg freeze analysis; MP4 no longer automatically satisfies motion coverage;
+- selected assets rejected by Visual QA are deselected/rejected before Timeline construction and may be replaced by the Source Router;
+- automation reviews legacy selected assets in bounded visual batches before treating them as covered;
+- Timeline approval blocks assets with missing Visual QA;
+- Render Engine independently blocks internal render if Scene Plan strategy or asset-level Pre-Render Visual QA fails;
+- expensive generated video remains bounded/batch-first: validate a small batch before scaling the same decision across an episode.
+
+The existing EP01 master is retained as evidence and is not automatically rerendered. Remediation must first classify/reuse good assets and replace only failed assets before any new full render.
