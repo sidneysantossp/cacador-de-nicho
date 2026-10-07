@@ -149,10 +149,16 @@ export async function loadRenderJob(jobId:string):Promise<RenderJob|null>{
 
 async function rawAssets(assetIds:string[]){
   if(!assetIds.length)return [] as AssetRow[];
-  const rows=checked(await db().from('radar_scene_assets')
-    .select('id,scene_id,asset_kind,status,selected,storage_path,mime_type,duration_seconds,payload')
-    .in('id',assetIds));
-  return (rows??[]) as AssetRow[];
+  const unique=[...new Set(assetIds)];
+  const rows:AssetRow[]=[];
+  for(let start=0;start<unique.length;start+=80){
+    const batch=unique.slice(start,start+80);
+    const part=checked(await db().from('radar_scene_assets')
+      .select('id,scene_id,asset_kind,status,selected,storage_path,mime_type,duration_seconds,payload')
+      .in('id',batch)) as AssetRow[];
+    rows.push(...(part??[]));
+  }
+  return rows;
 }
 
 export async function buildRenderManifest(videoEditId:string):Promise<RenderManifest>{
