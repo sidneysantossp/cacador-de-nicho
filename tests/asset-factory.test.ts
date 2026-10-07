@@ -118,12 +118,12 @@ test('Character reference assets use explicit owned UUIDs only',()=>{
 
 test('Verified stock worker ignores stale selected assets from older prompt versions',()=>{
   const source=readFileSync('src/app/api/workers/verified-stock/route.ts','utf8');
-  assert.match(source,/select\('id,source_type,provider,payload'\)/);
+  assert.match(source,/select\('id,asset_kind,source_type,provider,payload'\)/);
   assert.match(source,/loadVisualPromptSet\(String\(job\.visual_prompt_set_id\)\)/);
   assert.match(source,/assetIsStale/);
   assert.match(source,/promptSetVersion:Number\(selectedPayload\.promptSetVersion\?\?0\)/);
   assert.match(source,/prompt:String\(selectedPayload\.prompt\?\?''\)/);
-  assert.match(source,/if\(selectedCurrent&&selected\)/);
+  assert.match(source,/if\(selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'\)/);
 });
 
 test('Google generation sends real character reference images to Gemini and Veo',()=>{
