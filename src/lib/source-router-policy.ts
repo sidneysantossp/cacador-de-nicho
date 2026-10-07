@@ -25,14 +25,47 @@ function firstBeat(scene:SceneTimecode):VisualBeat|null{
   return scene.visualBeats?.[0]??null;
 }
 
-function firstQuery(scene:SceneTimecode,beat:VisualBeat|null){
-  const beatQuery=beat?.queries.find(value=>value.trim())?.trim()??'';
+function normalizedQuery(value:string){
+  return value.trim().replace(/\s+/g,' ');
+}
+
+function canonicalBeatQuery(scene:SceneTimecode,beat:VisualBeat|null){
+  const candidates=(beat?.queries??[])
+    .map(normalizedQuery)
+    .filter(Boolean);
+  if(candidates.length){
+    const narration=normalizedQuery(scene.narration).toLowerCase();
+    const searchOriented=candidates.find(value=>value.toLowerCase()!==narration);
+    return (searchOriented??candidates[0]).slice(0,500);
+  }
   return (
-    beatQuery||
-    scene.visualIntent.trim()||
-    scene.promptDirection.trim()||
-    scene.narration.trim()
+    normalizedQuery(scene.visualIntent)||
+    normalizedQuery(scene.promptDirection)||
+    normalizedQuery(scene.narration)
   ).slice(0,500);
+}
+
+function routeQuery(
+  scene:SceneTimecode,
+  beat:VisualBeat|null,
+  editorialQuery?:string
+){
+  const preference=beat?.sourcePreference??'legacy';
+  const canonical=canonicalBeatQuery(scene,beat);
+  const editorial=normalizedQuery(editorialQuery??'');
+
+  // Scene Plan / Visual Beat is the source of truth for ordinary sourcing.
+  // Visual Prompt directions can carry stale style/media wording (for example
+  // "authentic map") after a Scene Plan route changes. Evidence-specific beats
+  // may still use an enriched editorial query because their source class itself
+  // is factual and explicit.
+  if(
+    editorial&&
+    (preference==='archive-image'||preference==='document'||preference==='map'||preference==='legacy')
+  ){
+    return editorial.slice(0,500);
+  }
+  return (canonical||editorial).slice(0,500);
 }
 
 export function sourceRouteForScene(
@@ -41,7 +74,7 @@ export function sourceRouteForScene(
 ):SourceRoutePlan{
   const beat=firstBeat(scene);
   const preference=beat?.sourcePreference??'legacy';
-  const query=(editorialQuery?.trim()||firstQuery(scene,beat)).slice(0,500);
+  const query=routeQuery(scene,beat,editorialQuery);
 
   if(preference==='archive-image'){
     return {
