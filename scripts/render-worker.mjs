@@ -598,7 +598,7 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
   const filters=[];
   const normalized=segmentPaths.map((_,index)=>'src'+index);
   for(let i=0;i<segmentPaths.length;i++){
-    filters.push('['+i+':v]setsar=1['+normalized[i]+']');
+    filters.push('['+i+':v]setsar=1/1['+normalized[i]+']');
   }
   let current=normalized[0];
   let cumulative=manifest.visualClips[0].durationSeconds;
@@ -610,9 +610,9 @@ async function assembleSegments(manifest,segmentPaths,outputPath,crf,payload){
     const out='v'+i;
     if(cross>0){
       filters.push('['+current+']['+normalized[i]+']xfade=transition=fade:duration='+rounded(cross)+
-        ':offset='+rounded(cumulative)+'['+out+']');
+        ':offset='+rounded(cumulative)+',setsar=1/1['+out+']');
     }else{
-      filters.push('['+current+']['+normalized[i]+']concat=n=2:v=1:a=0['+out+']');
+      filters.push('['+current+']['+normalized[i]+']concat=n=2:v=1:a=0,setsar=1/1['+out+']');
     }
     current=out;
     cumulative+=right.durationSeconds;
