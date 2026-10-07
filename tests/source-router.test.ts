@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, sourceRouteForScene
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -215,10 +215,31 @@ test('documentary evidence forces real sources',()=>{
 });
 
 
-test('Source Router revalidates existing upload before starting documentary stock backlog',()=>{
+test('Documentary source policy explicitly marks motion-first routes',()=>{
+  const documentary=applyDocumentarySourcePolicy(
+    sourceRouteForScene(
+      scene(beat({type:'illustration',sourcePreference:'generated'})),
+      'Documentary evidence for: city traffic reacting to police response'
+    ),
+    true
+  );
+  const imageLed=sourceRouteForScene(scene(beat({
+    type:'literal',sourcePreference:'stock-image',
+    queries:['house exterior still photograph']
+  })));
+  assert.equal(routePrefersMotion(documentary),true);
+  assert.equal(routePrefersMotion(imageLed),false);
+});
+
+test('Video-first Source Router keeps selected stills behind real video attempts',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');
-  assert.match(source,/uploadedRevalidationAttempted=true/);
-  assert.match(source,/documentary\\s\+evidence/);
-  assert.match(source,/superseded-by-upload-revalidation/);
-  assert.match(source,/upload-revalidation-rejected/);
+  const assetFactory=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  const routerStart=source.indexOf('export async function resolveSourceForScene');
+  const videoAction=source.indexOf("if(action==='stock-video')",routerStart);
+  const uploadFallback=source.indexOf('const reused=await revalidateExistingUploadedStill',routerStart);
+  assert.ok(videoAction>routerStart);
+  assert.ok(uploadFallback>videoAction);
+  assert.match(source,/preferredKind:videoFirst\?'video':undefined/);
+  assert.match(assetFactory,/preferredKind\?:'video'\|'image'/);
+  assert.match(assetFactory,/!input\.preferredKind\|\|selected\.assetKind===input\.preferredKind/);
 });
