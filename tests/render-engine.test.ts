@@ -557,7 +557,7 @@ test('Render asset lookup batches large PostgREST filters',()=>{
 });
 
 
-test('Render worker normalizes sample aspect ratio before segment and chapter concatenation',()=>{
+test('Render worker normalizes sample aspect ratio and timebase before segment and chapter concatenation',()=>{
   const source=readFileSync(resolve(process.cwd(),'scripts/render-worker.mjs'),'utf8');
   const prepareStart=source.indexOf('async function prepareSegment');
   const assembleStart=source.indexOf('async function assembleSegments');
@@ -568,6 +568,7 @@ test('Render worker normalizes sample aspect ratio before segment and chapter co
   const chapter=source.slice(chapterStart,source.indexOf('async function downloadItems',chapterStart));
   assert.match(prepare,/filters\.push\('setsar=1','format=yuv420p'/);
   assert.match(assemble,/setsar=1\/1\['\+normalized\[i\]\+'\]/);
+  assert.match(assemble,/settb=AVTB,setsar=1\\/1/);
   assert.match(assemble,/xfade=transition=fade:[\s\S]*setsar=1\/1\['\+out\+'\]/);
   assert.match(assemble,/concat=n=2:v=1:a=0,setsar=1\/1\['\+out\+'\]/);
   assert.match(chapter,/'-vf','setsar=1'/);
