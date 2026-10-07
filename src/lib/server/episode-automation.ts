@@ -180,7 +180,7 @@ async function visualAssetSourceSnapshot(run:EpisodeAutomationRun,client:ReturnT
 
   const assetResult=promptSet
     ?await client.from('radar_scene_assets')
-      .select('id,scene_id,status,selected,updated_at')
+      .select('id,scene_id,status,selected,payload,updated_at')
       .eq('visual_prompt_set_id',String(promptSet.id))
       .eq('selected',true)
     :{data:[],error:null};
@@ -511,7 +511,11 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       .map(String)
       .filter(Boolean)
   );
-  const selectedReadyRows=src.assets.filter(item=>item.selected&&item.status==='ready'&&!item.stale);
+  const selectedReadyRows=src.assets.filter(item=>
+    item.selected&&
+    item.status==='ready'&&
+    Number((item.payload as {promptSetVersion?:unknown}|undefined)?.promptSetVersion??0)===Number(promptSet?.version??0)
+  );
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
   const promptsUsable=Boolean(promptSet);
