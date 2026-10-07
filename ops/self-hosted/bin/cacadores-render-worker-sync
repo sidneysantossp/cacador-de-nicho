@@ -52,7 +52,7 @@ docker run -d \
   --env-file "$ENV_FILE" \
   --network cacadores-infra \
   --memory 2g \
-  --cpus 1.5 \
+  --cpus 2.5 \
   --pids-limit 512 \
   -e "RENDER_WORKER_ID=$WORKER_ID" \
   -e "RENDER_WORKER_MEMORY_BYTES=$TARGET_MEMORY" \
