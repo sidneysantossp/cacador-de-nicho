@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { equal, errorResponse, HttpError } from '@/lib/server/auth';
 import { checked, db, dbConfigured } from '@/lib/server/db';
+import { assetIsStale } from '@/lib/asset-factory-policy';
+import { loadVisualPromptSet } from '@/lib/server/visual-prompt-engine';
 import { resolveVerifiedStockMediaForScene } from '@/lib/server/stock-media';
 import { ownedVisualRetryPolicy } from '@/lib/owned-media-worker-policy';
 
@@ -45,14 +47,29 @@ export async function POST(request:Request){
     }
 
     const selected=checked(await db().from('radar_scene_assets')
-      .select('id,source_type,provider')
+      .select('id,source_type,provider,payload')
       .eq('visual_prompt_set_id',String(job.visual_prompt_set_id))
       .eq('scene_id',String(job.scene_id))
       .eq('selected',true)
       .eq('status','ready')
       .maybeSingle());
 
-    if(selected){
+    const promptSet=await loadVisualPromptSet(String(job.visual_prompt_set_id));
+    const currentPrompt=promptSet?.scenePrompts.find(item=>item.sceneId===String(job.scene_id));
+    const selectedPayload=(selected?.payload??{}) as Record<string,unknown>;
+    const selectedCurrent=Boolean(
+      selected&&promptSet&&currentPrompt&&
+      !assetIsStale(
+        {
+          promptSetVersion:Number(selectedPayload.promptSetVersion??0),
+          prompt:String(selectedPayload.prompt??'')
+        },
+        promptSet.version,
+        currentPrompt
+      )
+    );
+
+    if(selectedCurrent&&selected){
       const result={
         status:'skipped',
         reason:'selected-ready',
