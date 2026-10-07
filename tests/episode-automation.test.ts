@@ -303,3 +303,13 @@ test('Episode Automation self-hosted worker joins the infra network',()=>{
   const sync=readFileSync('ops/self-hosted/bin/cacadores-episode-automation-worker-sync','utf8');
   assert.match(sync,/--network cacadores-infra/);
 });
+
+
+test('Visual-assets automation reopens selected stills on video-first routes',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/applyDocumentarySourcePolicy/);
+  assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
+  assert.match(source,/routePrefersMotion\(route\)/);
+  assert.match(source,/!routePrefersMotion\(route\)\|\|asset\.assetKind==='video'/);
+});
+
