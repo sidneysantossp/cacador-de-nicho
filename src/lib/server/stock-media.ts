@@ -847,7 +847,6 @@ export async function resolveVerifiedStockMediaForScene(input:{
           visualRelevance,
           combinedScore
         })){
-          await selectSceneAsset(asset.id);
           const row=checked(await db().from('radar_scene_assets')
             .select('payload')
             .eq('id',asset.id)
@@ -874,6 +873,7 @@ export async function resolveVerifiedStockMediaForScene(input:{
             },
             updated_at:new Date().toISOString()
           }).eq('id',asset.id);
+          await selectSceneAsset(asset.id);
           return {
             status:'matched' as const,
             query,
