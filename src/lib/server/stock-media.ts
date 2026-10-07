@@ -792,6 +792,25 @@ export async function resolveVerifiedStockMediaForScene(input:{
       const searchRelevance=verifiedStockSearchRelevance(
         candidate.relevance,candidateIndex
       );
+      const reuseKey=provider+':'+candidate.result.providerAssetId;
+      const priorUses=stockUses.get(reuseKey)??[];
+      const reuseBeforeAcquisition=sourceReuseDecision({
+        sourceType:'stock',
+        targetSequence:scene.sequence,
+        observations:priorUses
+      });
+      if(!reuseBeforeAcquisition.ok){
+        attempts.push({
+          provider,
+          providerAssetId:candidate.result.providerAssetId,
+          stage:'source-diversity',
+          reason:reuseBeforeAcquisition.reason,
+          usageCount:reuseBeforeAcquisition.usageCount,
+          maxUses:reuseBeforeAcquisition.maxUses,
+          accepted:false
+        });
+        continue;
+      }
       let assetId:string|null=null;
       let createdCandidate=false;
       try{
