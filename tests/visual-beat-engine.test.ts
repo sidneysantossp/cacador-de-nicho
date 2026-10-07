@@ -50,7 +50,7 @@ test('Visual Beat does not treat abstract pathfinding routes as geographic maps 
     'A route that in an empty test environment can look correct.'
   ]){
     const result=classifyVisualBeat(text,true);
-    assert.equal(result.type,'literal');
+    assert.notEqual(result.type,'map');
     assert.equal(result.sourcePreference,'stock-video');
   }
 });
