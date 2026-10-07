@@ -114,6 +114,54 @@ test('Stock fallback rejects portrait candidates for a landscape production',()=
   assert.equal(ranked.length,0);
 });
 
+test('Stock visual indexing falls back only for transient provider failures',()=>{
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:429,message:'quota exceeded'
+  }),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:504,message:'timed out'
+  }),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:502,message:'temporarily unavailable'
+  }),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:422,message:'invalid asset'
+  }),false);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:403,message:'credential rejected'
+  }),false);
+});
+
+test('Stock fallback trim is deterministic, bounded, and varies by seed',()=>{
+  const first=deterministicStockFallbackTrim({
+    durationSeconds:20,
+    desiredDurationSeconds:4.7,
+    seed:84
+  });
+  const repeat=deterministicStockFallbackTrim({
+    durationSeconds:20,
+    desiredDurationSeconds:4.7,
+    seed:84
+  });
+  const other=deterministicStockFallbackTrim({
+    durationSeconds:20,
+    desiredDurationSeconds:4.7,
+    seed:85
+  });
+  assert.deepEqual(first,repeat);
+  assert.ok(first);
+  assert.ok(other);
+  assert.notDeepEqual(first,other);
+  assert.ok(first.sourceStartSeconds>=0);
+  assert.ok(first.sourceEndSeconds<=20);
+  assert.ok(first.sourceEndSeconds-first.sourceStartSeconds>=4.69);
+  assert.equal(deterministicStockFallbackTrim({
+    durationSeconds:null,
+    desiredDurationSeconds:5,
+    seed:1
+  }),null);
+});
+
 test('Stock fallback requires both provider relevance and visual verification',()=>{
   assert.equal(stockCandidateAccepted({
     searchScore:.85,visualRelevance:.45,combinedScore:.67
@@ -250,6 +298,21 @@ test('Sunset intent accepts golden-hour visual evidence',()=>{
   assert.equal(result.expected,'sunset');
 });
 
+
+test('Verified Stock falls back from transient visual-index failures to mandatory Pre-Render Visual QA',()=>{
+  const source=readFileSync('src/lib/server/stock-media.ts','utf8');
+  assert.match(source,/ensureStockVisualIndex/);
+  assert.match(source,/stockVisualAnalysisFallbackAllowed/);
+  assert.match(source,/deterministicStockFallbackTrim/);
+  assert.match(source,/verificationMode='pre-render-fallback'|pre-render-fallback/);
+  assert.match(source,/await ensureSceneAssetVisualQa\(asset\.id\)/);
+  assert.match(source,/review\.status!=='pass'/);
+  assert.match(source,/stockCandidateAccepted/);
+  assert.match(source,/await selectSceneAsset\(asset\.id\)/);
+  const qaIndex=source.indexOf('await ensureSceneAssetVisualQa(asset.id)');
+  const selectIndex=source.indexOf('await selectSceneAsset(asset.id)',qaIndex);
+  assert.ok(qaIndex>=0&&selectIndex>qaIndex,'fallback QA must run before selection');
+});
 
 test('Verified Stock worker remains valid Node ESM syntax',()=>{
   execFileSync(process.execPath,['--check','scripts/verified-stock-worker.mjs'],{stdio:'pipe'});
