@@ -41,6 +41,7 @@ import {
 } from './autopilot-control';
 import { recordAutopilotIncident } from './autopilot-incidents';
 import { documentaryScriptClaimIssues } from '@/lib/script-policy';
+import { applyDocumentarySourcePolicy, routePrefersMotion, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -1241,8 +1242,27 @@ async function executeAutomationTransition(
       if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
       if(promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
 
+      const [scenePlan,dna]=await Promise.all([
+        loadScenePlan(promptSet.scenePlanId),
+        loadProductionDna(promptSet.channelId)
+      ]);
+      if(!scenePlan)throw new HttpError('Scene Plan não encontrado para os assets visuais.',404);
+      const scenesById=new Map(scenePlan.scenes.map(scene=>[scene.id,scene]));
+      const promptsByScene=new Map(promptSet.scenePrompts.map(prompt=>[prompt.sceneId,prompt]));
+      const documentaryMode=dna?.research?.documentaryMode===true;
+
       const selectedReadySceneIds=assets
         .filter(asset=>asset.selected&&asset.status==='ready'&&!asset.stale)
+        .filter(asset=>{
+          const scene=scenesById.get(asset.sceneId);
+          if(!scene)return false;
+          const prompt=promptsByScene.get(asset.sceneId);
+          const route=applyDocumentarySourcePolicy(
+            sourceRouteForScene(scene,prompt?.direction),
+            documentaryMode
+          );
+          return !routePrefersMotion(route)||asset.assetKind==='video';
+        })
         .map(asset=>asset.sceneId);
       const activeStockSceneIds=(checked(activeStockRows)??[])
         .map(row=>String(row.scene_id??''))
