@@ -98,7 +98,7 @@ export function structuralQualityChecks(input:{
       {durationSeconds:manifest.durationSeconds,externalMaster:true}
     ));
     checks.push(check(
-      'visual-cadence','visual','Cadência visual ≤ 4 segundos','manual-review',
+      'visual-cadence','visual','Cadência visual por tipo de mídia','manual-review',
       'O master veio do AutoEditor e não possui a lista de cortes no manifest interno. Confirme que nenhum beat visualmente inalterado ultrapassa 4 segundos.',
       ['regra global: alvo 3–4s · teto 4s',...evidence],
       {hardCeilingSeconds:4,externalMaster:true}
@@ -183,18 +183,51 @@ export function structuralQualityChecks(input:{
     {clipCount:clips.length,durationSeconds:manifest.durationSeconds}
   ));
 
-  const cadenceViolations=clips.filter(clip=>clip.durationSeconds>4+EPSILON);
+  const imageCadenceBlockers=clips.filter(
+    clip=>clip.kind==='image'&&clip.durationSeconds>4+EPSILON
+  );
+  const videoCadenceBlockers=clips.filter(
+    clip=>clip.kind==='video'&&clip.durationSeconds>10+EPSILON
+  );
+  const videoCadenceWarnings=clips.filter(
+    clip=>clip.kind==='video'&&
+      clip.durationSeconds>8+EPSILON&&
+      clip.durationSeconds<=10+EPSILON
+  );
+  const cadenceBlockers=[...imageCadenceBlockers,...videoCadenceBlockers];
   const maxVisualDuration=clips.length?Math.max(...clips.map(clip=>clip.durationSeconds)):0;
+  const cadenceStatus=cadenceBlockers.length
+    ?'blocker'
+    :videoCadenceWarnings.length
+      ?'warning'
+      :'pass';
   checks.push(check(
-    'visual-cadence','visual','Cadência visual ≤ 4 segundos',
-    cadenceViolations.length?'blocker':'pass',
-    cadenceViolations.length
-      ?'Um ou mais beats visuais ultrapassam o teto global de 4 segundos.'
-      :'Todos os beats visuais respeitam o teto global de 4 segundos.',
-    cadenceViolations.length
-      ?cadenceViolations.slice(0,30).map(clip=>`scene=${clip.sceneId.slice(0,8)} · ${clip.durationSeconds.toFixed(2)}s`)
-      :[`max=${maxVisualDuration.toFixed(2)}s · target=3–4s`],
-    {hardCeilingSeconds:4,maxVisualDuration:Number(maxVisualDuration.toFixed(3)),violations:cadenceViolations.length}
+    'visual-cadence','visual','Cadência visual por tipo de mídia',
+    cadenceStatus,
+    cadenceBlockers.length
+      ?'Há imagem estática acima de 4s ou vídeo acima de 10s; ajuste a montagem antes da publicação.'
+      :videoCadenceWarnings.length
+        ?'Há vídeos longos entre 8s e 10s; a montagem é aceitável, mas merece revisão de ritmo.'
+        :'A cadência respeita os limites por tipo de mídia.',
+    cadenceBlockers.length
+      ?cadenceBlockers.slice(0,30).map(clip=>
+        `scene=${clip.sceneId.slice(0,8)} · ${clip.kind} · ${clip.durationSeconds.toFixed(2)}s`
+      )
+      :videoCadenceWarnings.length
+        ?videoCadenceWarnings.slice(0,30).map(clip=>
+          `scene=${clip.sceneId.slice(0,8)} · video · ${clip.durationSeconds.toFixed(2)}s`
+        )
+        :[`max=${maxVisualDuration.toFixed(2)}s · image≤4s · video≤8s target`],
+    {
+      imageHardCeilingSeconds:4,
+      videoWarningSeconds:8,
+      videoHardCeilingSeconds:10,
+      maxVisualDuration:Number(maxVisualDuration.toFixed(3)),
+      imageViolations:imageCadenceBlockers.length,
+      videoViolations:videoCadenceBlockers.length,
+      videoWarnings:videoCadenceWarnings.length,
+      violations:cadenceBlockers.length
+    }
   ));
 
   const motion=input.motionCoverage;
