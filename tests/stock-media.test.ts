@@ -303,3 +303,17 @@ test('Verified Stock worker does not treat a selected still as a resolved video 
   assert.match(source,/selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'/);
 });
 
+
+
+test('Verified stock sync keeps fast workers on the promoted release and stable URL',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
+  assert.match(source,/FAST_WORKERS="\$\{VERIFIED_STOCK_FAST_WORKERS:-5\}"/);
+  assert.match(source,/auditseo\.verified-stock-fast\.sha/);
+  assert.match(source,/\$PROJECT-stock-fast-\$i/);
+  assert.match(source,/--env-file "\$ENV_FILE"/);
+  assert.match(source,/-e VERIFIED_STOCK_WORKER_URL="\$FAST_WORKER_URL"/);
+  assert.match(source,/AUTOMATION_WORKER_URL/);
+  assert.match(source,/node scripts\/verified-stock-worker\.mjs/);
+  assert.doesNotMatch(source,/prod-3102|prod-3103/);
+  assert.match(source,/suffix>FAST_WORKERS/);
+});
