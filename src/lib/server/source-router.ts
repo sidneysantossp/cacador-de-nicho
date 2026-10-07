@@ -19,7 +19,7 @@ import {
 import { rankStockMediaResults, stockDiscoveryQuery } from '@/lib/stock-media-policy';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
-  type SourceRouteAction
+  VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 
@@ -65,6 +65,30 @@ async function persistImageVerification(assetId:string,query:string,verification
     },
     updated_at:new Date().toISOString()
   }).eq('id',assetId));
+}
+
+async function markVideoFirstFallback(input:{
+  assetId:string;
+  query:string;
+  stockJobId?:string|null;
+}){
+  const row=checked(await db().from('radar_scene_assets')
+    .select('payload').eq('id',input.assetId).maybeSingle());
+  const payload=(row?.payload??{}) as Record<string,unknown>;
+  checked(await db().from('radar_scene_assets').update({
+    payload:{
+      ...payload,
+      videoFirstFallback:{
+        policyVersion:VIDEO_FIRST_FALLBACK_POLICY_VERSION,
+        videoExhausted:true,
+        reason:'stock-video-exhausted',
+        query:input.query,
+        stockJobId:input.stockJobId??null,
+        acceptedAt:new Date().toISOString()
+      }
+    },
+    updated_at:new Date().toISOString()
+  }).eq('id',input.assetId));
 }
 
 async function revalidateExistingUploadedStill(input:{
@@ -207,6 +231,8 @@ export async function resolveSourceForScene(input:{
   );
   const attempts:Array<Record<string,unknown>>=[];
   const videoFirst=routePrefersMotion(route);
+  let videoExhausted=false;
+  let exhaustedStockJobId:string|null=null;
 
   for(const action of route.actions){
     if(action==='owned'){
@@ -234,7 +260,16 @@ export async function resolveSourceForScene(input:{
         requireTemporalProvenance:true
       });
       attempts.push({action,status:result.status,details:result.attempts});
-      if(result.status==='matched')return {status:'matched' as const,route,action,result,attempts};
+      if(result.status==='matched'){
+        if(videoFirst&&videoExhausted&&result.asset){
+          await markVideoFirstFallback({
+            assetId:result.asset.id,
+            query:route.query,
+            stockJobId:exhaustedStockJobId
+          });
+        }
+        return {status:'matched' as const,route,action,result,attempts};
+      }
       continue;
     }
 
@@ -248,7 +283,16 @@ export async function resolveSourceForScene(input:{
           minimumRelevance:.42
         });
         attempts.push({action,provider,status:result.status,details:result.attempts});
-        if(result.status==='matched')return {status:'matched' as const,route,action,provider,result,attempts};
+        if(result.status==='matched'){
+          if(videoFirst&&videoExhausted&&result.asset){
+            await markVideoFirstFallback({
+              assetId:result.asset.id,
+              query:route.query,
+              stockJobId:exhaustedStockJobId
+            });
+          }
+          return {status:'matched' as const,route,action,provider,result,attempts};
+        }
       }
       continue;
     }
@@ -290,6 +334,8 @@ export async function resolveSourceForScene(input:{
             });
             return {status:'queued' as const,route,action,job:restarted,attempts};
           }
+          videoExhausted=true;
+          exhaustedStockJobId=existing.id;
           attempts.push({action,status:'gap',jobId:existing.id});
           continue;
         }
@@ -298,11 +344,16 @@ export async function resolveSourceForScene(input:{
         return {status:'queued' as const,route,action,job:restarted,attempts};
       }
       if(existing?.status==='failed'){
-        if(existing.lastError==='superseded-by-upload-revalidation'){
+        if(
+          existing.lastError==='superseded-by-upload-revalidation'||
+          existing.lastError==='frozen-after-timeline-v5'
+        ){
           const restarted=await restartVerifiedStockJob(existing.id);
           attempts.push({
             action,status:'queued',jobId:restarted.id,
-            reason:'upload-revalidation-rejected'
+            reason:existing.lastError==='frozen-after-timeline-v5'
+              ?'legacy-frozen-video-first-reprocess'
+              :'upload-revalidation-rejected'
           });
           return {status:'queued' as const,route,action,job:restarted,attempts};
         }
@@ -356,6 +407,13 @@ export async function resolveSourceForScene(input:{
       query:route.query
     });
     if(reused?.status==='matched'){
+      if(videoFirst&&videoExhausted){
+        await markVideoFirstFallback({
+          assetId:reused.assetId,
+          query:route.query,
+          stockJobId:exhaustedStockJobId
+        });
+      }
       attempts.push({action:'uploaded-revalidation',status:'matched',assetId:reused.assetId,relevance:reused.verification.relevance});
       return {status:'matched' as const,route,action:'owned' as const,result:reused,attempts};
     }

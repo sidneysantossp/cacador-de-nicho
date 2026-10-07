@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion, sourceRouteForScene
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -242,4 +242,48 @@ test('Video-first Source Router keeps selected stills behind real video attempts
   assert.match(source,/preferredKind:videoFirst\?'video':undefined/);
   assert.match(assetFactory,/preferredKind\?:'video'\|'image'/);
   assert.match(assetFactory,/!input\.preferredKind\|\|selected\.assetKind===input\.preferredKind/);
+});
+
+
+test('Video-first still fallback is accepted only after video exhaustion is recorded',()=>{
+  const route=applyDocumentarySourcePolicy(
+    sourceRouteForScene(scene(beat({
+      type:'literal',sourcePreference:'stock-image',
+      queries:['documentary urban traffic']
+    }))),
+    true
+  );
+  assert.equal(routePrefersMotion(route),true);
+  assert.equal(motionRouteAssetSatisfied({route,assetKind:'video'}),true);
+  assert.equal(motionRouteAssetSatisfied({route,assetKind:'image',payload:{}}),false);
+  assert.equal(motionRouteAssetSatisfied({
+    route,
+    assetKind:'image',
+    payload:{
+      videoFirstFallback:{
+        policyVersion:'video-first-v1',
+        videoExhausted:true
+      }
+    }
+  }),true);
+  assert.equal(motionRouteAssetSatisfied({
+    route,
+    assetKind:'image',
+    payload:{
+      videoFirstFallback:{
+        policyVersion:'legacy-v0',
+        videoExhausted:true
+      }
+    }
+  }),false);
+});
+
+test('Source Router reopens frozen legacy stock jobs during video-first reprocessing',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/existing\.lastError==='frozen-after-timeline-v5'/);
+  assert.match(source,/reason:existing\.lastError==='frozen-after-timeline-v5'/);
+  assert.match(source,/legacy-frozen-video-first-reprocess/);
+  assert.match(source,/videoExhausted=true/);
+  assert.match(source,/markVideoFirstFallback/);
+  assert.match(source,/VIDEO_FIRST_FALLBACK_POLICY_VERSION/);
 });

@@ -41,7 +41,7 @@ import {
 } from './autopilot-control';
 import { recordAutopilotIncident } from './autopilot-incidents';
 import { documentaryScriptClaimIssues } from '@/lib/script-policy';
-import { applyDocumentarySourcePolicy, routePrefersMotion, sourceRouteForScene } from '@/lib/source-router-policy';
+import { applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -527,7 +527,7 @@ export async function inspectEpisodeAutomation(run:EpisodeAutomationRun){
       sourceRouteForScene(scene,prompt?.direction),
       dnaDetail.research?.documentaryMode===true
     );
-    return !routePrefersMotion(route)||String(item.asset_kind)==='video';
+    return motionRouteAssetSatisfied({route,assetKind:String(item.asset_kind??''),payload:item.payload});
   });
   const selectedReady=new Set(selectedReadyRows.map(item=>String(item.scene_id)));
   const missingAssets=[...sceneIds].filter(id=>!selectedReady.has(id));
@@ -1273,7 +1273,7 @@ async function executeAutomationTransition(
             sourceRouteForScene(scene,prompt?.direction),
             documentaryMode
           );
-          return !routePrefersMotion(route)||asset.assetKind==='video';
+          return motionRouteAssetSatisfied({route,assetKind:asset.assetKind,payload:asset});
         })
         .map(asset=>asset.sceneId);
       const activeStockSceneIds=(checked(activeStockRows)??[])

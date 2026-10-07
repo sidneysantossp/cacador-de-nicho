@@ -64,6 +64,7 @@ function normalizeRow(row:Row):SceneAsset{
     license:(payload.license??{type:'unknown',label:'Unknown'}) as SceneAssetLicense,
     stock:payload.stock as SceneAsset['stock']|undefined,
     verifiedStock:payload.verifiedStock as SceneAsset['verifiedStock']|undefined,
+    videoFirstFallback:payload.videoFirstFallback as SceneAsset['videoFirstFallback']|undefined,
     owned:payload.owned as SceneAsset['owned']|undefined,
     costUsd:typeof payload.costUsd==='number'?payload.costUsd:null,
     error:payload.error?String(payload.error):undefined,
@@ -472,10 +473,13 @@ export async function resolveOwnedMediaForScene(input:{
     limit:5,
     orientation
   });
-  const best=matches.find(match=>libraryFirstMatchAccepted(
-    match,
-    Math.max(.30,Math.min(.90,input.minimumScore??.45))
-  ));
+  const best=matches.find(match=>
+    (!input.preferredKind||match.assetKind===input.preferredKind)&&
+    libraryFirstMatchAccepted(
+      match,
+      Math.max(.30,Math.min(.90,input.minimumScore??.45))
+    )
+  );
   if(!best){
     return {
       status:'gap' as const,

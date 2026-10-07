@@ -135,3 +135,13 @@ test('Google generation sends real character reference images to Gemini and Veo'
   assert.match(server,/references\.length&&durationSeconds!==8/);
   assert.match(server,/modelId==='veo-3\.1-lite-generate-preview'/);
 });
+
+
+test('Library First filters new OWNED matches by preferred media kind',()=>{
+  const source=readFileSync('src/lib/server/asset-factory.ts','utf8');
+  assert.match(source,/preferredKind\?:'video'\|'image'/);
+  assert.match(source,/!input\.preferredKind\|\|match\.assetKind===input\.preferredKind/);
+  assert.match(source,/!input\.preferredKind\|\|selected\.assetKind===input\.preferredKind/);
+  assert.match(source,/videoFirstFallback:payload\.videoFirstFallback/);
+});
+
