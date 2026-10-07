@@ -313,3 +313,13 @@ test('Visual-assets automation reopens selected stills on video-first routes',()
   assert.match(source,/!routePrefersMotion\(route\)\|\|asset\.assetKind==='video'/);
 });
 
+
+
+test('Automation reconcile treats selected stills as incomplete on video-first routes',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/select\('id,scene_id,asset_kind,status,selected,payload,updated_at'\)/);
+  assert.match(source,/sourceRouteForScene\(scene,prompt\?\.direction\)/);
+  assert.match(source,/dnaDetail\.research\?\.documentaryMode===true/);
+  assert.match(source,/!routePrefersMotion\(route\)\|\|String\(item\.asset_kind\)==='video'/);
+});
+
