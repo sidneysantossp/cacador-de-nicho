@@ -541,6 +541,7 @@ export async function resolveSourceForScene(input:{
             await markSourceRouteTerminal({
               stockJobId:exhaustedStockJobId,
               route,
+              sourceQuery,
               status:'operator-source-required',
               action,
               reason
