@@ -418,7 +418,7 @@ export async function resolveSourceForScene(input:{
       const jobInput={
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        query:route.query,
+        query:sourceQuery,
         desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
         orientation:'landscape' as const,
         providers:STOCK_VIDEO_PROVIDERS,
