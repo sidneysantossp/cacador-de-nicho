@@ -387,6 +387,35 @@ test('Visual asset batching skips covered and already-running stock scenes witho
   assert.deepEqual(result.targets,['s4','s5']);
 });
 
+test('Visual asset batching prioritizes fresh scenes ahead of exhausted deferred gaps',()=>{
+  const result=visualAssetBatchPlan({
+    sceneIds:['s1','s2','s3','s4','s5','s6'],
+    selectedReadySceneIds:['s1'],
+    activeStockSceneIds:['s2'],
+    deferredSceneIds:['s3','s4'],
+    batchSize:2
+  });
+  assert.deepEqual(result.missing,['s2','s3','s4','s5','s6']);
+  assert.deepEqual(result.waiting,['s2']);
+  assert.deepEqual(result.eligible,['s3','s4','s5','s6']);
+  assert.deepEqual(result.deferred,['s3','s4']);
+  assert.deepEqual(result.freshEligible,['s5','s6']);
+  assert.deepEqual(result.targets,['s5','s6']);
+});
+
+test('Visual asset batching stops creating targets when only current-policy gaps remain',()=>{
+  const result=visualAssetBatchPlan({
+    sceneIds:['s1','s2','s3'],
+    selectedReadySceneIds:['s1'],
+    activeStockSceneIds:[],
+    deferredSceneIds:['s2','s3'],
+    batchSize:8
+  });
+  assert.deepEqual(result.deferred,['s2','s3']);
+  assert.deepEqual(result.freshEligible,[]);
+  assert.deepEqual(result.targets,[]);
+});
+
 test('Visual asset batching preserves scene order, deduplicates ids, and clamps batch size',()=>{
   const result=visualAssetBatchPlan({
     sceneIds:['s1','s1','s2','s3','s4'],
@@ -420,6 +449,17 @@ test('Automation worker drains ready backlog without the idle poll delay',()=>{
   assert.match(source,/episode-automation-step-error[\s\S]*await sleep\(Math\.max\(POLL_MS,5000\)\)/);
 });
 
+
+test('Visual-assets automation defers ordinary source gaps and only hard-holds authentic evidence',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/STOCK_DISCOVERY_POLICY_VERSION/);
+  assert.match(source,/deferredSceneIds/);
+  assert.match(source,/result\.status==='gap'/);
+  assert.match(source,/sourceRouteRequiresAuthenticEvidence\(routed\.route\)/);
+  assert.match(source,/deferred-source-gap/);
+  assert.match(source,/deferred-external-source/);
+  assert.match(source,/cena\(s\) esgotaram as fontes automáticas atuais/);
+});
 
 test('Visual-assets automation snapshot stays lightweight across repeated batches',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
