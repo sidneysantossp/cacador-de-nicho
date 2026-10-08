@@ -1272,6 +1272,8 @@ export type SceneAssetVisualQa = {
   sampledFrames: number;
   freezeSeconds: number | null;
   freezeRatio: number | null;
+  blackSeconds?: number | null;
+  blackRatio?: number | null;
   meaningfulMotion: boolean | null;
  };
 };

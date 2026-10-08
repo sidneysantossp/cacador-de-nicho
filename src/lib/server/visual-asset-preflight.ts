@@ -94,6 +94,14 @@ function sumFreezeSeconds(stderr:string){
   return total;
 }
 
+function sumBlackSeconds(stderr:string){
+  let total=0;
+  const regex=/black_duration:([0-9.]+)/g;
+  let match:RegExpExecArray|null;
+  while((match=regex.exec(stderr)))total+=Number(match[1]??0)||0;
+  return total;
+}
+
 function sourceTrim(payload:Record<string,unknown>){
   for(const key of ['verifiedStock','owned']){
     const item=object(payload[key]);
@@ -154,6 +162,8 @@ async function videoSamples(
 
     let freezeSeconds:number|null=null;
     let freezeRatio:number|null=null;
+    let blackSeconds:number|null=null;
+    let blackRatio:number|null=null;
     let meaningfulMotion:boolean|null=null;
     try{
       const result=await execFile(FFMPEG,[
@@ -162,15 +172,20 @@ async function videoSamples(
         '-i',input,
         '-t',duration.toFixed(3),
         '-map','0:v:0','-an',
-        '-vf','freezedetect=n=-45dB:d=0.5',
+        '-vf','blackdetect=d=0.2:pix_th=0.10,freezedetect=n=-45dB:d=0.5',
         '-f','null','-'
       ],{timeout:120000,maxBuffer:4*1024*1024});
-      freezeSeconds=Math.max(0,sumFreezeSeconds(String(result.stderr??'')));
+      const stderr=String(result.stderr??'');
+      freezeSeconds=Math.max(0,sumFreezeSeconds(stderr));
       freezeRatio=Math.max(0,Math.min(1,freezeSeconds/duration));
-      meaningfulMotion=freezeRatio<.60;
+      blackSeconds=Math.max(0,sumBlackSeconds(stderr));
+      blackRatio=Math.max(0,Math.min(1,blackSeconds/duration));
+      meaningfulMotion=freezeRatio<.60&&blackRatio<.60;
     }catch{
       freezeSeconds=null;
       freezeRatio=null;
+      blackSeconds=null;
+      blackRatio=null;
       meaningfulMotion=null;
     }
 
@@ -180,6 +195,8 @@ async function videoSamples(
         sampledFrames:frames.length,
         freezeSeconds,
         freezeRatio,
+        blackSeconds,
+        blackRatio,
         meaningfulMotion
       }
     };
@@ -232,6 +249,36 @@ async function persistReview(
     update.selected=false;
   }
   checked(await db().from('radar_scene_assets').update(update).eq('id',row.id));
+}
+
+function localTechnicalReject(
+  query:string,
+  motion:NonNullable<SceneAssetVisualQa['motion']>
+):SceneAssetVisualQa{
+  const issues=['local-technical-reject'];
+  if(typeof motion.blackRatio==='number'&&motion.blackRatio>=.60){
+    issues.push('excessive-black-frames');
+  }
+  if(motion.meaningfulMotion===false){
+    issues.push('insufficient-meaningful-motion');
+  }
+  return {
+    policyVersion:VISUAL_QA_POLICY_VERSION,
+    status:'reject',
+    reviewedAt:new Date().toISOString(),
+    model:'local-ffmpeg-preflight',
+    query,
+    relevance:0,
+    qualityScore:0,
+    editorialUsefulness:0,
+    placeholderLike:false,
+    templateLike:false,
+    staticGraphic:true,
+    visualClass:'other',
+    issues,
+    summary:'FFmpeg preflight rejected the video before semantic AI review.',
+    motion
+  };
 }
 
 function blockedReview(query:string,error:unknown):SceneAssetVisualQa{
@@ -298,6 +345,17 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
     if(row.asset_kind==='video'){
       const sampled=await videoSamples(row.storage_path,sourceTrim(payload));
       motion=sampled.motion;
+      if(
+        motionExpected&&
+        (
+          sampled.motion.meaningfulMotion===false||
+          (typeof sampled.motion.blackRatio==='number'&&sampled.motion.blackRatio>=.60)
+        )
+      ){
+        const review=localTechnicalReject(query,sampled.motion);
+        await persistReview(row,payload,review);
+        return review;
+      }
       verification=await verifyVisualFramesWithOpenAI({
         frames:sampled.frames,
         query,

@@ -447,6 +447,17 @@ test('Source Router reopens completed stock gaps caused by a retired visual mode
 });
 
 
+test('Visual QA rejects obvious frozen or black video locally before semantic AI review',()=>{
+  const preflight=readFileSync('src/lib/server/visual-asset-preflight.ts','utf8');
+  assert.match(preflight,/blackdetect=d=0\.2:pix_th=0\.10,freezedetect/);
+  assert.match(preflight,/local-ffmpeg-preflight/);
+  assert.match(preflight,/excessive-black-frames/);
+  assert.match(preflight,/local-technical-reject/);
+  const localGate=preflight.indexOf('const review=localTechnicalReject(query,sampled.motion)');
+  const semanticAi=preflight.indexOf('verification=await verifyVisualFramesWithOpenAI({',localGate);
+  assert.ok(localGate>=0&&semanticAi>localGate,'local video gate must run before semantic AI review');
+});
+
 test('Scene asset selection is guarded by Pre-Render Visual QA',()=>{
   const assetFactory=readFileSync('src/lib/server/asset-factory.ts','utf8');
   const preflight=readFileSync('src/lib/server/visual-asset-preflight.ts','utf8');
