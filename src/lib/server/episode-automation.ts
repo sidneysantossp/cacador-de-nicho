@@ -49,6 +49,7 @@ import {
 import {
   STOCK_DISCOVERY_POLICY_VERSION, verifiedStockGapRecoverable
 } from '@/lib/stock-media-policy';
+import { stockVisualProxyQuery } from '@/lib/stock-visual-proxy-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
