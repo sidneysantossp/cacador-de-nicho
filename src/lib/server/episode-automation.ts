@@ -49,6 +49,7 @@ import {
 import {
   STOCK_DISCOVERY_POLICY_VERSION, verifiedStockGapRecoverable
 } from '@/lib/stock-media-policy';
+import { stockVisualProxyQuery } from '@/lib/stock-visual-proxy-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -1388,12 +1389,18 @@ async function executeAutomationTransition(
             sourceRouteForScene(scene,prompt?.direction),
             documentaryMode
           );
+          const sourceQuery=sourceRouteRequiresAuthenticEvidence(route)
+            ?route.query
+            :stockVisualProxyQuery({
+              canonical:route.query,
+              direction:prompt?.direction
+            });
           const terminal=result.sourceRouteTerminal&&typeof result.sourceRouteTerminal==='object'
             ?result.sourceRouteTerminal as Record<string,unknown>
             :{};
           return (
             typeof terminal.status==='string'&&
-            String(terminal.key??'')===sourceRouteExecutionKey(route)
+            String(terminal.key??'')===sourceRouteExecutionKey(route,sourceQuery)
           );
         })
         .map(row=>String(row.scene_id??''))

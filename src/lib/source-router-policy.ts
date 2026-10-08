@@ -72,10 +72,13 @@ function routeQuery(
   return (canonical||editorial).slice(0,500);
 }
 
-export function sourceRouteExecutionKey(route:SourceRoutePlan){
+export function sourceRouteExecutionKey(
+  route:SourceRoutePlan,
+  effectiveQuery=route.query
+){
   return JSON.stringify([
     route.preference,
-    route.query.trim().replace(/\s+/g,' '),
+    effectiveQuery.trim().replace(/\s+/g,' '),
     route.actions,
     route.syntheticAllowed
   ]);
