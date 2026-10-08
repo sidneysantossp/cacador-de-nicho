@@ -336,6 +336,17 @@ test('Assisted Automation serializes direct advances with an exclusive operator 
   assert.match(source,/if\(operatorToken\)await releaseAutomationLease\(runId,operatorToken\)\.catch\(\(\)=>\{\}\)/);
 });
 
+test('Stale autonomous workers lose lease ownership before assisted mode can create a false hold',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const start=source.indexOf('async function assertAutomationWorkerLease');
+  const end=source.indexOf('async function acquireOperatorAutomationLease',start);
+  assert.ok(start>=0&&end>start,'worker lease guard missing');
+  const block=source.slice(start,end);
+  const leaseGuard=block.indexOf('if(!activeLease||token!==workerToken)');
+  const modeGuard=block.indexOf("if(String(row.mode)!=='autonomous')");
+  assert.ok(leaseGuard>=0&&modeGuard>leaseGuard,'lease ownership must be checked before worker mode');
+});
+
 test('Automation detects stale Timeline asset selection and upstream versions',()=>{
   const payload={
     scenePlanVersion:2,
