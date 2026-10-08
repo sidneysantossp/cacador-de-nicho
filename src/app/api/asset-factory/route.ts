@@ -5,7 +5,7 @@ import {
   attachOwnedMediaToScene, deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
   resolveOwnedMediaForPromptSet, resolveOwnedMediaForScene, selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
-import { remediateMotionCoverageFromPriorVideos, resolveSourceForScene } from '@/lib/server/source-router';
+import { remediateMotionCoverageFromPriorVideos, remediateSourceDiversity, resolveSourceForScene } from '@/lib/server/source-router';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -45,6 +45,11 @@ const schema=z.discriminatedUnion('action',[
     action:z.literal('remediateMotionCoverage'),
     promptSetId:z.string().uuid(),
     maxScenes:z.number().int().min(1).max(96).optional()
+  }).strict(),
+  z.object({
+    action:z.literal('remediateSourceDiversity'),
+    promptSetId:z.string().uuid(),
+    maxScenes:z.number().int().min(1).max(32).optional()
   }).strict(),
   z.object({
     action:z.literal('resolveOwnedPlan'),
@@ -160,6 +165,18 @@ export async function POST(request:Request){
           :result.exhausted
             ?'Motion remediation esgotou os candidatos elegíveis.'
             :'Motion remediation concluiu um lote e ainda possui candidatos.',
+        result
+      });
+    }
+    if(body.action==='remediateSourceDiversity'){
+      const result=await remediateSourceDiversity({
+        promptSetId:body.promptSetId,
+        maxScenes:body.maxScenes
+      });
+      return Response.json({
+        message:result.complete
+          ?'Source diversity foi normalizada.'
+          :'Source diversity ainda possui rejeições após o lote.',
         result
       });
     }
