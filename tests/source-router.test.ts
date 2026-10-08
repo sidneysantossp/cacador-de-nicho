@@ -391,7 +391,7 @@ test('Source route execution key changes when query or fallback chain changes',(
 test('Source Router persists terminal route state only after downstream fallbacks are exhausted',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');
   assert.match(source,/async function markSourceRouteTerminal/);
-  assert.match(source,/sourceRouteExecutionKey\(input\.route\)/);
+  assert.match(source,/sourceRouteExecutionKey\(input\.route,input\.sourceQuery\)/);
   assert.match(source,/sourceRouteTerminal/);
   const videoGap=source.indexOf('videoExhausted=true');
   const terminalHelperCall=source.lastIndexOf('await markSourceRouteTerminal');
