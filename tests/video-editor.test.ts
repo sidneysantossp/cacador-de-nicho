@@ -5,7 +5,7 @@ import type {
 } from '../src/lib/types';
 import {
   buildCaptionCues, buildInitialVideoEdit, captionQaIssues, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
-  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload, videoEditorChapterCaptions,
+  normalizeVideoEdit, suggestMusicTrack, suggestSfxEvents, upgradeVideoEditPayload, videoEditorChapterCaptions,
   videoEditorChapterClips, videoEditorChapters,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
@@ -232,6 +232,26 @@ test('Audio asset gate distinguishes music and SFX resources',()=>{
   }];
   assert.deepEqual(videoEditAudioAssetIssues(value,[music,sfx]),[]);
   assert.ok(videoEditAudioAssetIssues(value,[sfx]).includes('music-asset-missing'));
+});
+
+test('Headless music selection prefers favorites and Production DNA style tags',()=>{
+  const value=edit();
+  const neutral=audioAsset({
+    id:'50111111-1111-4111-8111-111111111111',kind:'music',tags:['ambient'],favorite:false
+  });
+  const preferred=audioAsset({
+    id:'50211111-1111-4111-8111-111111111111',kind:'music',tags:['cinematic','documentary'],favorite:true
+  });
+  const musicDna={
+    ...dna,
+    editing:{...dna.editing,musicStyle:['cinematic']}
+  } as ProductionDNA;
+  const track=suggestMusicTrack(value,[neutral,preferred],musicDna);
+  assert.ok(track);
+  assert.equal(track.assetId,preferred.id);
+  assert.equal(track.endSeconds,value.durationSeconds);
+  assert.equal(track.loop,true);
+  assert.equal(track.duckUnderVoice,true);
 });
 
 test('Auto SFX suggests transition and emphasis events from tagged library',()=>{
