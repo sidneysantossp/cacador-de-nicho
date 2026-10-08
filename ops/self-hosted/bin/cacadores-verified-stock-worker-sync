@@ -106,6 +106,9 @@ DEFERRED_WORKERS=0
 
 if ! main_matches_target; then
   if remove_after_drain "$CONTAINER"; then
+    if [[ "$DRAIN_FILE" == /tmp/* ]]; then
+      rm -f "$WORK_DIR/${DRAIN_FILE#/tmp/}"
+    fi
     docker run -d \
       --name "$CONTAINER" \
       --restart unless-stopped \
