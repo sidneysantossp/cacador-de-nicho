@@ -131,7 +131,8 @@ test('Automatic paid image generation is gated by episode cost policy before pro
   assert.match(source,/AUTOMATION_VISUAL_EPISODE_BUDGET_USD/);
   assert.match(source,/AUTOMATION_GOOGLE_IMAGE_ESTIMATED_COST_USD/);
   assert.match(source,/visualGenerationBudgetDecision/);
-  assert.match(source,/generation-cost-unknown|visual-budget-exceeded/);
+  assert.match(source,/status:'deferred'/);
+  assert.match(source,/reason:cost\.reason/);
   const decisionIndex=source.indexOf('const cost=visualGenerationBudgetDecision');
   const generateIndex=source.indexOf('const asset=await generateGoogleImage',decisionIndex);
   assert.ok(decisionIndex>=0&&generateIndex>decisionIndex,'budget decision must happen before paid generation');
