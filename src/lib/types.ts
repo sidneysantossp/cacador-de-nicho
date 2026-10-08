@@ -1268,6 +1268,9 @@ export type SceneAssetVisualQa = {
  visualClass: SceneAssetVisualClass;
  issues: string[];
  summary: string;
+ focusX?: number | null;
+ focusY?: number | null;
+ focusLabel?: string | null;
  motion?: {
   sampledFrames: number;
   freezeSeconds: number | null;
