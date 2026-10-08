@@ -368,6 +368,20 @@ test('Source selection applies diversity before reusing OWNED or stock sources',
   assert.match(stock,/sourceDiversityReason/);
 });
 
+test('Stock image replacement applies source diversity before importing or selecting the candidate',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/async function selectedStockReuseObservations/);
+  assert.match(source,/sourceType:'stock'/);
+  assert.match(source,/stage:'source-diversity'/);
+  const stillStart=source.indexOf('async function resolveStillCandidates');
+  const diversityIndex=source.indexOf('const reuse=sourceReuseDecision',stillStart);
+  const importIndex=source.indexOf('asset=await importStockMedia',stillStart);
+  assert.ok(
+    stillStart>=0&&diversityIndex>stillStart&&importIndex>diversityIndex,
+    'stock image diversity must run before import/select'
+  );
+});
+
 test('Source Router can bypass an already-selected asset when diversity requires replacement',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');
   assert.match(source,/forceSelectedReplacement\?:boolean/);
