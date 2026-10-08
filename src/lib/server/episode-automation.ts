@@ -1620,11 +1620,11 @@ async function assertAutomationWorkerLease(runId:string,workerToken:string){
   const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
   const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
 
-  if(String(row.mode)!=='autonomous'){
-    throw new HttpError('Worker só pode avançar runs Autonomous.',409);
-  }
   if(!activeLease||token!==workerToken){
     throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
+  }
+  if(String(row.mode)!=='autonomous'){
+    throw new HttpError('Worker só pode avançar runs Autonomous.',409);
   }
 }
 
