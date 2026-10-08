@@ -7,6 +7,7 @@ export type SourceRouteAction =
   | 'stock-video'
   | 'generated-image'
   | 'generated-video'
+  | 'youtube-cc'
   | 'manual-archive'
   | 'manual-map'
   | 'manual-document';
@@ -106,7 +107,7 @@ export function sourceRouteForScene(
   if(preference==='stock-video'){
     return {
       sceneId:scene.id,beatId:beat?.id??null,preference,query,
-      actions:['owned','stock-video','stock-image'],
+      actions:['owned','stock-video','stock-image','youtube-cc'],
       syntheticAllowed:false,
       rationale:'Live-action/motion beat: real footage first, still image as factual fallback.'
     };
@@ -130,7 +131,7 @@ export function sourceRouteForScene(
   if(preference==='mixed'){
     return {
       sceneId:scene.id,beatId:beat?.id??null,preference,query,
-      actions:['owned','wikimedia','stock-video','stock-image','generated-image'],
+      actions:['owned','wikimedia','stock-video','stock-image','youtube-cc','generated-image'],
       syntheticAllowed:true,
       rationale:'Mixed beat: exhaust reusable and real sources before generation.'
     };

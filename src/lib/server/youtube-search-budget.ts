@@ -22,9 +22,12 @@ export async function loadYouTubeSearchBudget(now=new Date()):Promise<YouTubeSea
   if(result.error)throw new HttpError('Falha ao ler o orçamento diário de buscas do YouTube.',502);
   const raw=result.data?.payload as YouTubeSearchBudgetState|undefined;
   if(!raw||raw.kind!=='youtube-search-budget'||raw.pacificDate!==pacificDate(now))return emptyYouTubeSearchBudget(now);
+  const base=emptyYouTubeSearchBudget(now);
   return {
-    ...emptyYouTubeSearchBudget(now),
+    ...base,
     ...raw,
+    byPurpose:{...base.byPurpose,...raw.byPurpose},
+    purposeLimits:{...base.purposeLimits,...raw.purposeLimits},
     remaining:Math.max(0,(raw.limit??100)-(raw.used??0))
   };
 }

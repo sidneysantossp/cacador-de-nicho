@@ -247,7 +247,9 @@ export type MissionBrief = {
  blockers: string[];
  notes: string[];
 };
-export type YouTubeSearchPurpose = 'reference-resolution' | 'radar-discovery' | 'channel-resolution' | 'channel-study' | 'similar-channels';
+export type YouTubeSearchPurpose =
+ 'reference-resolution' | 'radar-discovery' | 'channel-resolution' |
+ 'channel-study' | 'similar-channels' | 'source-media';
 export type YouTubeSearchBudgetState = {
  kind: 'youtube-search-budget';
  id: string;

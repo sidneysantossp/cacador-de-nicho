@@ -26,6 +26,9 @@ import {
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 import {
+  isYouTubeSearchQuotaError, searchYouTubeCreativeCommonsSources
+} from './youtube';
+import {
   visualGenerationBudgetDecision, type VisualCostSnapshot
 } from '@/lib/production-cost-policy';
 
@@ -450,6 +453,42 @@ export async function resolveSourceForScene(input:{
       const queued=await enqueueVerifiedStockJob(jobInput);
       attempts.push({action,status:'queued',jobId:queued.id});
       return {status:'queued' as const,route,action,job:queued,attempts};
+    }
+
+    if(action==='youtube-cc'){
+      try{
+        const candidates=await searchYouTubeCreativeCommonsSources(route.query,6);
+        attempts.push({
+          action,
+          status:candidates.length?'operator-source-required':'gap',
+          candidates
+        });
+        if(candidates.length){
+          return {
+            status:'operator-source-required' as const,
+            route,
+            action,
+            reason:'Foram encontrados vídeos Creative Commons no YouTube. A plataforma preservou provenance e exige uma origem direta autorizada para ingestão do arquivo, sem baixar a watch page por scraping.',
+            candidates,
+            attempts
+          };
+        }
+      }catch(error){
+        if(isYouTubeSearchQuotaError(error)){
+          attempts.push({
+            action,
+            status:'skipped',
+            reason:'youtube-search-budget-unavailable'
+          });
+          continue;
+        }
+        attempts.push({
+          action,
+          status:'failed',
+          error:error instanceof Error?error.message:'Falha ao buscar fontes Creative Commons no YouTube.'
+        });
+      }
+      continue;
     }
 
     if(action==='generated-image'){
