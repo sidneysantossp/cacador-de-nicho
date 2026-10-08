@@ -681,7 +681,7 @@ async function ensureStockVisualIndex(assetId:string){
   }
 }
 
-function stockProviderSearchShouldTrip(error:unknown){
+export function stockProviderSearchShouldTrip(error:unknown){
   const status=error instanceof HttpError?error.status:500;
   const message=error instanceof Error?error.message:'';
   return (

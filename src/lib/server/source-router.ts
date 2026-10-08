@@ -11,7 +11,7 @@ import {
   deleteSceneAsset, generateGoogleImage, resolveOwnedMediaForScene, selectSceneAsset
 } from './asset-factory';
 import {
-  importStockMedia, searchStockMedia
+  importStockMedia, searchStockMedia, stockProviderSearchShouldTrip
 } from './stock-media';
 import {
   enqueueVerifiedStockJob, loadVerifiedStockJob, restartVerifiedStockJob
@@ -362,13 +362,28 @@ export async function resolveSourceForScene(input:{
 
     if(action==='stock-image'){
       for(const provider of STOCK_IMAGE_PROVIDERS){
-        const result=await resolveStillCandidates({
-          promptSetId:input.promptSetId,
-          sceneId:input.sceneId,
-          query:route.query,
-          provider,
-          minimumRelevance:.42
-        });
+        let result:Awaited<ReturnType<typeof resolveStillCandidates>>;
+        try{
+          result=await resolveStillCandidates({
+            promptSetId:input.promptSetId,
+            sceneId:input.sceneId,
+            query:route.query,
+            provider,
+            minimumRelevance:.42
+          });
+        }catch(error){
+          if(stockProviderSearchShouldTrip(error)){
+            attempts.push({
+              action,
+              provider,
+              status:'skipped',
+              reason:'transient-provider-failure',
+              error:error instanceof Error?error.message:'Falha transitória no provider stock.'
+            });
+            continue;
+          }
+          throw error;
+        }
         attempts.push({action,provider,status:result.status,details:result.attempts});
         if(result.status==='matched'){
           if(videoFirst&&videoExhausted&&result.asset){
