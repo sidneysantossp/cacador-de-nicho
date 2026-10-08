@@ -509,6 +509,14 @@ test('Verified Stock worker only treats a selected motion-QA video as resolved',
 
 
 
+test('Verified stock sync clears a persisted main-worker drain marker before launching the replacement',()=>{
+  const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
+  const removeIndex=source.indexOf('if remove_after_drain "$CONTAINER"; then');
+  const clearIndex=source.indexOf('rm -f "$WORK_DIR/${DRAIN_FILE#/tmp/}"',removeIndex);
+  const runIndex=source.indexOf('docker run -d',removeIndex);
+  assert.ok(removeIndex>=0&&clearIndex>removeIndex&&runIndex>clearIndex);
+});
+
 test('Verified stock sync keeps fast workers on the promoted release and stable URL',()=>{
   const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
   assert.match(source,/FAST_WORKERS="\$\{VERIFIED_STOCK_FAST_WORKERS:-5\}"/);
