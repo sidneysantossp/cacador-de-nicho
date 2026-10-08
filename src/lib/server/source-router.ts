@@ -417,14 +417,15 @@ async function priorVersionVideoRows(promptSetId:string,currentSceneIds:Set<stri
     .eq('selected',true)
     .limit(2500)) as PriorVideoRow[];
   return (rows??[]).filter(row=>{
-    if(currentSceneIds.has(String(row.scene_id)))return false;
     if(!row.storage_path)return false;
     const payload=objectValue(row.payload);
     const qa=objectValue(payload.visualQa);
     const motion=objectValue(qa.motion);
     const license=objectValue(payload.license);
     return qa.status==='pass'&&motion.meaningfulMotion!==false&&String(license.type??'unknown')!=='unknown';
-  });
+  }).sort((a,b)=>
+    Number(currentSceneIds.has(String(b.scene_id)))-Number(currentSceneIds.has(String(a.scene_id)))
+  );
 }
 
 async function attachPriorVersionVideo(input:{
