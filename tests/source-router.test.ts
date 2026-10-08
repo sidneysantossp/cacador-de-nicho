@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion,
-  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene,
+  sourceDiversityAssessment, sourceReuseDecision, sourceRouteExecutionKey, sourceRouteForScene,
   sourceRouteRequiresAuthenticEvidence
 } from '../src/lib/source-router-policy';
 
@@ -372,6 +372,32 @@ test('Source Router can bypass an already-selected asset when diversity requires
   const source=readFileSync('src/lib/server/source-router.ts','utf8');
   assert.match(source,/forceSelectedReplacement\?:boolean/);
   assert.match(source,/force:input\.forceSelectedReplacement===true/);
+});
+
+test('Source route execution key changes when query or fallback chain changes',()=>{
+  const base=sourceRouteForScene(scene(beat({
+    type:'literal',
+    sourcePreference:'stock-video',
+    queries:['pedestrians crossing busy city intersection']
+  })));
+  const same={...base,actions:[...base.actions]};
+  const changedQuery={...base,query:'crowd navigating urban sidewalk'};
+  const changedActions={...base,actions:[...base.actions,'generated-image' as const]};
+  assert.equal(sourceRouteExecutionKey(base),sourceRouteExecutionKey(same));
+  assert.notEqual(sourceRouteExecutionKey(base),sourceRouteExecutionKey(changedQuery));
+  assert.notEqual(sourceRouteExecutionKey(base),sourceRouteExecutionKey(changedActions));
+});
+
+test('Source Router persists terminal route state only after downstream fallbacks are exhausted',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/async function markSourceRouteTerminal/);
+  assert.match(source,/sourceRouteExecutionKey\(input\.route\)/);
+  assert.match(source,/sourceRouteTerminal/);
+  const videoGap=source.indexOf('videoExhausted=true');
+  const terminalHelperCall=source.lastIndexOf('await markSourceRouteTerminal');
+  const finalGap=source.lastIndexOf("status:'gap' as const");
+  assert.ok(videoGap>=0&&terminalHelperCall>videoGap,'terminal route state must not be written at stock-video gap');
+  assert.ok(finalGap>terminalHelperCall,'terminal route state must be written before final route gap return');
 });
 
 test('Source Router requeues verified stock when the enriched visual query changes',()=>{
