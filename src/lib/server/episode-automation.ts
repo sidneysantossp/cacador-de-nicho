@@ -43,8 +43,10 @@ import {
 import { recordAutopilotIncident } from './autopilot-incidents';
 import { documentaryScriptClaimIssues } from '@/lib/script-policy';
 import {
-  applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceDiversityAssessment, sourceRouteForScene
+  applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceDiversityAssessment,
+  sourceRouteForScene, sourceRouteRequiresAuthenticEvidence
 } from '@/lib/source-router-policy';
+import { STOCK_DISCOVERY_POLICY_VERSION } from '@/lib/stock-media-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -1304,14 +1306,14 @@ async function executeAutomationTransition(
       if(!run.policy.autoGenerateVisualAssets)throw new HttpError('Geração automática de assets visuais está desativada.',409);
       const promptSetId=automationStep(run,'visual-prompts')?.entityId;
       if(!promptSetId)throw new HttpError('Visual Prompt Set aprovado não identificado.',409);
-      const [promptSet,assets,activeStockRows]=await Promise.all([
+      const [promptSet,assets,stockRows]=await Promise.all([
         loadVisualPromptSet(promptSetId),
         listSceneAssets(promptSetId),
         db().from('radar_verified_stock_jobs')
-          .select('scene_id,status')
+          .select('scene_id,status,result')
           .eq('visual_prompt_set_id',promptSetId)
-          .in('status',['queued','processing'])
-          .limit(1000)
+          .in('status',['queued','processing','completed'])
+          .limit(5000)
       ]);
       if(!promptSet)throw new HttpError('Visual Prompt Set não encontrado.',404);
       if(promptSet.status!=='approved')throw new HttpError('Visual Prompt Set precisa estar aprovado.',409);
@@ -1351,20 +1353,47 @@ async function executeAutomationTransition(
       const selectedReadySceneIds=selectedReadyAssetsBase
         .filter(asset=>diversityAcceptedScenes.has(asset.sceneId))
         .map(asset=>asset.sceneId);
-      const activeStockSceneIds=(checked(activeStockRows)??[])
+      const verifiedRows=checked(stockRows)??[];
+      const activeStockSceneIds=verifiedRows
+        .filter(row=>row.status==='queued'||row.status==='processing')
+        .map(row=>String(row.scene_id??''))
+        .filter(Boolean);
+      const deferredSceneIds=verifiedRows
+        .filter(row=>{
+          if(row.status!=='completed')return false;
+          const result=row.result&&typeof row.result==='object'
+            ?row.result as Record<string,unknown>
+            :{};
+          return (
+            result.status==='gap'&&
+            String(result.discoveryPolicyVersion??'')===STOCK_DISCOVERY_POLICY_VERSION
+          );
+        })
         .map(row=>String(row.scene_id??''))
         .filter(Boolean);
       const batch=visualAssetBatchPlan({
         sceneIds:promptSet.scenePrompts.map(item=>item.sceneId),
         selectedReadySceneIds,
         activeStockSceneIds,
+        deferredSceneIds,
         batchSize:VISUAL_ASSET_BATCH_SIZE
       });
 
       if(!batch.missing.length)return 'Todos os assets visuais já estão cobertos.';
       if(!batch.targets.length){
-        return String(batch.waiting.length)+
-          ' cena(s) aguardando validação stock já enfileirada; nenhum novo job foi duplicado.';
+        if(batch.waiting.length){
+          return String(batch.waiting.length)+
+            ' cena(s) aguardando validação stock já enfileirada; nenhum novo job foi duplicado.';
+        }
+        if(batch.deferred.length){
+          throw new HttpError(
+            String(batch.deferred.length)+
+            ' cena(s) esgotaram as fontes automáticas atuais após todas as cenas frescas serem processadas. '+
+            'Revisão do operador é necessária apenas para estas exceções.',
+            409
+          );
+        }
+        return 'Nenhuma cena visual elegível para novo processamento.';
       }
 
       const byScene=new Map(promptSet.scenePrompts.map(item=>[item.sceneId,item]));
@@ -1372,6 +1401,7 @@ async function executeAutomationTransition(
       let processed=0;
       let matched=0;
       let queued=0;
+      let deferred=0;
       const actions=new Map<string,number>();
 
       for(const sceneId of batch.targets){
@@ -1423,19 +1453,29 @@ async function executeAutomationTransition(
           queued++;
           continue;
         }
+        const authenticEvidence=sourceRouteRequiresAuthenticEvidence(routed.route);
         if(routed.status==='operator-source-required'){
+          if(authenticEvidence){
+            throw new HttpError(
+              'Source Router pausou '+target.timecodeLabel+
+              ': '+routed.reason+
+              ' A geração sintética permanece bloqueada para este beat factual.',
+              409
+            );
+          }
+          deferred++;
+          actions.set('deferred-external-source',(actions.get('deferred-external-source')??0)+1);
+          continue;
+        }
+        if(authenticEvidence){
           throw new HttpError(
-            'Source Router pausou '+target.timecodeLabel+
-            ': '+routed.reason+
-            ' A geração sintética permanece bloqueada para este beat factual.',
+            'Source Router não encontrou fonte factual aprovada para '+target.timecodeLabel+
+            ': '+routed.reason,
             409
           );
         }
-        throw new HttpError(
-          'Source Router não encontrou fonte aprovada para '+target.timecodeLabel+
-          ': '+routed.reason,
-          409
-        );
+        deferred++;
+        actions.set('deferred-source-gap',(actions.get('deferred-source-gap')??0)+1);
       }
 
       const remainingEligible=Math.max(0,batch.eligible.length-processed);
@@ -1443,9 +1483,10 @@ async function executeAutomationTransition(
         .map(([action,count])=>action+':'+count)
         .join(', ');
       return 'Lote visual processou '+processed+' cena(s): '+
-        matched+' coberta(s), '+queued+' enfileirada(s). '+
+        matched+' coberta(s), '+queued+' enfileirada(s), '+deferred+' deferida(s). '+
         remainingEligible+' elegível(is) para próximos lotes; '+
-        batch.waiting.length+' já aguardando stock. '+
+        batch.waiting.length+' já aguardando stock; '+
+        batch.deferred.length+' gap(s) anteriores fora da fila fresca. '+
         (actionSummary?'Rotas '+actionSummary+'. ':'')+
         'Batch '+VISUAL_ASSET_BATCH_SIZE+
         ' · budget '+Math.round(VISUAL_ASSET_BATCH_BUDGET_MS/1000)+'s.';
