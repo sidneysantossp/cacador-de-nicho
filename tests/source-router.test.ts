@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion,
-  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene
+  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene,
+  sourceRouteRequiresAuthenticEvidence
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
@@ -137,6 +138,44 @@ test('Automatic paid image generation is gated by episode cost policy before pro
   const generateIndex=source.indexOf('const asset=await generateGoogleImage',decisionIndex);
   assert.ok(decisionIndex>=0&&generateIndex>decisionIndex,'budget decision must happen before paid generation');
   assert.match(source,/estimatedCostUsd:cost\.estimatedCostUsd/);
+});
+
+test('Motion-first stock video is not mislabeled as authentic documentary evidence',()=>{
+  const route=sourceRouteForScene(
+    scene(beat({
+      type:'literal',
+      sourcePreference:'stock-video',
+      narration:'cuts through traffic two people start arguing',
+      queries:['cuts through traffic two people start arguing']
+    }))
+  );
+  assert.equal(route.preference,'stock-video');
+  assert.equal(route.syntheticAllowed,false);
+  assert.equal(sourceRouteRequiresAuthenticEvidence(route),false);
+});
+
+test('Document, map, archive, and explicit documentary evidence still require authentic sources',()=>{
+  for(const sourcePreference of ['document','map','archive-image'] as const){
+    const route=sourceRouteForScene(
+      scene(beat({
+        type:'literal',
+        sourcePreference,
+        narration:'historical evidence',
+        queries:['historical evidence']
+      }))
+    );
+    assert.equal(sourceRouteRequiresAuthenticEvidence(route),true);
+  }
+  const explicit=sourceRouteForScene(
+    scene(beat({
+      type:'generated',
+      sourcePreference:'generated',
+      narration:'show the evidence',
+      queries:['show the evidence']
+    })),
+    'Documentary evidence for: official public record'
+  );
+  assert.equal(sourceRouteRequiresAuthenticEvidence(explicit),true);
 });
 
 test('Source Router keeps archive beats on real-source routes',()=>{
@@ -300,6 +339,12 @@ test('Documentary mode keeps archive document and map routes factual rather than
     assert.equal(route.actions.includes('generated-image'),false);
     assert.equal(route.syntheticAllowed,false);
   }
+});
+
+test('Source Router reports ordinary motion-first exhaustion without factual wording',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/sourceRouteRequiresAuthenticEvidence\(route\)/);
+  assert.match(source,/Nenhuma fonte real motion-first passou pelos gates automáticos/);
 });
 
 test('Source selection applies diversity before reusing OWNED or stock sources',()=>{

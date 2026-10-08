@@ -186,20 +186,26 @@ export function visualAssetBatchPlan(input:{
   sceneIds:string[];
   selectedReadySceneIds:string[];
   activeStockSceneIds:string[];
+  deferredSceneIds?:string[];
   batchSize:number;
 }){
   const selected=new Set(input.selectedReadySceneIds);
   const active=new Set(input.activeStockSceneIds);
+  const deferredSet=new Set(input.deferredSceneIds??[]);
   const ordered=[...new Set(input.sceneIds.filter(Boolean))];
   const missing=ordered.filter(sceneId=>!selected.has(sceneId));
   const waiting=missing.filter(sceneId=>active.has(sceneId));
   const eligible=missing.filter(sceneId=>!active.has(sceneId));
+  const freshEligible=eligible.filter(sceneId=>!deferredSet.has(sceneId));
+  const deferred=eligible.filter(sceneId=>deferredSet.has(sceneId));
   const batchSize=Math.max(1,Math.min(20,Math.floor(input.batchSize)||1));
   return {
     missing,
     waiting,
     eligible,
-    targets:eligible.slice(0,batchSize)
+    freshEligible,
+    deferred,
+    targets:freshEligible.slice(0,batchSize)
   };
 }
 
