@@ -2020,13 +2020,15 @@ export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun
   }=null;
 
   if(promptSetId){
-    const [promptSet,assets,stockRows]=await Promise.all([
-      loadVisualPromptSet(promptSetId),
+    const promptSet=await loadVisualPromptSet(promptSetId);
+    const [assets,stockRows,scenePlan,dna]=await Promise.all([
       listSceneAssets(promptSetId),
       db().from('radar_verified_stock_jobs')
         .select('status')
         .eq('visual_prompt_set_id',promptSetId)
-        .limit(5000)
+        .limit(5000),
+      promptSet?loadScenePlan(promptSet.scenePlanId):Promise.resolve(null),
+      promptSet?loadProductionDna(promptSet.channelId):Promise.resolve(null)
     ]);
     const rows=checked(stockRows)??[];
     const queue={queued:0,processing:0,completed:0,failed:0};
@@ -2035,15 +2037,47 @@ export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun
       if(status in queue)queue[status]++;
     }
 
-    const selectedPass=assets.filter(asset=>
-      asset.selected&&asset.status==='ready'&&asset.visualQa?.status==='pass'
-    );
+    const currentSceneIds=new Set(promptSet?.scenePrompts.map(item=>item.sceneId)??[]);
+    const scenesById=new Map(scenePlan?.scenes.map(scene=>[scene.id,scene])??[]);
+    const promptsByScene=new Map(promptSet?.scenePrompts.map(prompt=>[prompt.sceneId,prompt])??[]);
+    const documentaryMode=dna?.research?.documentaryMode===true;
+    const selectedPassBase=assets
+      .filter(asset=>
+        currentSceneIds.has(asset.sceneId)&&
+        asset.selected&&asset.status==='ready'&&!asset.stale&&
+        asset.visualQa?.status==='pass'
+      )
+      .filter(asset=>{
+        const scene=scenesById.get(asset.sceneId);
+        if(!scene)return false;
+        const prompt=promptsByScene.get(asset.sceneId);
+        const route=applyDocumentarySourcePolicy(
+          sourceRouteForScene(scene,prompt?.direction),
+          documentaryMode
+        );
+        return motionRouteAssetSatisfied({
+          route,
+          assetKind:asset.assetKind,
+          payload:asset
+        });
+      });
+    const diversity=sourceDiversityAssessment(selectedPassBase.flatMap(asset=>{
+      const scene=scenesById.get(asset.sceneId);
+      return scene?[{
+        sceneId:asset.sceneId,
+        sceneSequence:Number(scene.sequence),
+        payload:asset
+      }]:[];
+    }));
+    const acceptedScenes=new Set(diversity.acceptedSceneIds);
+    const selectedPass=selectedPassBase.filter(asset=>acceptedScenes.has(asset.sceneId));
     const selectedPassByScene=new Map<string,(typeof selectedPass)[number]>();
     for(const asset of selectedPass){
       if(!selectedPassByScene.has(asset.sceneId))selectedPassByScene.set(asset.sceneId,asset);
     }
     const selectedPassScenes=[...selectedPassByScene.values()];
     const generatedActive=assets.filter(asset=>
+      currentSceneIds.has(asset.sceneId)&&
       asset.sourceType==='generated'&&
       asset.status!=='failed'&&asset.status!=='rejected'
     );
