@@ -26,7 +26,9 @@ export function renderPresetOutput(
 }
 
 export function renderEncoderPreset(preset:RenderPreset):RenderEncoderPreset{
-  return preset==='draft-720p30'?'ultrafast':'medium';
+  if(preset==='draft-720p30')return 'ultrafast';
+  if(preset==='hd-1080p30')return 'veryfast';
+  return 'medium';
 }
 
 export function renderPresetDefaultCrf(preset:RenderPreset){
