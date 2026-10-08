@@ -929,7 +929,14 @@ export async function selectSceneAsset(assetId:string){
 export async function deleteSceneAsset(assetId:string){
   const asset=await rawAsset(assetId);
   if(!asset)throw new HttpError('Asset não encontrado.',404);
-  if(asset.storagePath&&sceneAssetOwnsStorage(asset)){
+  const payloadRow=checked(await db().from('radar_scene_assets')
+    .select('payload').eq('id',asset.id).maybeSingle());
+  const payload=(payloadRow?.payload??{}) as Record<string,unknown>;
+  const priorReuse=payload.priorVersionReuse&&typeof payload.priorVersionReuse==='object'
+    ?payload.priorVersionReuse as Record<string,unknown>
+    :{};
+  const sharedStorage=Boolean(String(priorReuse.sourceAssetId??'').trim());
+  if(asset.storagePath&&sceneAssetOwnsStorage(asset)&&!sharedStorage){
     try{await removeMedia(asset.storagePath);}
     catch{throw new HttpError('Falha ao remover o arquivo do storage.',502);}
   }
