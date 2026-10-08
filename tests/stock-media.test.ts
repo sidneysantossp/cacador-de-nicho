@@ -474,6 +474,15 @@ test('Verified stock sync keeps fast workers on the promoted release and stable 
 });
 
 
+test('Verified stock asks Visual Intelligence for a non-overlapping microcut before rejecting source reuse',()=>{
+  const source=readFileSync('src/lib/server/stock-media.ts','utf8');
+  const intelligence=readFileSync('src/lib/server/visual-intelligence.ts','utf8');
+  assert.match(source,/const excludedSourceRanges=priorUses/);
+  assert.match(source,/desiredDurationSeconds:input\.desiredDurationSeconds,\n\s+excludedSourceRanges/);
+  assert.match(intelligence,/selectVisualSegmentWindow/);
+  assert.match(intelligence,/excludedSourceRanges:input\.excludedSourceRanges/);
+});
+
 test('Verified stock requires Pre-Render Visual QA for every accepted video path',()=>{
   const source=readFileSync('src/lib/server/stock-media.ts','utf8');
   assert.match(source,/ensureStockVisualIndex/);

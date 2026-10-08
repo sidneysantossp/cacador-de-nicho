@@ -818,6 +818,16 @@ export async function resolveVerifiedStockMediaForScene(input:{
       );
       const reuseKey=provider+':'+candidate.result.providerAssetId;
       const priorUses=stockUses.get(reuseKey)??[];
+      const excludedSourceRanges=priorUses
+        .filter(item=>
+          Number.isFinite(item.sourceStartSeconds)&&
+          Number.isFinite(item.sourceEndSeconds)&&
+          Number(item.sourceEndSeconds)-Number(item.sourceStartSeconds)>=.20
+        )
+        .map(item=>({
+          startSeconds:Number(item.sourceStartSeconds),
+          endSeconds:Number(item.sourceEndSeconds)
+        }));
       const reuseBeforeAcquisition=sourceReuseDecision({
         sourceType:'stock',
         targetSequence:scene.sequence,
@@ -867,7 +877,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
             match=await bestVisualSegment({
               assetId:verificationAssetId,
               query:validationQuery,
-              desiredDurationSeconds:input.desiredDurationSeconds
+              desiredDurationSeconds:input.desiredDurationSeconds,
+              excludedSourceRanges
             });
             visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
             combinedScore=searchRelevance*.55+visualRelevance*.45;
@@ -945,7 +956,8 @@ export async function resolveVerifiedStockMediaForScene(input:{
             match=await bestVisualSegment({
               assetId:asset.id,
               query:validationQuery,
-              desiredDurationSeconds:input.desiredDurationSeconds
+              desiredDurationSeconds:input.desiredDurationSeconds,
+              excludedSourceRanges
             });
             visualRelevance=match?scoreVisualSegment(validationQuery,match.segment.searchText):0;
             combinedScore=searchRelevance*.55+visualRelevance*.45;
