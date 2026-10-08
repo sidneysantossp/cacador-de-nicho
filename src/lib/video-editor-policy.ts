@@ -163,11 +163,17 @@ export function documentaryClipStyle(
     const y=clamp((focusY-.5)*1.5,-.7,.7);
     const offCenter=Math.abs(x)>.12||Math.abs(y)>.12;
     motion=offCenter
-      ?{
-        motionPreset:'custom',
-        scaleStart:1.02,scaleEnd:1.10,
-        xStart:0,xEnd:x,yStart:0,yEnd:y
-      }
+      ?(index%2===0
+        ?{
+          motionPreset:'custom',
+          scaleStart:1.02,scaleEnd:1.10,
+          xStart:0,xEnd:x,yStart:0,yEnd:y
+        }
+        :{
+          motionPreset:'custom',
+          scaleStart:1.10,scaleEnd:1.02,
+          xStart:x,xEnd:0,yStart:y,yEnd:0
+        })
       :(index%2===0
         ?{motionPreset:'zoom-in',...motionPresetValues('zoom-in')}
         :{motionPreset:'zoom-out',...motionPresetValues('zoom-out')});
@@ -422,11 +428,17 @@ export function buildInitialVideoEdit(
     transcriptVersion:transcript.version,
     format:{...timeline.format},
     durationSeconds:timeline.durationSeconds,
-    clipStyles:visualClips.map((clip,index)=>
-      documentaryClipStyle(
-        clip,index,visualClips.length,Boolean(dna?.editing.kenBurns),transitionSeconds
-      )
-    ),
+    clipStyles:visualClips.map((clip,index)=>{
+      const previous=visualClips[index-1];
+      const next=visualClips[index+1];
+      const cadenceSplit=clip.clipKind==='image'&&(
+        (previous?.sceneId===clip.sceneId&&previous?.assetId===clip.assetId)||
+        (next?.sceneId===clip.sceneId&&next?.assetId===clip.assetId)
+      );
+      return documentaryClipStyle(
+        clip,index,visualClips.length,Boolean(dna?.editing.kenBurns)||cadenceSplit,transitionSeconds
+      );
+    }),
     captions:{
       enabled:dna?.captions.enabled??(cues.length>0),
       position:captionPosition(dna?.captions.position),
