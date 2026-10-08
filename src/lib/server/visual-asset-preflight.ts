@@ -94,6 +94,14 @@ function sumFreezeSeconds(stderr:string){
   return total;
 }
 
+function sumBlackSeconds(stderr:string){
+  let total=0;
+  const regex=/black_duration:([0-9.]+)/g;
+  let match:RegExpExecArray|null;
+  while((match=regex.exec(stderr)))total+=Number(match[1]??0)||0;
+  return total;
+}
+
 function sourceTrim(payload:Record<string,unknown>){
   for(const key of ['verifiedStock','owned']){
     const item=object(payload[key]);
@@ -154,6 +162,8 @@ async function videoSamples(
 
     let freezeSeconds:number|null=null;
     let freezeRatio:number|null=null;
+    let blackSeconds:number|null=null;
+    let blackRatio:number|null=null;
     let meaningfulMotion:boolean|null=null;
     try{
       const result=await execFile(FFMPEG,[
@@ -162,15 +172,20 @@ async function videoSamples(
         '-i',input,
         '-t',duration.toFixed(3),
         '-map','0:v:0','-an',
-        '-vf','freezedetect=n=-45dB:d=0.5',
+        '-vf','blackdetect=d=0.2:pix_th=0.10,freezedetect=n=-45dB:d=0.5',
         '-f','null','-'
       ],{timeout:120000,maxBuffer:4*1024*1024});
-      freezeSeconds=Math.max(0,sumFreezeSeconds(String(result.stderr??'')));
+      const stderr=String(result.stderr??'');
+      freezeSeconds=Math.max(0,sumFreezeSeconds(stderr));
       freezeRatio=Math.max(0,Math.min(1,freezeSeconds/duration));
-      meaningfulMotion=freezeRatio<.60;
+      blackSeconds=Math.max(0,sumBlackSeconds(stderr));
+      blackRatio=Math.max(0,Math.min(1,blackSeconds/duration));
+      meaningfulMotion=freezeRatio<.60&&blackRatio<.60;
     }catch{
       freezeSeconds=null;
       freezeRatio=null;
+      blackSeconds=null;
+      blackRatio=null;
       meaningfulMotion=null;
     }
 
@@ -180,6 +195,8 @@ async function videoSamples(
         sampledFrames:frames.length,
         freezeSeconds,
         freezeRatio,
+        blackSeconds,
+        blackRatio,
         meaningfulMotion
       }
     };
