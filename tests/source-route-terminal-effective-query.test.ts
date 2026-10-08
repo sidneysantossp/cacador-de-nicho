@@ -4,11 +4,13 @@ import { readFileSync } from 'node:fs';
 import { sourceRouteExecutionKey, type SourceRoutePlan } from '../src/lib/source-router-policy';
 
 const route:SourceRoutePlan={
+  sceneId:'scene-1',
   beatId:'beat-1',
   preference:'stock-video',
   query:'without becoming another rumor feed',
   actions:['owned','stock-video','stock-image','youtube-cc'],
-  syntheticAllowed:false
+  syntheticAllowed:false,
+  rationale:'test'
 };
 
 test('Terminal route fingerprint changes when the effective sourcing query changes',()=>{
