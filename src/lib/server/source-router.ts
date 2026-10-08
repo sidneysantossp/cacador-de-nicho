@@ -625,8 +625,10 @@ export async function remediateMotionCoverageFromPriorVideos(input:{
     }
   }
 
-  const maxScenes=Math.max(1,Math.min(12,Math.floor(input.maxScenes??6)));
+  const maxScenes=Math.max(1,Math.min(96,Math.floor(input.maxScenes??24)));
+  const concurrency=3;
   let attempted=0,matched=0;
+  const attemptingSceneIds=new Set<string>();
 
   const chooseScene=()=>{
     const ordered=[...plan.scenes].sort((a,b)=>a.sequence-b.sequence);
@@ -638,7 +640,10 @@ export async function remediateMotionCoverageFromPriorVideos(input:{
       if(
         motionSceneIds.has(scene.id)&&
         kindByScene.get(scene.id)==='image'&&
-        !exhaustedSceneIds.has(scene.id)
+        selectedByScene.has(scene.id)&&
+        promptByScene.has(scene.id)&&
+        !exhaustedSceneIds.has(scene.id)&&
+        !attemptingSceneIds.has(scene.id)
       ){
         current.push(scene);duration+=scene.durationSeconds;
       }else flush();
@@ -651,41 +656,54 @@ export async function remediateMotionCoverageFromPriorVideos(input:{
   };
 
   while(attempted<maxScenes&&!targetReached()){
-    const scene=chooseScene();
-    if(!scene)break;
-    const visual=promptByScene.get(scene.id);
-    const selectedRow=selectedByScene.get(scene.id);
-    if(!visual||!selectedRow){exhaustedSceneIds.add(scene.id);continue;}
-    const route=applyDocumentarySourcePolicy(
-      sourceRouteForScene(scene,visual.direction),
-      documentaryMode
-    );
-    const query=sourceRouteRequiresAuthenticEvidence(route)
-      ?route.query
-      :stockVisualProxyQuery({canonical:route.query,direction:visual.direction});
-    attempted++;
-    const result=await attachPriorVersionVideo({
-      promptSet,scene,visual,query,candidateRows,stockUses,usedCandidateIds
-    });
-    if(result.status==='matched'){
-      matched++;
-      kindByScene.set(scene.id,'video');
-      continue;
+    const batch:NonNullable<ReturnType<typeof chooseScene>>[]=[];
+    while(batch.length<concurrency&&attempted+batch.length<maxScenes){
+      const scene=chooseScene();
+      if(!scene)break;
+      attemptingSceneIds.add(scene.id);
+      batch.push(scene);
     }
-    exhaustedSceneIds.add(scene.id);
-    const payload=objectValue(selectedRow.payload);
-    await db().from('radar_scene_assets').update({
-      payload:{
-        ...payload,
-        priorVideoReuseAttempt:{
-          policyVersion:PRIOR_VIDEO_REUSE_POLICY_VERSION,
-          status:'exhausted',
-          query,
-          attemptedAt:new Date().toISOString()
-        }
-      },
-      updated_at:new Date().toISOString()
-    }).eq('id',selectedRow.id);
+    if(!batch.length)break;
+
+    const results=await Promise.all(batch.map(async scene=>{
+      const visual=promptByScene.get(scene.id)!;
+      const selectedRow=selectedByScene.get(scene.id)!;
+      const route=applyDocumentarySourcePolicy(
+        sourceRouteForScene(scene,visual.direction),
+        documentaryMode
+      );
+      const query=sourceRouteRequiresAuthenticEvidence(route)
+        ?route.query
+        :stockVisualProxyQuery({canonical:route.query,direction:visual.direction});
+      const result=await attachPriorVersionVideo({
+        promptSet,scene,visual,query,candidateRows,stockUses,usedCandidateIds
+      });
+      return {scene,selectedRow,query,result};
+    }));
+
+    attempted+=results.length;
+    for(const item of results){
+      attemptingSceneIds.delete(item.scene.id);
+      if(item.result.status==='matched'){
+        matched++;
+        kindByScene.set(item.scene.id,'video');
+        continue;
+      }
+      exhaustedSceneIds.add(item.scene.id);
+      const payload=objectValue(item.selectedRow.payload);
+      await db().from('radar_scene_assets').update({
+        payload:{
+          ...payload,
+          priorVideoReuseAttempt:{
+            policyVersion:PRIOR_VIDEO_REUSE_POLICY_VERSION,
+            status:'exhausted',
+            query:item.query,
+            attemptedAt:new Date().toISOString()
+          }
+        },
+        updated_at:new Date().toISOString()
+      }).eq('id',item.selectedRow.id);
+    }
   }
 
   const finalStats=stats();
