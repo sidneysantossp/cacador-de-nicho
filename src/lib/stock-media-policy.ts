@@ -178,7 +178,10 @@ export function stockVisualAnalysisFallbackAllowed(input:{
 }){
   const status=Math.max(0,Math.round(input.status||0));
   const message=String(input.message??'');
+  const retiredModel404=
+    status===404&&verifiedStockGapNeedsVisualModelRecovery({error:message});
   return (
+    retiredModel404||
     status===429||status===500||status===502||status===503||status===504||
     /\b(?:timeout|timed out|temporar|unavailable|rate limit|quota|too many requests)\b/i.test(message)
   );
