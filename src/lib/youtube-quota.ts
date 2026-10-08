@@ -6,7 +6,8 @@ export const YOUTUBE_SEARCH_PURPOSE_LIMITS:Record<YouTubeSearchPurpose,number>={
   'radar-discovery':48,
   'channel-resolution':8,
   'channel-study':16,
-  'similar-channels':24
+  'similar-channels':24,
+  'source-media':20
 };
 
 export function pacificDate(now=new Date()){
@@ -34,7 +35,8 @@ export function emptyYouTubeSearchBudget(now=new Date()):YouTubeSearchBudgetStat
       'radar-discovery':0,
       'channel-resolution':0,
       'channel-study':0,
-      'similar-channels':0
+      'similar-channels':0,
+      'source-media':0
     },
     purposeLimits:{...YOUTUBE_SEARCH_PURPOSE_LIMITS},
     duplicateSkips:0,
