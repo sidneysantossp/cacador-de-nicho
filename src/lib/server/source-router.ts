@@ -528,7 +528,7 @@ export async function resolveSourceForScene(input:{
 
     if(action==='youtube-cc'){
       try{
-        const candidates=await searchYouTubeCreativeCommonsSources(route.query,6);
+        const candidates=await searchYouTubeCreativeCommonsSources(sourceQuery,6);
         attempts.push({
           action,
           status:candidates.length?'operator-source-required':'gap',
