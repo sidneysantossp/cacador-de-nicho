@@ -6,6 +6,7 @@ import type {
 const EPSILON=.02;
 const MAX_SAFE_SOURCE_EXPANSION_SECONDS=1.5;
 const MAX_SAFE_HOLD_SECONDS=.75;
+const MAX_VISUAL_BEAT_SECONDS=4;
 
 export function fitVideoSourceWindow(input:{
   sourceStartSeconds:number;
@@ -56,6 +57,17 @@ export function fitVideoSourceWindow(input:{
     shortfallSeconds,
     playback
   };
+}
+
+function cadenceWindows(startSeconds:number,endSeconds:number){
+  const duration=Math.max(0,endSeconds-startSeconds);
+  const count=Math.max(1,Math.ceil(duration/MAX_VISUAL_BEAT_SECONDS));
+  const width=count?duration/count:duration;
+  return Array.from({length:count},(_,index)=>{
+    const start=startSeconds+width*index;
+    const end=index===count-1?endSeconds:startSeconds+width*(index+1);
+    return {startSeconds:start,endSeconds:end,durationSeconds:Math.max(0,end-start)};
+  });
 }
 
 export type TimelineVisualAssetRef={
@@ -318,24 +330,25 @@ export function buildInitialTimeline(input:{
     name:'Visual',
     locked:false,
     muted:false,
-    clips:input.scenePlan.scenes.map(scene=>{
+    clips:input.scenePlan.scenes.flatMap<TimelineClip>(scene=>{
+      const windows=cadenceWindows(scene.startSeconds,scene.endSeconds);
       const asset=visualByScene.get(scene.id);
       if(!asset){
-        return {
+        return windows.map((window,partIndex)=>({
           id:crypto.randomUUID(),
           sceneId:scene.id,
           clipKind:'placeholder',
-          label:'Scene '+String(scene.sequence).padStart(3,'0')+' · missing asset',
-          startSeconds:scene.startSeconds,
-          endSeconds:scene.endSeconds,
-          durationSeconds:scene.durationSeconds,
+          label:'Scene '+String(scene.sequence).padStart(3,'0')+(windows.length>1?' · Part '+String(partIndex+1).padStart(2,'0'):'')+' · missing asset',
+          startSeconds:window.startSeconds,
+          endSeconds:window.endSeconds,
+          durationSeconds:window.durationSeconds,
           sourceStartSeconds:null,
           sourceEndSeconds:null,
           fit:'cover',
           playback:'hold',
           volume:1,
           muted:false
-        } satisfies TimelineClip;
+        } satisfies TimelineClip));
       }
 
       const isVideo=asset.assetKind==='video';
@@ -356,27 +369,48 @@ export function buildInitialTimeline(input:{
       const sourceStart=fitted?.sourceStartSeconds??rawSourceStart;
       const sourceEnd=fitted?.sourceEndSeconds??rawSourceEnd;
       const playback=isVideo?(fitted?.playback??'trim'):'hold';
+      const sourceWindow=isVideo&&sourceStart!==null&&sourceEnd!==null
+        ?Math.max(0,sourceEnd-sourceStart)
+        :0;
 
-      return {
-        id:crypto.randomUUID(),
-        sceneId:scene.id,
-        assetId:asset.id,
-        clipKind:isVideo?'video':'image',
-        label:'Scene '+String(scene.sequence).padStart(3,'0'),
-        startSeconds:scene.startSeconds,
-        endSeconds:scene.endSeconds,
-        durationSeconds:scene.durationSeconds,
-        sourceStartSeconds:sourceStart,
-        sourceEndSeconds:sourceEnd,
-        sourceWidth:asset.sourceWidth??null,
-        sourceHeight:asset.sourceHeight??null,
-        focusX:asset.focusX??null,
-        focusY:asset.focusY??null,
-        fit:'cover',
-        playback,
-        volume:1,
-        muted:false
-      } satisfies TimelineClip;
+      return windows.map((window,partIndex)=>{
+        let partSourceStart=sourceStart;
+        let partSourceEnd=sourceEnd;
+        let partPlayback=playback;
+        if(isVideo&&sourceStart!==null&&sourceEnd!==null){
+          const sceneOffset=Math.max(0,window.startSeconds-scene.startSeconds);
+          const maxOffset=Math.max(0,sourceWindow-window.durationSeconds);
+          const sourceOffset=Math.min(sceneOffset,maxOffset);
+          partSourceStart=sourceStart+sourceOffset;
+          partSourceEnd=Math.min(sourceEnd,partSourceStart+window.durationSeconds);
+          const shortfall=Math.max(0,window.durationSeconds-(partSourceEnd-partSourceStart));
+          partPlayback=shortfall<=EPSILON
+            ?'trim'
+            :shortfall<=MAX_SAFE_HOLD_SECONDS+EPSILON
+              ?'hold'
+              :playback;
+        }
+        return {
+          id:crypto.randomUUID(),
+          sceneId:scene.id,
+          assetId:asset.id,
+          clipKind:isVideo?'video':'image',
+          label:'Scene '+String(scene.sequence).padStart(3,'0')+(windows.length>1?' · Part '+String(partIndex+1).padStart(2,'0'):''),
+          startSeconds:window.startSeconds,
+          endSeconds:window.endSeconds,
+          durationSeconds:window.durationSeconds,
+          sourceStartSeconds:partSourceStart,
+          sourceEndSeconds:partSourceEnd,
+          sourceWidth:asset.sourceWidth??null,
+          sourceHeight:asset.sourceHeight??null,
+          focusX:asset.focusX??null,
+          focusY:asset.focusY??null,
+          fit:'cover',
+          playback:partPlayback,
+          volume:1,
+          muted:false
+        } satisfies TimelineClip;
+      });
     })
   };
 
@@ -486,9 +520,10 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
       if(clip.sceneId)seen.set(clip.sceneId,(seen.get(clip.sceneId)??0)+1);
       const scene=clip.sceneId?scenePlan.scenes.find(item=>item.id===clip.sceneId):null;
       if(scene&&(
-        Math.abs(clip.startSeconds-scene.startSeconds)>EPSILON||
-        Math.abs(clip.endSeconds-scene.endSeconds)>EPSILON
+        clip.startSeconds<scene.startSeconds-EPSILON||
+        clip.endSeconds>scene.endSeconds+EPSILON
       ))issues.push('visual-clip-scene-time-mismatch');
+      if(clip.durationSeconds>MAX_VISUAL_BEAT_SECONDS+EPSILON)issues.push('visual-cadence-over-4s');
 
       if(
         clip.clipKind==='video'&&
@@ -507,8 +542,15 @@ export function timelineStructuralIssues(payload:TimelinePayload,scenePlan:Scene
 
     for(const scene of scenePlan.scenes){
       const count=seen.get(scene.id)??0;
-      if(count===0)issues.push('missing-scene-clip');
-      if(count>1)issues.push('duplicate-scene-clip');
+      if(count===0){
+        issues.push('missing-scene-clip');
+        continue;
+      }
+      const sceneClips=clips.filter(clip=>clip.sceneId===scene.id);
+      if(
+        Math.abs(sceneClips[0].startSeconds-scene.startSeconds)>EPSILON||
+        Math.abs(sceneClips.at(-1)!.endSeconds-scene.endSeconds)>EPSILON
+      )issues.push('visual-scene-coverage-mismatch');
     }
   }
 
