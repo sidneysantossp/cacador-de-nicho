@@ -411,7 +411,7 @@ test('Source Router reopens stock gaps when the query compiler changes',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');
   assert.match(source,/previousCompiledQuery!==currentCompiledQuery/);
   assert.match(source,/reason:'stock-query-compiler-changed'/);
-  assert.match(source,/stockDiscoveryQuery\(route\.query\)/);
+  assert.match(source,/stockDiscoveryQuery\(sourceQuery\)/);
 });
 test('Source Router prioritizes Vecteezy in autonomous stock provider order',()=>{
   const source=readFileSync('src/lib/server/source-router.ts','utf8');

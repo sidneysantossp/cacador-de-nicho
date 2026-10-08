@@ -32,6 +32,7 @@ import {
 import {
   visualGenerationBudgetDecision, type VisualCostSnapshot
 } from '@/lib/production-cost-policy';
+import { stockVisualProxyQuery } from '@/lib/stock-visual-proxy-policy';
 
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
@@ -315,7 +316,21 @@ export async function resolveSourceForScene(input:{
     sourceRouteForScene(scene,visual?.direction),
     dna?.research?.documentaryMode===true
   );
+  const sourceQuery=sourceRouteRequiresAuthenticEvidence(route)
+    ?route.query
+    :stockVisualProxyQuery({
+      canonical:route.query,
+      direction:visual?.direction
+    });
   const attempts:Array<Record<string,unknown>>=[];
+  if(sourceQuery!==route.query){
+    attempts.push({
+      action:'query-proxy',
+      status:'compiled',
+      canonicalQuery:route.query,
+      sourceQuery
+    });
+  }
   const videoFirst=routePrefersMotion(route);
   let videoExhausted=false;
   let exhaustedStockJobId:string|null=null;
@@ -325,7 +340,7 @@ export async function resolveSourceForScene(input:{
       const result=await resolveOwnedMediaForScene({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        query:route.query,
+        query:sourceQuery,
         preferredKind:videoFirst?'video':undefined,
         force:input.forceSelectedReplacement===true
       });
@@ -367,7 +382,7 @@ export async function resolveSourceForScene(input:{
           result=await resolveStillCandidates({
             promptSetId:input.promptSetId,
             sceneId:input.sceneId,
-            query:route.query,
+            query:sourceQuery,
             provider,
             minimumRelevance:.42
           });
@@ -389,7 +404,7 @@ export async function resolveSourceForScene(input:{
           if(videoFirst&&videoExhausted&&result.asset){
             await markVideoFirstFallback({
               assetId:result.asset.id,
-              query:route.query,
+              query:sourceQuery,
               stockJobId:exhaustedStockJobId
             });
           }
@@ -403,7 +418,7 @@ export async function resolveSourceForScene(input:{
       const jobInput={
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        query:route.query,
+        query:sourceQuery,
         desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
         orientation:'landscape' as const,
         providers:STOCK_VIDEO_PROVIDERS,
@@ -452,7 +467,7 @@ export async function resolveSourceForScene(input:{
             return {status:'queued' as const,route,action,job:restarted,attempts};
           }
           const previousCompiledQuery=String(existing.result?.query??'');
-          const currentCompiledQuery=stockDiscoveryQuery(route.query);
+          const currentCompiledQuery=stockDiscoveryQuery(sourceQuery);
           if(previousCompiledQuery!==currentCompiledQuery){
             const restarted=await restartVerifiedStockJob(existing.id);
             attempts.push({
@@ -513,7 +528,7 @@ export async function resolveSourceForScene(input:{
 
     if(action==='youtube-cc'){
       try{
-        const candidates=await searchYouTubeCreativeCommonsSources(route.query,6);
+        const candidates=await searchYouTubeCreativeCommonsSources(sourceQuery,6);
         attempts.push({
           action,
           status:candidates.length?'operator-source-required':'gap',
@@ -611,13 +626,13 @@ export async function resolveSourceForScene(input:{
       const reused=await revalidateExistingUploadedStill({
       promptSetId:input.promptSetId,
       sceneId:input.sceneId,
-      query:route.query
+      query:sourceQuery
     });
     if(reused?.status==='matched'){
       if(videoFirst&&videoExhausted){
         await markVideoFirstFallback({
           assetId:reused.assetId,
-          query:route.query,
+          query:sourceQuery,
           stockJobId:exhaustedStockJobId
         });
       }
