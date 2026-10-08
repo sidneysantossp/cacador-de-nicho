@@ -382,7 +382,7 @@ export async function resolveSourceForScene(input:{
           result=await resolveStillCandidates({
             promptSetId:input.promptSetId,
             sceneId:input.sceneId,
-            query:route.query,
+            query:sourceQuery,
             provider,
             minimumRelevance:.42
           });
