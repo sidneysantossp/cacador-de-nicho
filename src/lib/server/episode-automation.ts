@@ -1576,4 +1576,634 @@ async function executeAutomationTransition(
         const timelineId=automationStep(run,'timeline')?.entityId;
         if(!timelineId)throw new HttpError('Timeline aprovada não identificada.',409);
         const edit=current.entityId
-          ?await refreshV
+          ?await refreshVideoEditFromTimeline(timelineId)
+          :await createVideoEditFromTimeline(timelineId);
+        return current.entityId
+          ?'Video Edit reconstruído como draft: '+edit.id+' · v'+edit.version+'.'
+          :'Video Edit criado como draft: '+edit.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Aprovação automática de Video Edit está desativada.',409);
+        if(!current.entityId)throw new HttpError('Video Edit atual não identificado.',409);
+        const edit=await loadVideoEdit(current.entityId);
+        if(!edit)throw new HttpError('Video Edit não encontrado.',404);
+        await saveVideoEdit(payloadOnly(edit),'approved',edit.version);
+        return 'Video Edit aprovado pelo gate objetivo.';
+      }
+      throw new HttpError('Video Edit não está elegível para avanço automático.',409);
+    }
+
+    case 'render':{
+      if(!run.policy.autoRender)throw new HttpError('Render automático está desativado.',409);
+      const videoEditId=automationStep(run,'video-edit')?.entityId;
+      if(!videoEditId)throw new HttpError('Video Edit aprovado não identificado.',409);
+      if(current.entityId){
+        const job=await retryRenderJob(current.entityId);
+        return 'Render falhou; retry automático enfileirado com reaproveitamento de capítulos: '+job.id+'.';
+      }
+      const job=await createRenderJob({videoEditId,preset:'hd-1080p30'});
+      return 'Render enfileirado: '+job.id+'.';
+    }
+
+    case 'quality':{
+      if(current.status==='ready'){
+        if(!run.policy.autoRunQuality)throw new HttpError('Production QA automático está desativado.',409);
+        const renderId=automationStep(run,'render')?.entityId;
+        if(!renderId)throw new HttpError('Render concluído não identificado.',409);
+        const report=await runProductionQuality(renderId);
+        return 'Production QA executado: '+report.id+'.';
+      }
+      if(current.status==='waiting'){
+        if(!run.policy.autoApproveObjectiveGates)throw new HttpError('Liberação automática do Production QA está desativada.',409);
+        if(!current.entityId)throw new HttpError('Production QA atual não identificado.',409);
+        const report=await loadProductionQualityReport(current.entityId);
+        if(!report)throw new HttpError('Production QA não encontrado.',404);
+
+        const blockerCodes=report.checks
+          .filter(check=>check.status==='blocker')
+          .map(check=>String(check.code));
+        if(blockerCodes.length){
+          const unsupported=blockerCodes.filter(code=>!AUTO_REMEDIABLE_QUALITY_BLOCKERS.has(code));
+          if(unsupported.length){
+            throw new HttpError(
+              'Production QA exige correção humana para blocker(s): '+unsupported.join(', ')+'.',
+              409
+            );
+          }
+
+          if(blockerCodes.includes('motion-coverage')){
+            const promptSetId=automationStep(run,'visual-prompts')?.entityId;
+            if(!promptSetId)throw new HttpError('Visual Prompt Set não identificado para corrigir motion coverage.',409);
+            const remediation=await remediateMotionCoverageFromPriorVideos({
+              promptSetId,
+              maxScenes:6
+            });
+            if(!remediation.targetReached){
+              if(remediation.exhausted){
+                throw new HttpError(
+                  'Production QA continua bloqueado em motion-coverage: o reuse validado de vídeos anteriores foi esgotado '+
+                  'sem atingir o gate. video='+(remediation.videoRatio*100).toFixed(1)+'% · maior sequência estática='+
+                  remediation.longestImageRunSeconds.toFixed(1)+'s.',
+                  409
+                );
+              }
+              return 'Autocorreção de motion coverage: '+remediation.matched+'/'+remediation.attempted+
+                ' vídeo(s) reaproveitado(s) e revalidado(s). video='+(remediation.videoRatio*100).toFixed(1)+
+                '% · maior sequência estática='+remediation.longestImageRunSeconds.toFixed(1)+'s.';
+            }
+          }
+
+          if(blockerCodes.includes('motion-coverage')||blockerCodes.includes('visual-cadence')){
+            const scenePlanId=automationStep(run,'scenes')?.entityId;
+            if(!scenePlanId)throw new HttpError('Scene Plan não identificado para reconstruir a Timeline.',409);
+            const timeline=await refreshTimelineFromPlan(scenePlanId);
+            return 'QA autocorrigido upstream: Timeline reconstruída com cadence ≤4s e fontes de vídeo revalidadas · v'+timeline.version+'.';
+          }
+
+          if(blockerCodes.includes('decode-integrity')){
+            const refreshed=await runProductionQuality(report.renderJobId);
+            return 'Production QA técnico reexecutado com janela de decode proporcional ao master: '+refreshed.id+' · v'+refreshed.version+'.';
+          }
+        }
+
+        if(report.summary.manualReview>0){
+          throw new HttpError('Production QA exige revisão humana dos itens manuais antes da aprovação.',409);
+        }
+        await approveProductionQuality({
+          reportId:report.id,
+          expectedVersion:report.version,
+          notes:'Aprovado pelo Episode Automation: todos os checks objetivos passaram sem revisão manual.',
+          overrides:[]
+        });
+        return 'Production QA aprovado automaticamente sem overrides.';
+      }
+      throw new HttpError('Production QA não está elegível para avanço automático.',409);
+    }
+
+    case 'packaging':{
+      if(!run.policy.autoCreatePackage)throw new HttpError('Criação automática de Packaging está desativada.',409);
+      const reportId=automationStep(run,'quality')?.entityId;
+      if(!reportId)throw new HttpError('Production QA aprovado não identificado.',409);
+      const pkg=await createPublicationPackage(reportId);
+      return 'Publication Package criado como draft: '+pkg.id+'.';
+    }
+
+    case 'publish':{
+      if(!run.policy.autoPublish)throw new HttpError('Publicação automática está desativada por policy.',409);
+      const packageId=automationStep(run,'packaging')?.entityId;
+      if(!packageId)throw new HttpError('Publication Package aprovado não identificado.',409);
+      const job=await queueYouTubePublication(packageId);
+      return 'Publicação YouTube enfileirada: '+job.id+'.';
+    }
+
+    case 'done':
+      return 'Episódio já concluiu toda a linha de produção.';
+
+    default:
+      throw new HttpError('Etapa de automação não suportada.',409);
+  }
+}
+
+async function assertAutomationWorkerLease(runId:string,workerToken:string){
+  const row=checked(await db().from('radar_episode_automation_runs')
+    .select('id,mode,status,worker_token,lease_until')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!row)throw new HttpError('Automation Run não encontrado.',404);
+
+  const token=row.worker_token?String(row.worker_token):'';
+  const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
+  const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
+
+  if(!activeLease||token!==workerToken){
+    throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
+  }
+  if(String(row.mode)!=='autonomous'){
+    throw new HttpError('Worker só pode avançar runs Autonomous.',409);
+  }
+}
+
+async function assertOperatorFactoryWorkerLease(runId:string,workerToken:string){
+  const row=checked(await db().from('radar_episode_automation_runs')
+    .select('id,mode,status,worker_token,lease_until,payload')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!row)throw new HttpError('Automation Run não encontrado.',404);
+
+  const token=row.worker_token?String(row.worker_token):'';
+  const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
+  const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
+  if(!activeLease||token!==workerToken){
+    throw new HttpError('Lease do Operator Factory Worker expirou ou não pertence a este executor.',409);
+  }
+
+  const payload=row.payload&&typeof row.payload==='object'
+    ?row.payload as Record<string,unknown>
+    :{};
+  if(
+    String(row.mode)!=='assisted'||
+    payload.operatorFactory!==true||
+    payload.factoryTarget!=='master'
+  ){
+    throw new HttpError('Worker só pode avançar runs Operator Factory assisted até master.',409);
+  }
+}
+
+async function acquireOperatorAutomationLease(runId:string){
+  const now=new Date();
+  const nowIso=now.toISOString();
+  const client=db();
+
+  const expired=await client.from('radar_episode_automation_runs').update({
+    worker_token:null,
+    lease_until:null,
+    updated_at:nowIso
+  })
+    .eq('id',runId)
+    .not('worker_token','is',null)
+    .lt('lease_until',nowIso);
+  if(expired.error)throw new HttpError('Falha ao recuperar lease expirado do Automation Run.',502);
+
+  const operatorToken=crypto.randomUUID();
+  const rows=checked(await client.from('radar_episode_automation_runs').update({
+    worker_token:operatorToken,
+    lease_until:new Date(now.getTime()+300000).toISOString(),
+    updated_at:nowIso
+  })
+    .eq('id',runId)
+    .is('worker_token',null)
+    .select('id'));
+
+  if(rows?.length)return operatorToken;
+
+  const existing=checked(await client.from('radar_episode_automation_runs')
+    .select('id')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!existing)throw new HttpError('Automation Run não encontrado.',404);
+  throw new HttpError('Automation Run já está sendo processado por outro executor.',409);
+}
+
+async function releaseAutomationLease(runId:string,workerToken:string){
+  const result=await db().from('radar_episode_automation_runs').update({
+    worker_token:null,
+    lease_until:null,
+    updated_at:new Date().toISOString()
+  }).eq('id',runId).eq('worker_token',workerToken);
+  if(result.error)throw new HttpError('Falha ao liberar lease do Automation Worker.',502);
+}
+
+async function advanceEpisodeAutomationRunUnderLease(
+  runId:string,
+  options:{claimedWorker?:boolean}={}
+){
+  let run=await reconcileEpisodeAutomationRun(runId);
+  if(run.status==='completed'||run.status==='cancelled')return run;
+  if(options.claimedWorker&&run.status==='waiting')return run;
+    if(run.holdStep){
+      throw new HttpError('Automation Run pausado: '+(run.holdReason??'remova o hold antes de continuar.'),409);
+    }
+
+    const current=run.steps.find(item=>item.step===run.currentStep);
+    if(!current)throw new HttpError('Etapa atual do Automation Run não foi encontrada.',409);
+    if(current.requiresOperator){
+      throw new HttpError(current.reason??'Esta etapa exige ação do operador.',409);
+    }
+    if(current.status==='running'){
+      return run;
+    }
+    if(!['ready','waiting'].includes(current.status)){
+      throw new HttpError(current.reason??'A etapa atual ainda não está pronta para avançar.',409);
+    }
+
+    await appendEvent(run.id,{
+      step:current.step,
+      status:'started',
+      message:'Executor iniciou '+current.label+'.',
+      payload:{stepStatus:current.status}
+    });
+
+    let transitionAttempt=1;
+    while(true){
+      try{
+        const message=await executeAutomationTransition(run,current);
+        await appendEvent(run.id,{
+          step:current.step,
+          status:'completed',
+          message,
+          payload:{stepStatus:current.status,transitionAttempt}
+        });
+        run=await reconcileEpisodeAutomationRun(run.id);
+        return run;
+      }catch(error){
+        const message=error instanceof Error?error.message:'Falha desconhecida no Automation executor.';
+        const status=error instanceof HttpError?error.status:500;
+        const retry=automationTransientRetryPolicy({
+          status,message,attempt:transitionAttempt
+        });
+
+        if(retry.transient){
+          // Reconcile before retrying: if the failing request persisted its side effect
+          // (voice take, render job, transcript, etc.), do not duplicate paid work.
+          const reconciled=await reconcileEpisodeAutomationRun(run.id).catch(()=>null);
+          if(reconciled&&(
+            reconciled.currentStep!==current.step||
+            reconciled.steps.find(item=>item.step===current.step)?.status==='running'||
+            reconciled.steps.find(item=>item.step===current.step)?.status==='completed'
+          )){
+            await appendEvent(run.id,{
+              step:current.step,
+              status:'info',
+              message:'Falha transitória ocorreu após persistência detectada; retry duplicado foi evitado.',
+              payload:{kind:'automation-retry-reconciled',status,message,transitionAttempt}
+            });
+            return reconciled;
+          }
+        }
+
+        if(retry.retry){
+          await appendEvent(run.id,{
+            step:current.step,
+            status:'info',
+            message:'Falha transitória; retry automático '+(transitionAttempt+1)+'/'+retry.maxAttempts+
+              ' em '+Math.round(retry.delayMs/1000)+'s.',
+            payload:{
+              kind:'automation-transient-retry',
+              status,message,transitionAttempt,
+              nextAttempt:transitionAttempt+1,
+              retryDelayMs:retry.delayMs
+            }
+          });
+          await sleep(retry.delayMs);
+          transitionAttempt++;
+          continue;
+        }
+
+        if(retry.transient){
+          return holdAutomationRun(
+            run,
+            current.step,
+            'Falha transitória persistiu após '+transitionAttempt+
+              ' tentativa(s) automáticas: '+message
+          );
+        }
+        if(automationOperatorHold(error)){
+          return holdAutomationRun(run,current.step,message);
+        }
+        return failAutomationRun(run,current.step,message);
+      }
+    }
+}
+
+export async function advanceEpisodeAutomationRun(runId:string,workerToken?:string){
+  const operatorToken=workerToken?null:await acquireOperatorAutomationLease(runId);
+  try{
+    if(workerToken)await assertAutomationWorkerLease(runId,workerToken);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:Boolean(workerToken)});
+  }finally{
+    if(operatorToken)await releaseAutomationLease(runId,operatorToken).catch(()=>{});
+  }
+}
+
+export async function drainEpisodeAutomationRun(input:{
+  runId:string;
+  target?:OperatorDrainTarget;
+  maxTransitions?:number;
+  maxDurationMs?:number;
+}){
+  const target=input.target??'master';
+  const maxTransitions=Math.max(1,Math.min(100,Math.floor(input.maxTransitions??24)));
+  const maxDurationMs=Math.max(5000,Math.min(280000,Math.floor(input.maxDurationMs??240000)));
+  const operatorToken=await acquireOperatorAutomationLease(input.runId);
+  const startedAt=Date.now();
+  let transitions=0;
+  let stopReason='max-transitions';
+
+  try{
+    let run=await reconcileEpisodeAutomationRun(input.runId);
+    while(transitions<maxTransitions){
+      const stop=automationDrainStopReason({
+        status:run.status,
+        currentStep:run.currentStep,
+        holdStep:run.holdStep,
+        steps:run.steps,
+        target
+      });
+      if(stop){
+        stopReason=stop;
+        return {
+          run,target,targetReached:stop==='target-reached'||stop==='completed',
+          transitions,stopReason,durationMs:Date.now()-startedAt
+        };
+      }
+      if(Date.now()-startedAt>=maxDurationMs){
+        stopReason='time-budget';
+        return {
+          run,target,targetReached:false,
+          transitions,stopReason,durationMs:Date.now()-startedAt
+        };
+      }
+
+      run=await advanceEpisodeAutomationRunUnderLease(run.id);
+      transitions++;
+    }
+
+    return {
+      run,target,targetReached:false,
+      transitions,stopReason,durationMs:Date.now()-startedAt
+    };
+  }finally{
+    await releaseAutomationLease(input.runId,operatorToken).catch(()=>{});
+  }
+}
+
+export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToken:string){
+  const control=await loadAutopilotControl();
+  if(control.status!=='running'){
+    const run=await loadEpisodeAutomationRun(runId);
+    if(run&&run.status!=='completed'&&run.status!=='cancelled'){
+      const now=new Date().toISOString();
+      const rows=checked(await db().from('radar_episode_automation_runs').update({
+        status:'active',
+        worker_token:null,
+        lease_until:null,
+        updated_at:now
+      }).eq('id',runId).eq('worker_token',workerToken).select('id'));
+      if(rows?.length){
+        await appendEvent(runId,{
+          step:run.currentStep,
+          status:'info',
+          message:'Control Plane pausado; run devolvido à fila sem avançar.',
+          payload:{
+            kind:'control-plane-pause',
+            controlVersion:control.version,
+            pauseReason:control.pauseReason
+          }
+        });
+      }
+    }
+    return (await loadEpisodeAutomationRun(runId))!;
+  }
+
+  try{
+    return await advanceEpisodeAutomationRun(runId,workerToken);
+  }catch(error){
+    const message=error instanceof Error?error.message:'Falha desconhecida no Automation Worker.';
+    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
+      throw error;
+    }
+    const run=await loadEpisodeAutomationRun(runId).catch(()=>null);
+    if(!run||run.status==='completed'||run.status==='cancelled')throw error;
+    if(automationOperatorHold(error)){
+      return holdAutomationRun(run,run.currentStep,message);
+    }
+    return failAutomationRun(run,run.currentStep,message);
+  }finally{
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
+  }
+}
+
+export async function advanceClaimedOperatorFactoryAutomationRun(
+  runId:string,
+  workerToken:string
+){
+  const run=await loadEpisodeAutomationRun(runId);
+  if(
+    !run||
+    run.mode!=='assisted'||
+    run.operatorFactory!==true||
+    run.factoryTarget!=='master'
+  ){
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
+    throw new HttpError('Run não está armado como Operator Factory até master.',409);
+  }
+
+  try{
+    await assertOperatorFactoryWorkerLease(runId,workerToken);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:true});
+  }catch(error){
+    const message=error instanceof Error
+      ?error.message
+      :'Falha desconhecida no Operator Factory Worker.';
+    if(
+      error instanceof HttpError&&
+      (
+        message.includes('Lease do Automation Worker')||
+        message.includes('Lease do Operator Factory Worker')
+      )
+    ){
+      throw error;
+    }
+    const current=await loadEpisodeAutomationRun(runId).catch(()=>null);
+    if(!current||current.status==='completed'||current.status==='cancelled')throw error;
+    if(automationOperatorHold(error)){
+      return holdAutomationRun(current,current.currentStep,message);
+    }
+    return failAutomationRun(current,current.currentStep,message);
+  }finally{
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
+  }
+}
+
+export async function cancelEpisodeAutomationRun(runId:string){
+  const run=await loadEpisodeAutomationRun(runId);
+  if(!run)throw new HttpError('Automation Run não encontrado.',404);
+  if(run.status==='completed'||run.status==='cancelled')return run;
+  checked(await db().from('radar_episode_automation_runs').update({
+    status:'cancelled',
+    worker_token:null,
+    lease_until:null,
+    updated_at:new Date().toISOString()
+  }).eq('id',runId));
+  await appendEvent(runId,{
+    step:run.currentStep,
+    status:'blocked',
+    message:'Automation Run cancelado pelo operador.',
+    payload:{}
+  });
+  return (await loadEpisodeAutomationRun(runId))!;
+}
+
+export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun){
+  const completedSteps=run.steps.filter(item=>item.status==='completed').length;
+  const current=run.steps.find(item=>item.step===run.currentStep)??null;
+  const blockers=run.steps
+    .filter(item=>
+      item.status==='blocked'||item.status==='failed'||
+      (item.requiresOperator&&item.status!=='completed'&&item.status!=='pending')
+    )
+    .map(item=>({
+      step:item.step,
+      status:item.status,
+      reason:item.reason??null
+    }));
+
+  const promptSetId=run.steps.find(item=>item.step==='visual-prompts')?.entityId??null;
+  let visual:null|{
+    sceneCount:number;
+    selectedPass:number;
+    pending:number;
+    selectedImage:number;
+    selectedVideo:number;
+    stockQueue:{queued:number;processing:number;completed:number;failed:number};
+    cost:{
+      budgetUsd:number;
+      incurredUsd:number;
+      remainingUsd:number|null;
+      unknownPaidAssets:number;
+      paidAssetCount:number;
+    };
+  }=null;
+
+  if(promptSetId){
+    const [promptSet,assets,stockRows]=await Promise.all([
+      loadVisualPromptSet(promptSetId),
+      listSceneAssets(promptSetId),
+      db().from('radar_verified_stock_jobs')
+        .select('status')
+        .eq('visual_prompt_set_id',promptSetId)
+        .limit(5000)
+    ]);
+    const rows=checked(stockRows)??[];
+    const queue={queued:0,processing:0,completed:0,failed:0};
+    for(const row of rows){
+      const status=String(row.status) as keyof typeof queue;
+      if(status in queue)queue[status]++;
+    }
+
+    const selectedPass=assets.filter(asset=>
+      asset.selected&&asset.status==='ready'&&asset.visualQa?.status==='pass'
+    );
+    const selectedPassByScene=new Map<string,(typeof selectedPass)[number]>();
+    for(const asset of selectedPass){
+      if(!selectedPassByScene.has(asset.sceneId))selectedPassByScene.set(asset.sceneId,asset);
+    }
+    const selectedPassScenes=[...selectedPassByScene.values()];
+    const generatedActive=assets.filter(asset=>
+      asset.sourceType==='generated'&&
+      asset.status!=='failed'&&asset.status!=='rejected'
+    );
+    let incurredUsd=0;
+    let unknownPaidAssets=0;
+    for(const asset of generatedActive){
+      if(typeof asset.costUsd==='number'&&Number.isFinite(asset.costUsd)&&asset.costUsd>=0){
+        incurredUsd+=asset.costUsd;
+      }else{
+        unknownPaidAssets++;
+      }
+    }
+    const rawBudget=Number(process.env.AUTOMATION_VISUAL_EPISODE_BUDGET_USD??.50);
+    const budgetUsd=Number.isFinite(rawBudget)?Math.max(0,Math.min(100,rawBudget)):.50;
+    const rounded=(value:number)=>Math.round(value*10000)/10000;
+
+    visual={
+      sceneCount:promptSet?.scenePrompts.length??0,
+      selectedPass:selectedPassScenes.length,
+      pending:Math.max(0,(promptSet?.scenePrompts.length??0)-selectedPassScenes.length),
+      selectedImage:selectedPassScenes.filter(asset=>asset.assetKind==='image').length,
+      selectedVideo:selectedPassScenes.filter(asset=>asset.assetKind==='video').length,
+      stockQueue:queue,
+      cost:{
+        budgetUsd:rounded(budgetUsd),
+        incurredUsd:rounded(incurredUsd),
+        remainingUsd:unknownPaidAssets?null:rounded(Math.max(0,budgetUsd-incurredUsd)),
+        unknownPaidAssets,
+        paidAssetCount:generatedActive.length
+      }
+    };
+  }
+
+  const stockInFlight=(visual?.stockQueue.queued??0)+(visual?.stockQueue.processing??0);
+  const targetReached=run.steps.some(item=>item.step==='quality'&&item.status==='completed');
+  const recommendedAction=targetReached||run.status==='completed'
+    ?'complete'
+    :blockers.length
+      ?'operator-review'
+      :stockInFlight>0||current?.status==='running'
+        ?'wait'
+        :current&&['ready','waiting'].includes(current.status)
+          ?'drain'
+          :'wait';
+
+  return {
+    runId:run.id,
+    episodeId:run.episodeId,
+    status:run.status,
+    currentStep:run.currentStep,
+    stepProgress:{
+      completed:completedSteps,
+      total:run.steps.length
+    },
+    hold:run.holdStep?{
+      step:run.holdStep,
+      reason:run.holdReason??null
+    }:null,
+    blockers,
+    visual,
+    recommendedAction
+  };
+}
+
+export async function episodeAutomationChannelState(channelId:string){
+  const runs=await listEpisodeAutomationRuns(channelId);
+  const reconciled:EpisodeAutomationRun[]=[];
+  for(const run of runs.slice(0,25)){
+    reconciled.push(await reconcileEpisodeAutomationRun(run.id));
+  }
+  const projects=checked(await db().from('radar_content_projects')
+    .select('id,episode_id,status,payload,updated_at')
+    .eq('channel_id',channelId).order('updated_at',{ascending:false}).limit(100))??[];
+  const runProjects=new Set(reconciled.map(run=>run.contentProjectId));
+  return {
+    runs:reconciled,
+    availableProjects:projects
+      .filter(project=>!runProjects.has(String(project.id)))
+      .map(project=>({
+        id:String(project.id),
+        episodeId:String(project.episode_id),
+        status:String(project.status),
+        title:String((project.payload as {brief?:{workingTitle?:string}})?.brief?.workingTitle??'Untitled episode'),
+        updatedAt:String(project.updated_at)
+      }))
+  };
+}
