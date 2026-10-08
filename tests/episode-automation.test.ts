@@ -259,11 +259,13 @@ test('Episode Automation exposes one concise operator snapshot with progress, qu
   assert.match(route,/operator:await episodeAutomationOperatorSnapshot\(reconciled\)/);
 });
 
-test('Visual batch excludes only terminal current-policy stock gaps',()=>{
+test('Visual batch excludes only full-route terminal current-policy stock gaps',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/verifiedStockGapRecoverable/);
-  assert.match(source,/!verifiedStockGapRecoverable\(result\)/);
-  assert.match(source,/String\(result\.discoveryPolicyVersion\?\?'\'\)===STOCK_DISCOVERY_POLICY_VERSION/);
+  assert.match(source,/verifiedStockGapRecoverable\(result\)/);
+  assert.match(source,/String\(result\.discoveryPolicyVersion\?\?'\'\)!==STOCK_DISCOVERY_POLICY_VERSION/);
+  assert.match(source,/sourceRouteTerminal/);
+  assert.match(source,/String\(terminal\.key\?\?'\'\)===sourceRouteExecutionKey\(route\)/);
 });
 
 test('Operator Golden Path exposes bounded arm and drain API without enabling global autopilot',()=>{
