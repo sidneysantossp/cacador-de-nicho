@@ -99,6 +99,12 @@ remove_after_drain(){
   return 0
 }
 
+clear_main_drain_marker(){
+  local marker_name
+  marker_name="$(basename "$DRAIN_FILE")"
+  rm -f "$WORK_DIR/$marker_name"
+}
+
 mkdir -p "$WORK_DIR"
 chown 1001:1001 "$WORK_DIR"
 
@@ -106,6 +112,7 @@ DEFERRED_WORKERS=0
 
 if ! main_matches_target; then
   if remove_after_drain "$CONTAINER"; then
+    clear_main_drain_marker
     docker run -d \
       --name "$CONTAINER" \
       --restart unless-stopped \
