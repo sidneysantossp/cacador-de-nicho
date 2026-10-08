@@ -8,8 +8,7 @@ const route:SourceRoutePlan={
   preference:'stock-video',
   query:'without becoming another rumor feed',
   actions:['owned','stock-video','stock-image','youtube-cc'],
-  syntheticAllowed:false,
-  reason:'test'
+  syntheticAllowed:false
 };
 
 test('Terminal route fingerprint changes when the effective sourcing query changes',()=>{
