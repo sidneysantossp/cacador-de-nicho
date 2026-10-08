@@ -115,6 +115,31 @@ test('Stock fallback rejects portrait candidates for a landscape production',()=
   assert.equal(ranked.length,0);
 });
 
+test('Verified-stock gaps from retired visual models remain recoverable',()=>{
+  const retired={
+    status:'gap',
+    discoveryPolicyVersion:'filmable-v2',
+    attempts:[
+      {
+        stage:'candidate',
+        error:'A Google AI falhou durante a análise visual (HTTP 404): This model models/gemini-2.5-flash-lite is no longer available to new users. status NOT_FOUND'
+      }
+    ]
+  };
+  assert.equal(verifiedStockGapNeedsVisualModelRecovery(retired),true);
+  assert.equal(verifiedStockGapRecoverable(retired),true);
+
+  const genuine={
+    status:'gap',
+    discoveryPolicyVersion:'filmable-v2',
+    attempts:[
+      {stage:'visual-verification',accepted:false,visualRelevance:.08}
+    ]
+  };
+  assert.equal(verifiedStockGapNeedsVisualModelRecovery(genuine),false);
+  assert.equal(verifiedStockGapRecoverable(genuine),false);
+});
+
 test('Legacy verified-stock gaps caused by transient providers are reopened once',()=>{
   const legacy={
     status:'gap',
