@@ -1891,17 +1891,10 @@ export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToke
   }
 
   try{
-    await assertOperatorFactoryWorkerLease(runId,workerToken);
-    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:true});
+    return await advanceEpisodeAutomationRun(runId,workerToken);
   }catch(error){
     const message=error instanceof Error?error.message:'Falha desconhecida no Automation Worker.';
-    if(
-      error instanceof HttpError&&
-      (
-        message.includes('Lease do Automation Worker')||
-        message.includes('Lease do Operator Factory Worker')
-      )
-    ){
+    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
       throw error;
     }
     const run=await loadEpisodeAutomationRun(runId).catch(()=>null);
@@ -1931,12 +1924,19 @@ export async function advanceClaimedOperatorFactoryAutomationRun(
   }
 
   try{
-    return await advanceEpisodeAutomationRun(runId,workerToken);
+    await assertOperatorFactoryWorkerLease(runId,workerToken);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:true});
   }catch(error){
     const message=error instanceof Error
       ?error.message
       :'Falha desconhecida no Operator Factory Worker.';
-    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
+    if(
+      error instanceof HttpError&&
+      (
+        message.includes('Lease do Automation Worker')||
+        message.includes('Lease do Operator Factory Worker')
+      )
+    ){
       throw error;
     }
     const current=await loadEpisodeAutomationRun(runId).catch(()=>null);
