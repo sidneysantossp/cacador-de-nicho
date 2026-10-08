@@ -32,6 +32,7 @@ type Item={
   id:string|{videoId?:string;channelId?:string};
   snippet:{
     channelId?:string;
+    channelTitle?:string;
     title:string;
     description:string;
     publishedAt:string;
@@ -51,7 +52,12 @@ type Item={
     subscriberCount?:string;
     hiddenSubscriberCount?:boolean
   };
-  contentDetails?:{duration?:string;relatedPlaylists?:{uploads:string}}
+  contentDetails?:{duration?:string;relatedPlaylists?:{uploads:string}};
+  status?:{
+    license?:'youtube'|'creativeCommon';
+    embeddable?:boolean;
+    privacyStatus?:string;
+  };
 };
 
 async function youtubePage(resource:string,params:Record<string,string>){
@@ -99,6 +105,66 @@ async function youtubeSearch(
     }
     throw error;
   }
+}
+
+export type YouTubeCreativeCommonsSourceCandidate={
+  videoId:string;
+  title:string;
+  channelId:string;
+  channelTitle:string;
+  publishedAt:string;
+  durationSeconds:number;
+  views:number;
+  thumbnail:string;
+  watchUrl:string;
+  license:'creativeCommon';
+  embeddable:boolean;
+};
+
+export async function searchYouTubeCreativeCommonsSources(
+  query:string,
+  limit=6
+):Promise<YouTubeCreativeCommonsSourceCandidate[]>{
+  const clean=query.trim().replace(/\s+/g,' ').slice(0,180);
+  if(clean.length<2)throw new HttpError('A busca de fonte YouTube precisa de uma intenção visual.',400);
+  const cap=Math.max(1,Math.min(12,Math.floor(limit||6)));
+  const search=await youtubeSearch({
+    part:'snippet',
+    type:'video',
+    q:clean,
+    maxResults:String(Math.max(cap,Math.min(25,cap*2))),
+    videoLicense:'creativeCommon',
+    safeSearch:'moderate'
+  },'source-media','cc:'+norm(clean),true);
+  const ids=[...new Set(search.map(idOf).filter(Boolean))].slice(0,25);
+  if(!ids.length)return [];
+
+  const videos=await youtube('videos',{
+    part:'snippet,status,contentDetails,statistics',
+    id:ids.join(',')
+  });
+  return videos
+    .filter(video=>
+      video.status?.license==='creativeCommon'&&
+      video.status?.privacyStatus!=='private'&&
+      video.status?.embeddable!==false
+    )
+    .map(video=>({
+      videoId:idOf(video),
+      title:video.snippet.title,
+      channelId:video.snippet.channelId??'',
+      channelTitle:video.snippet.channelTitle??'',
+      publishedAt:video.snippet.publishedAt,
+      durationSeconds:isoDurationSeconds(video.contentDetails?.duration??'PT0S'),
+      views:Number(video.statistics?.viewCount??0),
+      thumbnail:thumb(video),
+      watchUrl:'https://www.youtube.com/watch?v='+encodeURIComponent(idOf(video)),
+      license:'creativeCommon' as const,
+      embeddable:video.status?.embeddable!==false
+    }))
+    .filter(item=>item.videoId&&item.durationSeconds>0)
+    .sort((a,b)=>b.views-a.views)
+    .slice(0,cap);
 }
 
 const thumb=(item:Item)=>
