@@ -1,7 +1,7 @@
 import type {
   AudioLibraryAsset, ProductionDNA, Timeline, TimelineChapter, TimelineClip, Transcript,
   VideoEditCaptionCue, VideoEditCaptionStyle, VideoEditCaptionWord,
-  VideoEditClipStyle, VideoEditMotionPreset, VideoEditPayload, VideoEditSfxEvent
+  VideoEditClipStyle, VideoEditMotionPreset, VideoEditMusicTrack, VideoEditPayload, VideoEditSfxEvent
 } from '@/lib/types';
 import { timelineChapters } from '@/lib/timeline-policy';
 
@@ -662,6 +662,43 @@ export function videoEditAudioAssetIssues(editInput:VideoEditPayload,audioAssets
     else if(asset.kind!=='sfx'||asset.status!=='ready')issues.push('sfx-asset-not-ready');
   }
   return [...new Set(issues)];
+}
+
+export function suggestMusicTrack(
+  editInput:VideoEditPayload,
+  audioAssets:AudioLibraryAsset[],
+  dna?:ProductionDNA|null
+):VideoEditMusicTrack|null{
+  const edit=upgradeVideoEditPayload(editInput);
+  const desired=(dna?.editing.musicStyle??[])
+    .map(item=>item.toLowerCase().trim())
+    .filter(Boolean);
+  const candidates=audioAssets
+    .filter(asset=>asset.kind==='music'&&asset.status==='ready')
+    .sort((a,b)=>{
+      const score=(asset:AudioLibraryAsset)=>{
+        const tags=asset.tags.map(tag=>tag.toLowerCase());
+        const styleMatch=desired.some(term=>
+          tags.some(tag=>tag.includes(term)||term.includes(tag))
+        )?2:0;
+        return (asset.favorite?4:0)+styleMatch;
+      };
+      return score(b)-score(a);
+    });
+  const asset=candidates[0];
+  if(!asset)return null;
+  return {
+    assetId:asset.id,
+    startSeconds:0,
+    endSeconds:edit.durationSeconds,
+    sourceStartSeconds:0,
+    loop:true,
+    volume:1,
+    fadeInSeconds:.5,
+    fadeOutSeconds:.8,
+    duckUnderVoice:true,
+    duckingStrength:.7
+  };
 }
 
 export function suggestSfxEvents(
