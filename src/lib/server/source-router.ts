@@ -632,7 +632,7 @@ export async function resolveSourceForScene(input:{
       if(videoFirst&&videoExhausted){
         await markVideoFirstFallback({
           assetId:reused.assetId,
-          query:route.query,
+          query:sourceQuery,
           stockJobId:exhaustedStockJobId
         });
       }
