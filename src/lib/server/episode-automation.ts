@@ -1852,6 +1852,121 @@ export async function cancelEpisodeAutomationRun(runId:string){
   return (await loadEpisodeAutomationRun(runId))!;
 }
 
+export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun){
+  const completedSteps=run.steps.filter(item=>item.status==='completed').length;
+  const current=run.steps.find(item=>item.step===run.currentStep)??null;
+  const blockers=run.steps
+    .filter(item=>
+      item.status==='blocked'||item.status==='failed'||
+      (item.requiresOperator&&item.status!=='completed'&&item.status!=='pending')
+    )
+    .map(item=>({
+      step:item.step,
+      status:item.status,
+      reason:item.reason??null
+    }));
+
+  const promptSetId=run.steps.find(item=>item.step==='visual-prompts')?.entityId??null;
+  let visual:null|{
+    sceneCount:number;
+    selectedPass:number;
+    pending:number;
+    selectedImage:number;
+    selectedVideo:number;
+    stockQueue:{queued:number;processing:number;completed:number;failed:number};
+    cost:{
+      budgetUsd:number;
+      incurredUsd:number;
+      remainingUsd:number|null;
+      unknownPaidAssets:number;
+      paidAssetCount:number;
+    };
+  }=null;
+
+  if(promptSetId){
+    const [promptSet,assets,stockRows]=await Promise.all([
+      loadVisualPromptSet(promptSetId),
+      listSceneAssets(promptSetId),
+      db().from('radar_verified_stock_jobs')
+        .select('status')
+        .eq('visual_prompt_set_id',promptSetId)
+        .limit(5000)
+    ]);
+    const rows=checked(stockRows)??[];
+    const queue={queued:0,processing:0,completed:0,failed:0};
+    for(const row of rows){
+      const status=String(row.status) as keyof typeof queue;
+      if(status in queue)queue[status]++;
+    }
+
+    const selectedPass=assets.filter(asset=>
+      asset.selected&&asset.status==='ready'&&asset.visualQa?.status==='pass'
+    );
+    const generatedActive=assets.filter(asset=>
+      asset.sourceType==='generated'&&
+      asset.status!=='failed'&&asset.status!=='rejected'
+    );
+    let incurredUsd=0;
+    let unknownPaidAssets=0;
+    for(const asset of generatedActive){
+      if(typeof asset.costUsd==='number'&&Number.isFinite(asset.costUsd)&&asset.costUsd>=0){
+        incurredUsd+=asset.costUsd;
+      }else{
+        unknownPaidAssets++;
+      }
+    }
+    const rawBudget=Number(process.env.AUTOMATION_VISUAL_EPISODE_BUDGET_USD??.50);
+    const budgetUsd=Number.isFinite(rawBudget)?Math.max(0,Math.min(100,rawBudget)):.50;
+    const rounded=(value:number)=>Math.round(value*10000)/10000;
+
+    visual={
+      sceneCount:promptSet?.scenePrompts.length??0,
+      selectedPass:selectedPass.length,
+      pending:Math.max(0,(promptSet?.scenePrompts.length??0)-selectedPass.length),
+      selectedImage:selectedPass.filter(asset=>asset.assetKind==='image').length,
+      selectedVideo:selectedPass.filter(asset=>asset.assetKind==='video').length,
+      stockQueue:queue,
+      cost:{
+        budgetUsd:rounded(budgetUsd),
+        incurredUsd:rounded(incurredUsd),
+        remainingUsd:unknownPaidAssets?null:rounded(Math.max(0,budgetUsd-incurredUsd)),
+        unknownPaidAssets,
+        paidAssetCount:generatedActive.length
+      }
+    };
+  }
+
+  const stockInFlight=(visual?.stockQueue.queued??0)+(visual?.stockQueue.processing??0);
+  const targetReached=run.steps.some(item=>item.step==='quality'&&item.status==='completed');
+  const recommendedAction=targetReached||run.status==='completed'
+    ?'complete'
+    :blockers.length
+      ?'operator-review'
+      :stockInFlight>0||current?.status==='running'
+        ?'wait'
+        :current&&['ready','waiting'].includes(current.status)
+          ?'drain'
+          :'wait';
+
+  return {
+    runId:run.id,
+    episodeId:run.episodeId,
+    status:run.status,
+    currentStep:run.currentStep,
+    stepProgress:{
+      completed:completedSteps,
+      total:run.steps.length
+    },
+    hold:run.holdStep?{
+      step:run.holdStep,
+      reason:run.holdReason??null
+    }:null,
+    blockers,
+    visual,
+    recommendedAction
+  };
+}
+
 export async function episodeAutomationChannelState(channelId:string){
   const runs=await listEpisodeAutomationRuns(channelId);
   const reconciled:EpisodeAutomationRun[]=[];
