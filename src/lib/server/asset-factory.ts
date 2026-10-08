@@ -667,7 +667,14 @@ export async function uploadSceneAsset(input:{
     promptSet,sceneId:input.sceneId,kind,sourceType:'uploaded',provider:'external',
     mimeType:mime,originalName:input.file.name,metadata
   });
-  return persistReady(reservation.id,Buffer.from(await input.file.arrayBuffer()),mime,metadata);
+  const asset=await persistReady(
+    reservation.id,
+    Buffer.from(await input.file.arrayBuffer()),
+    mime,
+    metadata
+  );
+  if(!asset)throw new HttpError('O Asset Factory não devolveu o upload persistido.',502);
+  return asset;
 }
 
 export async function persistStockSceneAsset(input:{

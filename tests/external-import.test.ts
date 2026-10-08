@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { ExternalImportItem, VisualScenePrompt } from '../src/lib/types';
+import {
+  externalMediaIpIsPublic, externalMediaMaxBytes, externalMediaMimeKind,
+  externalMediaUrlShapeAllowed
+} from '../src/lib/external-media-url-policy';
 import {
   classifyExternalFile, externalBatchStatus, matchExternalFileToScene,
   parseExternalMediaMarker, previewExternalImportFiles
@@ -66,4 +71,44 @@ test('External import batch status reflects resumable partial work',()=>{
   assert.equal(externalBatchStatus(items(['ready','skipped'])),'completed');
   assert.equal(externalBatchStatus(items(['failed','failed'])),'failed');
   assert.equal(externalBatchStatus(items(['ready','unmatched'])),'partial');
+});
+
+
+test('Authorized external media URL policy allows only public HTTPS media shapes',()=>{
+  assert.equal(externalMediaUrlShapeAllowed('https://cdn.example.com/video.mp4'),true);
+  assert.equal(externalMediaUrlShapeAllowed('http://cdn.example.com/video.mp4'),false);
+  assert.equal(externalMediaUrlShapeAllowed('https://user:pass@cdn.example.com/video.mp4'),false);
+  assert.equal(externalMediaUrlShapeAllowed('https://localhost/video.mp4'),false);
+  assert.equal(externalMediaUrlShapeAllowed('https://cdn.example.com:8443/video.mp4'),false);
+  assert.equal(externalMediaIpIsPublic('8.8.8.8'),true);
+  assert.equal(externalMediaIpIsPublic('127.0.0.1'),false);
+  assert.equal(externalMediaIpIsPublic('10.0.0.4'),false);
+  assert.equal(externalMediaIpIsPublic('192.168.1.2'),false);
+  assert.equal(externalMediaIpIsPublic('::1'),false);
+  assert.equal(externalMediaIpIsPublic('fc00::1'),false);
+});
+
+test('Authorized external media URL policy limits formats and bytes',()=>{
+  assert.equal(externalMediaMimeKind('video/mp4'),'video');
+  assert.equal(externalMediaMimeKind('image/jpeg'),'image');
+  assert.equal(externalMediaMimeKind('text/html'),null);
+  assert.equal(externalMediaMaxBytes('video/mp4'),250*1024*1024);
+  assert.equal(externalMediaMaxBytes('image/webp'),25*1024*1024);
+  assert.equal(externalMediaMaxBytes('text/html'),0);
+});
+
+test('Authorized external media URL import validates network target and runs Visual QA before selection',()=>{
+  const source=readFileSync('src/lib/server/external-media-url.ts','utf8');
+  const route=readFileSync('src/app/api/external-media-url/route.ts','utf8');
+  assert.match(source,/lookup\(url\.hostname,\{all:true,verbatim:true\}\)/);
+  assert.match(source,/redirect:'manual'/);
+  assert.match(source,/externalMediaIpIsPublic/);
+  assert.match(source,/externalMediaMaxBytes/);
+  assert.match(source,/await ensureSceneAssetVisualQa\(asset\.id\)/);
+  assert.match(source,/await selectSceneAsset\(asset\.id\)/);
+  const qa=source.indexOf('await ensureSceneAssetVisualQa(asset.id)');
+  const select=source.indexOf('await selectSceneAsset(asset.id)');
+  assert.ok(qa>=0&&select>qa);
+  assert.match(route,/requireOperator\(request\)/);
+  assert.match(route,/licenseType:z\.enum\(\['owned','licensed'\]\)/);
 });
