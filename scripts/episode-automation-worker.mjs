@@ -67,7 +67,7 @@ async function execute(claimed){
       'x-automation-worker-secret':WORKER_SECRET
     },
     body:JSON.stringify(claimed),
-    signal:AbortSignal.timeout(300000)
+    signal:AbortSignal.timeout(Math.min((LEASE_SECONDS-30)*1000,6900000))
   });
   const body=await response.json().catch(()=>({}));
   if(!response.ok){
