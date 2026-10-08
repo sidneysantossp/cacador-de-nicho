@@ -429,9 +429,28 @@ export async function resolveSourceForScene(input:{
           attempts.push({action,status:'gap',jobId:existing.id});
           continue;
         }
-        const restarted=await restartVerifiedStockJob(existing.id);
-        attempts.push({action,status:'queued',jobId:restarted.id,reason:'previous-selection-lost'});
-        return {status:'queued' as const,route,action,job:restarted,attempts};
+        if(existing.attempts<2){
+          const restarted=await restartVerifiedStockJob(existing.id,{resetAttempts:false});
+          attempts.push({
+            action,
+            status:'queued',
+            jobId:restarted.id,
+            reason:'previous-selection-lost',
+            recoveryAttempt:existing.attempts+1
+          });
+          return {status:'queued' as const,route,action,job:restarted,attempts};
+        }
+        videoExhausted=true;
+        exhaustedStockJobId=existing.id;
+        attempts.push({
+          action,
+          status:'gap',
+          jobId:existing.id,
+          reason:'selection-recovery-exhausted',
+          previousResultStatus:completedStatus,
+          attempts:existing.attempts
+        });
+        continue;
       }
       if(existing?.status==='failed'){
         if(
