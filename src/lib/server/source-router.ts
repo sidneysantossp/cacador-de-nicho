@@ -404,7 +404,7 @@ export async function resolveSourceForScene(input:{
           if(videoFirst&&videoExhausted&&result.asset){
             await markVideoFirstFallback({
               assetId:result.asset.id,
-              query:route.query,
+              query:sourceQuery,
               stockJobId:exhaustedStockJobId
             });
           }
