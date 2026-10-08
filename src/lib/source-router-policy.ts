@@ -344,6 +344,18 @@ export function motionRouteAssetSatisfied(input:{
     fallback.videoExhausted===true;
 }
 
+export function sourceRouteRequiresAuthenticEvidence(route:SourceRoutePlan){
+  return (
+    route.preference==='archive-image'||
+    route.preference==='document'||
+    route.preference==='map'||
+    /^\s*documentary\s+evidence\s+for\s*:/i.test(route.query)||
+    route.actions.some(action=>
+      action==='manual-archive'||action==='manual-map'||action==='manual-document'
+    )
+  );
+}
+
 export function applyDocumentarySourcePolicy(
   route:SourceRoutePlan,
   documentaryMode:boolean
