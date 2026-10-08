@@ -44,12 +44,19 @@ async function rpc(name,args){
 
 async function claim(){
   const workerToken=randomUUID();
+  const factoryRunId=await rpc('claim_operator_factory_automation_run',{
+    p_worker_token:workerToken,
+    p_lease_seconds:LEASE_SECONDS
+  });
+  if(factoryRunId){
+    return {runId:String(factoryRunId),workerToken,factory:true};
+  }
   const runId=await rpc('claim_episode_automation_run',{
     p_worker_token:workerToken,
     p_lease_seconds:LEASE_SECONDS
   });
   if(!runId)return null;
-  return {runId:String(runId),workerToken};
+  return {runId:String(runId),workerToken,factory:false};
 }
 
 async function execute(claimed){
@@ -89,7 +96,8 @@ while(true){
     }
     console.log(JSON.stringify({
       event:'episode-automation-run-claimed',
-      runId:claimed.runId
+      runId:claimed.runId,
+      factory:claimed.factory===true
     }));
     try{
       const result=await execute(claimed);

@@ -2620,6 +2620,8 @@ export type EpisodeAutomationRunPayload = {
  contentProjectId: string;
  mode: EpisodeAutomationMode;
  policy: EpisodeAutomationPolicy;
+ operatorFactory?: boolean;
+ factoryTarget?: 'master' | 'package' | 'publish';
  steps: EpisodeAutomationStepState[];
  currentStep: EpisodeAutomationStep;
  blockers: string[];

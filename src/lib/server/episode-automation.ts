@@ -903,6 +903,8 @@ export async function reconcileEpisodeAutomationRun(runId:string){
     contentProjectId:run.contentProjectId,
     mode:run.mode,
     policy:run.policy,
+    operatorFactory:run.operatorFactory===true?true:undefined,
+    factoryTarget:run.factoryTarget,
     steps:inspection.steps,
     currentStep:inspection.currentStep,
     blockers:inspection.blockers,
@@ -998,6 +1000,8 @@ export async function updateEpisodeAutomationRun(input:{
   runId:string;
   mode?:EpisodeAutomationMode;
   policy?:Partial<EpisodeAutomationPolicy>;
+  operatorFactory?:boolean;
+  factoryTarget?:OperatorDrainTarget;
 }){
   const run=await loadEpisodeAutomationRun(input.runId);
   if(!run)throw new HttpError('Automation Run não encontrado.',404);
@@ -1016,6 +1020,8 @@ export async function updateEpisodeAutomationRun(input:{
     ...run,
     mode,
     policy,
+    operatorFactory:input.operatorFactory??run.operatorFactory,
+    factoryTarget:input.factoryTarget??run.factoryTarget,
     updatedAt:new Date().toISOString()
   };
   const {
@@ -1043,7 +1049,9 @@ export async function armOperatorFactoryAutomationRun(runId:string){
   const run=await updateEpisodeAutomationRun({
     runId,
     mode:'assisted',
-    policy:operatorFactoryAutomationPolicy
+    policy:operatorFactoryAutomationPolicy,
+    operatorFactory:true,
+    factoryTarget:'master'
   });
   await appendEvent(run.id,{
     step:run.currentStep,
@@ -1869,6 +1877,41 @@ export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToke
       return holdAutomationRun(run,run.currentStep,message);
     }
     return failAutomationRun(run,run.currentStep,message);
+  }finally{
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
+  }
+}
+
+export async function advanceClaimedOperatorFactoryAutomationRun(
+  runId:string,
+  workerToken:string
+){
+  const run=await loadEpisodeAutomationRun(runId);
+  if(
+    !run||
+    run.mode!=='assisted'||
+    run.operatorFactory!==true||
+    run.factoryTarget!=='master'
+  ){
+    await releaseAutomationLease(runId,workerToken).catch(()=>{});
+    throw new HttpError('Run não está armado como Operator Factory até master.',409);
+  }
+
+  try{
+    return await advanceEpisodeAutomationRun(runId,workerToken);
+  }catch(error){
+    const message=error instanceof Error
+      ?error.message
+      :'Falha desconhecida no Operator Factory Worker.';
+    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
+      throw error;
+    }
+    const current=await loadEpisodeAutomationRun(runId).catch(()=>null);
+    if(!current||current.status==='completed'||current.status==='cancelled')throw error;
+    if(automationOperatorHold(error)){
+      return holdAutomationRun(current,current.currentStep,message);
+    }
+    return failAutomationRun(current,current.currentStep,message);
   }finally{
     await releaseAutomationLease(runId,workerToken).catch(()=>{});
   }

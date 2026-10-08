@@ -2,7 +2,10 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { errorResponse, HttpError } from '@/lib/server/auth';
 import { dbConfigured } from '@/lib/server/db';
-import { advanceClaimedEpisodeAutomationRun } from '@/lib/server/episode-automation';
+import {
+  advanceClaimedEpisodeAutomationRun,
+  advanceClaimedOperatorFactoryAutomationRun
+} from '@/lib/server/episode-automation';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -10,7 +13,8 @@ export const maxDuration=300;
 
 const schema=z.object({
   runId:z.string().uuid(),
-  workerToken:z.string().uuid()
+  workerToken:z.string().uuid(),
+  factory:z.boolean().optional().default(false)
 }).strict();
 
 function requireWorker(request:Request){
@@ -31,7 +35,15 @@ export async function POST(request:Request){
     if(Number(request.headers.get('content-length')??0)>5000)throw new HttpError('Solicitação muito extensa.',413);
     const parsed=schema.safeParse(await request.json());
     if(!parsed.success)throw new HttpError('Payload do Automation Worker inválido.',400);
-    const run=await advanceClaimedEpisodeAutomationRun(parsed.data.runId,parsed.data.workerToken);
+    const run=parsed.data.factory
+      ?await advanceClaimedOperatorFactoryAutomationRun(
+        parsed.data.runId,
+        parsed.data.workerToken
+      )
+      :await advanceClaimedEpisodeAutomationRun(
+        parsed.data.runId,
+        parsed.data.workerToken
+      );
     return Response.json({
       ok:true,
       runId:run.id,
