@@ -5,7 +5,7 @@ import type {
 } from '../src/lib/types';
 import {
   buildCaptionCues, buildInitialVideoEdit, captionQaIssues, defaultCaptionStyle, documentaryClipStyle, motionPresetValues,
-  normalizeVideoEdit, suggestSfxEvents, upgradeVideoEditPayload, videoEditorChapterCaptions,
+  normalizeVideoEdit, suggestMusicTrack, suggestSfxEvents, upgradeVideoEditPayload, videoEditorChapterCaptions,
   videoEditorChapterClips, videoEditorChapters,
   videoEditApprovalIssues, videoEditAudioAssetIssues, videoEditStructuralIssues,
   videoEditUpstreamIssues
