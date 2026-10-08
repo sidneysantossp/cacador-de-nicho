@@ -44,7 +44,7 @@ import { recordAutopilotIncident } from './autopilot-incidents';
 import { documentaryScriptClaimIssues } from '@/lib/script-policy';
 import {
   applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceDiversityAssessment,
-  sourceRouteForScene, sourceRouteRequiresAuthenticEvidence
+  sourceRouteExecutionKey, sourceRouteForScene, sourceRouteRequiresAuthenticEvidence
 } from '@/lib/source-router-policy';
 import {
   STOCK_DISCOVERY_POLICY_VERSION, verifiedStockGapRecoverable
@@ -1374,10 +1374,26 @@ async function executeAutomationTransition(
           const result=row.result&&typeof row.result==='object'
             ?row.result as Record<string,unknown>
             :{};
+          if(
+            result.status!=='gap'||
+            String(result.discoveryPolicyVersion??'')!==STOCK_DISCOVERY_POLICY_VERSION||
+            verifiedStockGapRecoverable(result)
+          )return false;
+
+          const sceneId=String(row.scene_id??'');
+          const scene=scenesById.get(sceneId);
+          if(!scene)return false;
+          const prompt=promptsByScene.get(sceneId);
+          const route=applyDocumentarySourcePolicy(
+            sourceRouteForScene(scene,prompt?.direction),
+            documentaryMode
+          );
+          const terminal=result.sourceRouteTerminal&&typeof result.sourceRouteTerminal==='object'
+            ?result.sourceRouteTerminal as Record<string,unknown>
+            :{};
           return (
-            result.status==='gap'&&
-            String(result.discoveryPolicyVersion??'')===STOCK_DISCOVERY_POLICY_VERSION&&
-            !verifiedStockGapRecoverable(result)
+            typeof terminal.status==='string'&&
+            String(terminal.key??'')===sourceRouteExecutionKey(route)
           );
         })
         .map(row=>String(row.scene_id??''))
@@ -2022,6 +2038,11 @@ export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun
     const selectedPass=assets.filter(asset=>
       asset.selected&&asset.status==='ready'&&asset.visualQa?.status==='pass'
     );
+    const selectedPassByScene=new Map<string,(typeof selectedPass)[number]>();
+    for(const asset of selectedPass){
+      if(!selectedPassByScene.has(asset.sceneId))selectedPassByScene.set(asset.sceneId,asset);
+    }
+    const selectedPassScenes=[...selectedPassByScene.values()];
     const generatedActive=assets.filter(asset=>
       asset.sourceType==='generated'&&
       asset.status!=='failed'&&asset.status!=='rejected'
@@ -2041,10 +2062,10 @@ export async function episodeAutomationOperatorSnapshot(run:EpisodeAutomationRun
 
     visual={
       sceneCount:promptSet?.scenePrompts.length??0,
-      selectedPass:selectedPass.length,
-      pending:Math.max(0,(promptSet?.scenePrompts.length??0)-selectedPass.length),
-      selectedImage:selectedPass.filter(asset=>asset.assetKind==='image').length,
-      selectedVideo:selectedPass.filter(asset=>asset.assetKind==='video').length,
+      selectedPass:selectedPassScenes.length,
+      pending:Math.max(0,(promptSet?.scenePrompts.length??0)-selectedPassScenes.length),
+      selectedImage:selectedPassScenes.filter(asset=>asset.assetKind==='image').length,
+      selectedVideo:selectedPassScenes.filter(asset=>asset.assetKind==='video').length,
       stockQueue:queue,
       cost:{
         budgetUsd:rounded(budgetUsd),
