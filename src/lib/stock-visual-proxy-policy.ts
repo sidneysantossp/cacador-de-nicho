@@ -54,6 +54,14 @@ export function stockVisualProxyQuery(input:{
   direction?:string|null;
 }){
   const canonical=input.canonical.trim().replace(/\s+/g,' ').slice(0,100);
-  const fromDirection=concreteDirection(String(input.direction??''));
+  const directionText=normalized(String(input.direction??''));
+  if(blockedMediaClass.test(directionText)){
+    const canonicalText=normalized(canonical);
+    if(/\b(?:pathfind\w*|navigat\w*|route\w*|traffic|speed)\b/.test(canonicalText)){
+      return canonical;
+    }
+    return abstractFallback(canonical);
+  }
+  const fromDirection=concreteDirection(directionText);
   return fromDirection||abstractFallback(canonical);
 }
