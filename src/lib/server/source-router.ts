@@ -438,9 +438,10 @@ async function attachPriorVersionVideo(input:{
 }){
   if(!input.promptSet)return {status:'gap' as const,reason:'prompt-set-missing' as const};
   const ranked=input.candidateRows.flatMap(row=>{
-    if(input.usedCandidateIds.has(row.id))return [];
     const identity=priorVideoProviderIdentity(row);
     if(!identity)return [];
+    const sourceKey=identity.provider+':'+identity.providerAssetId;
+    if(input.usedCandidateIds.has(row.id)||input.usedCandidateIds.has('source:'+sourceKey))return [];
     const payload=objectValue(row.payload);
     const verified=objectValue(payload.verifiedStock);
     const start=Number(verified.sourceStartSeconds??0);
@@ -454,11 +455,15 @@ async function attachPriorVersionVideo(input:{
     });
     if(!decision.ok)return [];
     const score=scoreVisualSegment(input.query,priorVideoSearchText(row));
-    return score>=.25?[{row,score,identity}]:[];
+    return score>=.25?[{row,score,identity,sourceKey}]:[];
   }).sort((a,b)=>b.score-a.score);
 
   for(const item of ranked.slice(0,3)){
     const row=item.row;
+    const sourceReservationKey='source:'+item.sourceKey;
+    if(input.usedCandidateIds.has(row.id)||input.usedCandidateIds.has(sourceReservationKey))continue;
+    input.usedCandidateIds.add(row.id);
+    input.usedCandidateIds.add(sourceReservationKey);
     const sourcePayload=objectValue(row.payload);
     const sourceVerified=objectValue(sourcePayload.verifiedStock);
     const verifiedStock={
