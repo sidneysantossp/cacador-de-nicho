@@ -1628,6 +1628,32 @@ async function assertAutomationWorkerLease(runId:string,workerToken:string){
   }
 }
 
+async function assertOperatorFactoryWorkerLease(runId:string,workerToken:string){
+  const row=checked(await db().from('radar_episode_automation_runs')
+    .select('id,mode,status,worker_token,lease_until,payload')
+    .eq('id',runId)
+    .maybeSingle());
+  if(!row)throw new HttpError('Automation Run não encontrado.',404);
+
+  const token=row.worker_token?String(row.worker_token):'';
+  const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
+  const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
+  if(!activeLease||token!==workerToken){
+    throw new HttpError('Lease do Operator Factory Worker expirou ou não pertence a este executor.',409);
+  }
+
+  const payload=row.payload&&typeof row.payload==='object'
+    ?row.payload as Record<string,unknown>
+    :{};
+  if(
+    String(row.mode)!=='assisted'||
+    payload.operatorFactory!==true||
+    payload.factoryTarget!=='master'
+  ){
+    throw new HttpError('Worker só pode avançar runs Operator Factory assisted até master.',409);
+  }
+}
+
 async function acquireOperatorAutomationLease(runId:string){
   const now=new Date();
   const nowIso=now.toISOString();
@@ -1865,10 +1891,17 @@ export async function advanceClaimedEpisodeAutomationRun(runId:string,workerToke
   }
 
   try{
-    return await advanceEpisodeAutomationRun(runId,workerToken);
+    await assertOperatorFactoryWorkerLease(runId,workerToken);
+    return await advanceEpisodeAutomationRunUnderLease(runId,{claimedWorker:true});
   }catch(error){
     const message=error instanceof Error?error.message:'Falha desconhecida no Automation Worker.';
-    if(error instanceof HttpError&&message.includes('Lease do Automation Worker')){
+    if(
+      error instanceof HttpError&&
+      (
+        message.includes('Lease do Automation Worker')||
+        message.includes('Lease do Operator Factory Worker')
+      )
+    ){
       throw error;
     }
     const run=await loadEpisodeAutomationRun(runId).catch(()=>null);
