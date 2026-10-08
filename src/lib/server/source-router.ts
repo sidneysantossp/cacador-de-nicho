@@ -35,6 +35,10 @@ import {
 
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
+const AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER=(()=>{
+  const value=Number(process.env.AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER??1);
+  return Number.isFinite(value)?Math.max(1,Math.min(3,Math.floor(value))):1;
+})();
 
 const VISUAL_EPISODE_BUDGET_USD=(()=>{
   const value=Number(process.env.AUTOMATION_VISUAL_EPISODE_BUDGET_USD??.50);
@@ -359,7 +363,7 @@ export async function resolveSourceForScene(input:{
         desiredDurationSeconds:Math.max(.25,scene.durationSeconds),
         orientation:'landscape' as const,
         providers:STOCK_VIDEO_PROVIDERS,
-        maxCandidatesPerProvider:2
+        maxCandidatesPerProvider:AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER
       };
       const existing=await loadVerifiedStockJob(input.promptSetId,input.sceneId);
       const queryChanged=existing&&existing.query!==jobInput.query;

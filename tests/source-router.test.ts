@@ -178,6 +178,15 @@ test('Document, map, archive, and explicit documentary evidence still require au
   assert.equal(sourceRouteRequiresAuthenticEvidence(explicit),true);
 });
 
+test('Fast Lane limits automatic verified-stock depth without reducing manual engine capability',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  const stock=readFileSync('src/lib/server/stock-media.ts','utf8');
+  assert.match(source,/AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER/);
+  assert.match(source,/AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER\?\?1|AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER/);
+  assert.match(source,/maxCandidatesPerProvider:AUTOMATION_STOCK_CANDIDATES_PER_PROVIDER/);
+  assert.match(stock,/Math\.max\(1,Math\.min\(3,input\.maxCandidatesPerProvider\?\?2\)\)/);
+});
+
 test('Source Router keeps archive beats on real-source routes',()=>{
   const route=sourceRouteForScene(scene(beat()));
   assert.deepEqual(route.actions,['owned','wikimedia','manual-archive']);
