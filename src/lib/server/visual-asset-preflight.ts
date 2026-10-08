@@ -251,6 +251,36 @@ async function persistReview(
   checked(await db().from('radar_scene_assets').update(update).eq('id',row.id));
 }
 
+function localTechnicalReject(
+  query:string,
+  motion:NonNullable<SceneAssetVisualQa['motion']>
+):SceneAssetVisualQa{
+  const issues=['local-technical-reject'];
+  if(typeof motion.blackRatio==='number'&&motion.blackRatio>=.60){
+    issues.push('excessive-black-frames');
+  }
+  if(motion.meaningfulMotion===false){
+    issues.push('insufficient-meaningful-motion');
+  }
+  return {
+    policyVersion:VISUAL_QA_POLICY_VERSION,
+    status:'reject',
+    reviewedAt:new Date().toISOString(),
+    model:'local-ffmpeg-preflight',
+    query,
+    relevance:0,
+    qualityScore:0,
+    editorialUsefulness:0,
+    placeholderLike:false,
+    templateLike:false,
+    staticGraphic:true,
+    visualClass:'other',
+    issues,
+    summary:'FFmpeg preflight rejected the video before semantic AI review.',
+    motion
+  };
+}
+
 function blockedReview(query:string,error:unknown):SceneAssetVisualQa{
   const message=error instanceof Error?error.message:'Visual reviewer unavailable.';
   return {
@@ -315,6 +345,17 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
     if(row.asset_kind==='video'){
       const sampled=await videoSamples(row.storage_path,sourceTrim(payload));
       motion=sampled.motion;
+      if(
+        motionExpected&&
+        (
+          sampled.motion.meaningfulMotion===false||
+          (typeof sampled.motion.blackRatio==='number'&&sampled.motion.blackRatio>=.60)
+        )
+      ){
+        const review=localTechnicalReject(query,sampled.motion);
+        await persistReview(row,payload,review);
+        return review;
+      }
       verification=await verifyVisualFramesWithOpenAI({
         frames:sampled.frames,
         query,
