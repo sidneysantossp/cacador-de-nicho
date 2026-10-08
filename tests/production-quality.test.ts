@@ -409,7 +409,9 @@ test('Media Intelligence requires review when OWNED clips are not fully embedded
 
 test('Production QA v4 decodes the master sequentially instead of random HTTP boundary seeks',()=>{
   const source=readFileSync(resolve(process.cwd(),'src/lib/server/production-quality.ts'),'utf8');
-  assert.match(source,/const masterDecode=await runCapture\(FFMPEG/);
+  assert.match(source,/downloadMediaToFile\(job\.outputPath,decodePath\)/);
+  assert.match(source,/const decodePath=join\(decodeDir,'master\.mp4'\)/);
+  assert.match(source,/masterDecode=await runCapture\(FFMPEG/);
   assert.match(source,/masterDecode\.code===0/);
   assert.doesNotMatch(source,/chapter\.endSeconds-\.5/);
   assert.doesNotMatch(source,/'-ss',String\(start\)/);
