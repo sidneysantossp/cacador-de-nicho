@@ -316,7 +316,21 @@ export async function resolveSourceForScene(input:{
     sourceRouteForScene(scene,visual?.direction),
     dna?.research?.documentaryMode===true
   );
+  const sourceQuery=sourceRouteRequiresAuthenticEvidence(route)
+    ?route.query
+    :stockVisualProxyQuery({
+      canonical:route.query,
+      direction:visual?.direction
+    });
   const attempts:Array<Record<string,unknown>>=[];
+  if(sourceQuery!==route.query){
+    attempts.push({
+      action:'query-proxy',
+      status:'compiled',
+      canonicalQuery:route.query,
+      sourceQuery
+    });
+  }
   const videoFirst=routePrefersMotion(route);
   let videoExhausted=false;
   let exhaustedStockJobId:string|null=null;
