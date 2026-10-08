@@ -420,6 +420,22 @@ test('Verified Stock worker sync joins the self-hosted database network',()=>{
   assert.match(source,/--network cacadores-infra/);
 });
 
+test('Verified Stock workers roll releases by drain marker instead of force-killing active jobs',()=>{
+  const worker=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
+  const sync=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
+  assert.match(worker,/VERIFIED_STOCK_WORKER_DRAIN_FILE/);
+  assert.match(worker,/drainRequested/);
+  assert.match(worker,/verified-stock-worker-drained/);
+  assert.match(worker,/drain-file-after-job/);
+  assert.match(sync,/request_drain/);
+  assert.match(sync,/docker update --restart=no/);
+  assert.match(sync,/touch '\$DRAIN_FILE'/);
+  assert.match(sync,/VERIFIED_STOCK_WORKERS_DRAINING/);
+  assert.match(sync,/deferredWorkers/);
+  assert.doesNotMatch(sync,/if ! main_matches_target; then\n\s+docker rm -f "\$CONTAINER"/);
+  assert.doesNotMatch(sync,/if fast_matches_target "\$name"; then[\s\S]{0,120}docker rm -f "\$name"/);
+});
+
 test('Verified Stock worker drains backlog quickly but keeps normal idle/error polling',()=>{
   const source=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
   assert.match(source,/VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS/);
