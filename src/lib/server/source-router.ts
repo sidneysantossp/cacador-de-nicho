@@ -23,7 +23,7 @@ import {
   verifiedStockGapNeedsTransientRecovery, verifiedStockGapNeedsVisualModelRecovery
 } from '@/lib/stock-media-policy';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceReuseDecision,
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceDiversityAssessment, sourceReuseDecision,
   sourceRouteExecutionKey, sourceRouteForScene, sourceRouteRequiresAuthenticEvidence,
   VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction, type SourceRoutePlan
 } from '@/lib/source-router-policy';
@@ -742,6 +742,122 @@ export async function remediateMotionCoverageFromPriorVideos(input:{
       finalStats.videoRatio>=.52&&finalStats.longestImageRunSeconds<=28
     ),
     attempted,matched,remaining,...finalStats
+  };
+}
+
+
+export async function remediateSourceDiversity(input:{
+  promptSetId:string;
+  maxScenes?:number;
+}){
+  const promptSet=await loadVisualPromptSet(input.promptSetId);
+  if(!promptSet||promptSet.status!=='approved')throw new HttpError('Visual Prompt Set aprovado não encontrado.',409);
+  const plan=await loadScenePlan(promptSet.scenePlanId);
+  if(!plan||plan.status!=='approved')throw new HttpError('Scene Plan aprovado não encontrado.',409);
+
+  const currentSceneIds=new Set(plan.scenes.map(scene=>scene.id));
+  const sequenceByScene=new Map(plan.scenes.map(scene=>[scene.id,Number(scene.sequence)]));
+  const promptByScene=new Map(promptSet.scenePrompts.map(prompt=>[prompt.sceneId,prompt]));
+  const maxScenes=Math.max(1,Math.min(32,Math.floor(input.maxScenes??16)));
+
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('id,scene_id,source_type,provider,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(2500)) as PriorVideoRow[];
+
+  const current=(rows??[]).filter(row=>currentSceneIds.has(String(row.scene_id)));
+  const diversity=sourceDiversityAssessment(current.flatMap(row=>{
+    const sequence=sequenceByScene.get(String(row.scene_id));
+    return Number.isFinite(sequence)?[{
+      sceneId:String(row.scene_id),
+      sceneSequence:Number(sequence),
+      payload:{...objectValue(row.payload),provider:row.provider??undefined}
+    }]:[];
+  }));
+  const rejected=diversity.rejected.slice(0,maxScenes);
+  if(!rejected.length)return {
+    repaired:0,attempted:0,remaining:0,rejected:[],
+    complete:true
+  };
+
+  const rowByScene=new Map(current.map(row=>[String(row.scene_id),row]));
+  const allCandidates=await priorVersionVideoRows(promptSet.id,currentSceneIds);
+  let repaired=0,attempted=0;
+  const details:Array<{
+    sceneId:string;
+    sequence:number;
+    reason:string;
+    status:string;
+    sourceAssetId?:string;
+  }>=[];
+  const exhaustedSceneIds=new Set<string>();
+
+  for(const issue of rejected){
+    const scene=plan.scenes.find(item=>item.id===issue.sceneId);
+    const visual=promptByScene.get(issue.sceneId);
+    const currentRow=rowByScene.get(issue.sceneId);
+    if(!scene||!visual||!currentRow||currentRow.source_type!=='stock'||!currentRow.storage_path){
+      exhaustedSceneIds.add(issue.sceneId);
+      details.push({
+        sceneId:issue.sceneId,sequence:issue.sceneSequence,
+        reason:issue.reason,status:'unsupported-current-source'
+      });
+      continue;
+    }
+
+    const route=sourceRouteForScene(scene,visual.direction);
+    const query=sourceRouteRequiresAuthenticEvidence(route)
+      ?route.query
+      :stockVisualProxyQuery({canonical:route.query,direction:visual.direction});
+    const stockUses=await selectedStockReuseObservations(promptSet.id,sequenceByScene);
+    const candidates=issue.reason==='overlapping-source-trim'
+      ?[currentRow]
+      :allCandidates.filter(row=>row.id!==currentRow.id);
+    attempted++;
+    const result=await attachPriorVersionVideo({
+      promptSet,scene,visual,query,candidateRows:candidates,
+      stockUses,usedCandidateIds:new Set<string>()
+    });
+    if(result.status==='matched'){
+      repaired++;
+      details.push({
+        sceneId:issue.sceneId,sequence:issue.sceneSequence,
+        reason:issue.reason,status:'repaired',
+        sourceAssetId:result.sourceAssetId
+      });
+    }else{
+      exhaustedSceneIds.add(issue.sceneId);
+      details.push({
+        sceneId:issue.sceneId,sequence:issue.sceneSequence,
+        reason:issue.reason,status:String(result.reason)
+      });
+    }
+  }
+
+  const refreshed=checked(await db().from('radar_scene_assets')
+    .select('id,scene_id,provider,payload')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(2500));
+  const remainingAssessment=sourceDiversityAssessment((refreshed??[]).flatMap(row=>{
+    const sceneId=String(row.scene_id);
+    const sequence=sequenceByScene.get(sceneId);
+    return currentSceneIds.has(sceneId)&&Number.isFinite(sequence)?[{
+      sceneId,
+      sceneSequence:Number(sequence),
+      payload:{...objectValue(row.payload),provider:row.provider??undefined}
+    }]:[];
+  }));
+
+  return {
+    repaired,attempted,
+    remaining:remainingAssessment.rejected.length,
+    complete:remainingAssessment.rejected.length===0,
+    rejected:remainingAssessment.rejected,
+    details
   };
 }
 
