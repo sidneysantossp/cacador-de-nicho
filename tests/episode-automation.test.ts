@@ -534,7 +534,7 @@ test('Visual-assets automation defers only a fully exhausted current source rout
   assert.match(source,/result\.status!=='gap'/);
   assert.match(source,/sourceRouteTerminal/);
   assert.match(source,/sourceRouteExecutionKey\(route\)/);
-  assert.match(source,/String\(terminal\.key\?\?' '\)|String\(terminal\.key\?\?''\)/);
+  assert.match(source,/String\(terminal\.key\?\?''\)/);
   assert.match(source,/sourceRouteRequiresAuthenticEvidence\(routed\.route\)/);
   assert.match(source,/deferred-source-gap/);
   assert.match(source,/deferred-external-source/);
