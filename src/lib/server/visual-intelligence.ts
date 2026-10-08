@@ -12,6 +12,7 @@ import { downloadMedia } from './media-storage';
 import { providerSecret } from './providers';
 import { googleVisionModelUnavailable, resolveGoogleVisionModel } from './google-vision-model';
 import { normalizeMediaSemantic, normalizeMediaTags, scoreVisualSegment, visualSegmentSearchText } from '@/lib/media-library-policy';
+import { selectVisualSegmentWindow, type ExcludedSourceRange } from '@/lib/visual-segment-window';
 
 const execFile=promisify(execFileCallback);
 const FFMPEG=process.env.FFMPEG_PATH||'ffmpeg';
@@ -275,13 +276,23 @@ export async function analyzeVisualAsset(assetId:string):Promise<VisualIntellige
   }finally{if(root)await rm(root,{recursive:true,force:true}).catch(()=>{});}
 }
 
-export async function bestVisualSegment(input:{assetId:string;query:string;desiredDurationSeconds:number}){
+export async function bestVisualSegment(input:{
+  assetId:string;
+  query:string;
+  desiredDurationSeconds:number;
+  excludedSourceRanges?:ExcludedSourceRange[];
+}){
   const rows=checked(await db().from('radar_asset_segments')
     .select('id,channel_id,asset_id,sequence,start_seconds,end_seconds,duration_seconds,title,summary,semantic,confidence,search_text,keyframe_seconds,created_at,updated_at')
     .eq('asset_id',input.assetId).order('sequence',{ascending:true})) as SegmentRow[];
-  const ranked=(rows??[]).map(row=>{const segment=normalizeSegment(row),relevance=scoreVisualSegment(input.query,segment.searchText);
-    return {segment,relevance,score:relevance*.88+segment.confidence*.12};}).sort((a,b)=>b.score-a.score);
-  const best=ranked[0];if(!best||best.relevance<.08)return null;
-  const desired=Math.max(.25,input.desiredDurationSeconds),sourceStart=best.segment.startSeconds;
-  return {segment:best.segment,score:best.score,sourceStartSeconds:sourceStart,sourceEndSeconds:Math.min(best.segment.endSeconds,sourceStart+desired)};
+  const ranked=(rows??[]).map(row=>{
+    const segment=normalizeSegment(row);
+    const relevance=scoreVisualSegment(input.query,segment.searchText);
+    return {segment,relevance,score:relevance*.88+segment.confidence*.12};
+  });
+  return selectVisualSegmentWindow({
+    ranked,
+    desiredDurationSeconds:input.desiredDurationSeconds,
+    excludedSourceRanges:input.excludedSourceRanges
+  });
 }
