@@ -23,7 +23,7 @@ export function externalMediaUrlShapeAllowed(value:string){
   }
 }
 
-export function externalMediaIpIsPublic(value:string){
+export function externalMediaIpIsPublic(value:string):boolean{
   const input=value.toLowerCase().replace(/^\[|\]$/g,'');
   if(input.includes(':')){
     if(input==='::'||input==='::1')return false;
