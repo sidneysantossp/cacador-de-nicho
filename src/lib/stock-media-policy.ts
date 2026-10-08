@@ -133,6 +133,25 @@ export function verifiedStockSearchRelevance(
   return Math.max(0,Math.min(1,Math.max(metadataRelevance,providerSignal)));
 }
 
+export function verifiedStockGapNeedsVisualModelRecovery(result:unknown){
+  const serialized=JSON.stringify(result??{}).toLowerCase();
+  return (
+    serialized.includes('gemini-2.5-flash-lite')&&
+    (
+      serialized.includes('no longer available')||
+      serialized.includes('not_found')||
+      serialized.includes('http 404')
+    )
+  );
+}
+
+export function verifiedStockGapRecoverable(result:unknown){
+  return (
+    verifiedStockGapNeedsTransientRecovery(result)||
+    verifiedStockGapNeedsVisualModelRecovery(result)
+  );
+}
+
 export function verifiedStockGapNeedsTransientRecovery(result:unknown){
   const serialized=JSON.stringify(result??{}).toLowerCase();
   if(
