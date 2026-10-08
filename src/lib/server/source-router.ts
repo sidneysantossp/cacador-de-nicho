@@ -151,6 +151,7 @@ async function markVideoFirstFallback(input:{
 async function markSourceRouteTerminal(input:{
   stockJobId:string;
   route:SourceRoutePlan;
+  sourceQuery:string;
   status:'gap'|'operator-source-required';
   action:SourceRouteAction|null;
   reason:string;
@@ -166,7 +167,7 @@ async function markSourceRouteTerminal(input:{
     result:{
       ...result,
       sourceRouteTerminal:{
-        key:sourceRouteExecutionKey(input.route),
+        key:sourceRouteExecutionKey(input.route,input.sourceQuery),
         status:input.status,
         action:input.action,
         reason:input.reason,
