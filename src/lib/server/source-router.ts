@@ -21,8 +21,8 @@ import {
   verifiedStockGapNeedsTransientRecovery, verifiedStockGapNeedsVisualModelRecovery
 } from '@/lib/stock-media-policy';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteExecutionKey,
-  sourceRouteForScene, sourceRouteRequiresAuthenticEvidence,
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceReuseDecision,
+  sourceRouteExecutionKey, sourceRouteForScene, sourceRouteRequiresAuthenticEvidence,
   VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction, type SourceRoutePlan
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
@@ -215,6 +215,46 @@ async function revalidateExistingUploadedStill(input:{
   return {status:'matched' as const,assetId:String(row.id),verification};
 }
 
+async function selectedStockReuseObservations(
+  promptSetId:string,
+  sequenceByScene:Map<string,number>
+){
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('scene_id,provider,payload')
+    .eq('visual_prompt_set_id',promptSetId)
+    .eq('source_type','stock')
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(1000));
+  const uses=new Map<string,Array<{
+    sceneSequence:number;
+    sourceStartSeconds?:number|null;
+    sourceEndSeconds?:number|null;
+  }>>();
+  for(const row of rows??[]){
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const stock=payload.stock&&typeof payload.stock==='object'
+      ?payload.stock as Record<string,unknown>
+      :{};
+    const verified=payload.verifiedStock&&typeof payload.verifiedStock==='object'
+      ?payload.verifiedStock as Record<string,unknown>
+      :{};
+    const providerAssetId=String(stock.providerAssetId??verified.providerAssetId??'').trim();
+    const provider=String(verified.provider??row.provider??'').trim();
+    const sceneSequence=sequenceByScene.get(String(row.scene_id));
+    if(!provider||!providerAssetId||!Number.isFinite(sceneSequence))continue;
+    const key=provider+':'+providerAssetId;
+    const observations=uses.get(key)??[];
+    observations.push({
+      sceneSequence:Number(sceneSequence),
+      sourceStartSeconds:verified.sourceStartSeconds===undefined?null:Number(verified.sourceStartSeconds),
+      sourceEndSeconds:verified.sourceEndSeconds===undefined?null:Number(verified.sourceEndSeconds)
+    });
+    uses.set(key,observations);
+  }
+  return uses;
+}
+
 async function resolveStillCandidates(input:{
   promptSetId:string;
   sceneId:string;
@@ -222,6 +262,12 @@ async function resolveStillCandidates(input:{
   provider:StockMediaProvider;
   minimumRelevance:number;
   requireTemporalProvenance?:boolean;
+  targetSequence:number;
+  stockUses:Map<string,Array<{
+    sceneSequence:number;
+    sourceStartSeconds?:number|null;
+    sourceEndSeconds?:number|null;
+  }>>;
 }){
   const discovered=await searchStockMedia({
     promptSetId:input.promptSetId,
@@ -240,6 +286,25 @@ async function resolveStillCandidates(input:{
   const attempts:Array<Record<string,unknown>>=[];
 
   for(const candidate of ranked){
+    const reuse=sourceReuseDecision({
+      sourceType:'stock',
+      targetSequence:input.targetSequence,
+      observations:input.stockUses.get(
+        input.provider+':'+candidate.result.providerAssetId
+      )??[]
+    });
+    if(!reuse.ok){
+      attempts.push({
+        provider:input.provider,
+        providerAssetId:candidate.result.providerAssetId,
+        stage:'source-diversity',
+        reason:reuse.reason,
+        usageCount:reuse.usageCount,
+        maxUses:reuse.maxUses
+      });
+      continue;
+    }
+
     let asset:SceneAsset|null=null;
     try{
       if(input.requireTemporalProvenance){
@@ -310,6 +375,11 @@ export async function resolveSourceForScene(input:{
   if(!plan||plan.status!=='approved')throw new HttpError('Scene Plan aprovado não encontrado.',409);
   const scene=plan.scenes.find(item=>item.id===input.sceneId);
   if(!scene)throw new HttpError('Cena não encontrada no Scene Plan.',404);
+  const sequenceByScene=new Map(plan.scenes.map(item=>[item.id,Number(item.sequence)]));
+  const stockUses=await selectedStockReuseObservations(
+    input.promptSetId,
+    sequenceByScene
+  );
 
   const visual=promptSet.scenePrompts.find(item=>item.sceneId===scene.id);
   const dna=await loadProductionDna(promptSet.channelId);
@@ -360,7 +430,9 @@ export async function resolveSourceForScene(input:{
         query:route.query,
         provider:'wikimedia',
         minimumRelevance:.46,
-        requireTemporalProvenance:true
+        requireTemporalProvenance:true,
+        targetSequence:Number(scene.sequence),
+        stockUses
       });
       attempts.push({action,status:result.status,details:result.attempts});
       if(result.status==='matched'){
@@ -385,7 +457,9 @@ export async function resolveSourceForScene(input:{
             sceneId:input.sceneId,
             query:sourceQuery,
             provider,
-            minimumRelevance:.42
+            minimumRelevance:.42,
+            targetSequence:Number(scene.sequence),
+            stockUses
           });
         }catch(error){
           if(stockProviderSearchShouldTrip(error)){
