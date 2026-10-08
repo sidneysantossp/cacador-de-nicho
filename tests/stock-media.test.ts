@@ -449,10 +449,13 @@ test('Stock discovery expands enriched documentary directions into layered provi
   assert.equal(queries.every(query=>query.length<=100),true);
 });
 
-test('Verified Stock worker does not treat a selected still as a resolved video job',()=>{
+test('Verified Stock worker only treats a selected motion-QA video as resolved',()=>{
   const source=readFileSync(resolve(process.cwd(),'src/app/api/workers/verified-stock/route.ts'),'utf8');
   assert.match(source,/select\('id,asset_kind,source_type,provider,payload'\)/);
   assert.match(source,/selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'/);
+  assert.match(source,/selectedVideoPassesVisualQa\(selected\.payload\)/);
+  assert.match(source,/qa\.status===\'pass\'/);
+  assert.match(source,/motion\.meaningfulMotion===true/);
 });
 
 
@@ -471,15 +474,30 @@ test('Verified stock sync keeps fast workers on the promoted release and stable 
 });
 
 
-test('Verified stock degrades from Google visual indexing to mandatory Pre-Render QA',()=>{
+test('Verified stock requires Pre-Render Visual QA for every accepted video path',()=>{
   const source=readFileSync('src/lib/server/stock-media.ts','utf8');
   assert.match(source,/ensureStockVisualIndex/);
   assert.match(source,/stockVisualAnalysisFallbackAllowed/);
   assert.match(source,/deterministicStockFallbackTrim/);
   assert.match(source,/verificationMode=fallbackAccepted\?'pre-render-fallback':'visual-index'/);
-  assert.match(source,/await ensureSceneAssetVisualQa\(asset\.id\)/);
-  assert.match(source,/stage:'pre-render-fallback'/);
-  assert.match(source,/O fallback stock não passou no Pre-Render Visual QA/);
+  const accept=source.indexOf('if(indexedAccepted||fallbackAccepted)');
+  const qa=source.indexOf('const review=await ensureSceneAssetVisualQa(asset.id)',accept);
+  const select=source.indexOf('await selectSceneAsset(asset.id)',qa);
+  assert.ok(accept>=0&&qa>accept&&select>qa,'visual QA must run before stock selection for all accepted paths');
+  assert.match(source,/stage:'pre-render-visual-qa'/);
+  assert.match(source,/review\.motion\?\.meaningfulMotion!==true/);
+  assert.match(source,/O candidato stock não passou no Pre-Render Visual QA de movimento/);
+});
+
+test('Verified stock selection recovery is bounded instead of restarting forever',()=>{
+  const router=readFileSync('src/lib/server/source-router.ts','utf8');
+  const jobs=readFileSync('src/lib/server/verified-stock-jobs.ts','utf8');
+  assert.match(router,/if\(existing\.attempts<2\)/);
+  assert.match(router,/restartVerifiedStockJob\(existing\.id,\{resetAttempts:false\}\)/);
+  assert.match(router,/selection-recovery-exhausted/);
+  assert.match(router,/videoExhausted=true/);
+  assert.match(jobs,/options:\{resetAttempts\?:boolean\}=\{\}/);
+  assert.match(jobs,/options\.resetAttempts===false\?\{\}:\{attempts:0\}/);
 });
 
 test('Verified Stock worker retries failures from preflight reads instead of leaving processing leases stuck',()=>{

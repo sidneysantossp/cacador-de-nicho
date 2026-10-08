@@ -15,6 +15,25 @@ const schema=z.object({
   workerToken:z.string().uuid()
 }).strict();
 
+function selectedVideoPassesVisualQa(payload:unknown){
+  const root=payload&&typeof payload==='object'
+    ?payload as Record<string,unknown>
+    :{};
+  const rawQa=root.visualQa;
+  const qa=rawQa&&typeof rawQa==='object'
+    ?rawQa as Record<string,unknown>
+    :{};
+  const rawMotion=qa.motion;
+  const motion=rawMotion&&typeof rawMotion==='object'
+    ?rawMotion as Record<string,unknown>
+    :{};
+  return (
+    qa.status==='pass'&&
+    qa.staticGraphic!==true&&
+    motion.meaningfulMotion===true
+  );
+}
+
 function requireWorker(request:Request){
   const expected=(
     process.env.VERIFIED_STOCK_WORKER_SECRET||
@@ -75,7 +94,10 @@ export async function POST(request:Request){
       )
     );
 
-    if(selectedCurrent&&selected&&String(selected.asset_kind)==='video'){
+    if(
+      selectedCurrent&&selected&&String(selected.asset_kind)==='video'&&
+      selectedVideoPassesVisualQa(selected.payload)
+    ){
       const result={
         status:'skipped',
         reason:'selected-ready',

@@ -147,18 +147,23 @@ export async function enqueueVerifiedStockJob(input:{
 }
 
 
-export async function restartVerifiedStockJob(jobId:string){
+export async function restartVerifiedStockJob(
+  jobId:string,
+  options:{resetAttempts?:boolean}={}
+){
   const now=new Date().toISOString();
-  const row=checked(await db().from('radar_verified_stock_jobs').update({
-    status:'queued',
+  const update={
+    status:'queued' as const,
     worker_token:null,
     lease_until:null,
-    attempts:0,
     available_at:now,
     result:{},
     last_error:null,
     completed_at:null,
-    updated_at:now
-  }).eq('id',jobId).select(select).single()) as Row;
+    updated_at:now,
+    ...(options.resetAttempts===false?{}:{attempts:0})
+  };
+  const row=checked(await db().from('radar_verified_stock_jobs').update(update)
+    .eq('id',jobId).select(select).single()) as Row;
   return normalize(row);
 }

@@ -123,7 +123,8 @@ test('Verified stock worker ignores stale selected assets from older prompt vers
   assert.match(source,/assetIsStale/);
   assert.match(source,/promptSetVersion:Number\(selectedPayload\.promptSetVersion\?\?0\)/);
   assert.match(source,/prompt:String\(selectedPayload\.prompt\?\?''\)/);
-  assert.match(source,/if\(selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'\)/);
+  assert.match(source,/selectedCurrent&&selected&&String\(selected\.asset_kind\)===\'video\'/);
+  assert.match(source,/selectedVideoPassesVisualQa\(selected\.payload\)/);
 });
 
 test('Google generation sends real character reference images to Gemini and Veo',()=>{

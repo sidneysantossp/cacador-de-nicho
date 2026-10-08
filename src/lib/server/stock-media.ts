@@ -1027,11 +1027,29 @@ export async function resolveVerifiedStockMediaForScene(input:{
             updated_at:new Date().toISOString()
           }).eq('id',asset.id);
 
+          const review=await ensureSceneAssetVisualQa(asset.id);
+          if(
+            review.status!=='pass'||
+            review.staticGraphic===true||
+            review.motion?.meaningfulMotion!==true
+          ){
+            throw new HttpError(
+              'O candidato stock não passou no Pre-Render Visual QA de movimento.',
+              422
+            );
+          }
+          attempts.push({
+            provider,
+            providerAssetId:candidate.result.providerAssetId,
+            stage:'pre-render-visual-qa',
+            relevance:review.relevance,
+            qualityScore:review.qualityScore,
+            editorialUsefulness:review.editorialUsefulness,
+            meaningfulMotion:review.motion?.meaningfulMotion??null,
+            accepted:true
+          });
+
           if(fallbackAccepted){
-            const review=await ensureSceneAssetVisualQa(asset.id);
-            if(review.status!=='pass'){
-              throw new HttpError('O fallback stock não passou no Pre-Render Visual QA.',422);
-            }
             visualRelevance=review.relevance;
             combinedScore=searchRelevance*.55+visualRelevance*.45;
             if(!stockCandidateAccepted({
