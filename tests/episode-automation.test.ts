@@ -243,6 +243,22 @@ test('Episode Automation worker prefers self-hosted database credentials',()=>{
   assert.doesNotMatch(source,/SUPABASE_URL\+'\/rest\/v1\/rpc\/'/);
 });
 
+test('Episode Automation exposes one concise operator snapshot with progress, queues, cost, and next action',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const route=readFileSync('src/app/api/episode-automation/route.ts','utf8');
+  assert.match(source,/export async function episodeAutomationOperatorSnapshot/);
+  assert.match(source,/selectedPass/);
+  assert.match(source,/stockQueue/);
+  assert.match(source,/budgetUsd/);
+  assert.match(source,/incurredUsd/);
+  assert.match(source,/unknownPaidAssets/);
+  assert.match(source,/recommendedAction/);
+  assert.match(source,/'operator-review'/);
+  assert.match(source,/'drain'/);
+  assert.match(source,/'wait'/);
+  assert.match(route,/operator:await episodeAutomationOperatorSnapshot\(reconciled\)/);
+});
+
 test('Operator Golden Path exposes bounded arm and drain API without enabling global autopilot',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   const route=readFileSync('src/app/api/episode-automation/route.ts','utf8');
