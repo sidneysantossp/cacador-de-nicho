@@ -114,6 +114,90 @@ function sourceTrim(payload:Record<string,unknown>){
   return null;
 }
 
+export type LocalMotionFallbackTrim={
+  sourceStartSeconds:number;
+  sourceEndSeconds:number;
+  freezeRatio:number;
+  blackRatio:number;
+  meaningfulMotion:boolean;
+};
+
+export async function selectLocalMotionFallbackTrim(input:{
+  assetId:string;
+  desiredDurationSeconds:number;
+  excludedSourceRanges?:Array<{startSeconds:number;endSeconds:number}>;
+}):Promise<LocalMotionFallbackTrim|null>{
+  const row=await assetRow(input.assetId);
+  if(!row||row.asset_kind!=='video'||row.status!=='ready'||!row.storage_path)return null;
+
+  const root=await mkdtemp(path.join(tmpdir(),'cacadores-local-motion-'));
+  const local=path.join(root,'input.mp4');
+  try{
+    await downloadMediaToFile(row.storage_path,local);
+    const technical=await probeVideoInput(local);
+    const sourceDuration=Math.max(0,Number(technical.durationSeconds??0));
+    if(sourceDuration<.25)return null;
+
+    const span=Math.min(
+      sourceDuration,
+      Math.max(.25,Number(input.desiredDurationSeconds)||.25)
+    );
+    const maxStart=Math.max(0,sourceDuration-span);
+    const starts=[0,maxStart*.33,maxStart*.66,maxStart]
+      .map(value=>Number(Math.max(0,Math.min(maxStart,value)).toFixed(3)))
+      .filter((value,index,list)=>list.indexOf(value)===index);
+    const excluded=input.excludedSourceRanges??[];
+    const candidates=starts.filter(start=>{
+      const end=start+span;
+      return !excluded.some(range=>{
+        const overlap=Math.max(
+          0,
+          Math.min(end,range.endSeconds)-Math.max(start,range.startSeconds)
+        );
+        return span>0&&overlap/span>.25;
+      });
+    });
+
+    const scored:LocalMotionFallbackTrim[]=[];
+    for(const start of candidates){
+      try{
+        const result=await execFile(FFMPEG,[
+          '-hide_banner','-nostats',
+          '-ss',start.toFixed(3),
+          '-i',local,
+          '-t',span.toFixed(3),
+          '-map','0:v:0','-an',
+          '-vf','blackdetect=d=0.2:pix_th=0.10,freezedetect=n=-45dB:d=0.5',
+          '-f','null','-'
+        ],{timeout:45000,maxBuffer:4*1024*1024});
+        const stderr=String(result.stderr??'');
+        const freezeRatio=Math.max(
+          0,Math.min(1,sumFreezeSeconds(stderr)/Math.max(.01,span))
+        );
+        const blackRatio=Math.max(
+          0,Math.min(1,sumBlackSeconds(stderr)/Math.max(.01,span))
+        );
+        scored.push({
+          sourceStartSeconds:start,
+          sourceEndSeconds:Number(Math.min(sourceDuration,start+span).toFixed(3)),
+          freezeRatio:Number(freezeRatio.toFixed(4)),
+          blackRatio:Number(blackRatio.toFixed(4)),
+          meaningfulMotion:freezeRatio<.60&&blackRatio<.60
+        });
+      }catch{
+        continue;
+      }
+    }
+
+    return scored.sort((a,b)=>{
+      if(a.meaningfulMotion!==b.meaningfulMotion)return a.meaningfulMotion?-1:1;
+      return (a.blackRatio*2+a.freezeRatio)-(b.blackRatio*2+b.freezeRatio);
+    })[0]??null;
+  }finally{
+    await rm(root,{recursive:true,force:true}).catch(()=>{});
+  }
+}
+
 async function videoSamples(
   storagePath:string,
   requestedTrim?:{start:number;end:number}|null
