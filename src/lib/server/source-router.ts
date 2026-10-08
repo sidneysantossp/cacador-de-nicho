@@ -445,18 +445,39 @@ async function attachPriorVersionVideo(input:{
     if(input.usedCandidateIds.has(row.id)||input.usedCandidateIds.has('source:'+sourceKey))return [];
     const payload=objectValue(row.payload);
     const verified=objectValue(payload.verifiedStock);
-    const start=Number(verified.sourceStartSeconds??0);
-    const end=Number(verified.sourceEndSeconds??start);
-    const decision=sourceReuseDecision({
+    const observations=input.stockUses.get(sourceKey)??[];
+    const verifiedStart=Number(verified.sourceStartSeconds??0);
+    const verifiedEnd=Number(verified.sourceEndSeconds??verifiedStart);
+    const duration=Number(row.duration_seconds??0);
+    const desired=Math.max(.5,Number(input.scene.durationSeconds)||.5);
+    const windows:Array<{start:number;end:number}>=[];
+    if(Number.isFinite(verifiedStart)&&Number.isFinite(verifiedEnd)&&verifiedEnd-verifiedStart>=.20){
+      windows.push({start:verifiedStart,end:verifiedEnd});
+    }
+    if(Number.isFinite(duration)&&duration>=desired){
+      const maxStart=Math.max(0,duration-desired);
+      for(const fraction of [0,.25,.5,.75,1]){
+        const start=maxStart*fraction;
+        const end=Math.min(duration,start+desired);
+        if(end-start<.20)continue;
+        if(windows.some(item=>Math.abs(item.start-start)<.05&&Math.abs(item.end-end)<.05))continue;
+        windows.push({start,end});
+      }
+    }
+    const window=windows.find(item=>sourceReuseDecision({
       sourceType:'stock',
       targetSequence:Number(input.scene.sequence),
-      observations:input.stockUses.get(identity.provider+':'+identity.providerAssetId)??[],
-      candidateStartSeconds:Number.isFinite(start)?start:null,
-      candidateEndSeconds:Number.isFinite(end)?end:null
-    });
-    if(!decision.ok)return [];
+      observations,
+      candidateStartSeconds:item.start,
+      candidateEndSeconds:item.end
+    }).ok);
+    if(!window)return [];
     const score=scoreVisualSegment(input.query,priorVideoSearchText(row));
-    return score>=.25?[{row,score,identity,sourceKey}]:[];
+    return score>=.25?[{
+      row,score,identity,sourceKey,
+      sourceStartSeconds:window.start,
+      sourceEndSeconds:window.end
+    }]:[];
   }).sort((a,b)=>b.score-a.score);
 
   for(const item of ranked.slice(0,3)){
@@ -469,6 +490,8 @@ async function attachPriorVersionVideo(input:{
     const sourceVerified=objectValue(sourcePayload.verifiedStock);
     const verifiedStock={
       ...sourceVerified,
+      sourceStartSeconds:item.sourceStartSeconds,
+      sourceEndSeconds:item.sourceEndSeconds,
       cachedFromAssetId:String(sourceVerified.cachedFromAssetId??row.id)
     };
     const id=crypto.randomUUID();
