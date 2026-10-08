@@ -8,6 +8,7 @@ import {
   stockCandidateAccepted, stockDiscoveryQueries, stockDiscoveryQuery, stockDownloadHostAllowed,
   stockFallbackEligible, stockVisualAnalysisFallbackAllowed, stockVisualConstraintsSatisfied,
   stockVisualValidationQuery, validStockQuery, verifiedStockGapNeedsTransientRecovery,
+  verifiedStockGapNeedsVisualModelRecovery, verifiedStockGapRecoverable,
   verifiedStockSearchRelevance
 } from '../src/lib/stock-media-policy';
 
