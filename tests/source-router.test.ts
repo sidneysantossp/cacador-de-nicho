@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import type { SceneTimecode, VisualBeat } from '../src/lib/types';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, motionRouteAssetSatisfied, routePrefersMotion,
-  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene
+  sourceDiversityAssessment, sourceReuseDecision, sourceRouteForScene,
+  sourceRouteRequiresAuthenticEvidence
 } from '../src/lib/source-router-policy';
 
 function beat(overrides:Partial<VisualBeat>={}):VisualBeat{
