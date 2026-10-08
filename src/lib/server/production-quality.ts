@@ -503,12 +503,16 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
     await saveChapterQa(job.id,technical);
   }
 
+  const masterDecodeTimeoutMs=Math.max(
+    180000,
+    Math.min(600000,Math.ceil((master.durationSeconds??0)*600))
+  );
   const masterDecode=await runCapture(FFMPEG,[
     '-hide_banner','-loglevel','error',
     '-i',masterUrl,
     '-map','0:v:0','-an',
     '-f','null','-'
-  ],180000);
+  ],masterDecodeTimeoutMs);
 
   const blackValues=results.map(item=>item.blackSeconds);
   const blackSeconds=blackValues.every((value):value is number=>value!==null)
