@@ -291,8 +291,9 @@ test('Automation worker lease accepts only Autonomous or explicitly armed Operat
   assert.match(block,/\.select\('id,mode,status,worker_token,lease_until,payload'\)/);
   assert.match(block,/payload\.operatorFactory===true/);
   assert.match(block,/payload\.factoryTarget==='master'/);
-  assert.match(block,/String\(row\.mode\)==='autonomous'/);
+  assert.match(block,/String\(row\.mode\)!=='autonomous'/);
   assert.match(block,/String\(row\.mode\)==='assisted'/);
+  assert.match(block,/!operatorFactory/);
 });
 
 test('Operator Factory worker auto-resumes marked assisted runs without global Autopilot',()=>{
