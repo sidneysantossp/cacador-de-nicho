@@ -179,6 +179,13 @@ test('Stock visual indexing falls back only for transient provider failures',()=
     status:502,message:'temporarily unavailable'
   }),true);
   assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:404,
+    message:'This model models/gemini-2.5-flash-lite is no longer available to new users. status NOT_FOUND'
+  }),true);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
+    status:404,message:'stock asset not found'
+  }),false);
+  assert.equal(stockVisualAnalysisFallbackAllowed({
     status:422,message:'invalid asset'
   }),false);
   assert.equal(stockVisualAnalysisFallbackAllowed({
