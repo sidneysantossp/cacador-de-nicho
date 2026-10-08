@@ -167,7 +167,7 @@ test('Source Router prefers motion for live-action stock video beats',()=>{
     narration:'People walk through a busy city street.',
     queries:['people walking busy city street']
   })));
-  assert.deepEqual(route.actions,['owned','stock-video','stock-image']);
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image','youtube-cc']);
   assert.equal(route.syntheticAllowed,false);
 });
 
@@ -248,7 +248,7 @@ test('Source Router ignores stale media-class wording in visual prompts when a c
     'authentic geographic map map how should route change traffic speed changes'
   );
   assert.equal(route.preference,'stock-video');
-  assert.deepEqual(route.actions,['owned','stock-video','stock-image']);
+  assert.deepEqual(route.actions,['owned','stock-video','stock-image','youtube-cc']);
   assert.equal(route.query,'pedestrian pathfinding adapting route to traffic speed');
   assert.doesNotMatch(route.query,/authentic geographic map/i);
 });
