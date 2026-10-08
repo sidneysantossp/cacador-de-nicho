@@ -22,6 +22,7 @@ import {
 } from '@/lib/stock-media-policy';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
+  sourceRouteRequiresAuthenticEvidence,
   VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
@@ -588,9 +589,11 @@ export async function resolveSourceForScene(input:{
     status:'gap' as const,
     route,
     action:null as SourceRouteAction|null,
-    reason:route.syntheticAllowed
-      ?'Nenhuma fonte visual passou pelos gates automáticos.'
-      :'Beat factual sem fonte real validada; geração sintética está bloqueada.',
+    reason:sourceRouteRequiresAuthenticEvidence(route)
+      ?'Beat factual sem fonte real validada; geração sintética está bloqueada.'
+      :route.syntheticAllowed
+        ?'Nenhuma fonte visual passou pelos gates automáticos.'
+        :'Nenhuma fonte real motion-first passou pelos gates automáticos; a cena pode ser deferida sem bloquear outras cenas.',
     attempts
   };
 }
