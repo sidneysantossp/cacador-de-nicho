@@ -467,7 +467,7 @@ export async function resolveSourceForScene(input:{
             return {status:'queued' as const,route,action,job:restarted,attempts};
           }
           const previousCompiledQuery=String(existing.result?.query??'');
-          const currentCompiledQuery=stockDiscoveryQuery(route.query);
+          const currentCompiledQuery=stockDiscoveryQuery(sourceQuery);
           if(previousCompiledQuery!==currentCompiledQuery){
             const restarted=await restartVerifiedStockJob(existing.id);
             attempts.push({
