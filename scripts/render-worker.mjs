@@ -454,7 +454,11 @@ async function runVideoEncode(baseArgs,outputPath,payload,{crf,preset='medium'}=
 }
 
 function renderEncodePreset(payload,fallback='medium'){
-  if(payload?.encoderPreset==='ultrafast'||payload?.encoderPreset==='medium')return payload.encoderPreset;
+  if(
+    payload?.encoderPreset==='ultrafast'||
+    payload?.encoderPreset==='veryfast'||
+    payload?.encoderPreset==='medium'
+  )return payload.encoderPreset;
   return payload?.preset==='draft-720p30'?'ultrafast':fallback;
 }
 
