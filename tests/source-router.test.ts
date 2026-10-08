@@ -126,6 +126,18 @@ test('Source reuse allows separated microcuts but blocks adjacent, overlapping, 
   assert.equal(ownedStillAllowed.ok,true);
 });
 
+test('Automatic paid image generation is gated by episode cost policy before provider call',()=>{
+  const source=readFileSync('src/lib/server/source-router.ts','utf8');
+  assert.match(source,/AUTOMATION_VISUAL_EPISODE_BUDGET_USD/);
+  assert.match(source,/AUTOMATION_GOOGLE_IMAGE_ESTIMATED_COST_USD/);
+  assert.match(source,/visualGenerationBudgetDecision/);
+  assert.match(source,/generation-cost-unknown|visual-budget-exceeded/);
+  const decisionIndex=source.indexOf('const cost=visualGenerationBudgetDecision');
+  const generateIndex=source.indexOf('const asset=await generateGoogleImage',decisionIndex);
+  assert.ok(decisionIndex>=0&&generateIndex>decisionIndex,'budget decision must happen before paid generation');
+  assert.match(source,/estimatedCostUsd:cost\.estimatedCostUsd/);
+});
+
 test('Source Router keeps archive beats on real-source routes',()=>{
   const route=sourceRouteForScene(scene(beat()));
   assert.deepEqual(route.actions,['owned','wikimedia','manual-archive']);
