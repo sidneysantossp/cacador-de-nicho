@@ -340,7 +340,7 @@ export async function resolveSourceForScene(input:{
       const result=await resolveOwnedMediaForScene({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        query:route.query,
+        query:sourceQuery,
         preferredKind:videoFirst?'video':undefined,
         force:input.forceSelectedReplacement===true
       });
