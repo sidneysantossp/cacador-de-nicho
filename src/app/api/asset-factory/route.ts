@@ -5,7 +5,7 @@ import {
   attachOwnedMediaToScene, deleteSceneAsset, generateGoogleImage, listSceneAssets, refreshGoogleVideo,
   resolveOwnedMediaForPromptSet, resolveOwnedMediaForScene, selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
-import { resolveSourceForScene } from '@/lib/server/source-router';
+import { remediateMotionCoverageFromPriorVideos, resolveSourceForScene } from '@/lib/server/source-router';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -40,6 +40,11 @@ const schema=z.discriminatedUnion('action',[
     action:z.literal('resolveSource'),
     promptSetId:z.string().uuid(),
     sceneId:z.string().uuid()
+  }).strict(),
+  z.object({
+    action:z.literal('remediateMotionCoverage'),
+    promptSetId:z.string().uuid(),
+    maxScenes:z.number().int().min(1).max(96).optional()
   }).strict(),
   z.object({
     action:z.literal('resolveOwnedPlan'),
@@ -141,6 +146,20 @@ export async function POST(request:Request){
             :result.status==='operator-source-required'
               ?'Source Router exige uma fonte documental real do operador.'
               :'Source Router não encontrou fonte visual aprovada.',
+        result
+      });
+    }
+    if(body.action==='remediateMotionCoverage'){
+      const result=await remediateMotionCoverageFromPriorVideos({
+        promptSetId:body.promptSetId,
+        maxScenes:body.maxScenes
+      });
+      return Response.json({
+        message:result.targetReached
+          ?'Motion coverage atingiu o gate objetivo.'
+          :result.exhausted
+            ?'Motion remediation esgotou os candidatos elegíveis.'
+            :'Motion remediation concluiu um lote e ainda possui candidatos.',
         result
       });
     }
