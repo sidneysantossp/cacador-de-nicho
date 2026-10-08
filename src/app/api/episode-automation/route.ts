@@ -4,7 +4,7 @@ import { dbConfigured } from '@/lib/server/db';
 import {
   advanceEpisodeAutomationRun, armOperatorFactoryAutomationRun,
   cancelEpisodeAutomationRun, createEpisodeAutomationRun, drainEpisodeAutomationRun,
-  episodeAutomationChannelState, listEpisodeAutomationEvents,
+  episodeAutomationChannelState, episodeAutomationOperatorSnapshot, listEpisodeAutomationEvents,
   loadEpisodeAutomationRun, reconcileEpisodeAutomationRun, resumeEpisodeAutomationRun,
   updateEpisodeAutomationRun
 } from '@/lib/server/episode-automation';
@@ -66,8 +66,10 @@ export async function GET(request:Request){
       if(!z.string().uuid().safeParse(runId).success)throw new HttpError('Automation Run inválido.',400);
       const run=await loadEpisodeAutomationRun(runId);
       if(!run)throw new HttpError('Automation Run não encontrado.',404);
+      const reconciled=await reconcileEpisodeAutomationRun(runId);
       return Response.json({
-        run:await reconcileEpisodeAutomationRun(runId),
+        run:reconciled,
+        operator:await episodeAutomationOperatorSnapshot(reconciled),
         events:await listEpisodeAutomationEvents(runId,150)
       },{headers:{'Cache-Control':'no-store'}});
     }
