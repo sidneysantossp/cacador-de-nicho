@@ -1857,7 +1857,7 @@ export type RenderManifest = {
  audioMix: VideoEditPayload['audioMix'];
 };
 export type RenderPreset = 'source' | 'hd-1080p30' | 'draft-720p30';
-export type RenderEncoderPreset = 'medium' | 'ultrafast';
+export type RenderEncoderPreset = 'medium' | 'veryfast' | 'ultrafast';
 export type RenderOutputFormat = {
  width: number;
  height: number;
