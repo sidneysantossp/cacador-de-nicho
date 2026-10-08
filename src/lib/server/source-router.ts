@@ -32,6 +32,7 @@ import {
 import {
   visualGenerationBudgetDecision, type VisualCostSnapshot
 } from '@/lib/production-cost-policy';
+import { stockVisualProxyQuery } from '@/lib/stock-visual-proxy-policy';
 
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
