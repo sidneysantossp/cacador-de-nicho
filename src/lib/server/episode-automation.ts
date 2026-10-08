@@ -1611,7 +1611,7 @@ async function executeAutomationTransition(
 
 async function assertAutomationWorkerLease(runId:string,workerToken:string){
   const row=checked(await db().from('radar_episode_automation_runs')
-    .select('id,mode,status,worker_token,lease_until')
+    .select('id,mode,status,worker_token,lease_until,payload')
     .eq('id',runId)
     .maybeSingle());
   if(!row)throw new HttpError('Automation Run não encontrado.',404);
@@ -1620,8 +1620,18 @@ async function assertAutomationWorkerLease(runId:string,workerToken:string){
   const leaseUntil=row.lease_until?Date.parse(String(row.lease_until)):0;
   const activeLease=Boolean(token)&&Number.isFinite(leaseUntil)&&leaseUntil>Date.now();
 
-  if(String(row.mode)!=='autonomous'){
-    throw new HttpError('Worker só pode avançar runs Autonomous.',409);
+  const payload=row.payload&&typeof row.payload==='object'
+    ?row.payload as Record<string,unknown>
+    :{};
+  const operatorFactory=
+    String(row.mode)==='assisted'&&
+    payload.operatorFactory===true&&
+    payload.factoryTarget==='master';
+  if(String(row.mode)!=='autonomous'&&!operatorFactory){
+    throw new HttpError(
+      'Worker só pode avançar runs Autonomous ou Operator Factory explicitamente armados.',
+      409
+    );
   }
   if(!activeLease||token!==workerToken){
     throw new HttpError('Lease do Automation Worker expirou ou não pertence a este executor.',409);
