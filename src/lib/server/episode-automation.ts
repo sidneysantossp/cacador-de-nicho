@@ -46,7 +46,9 @@ import {
   applyDocumentarySourcePolicy, motionRouteAssetSatisfied, sourceDiversityAssessment,
   sourceRouteForScene, sourceRouteRequiresAuthenticEvidence
 } from '@/lib/source-router-policy';
-import { STOCK_DISCOVERY_POLICY_VERSION } from '@/lib/stock-media-policy';
+import {
+  STOCK_DISCOVERY_POLICY_VERSION, verifiedStockGapRecoverable
+} from '@/lib/stock-media-policy';
 import {
   assistedAutomationPolicy, autonomousAutomationPolicy,
   automationDrainStopReason, automationHttpErrorShouldHold, automationPackageSnapshotIssues,
@@ -1374,7 +1376,8 @@ async function executeAutomationTransition(
             :{};
           return (
             result.status==='gap'&&
-            String(result.discoveryPolicyVersion??'')===STOCK_DISCOVERY_POLICY_VERSION
+            String(result.discoveryPolicyVersion??'')===STOCK_DISCOVERY_POLICY_VERSION&&
+            !verifiedStockGapRecoverable(result)
           );
         })
         .map(row=>String(row.scene_id??''))

@@ -18,7 +18,7 @@ import {
 } from './verified-stock-jobs';
 import {
   rankStockMediaResults, STOCK_DISCOVERY_POLICY_VERSION, stockDiscoveryQuery,
-  verifiedStockGapNeedsTransientRecovery
+  verifiedStockGapNeedsTransientRecovery, verifiedStockGapNeedsVisualModelRecovery
 } from '@/lib/stock-media-policy';
 import {
   applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
@@ -68,18 +68,6 @@ async function visualCostSnapshot(promptSetId:string):Promise<VisualCostSnapshot
     }
   }
   return {incurredUsd,unknownPaidAssets,paidAssetCount};
-}
-
-function verifiedStockGapNeedsVisualModelRetry(result:Record<string,unknown>){
-  const serialized=JSON.stringify(result).toLowerCase();
-  return (
-    serialized.includes('gemini-2.5-flash-lite')&&
-    (
-      serialized.includes('no longer available')||
-      serialized.includes('not_found')||
-      serialized.includes('http 404')
-    )
-  );
 }
 
 async function imageAsset(assetId:string){
@@ -398,7 +386,7 @@ export async function resolveSourceForScene(input:{
             });
             return {status:'queued' as const,route,action,job:restarted,attempts};
           }
-          if(verifiedStockGapNeedsVisualModelRetry(existing.result)){
+          if(verifiedStockGapNeedsVisualModelRecovery(existing.result)){
             const restarted=await restartVerifiedStockJob(existing.id);
             attempts.push({
               action,status:'queued',jobId:restarted.id,
