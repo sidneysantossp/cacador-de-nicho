@@ -114,6 +114,8 @@ async function saveReport(
       throw new HttpError('Production QA desatualizado. Recarregue antes de salvar novamente.',409);
     }
     if(message.includes('render job already has production quality report')){
+      const concurrent=await loadProductionQualityByRender(payload.renderJobId);
+      if(concurrent)return concurrent;
       throw new HttpError('Este render já possui um relatório de Production QA.',409);
     }
     if(message.includes('render job not eligible for production quality')){
