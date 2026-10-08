@@ -1,6 +1,9 @@
 import 'server-only';
 
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   ProductionQualityChapterTechnical, ProductionQualityCheckCode, ProductionQualityReport,
   ProductionQualityReportPayload, ProductionQualityReportVersion, ProductionQualityTechnical,
@@ -8,7 +11,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { signedMediaUrl } from './media-storage';
+import { downloadMediaToFile, signedMediaUrl } from './media-storage';
 import { listRenderJobs, loadRenderJob } from './render-engine';
 import { loadVideoEdit, loadVideoEditWorkspace } from './video-editor';
 import { loadVisualPromptSet } from './visual-prompt-engine';
@@ -509,12 +512,21 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
     180000,
     Math.min(600000,Math.ceil((master.durationSeconds??0)*600))
   );
-  const masterDecode=await runCapture(FFMPEG,[
-    '-hide_banner','-loglevel','error',
-    '-i',masterUrl,
-    '-map','0:v:0','-an',
-    '-f','null','-'
-  ],masterDecodeTimeoutMs);
+  const decodeDir=await mkdtemp(join(tmpdir(),'cacadores-production-qa-'));
+  const decodePath=join(decodeDir,'master.mp4');
+  let masterDecode:{code:number;stdout:string;stderr:string};
+  try{
+    if(!job.outputPath)throw new HttpError('Master final não encontrado para decode.',409);
+    await downloadMediaToFile(job.outputPath,decodePath);
+    masterDecode=await runCapture(FFMPEG,[
+      '-hide_banner','-loglevel','error',
+      '-i',decodePath,
+      '-map','0:v:0','-an',
+      '-f','null','-'
+    ],masterDecodeTimeoutMs);
+  }finally{
+    await rm(decodeDir,{recursive:true,force:true}).catch(()=>{});
+  }
 
   const blackValues=results.map(item=>item.blackSeconds);
   const blackSeconds=blackValues.every((value):value is number=>value!==null)
