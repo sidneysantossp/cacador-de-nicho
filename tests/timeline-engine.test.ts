@@ -98,13 +98,36 @@ test('Timeline structural gate accepts a fully mapped deterministic timeline',()
   assert.deepEqual(timelineStructuralIssues(t,scenePlan),[]);
 });
 
+
+test('Timeline splits long scenes into visual beats at or below the global four-second ceiling',()=>{
+  const longPlan={
+    ...scenePlan,
+    audioDurationSeconds:9,
+    scenes:[{
+      ...scenePlan.scenes[0],
+      endSeconds:9,
+      durationSeconds:9
+    }]
+  } as ScenePlan;
+  const longVoice={...voice,durationSeconds:9} as VoiceAsset;
+  const longAssets=[{...assets[0],sceneId:longPlan.scenes[0].id}];
+  const t=buildInitialTimeline({
+    scenePlan:longPlan,productionDna:dna,visualPromptSet:promptSet,
+    visualAssets:longAssets,voiceAsset:longVoice
+  });
+  const visual=t.tracks.find(track=>track.type==='visual')!;
+  assert.equal(visual.clips.length,3);
+  assert.ok(visual.clips.every(clip=>clip.durationSeconds<=4.02));
+  assert.deepEqual(timelineStructuralIssues(t,longPlan),[]);
+});
+
 test('Timeline structural gate detects visual gaps and scene timing drift',()=>{
   const t=timeline();
   const visual=t.tracks.find(track=>track.type==='visual')!;
   visual.clips[1]={...visual.clips[1],startSeconds:3.5};
   const issues=timelineStructuralIssues(normalizeTimeline(t),scenePlan);
   assert.ok(issues.includes('visual-gap'));
-  assert.ok(issues.includes('visual-clip-scene-time-mismatch'));
+  assert.ok(issues.includes('visual-scene-coverage-mismatch'));
 });
 
 test('Timeline structural gate requires narration to cover the full project',()=>{
@@ -171,7 +194,7 @@ test('Timeline preserves Visual Intelligence source trim instead of starting vid
   });
   const clip=t.tracks.find(track=>track.type==='visual')!.clips[1];
   assert.equal(clip.sourceStartSeconds,13);
-  assert.equal(clip.sourceEndSeconds,18);
+  assert.equal(clip.sourceEndSeconds,16);
   assert.equal(clip.playback,'trim');
 });
 
