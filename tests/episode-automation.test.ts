@@ -265,7 +265,7 @@ test('Visual batch excludes only full-route terminal current-policy stock gaps',
   assert.match(source,/verifiedStockGapRecoverable\(result\)/);
   assert.match(source,/String\(result\.discoveryPolicyVersion\?\?'\'\)!==STOCK_DISCOVERY_POLICY_VERSION/);
   assert.match(source,/sourceRouteTerminal/);
-  assert.match(source,/String\(terminal\.key\?\?'\'\)===sourceRouteExecutionKey\(route\)/);
+  assert.match(source,/String\(terminal\.key\?\?'\'\)===sourceRouteExecutionKey\(route,sourceQuery\)/);
 });
 
 test('Operator Golden Path exposes bounded arm and drain API without enabling global autopilot',()=>{
@@ -535,7 +535,7 @@ test('Visual-assets automation defers only a fully exhausted current source rout
   assert.match(source,/deferredSceneIds/);
   assert.match(source,/result\.status!=='gap'/);
   assert.match(source,/sourceRouteTerminal/);
-  assert.match(source,/sourceRouteExecutionKey\(route\)/);
+  assert.match(source,/sourceRouteExecutionKey\(route,sourceQuery\)/);
   assert.match(source,/String\(terminal\.key\?\?''\)/);
   assert.match(source,/sourceRouteRequiresAuthenticEvidence\(routed\.route\)/);
   assert.match(source,/deferred-source-gap/);
