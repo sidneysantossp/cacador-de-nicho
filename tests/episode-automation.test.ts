@@ -311,6 +311,9 @@ test('Operator Factory worker auto-resumes marked assisted runs without global A
   assert.match(claimedBlock,/run\.mode!=='assisted'/);
   assert.match(claimedBlock,/run\.operatorFactory!==true/);
   assert.match(claimedBlock,/run\.factoryTarget!=='master'/);
+  assert.match(claimedBlock,/assertOperatorFactoryWorkerLease\(runId,workerToken\)/);
+  assert.match(claimedBlock,/advanceEpisodeAutomationRunUnderLease\(runId,\{claimedWorker:true\}\)/);
+  assert.doesNotMatch(claimedBlock,/advanceEpisodeAutomationRun\(runId,workerToken\)/);
   assert.doesNotMatch(claimedBlock,/loadAutopilotControl|assertAutopilotControlRunning/);
 
   const sqlStart=schema.indexOf('create or replace function public.claim_operator_factory_automation_run');
@@ -323,6 +326,19 @@ test('Operator Factory worker auto-resumes marked assisted runs without global A
   assert.match(sql,/radar_verified_stock_jobs/);
   assert.match(sql,/radar_render_jobs/);
   assert.doesNotMatch(sql,/control_status is distinct from 'running'/);
+});
+
+test('Operator Factory worker validates an assisted factory lease instead of autonomous worker mode',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const start=source.indexOf('async function assertOperatorFactoryWorkerLease');
+  const end=source.indexOf('async function acquireOperatorAutomationLease',start);
+  assert.ok(start>=0&&end>start,'operator factory lease guard missing');
+  const block=source.slice(start,end);
+  assert.match(block,/token!==workerToken/);
+  assert.match(block,/String\(row\.mode\)!=='assisted'/);
+  assert.match(block,/payload\.operatorFactory!==true/);
+  assert.match(block,/payload\.factoryTarget!=='master'/);
+  assert.doesNotMatch(block,/String\(row\.mode\)!=='autonomous'/);
 });
 
 test('Assisted Automation serializes direct advances with an exclusive operator lease',()=>{
