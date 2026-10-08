@@ -46,6 +46,10 @@ function canonicalBeatQuery(scene:SceneTimecode,beat:VisualBeat|null){
   ).slice(0,500);
 }
 
+function editorialHasWrongMotionMediaClass(value:string){
+  return /\b(?:map|diagram|document|archive|archival|illustration|illustrated|cartoon|render|generated|synthetic)\b/i.test(value);
+}
+
 function routeQuery(
   scene:SceneTimecode,
   beat:VisualBeat|null,
@@ -61,9 +65,13 @@ function routeQuery(
   // may still use an enriched editorial query because their source class itself
   // is factual and explicit.
   const explicitDocumentaryEvidence=/^\s*documentary\s+evidence\s+for\s*:/i.test(editorial);
+  const motionEditorial=preference==='stock-video'&&
+    editorial.length>=3&&
+    !editorialHasWrongMotionMediaClass(editorial);
   if(
     editorial&&(
       explicitDocumentaryEvidence||
+      motionEditorial||
       preference==='archive-image'||preference==='document'||preference==='map'||preference==='legacy'
     )
   ){
