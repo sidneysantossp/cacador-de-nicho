@@ -25,9 +25,46 @@ import {
   VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
+import {
+  visualGenerationBudgetDecision, type VisualCostSnapshot
+} from '@/lib/production-cost-policy';
 
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
+
+const VISUAL_EPISODE_BUDGET_USD=(()=>{
+  const value=Number(process.env.AUTOMATION_VISUAL_EPISODE_BUDGET_USD??.50);
+  return Number.isFinite(value)?Math.max(0,Math.min(100,value)):.50;
+})();
+const GOOGLE_IMAGE_ESTIMATED_COST_USD=(()=>{
+  const value=Number(process.env.AUTOMATION_GOOGLE_IMAGE_ESTIMATED_COST_USD);
+  return Number.isFinite(value)&&value>=0?value:null;
+})();
+
+async function visualCostSnapshot(promptSetId:string):Promise<VisualCostSnapshot>{
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('source_type,status,payload')
+    .eq('visual_prompt_set_id',promptSetId)
+    .limit(5000));
+  let incurredUsd=0;
+  let unknownPaidAssets=0;
+  let paidAssetCount=0;
+
+  for(const row of rows??[]){
+    if(row.source_type!=='generated')continue;
+    const status=String(row.status??'');
+    if(status==='failed'||status==='rejected')continue;
+    paidAssetCount++;
+    const payload=(row.payload??{}) as Record<string,unknown>;
+    const raw=payload.costUsd;
+    if(typeof raw==='number'&&Number.isFinite(raw)&&raw>=0){
+      incurredUsd+=raw;
+    }else{
+      unknownPaidAssets++;
+    }
+  }
+  return {incurredUsd,unknownPaidAssets,paidAssetCount};
+}
 
 function verifiedStockGapNeedsVisualModelRetry(result:Record<string,unknown>){
   const serialized=JSON.stringify(result).toLowerCase();
@@ -417,14 +454,29 @@ export async function resolveSourceForScene(input:{
 
     if(action==='generated-image'){
       if(!route.syntheticAllowed)continue;
+      const cost=visualGenerationBudgetDecision({
+        snapshot:await visualCostSnapshot(input.promptSetId),
+        budgetUsd:VISUAL_EPISODE_BUDGET_USD,
+        estimatedCostUsd:GOOGLE_IMAGE_ESTIMATED_COST_USD
+      });
+      if(!cost.allowed){
+        attempts.push({
+          action,
+          status:'deferred',
+          reason:cost.reason,
+          cost
+        });
+        continue;
+      }
       const asset=await generateGoogleImage({
         promptSetId:input.promptSetId,
         sceneId:input.sceneId,
-        imageSize:'2K'
+        imageSize:'2K',
+        estimatedCostUsd:cost.estimatedCostUsd??undefined
       });
       if(!asset)throw new HttpError('A geração visual não retornou asset persistido.',502);
       await selectSceneAsset(asset.id);
-      attempts.push({action,status:'matched'});
+      attempts.push({action,status:'matched',cost});
       return {status:'matched' as const,route,action,result:{asset},attempts};
     }
 

@@ -730,6 +730,7 @@ export async function persistStockSceneAsset(input:{
 
 export async function generateGoogleImage(input:{
   promptSetId:string;sceneId:string;modelId?:GoogleImageModel;imageSize?:'1K'|'2K'|'4K';
+  estimatedCostUsd?:number;
 }){
   const {promptSet,dna,visual}=await eligibleContext(input.promptSetId,input.sceneId);
   const modelId=input.modelId??'gemini-3.1-flash-image';
@@ -742,7 +743,9 @@ export async function generateGoogleImage(input:{
     modelId,
     generation:{aspectRatio:dna.format.aspectRatio,imageSize,referenceAssetIds:references.map(item=>item.assetId)},
     license:{type:'provider-terms',label:'Google AI generated asset'},
-    costUsd:null
+    costUsd:Number.isFinite(input.estimatedCostUsd)
+      ?Math.max(0,Number(input.estimatedCostUsd))
+      :null
   } as Partial<SceneAsset>);
 
   const reservation=await reserve({
