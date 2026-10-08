@@ -28,7 +28,9 @@ export function visualGenerationBudgetDecision(input:{
 }):VisualGenerationBudgetDecision{
   const budgetUsd=Math.max(0,Number(input.budgetUsd)||0);
   const incurredUsd=Math.max(0,Number(input.snapshot.incurredUsd)||0);
-  const estimated=Number(input.estimatedCostUsd);
+  const estimated=input.estimatedCostUsd===null||input.estimatedCostUsd===undefined
+    ?Number.NaN
+    :Number(input.estimatedCostUsd);
 
   if(input.snapshot.unknownPaidAssets>0){
     return {
