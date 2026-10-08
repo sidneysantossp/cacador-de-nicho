@@ -369,7 +369,7 @@ async function resolveStillCandidates(input:{
 }
 
 
-const PRIOR_VIDEO_REUSE_POLICY_VERSION='prior-scene-video-reuse@2';
+const PRIOR_VIDEO_REUSE_POLICY_VERSION='prior-scene-video-reuse@3';
 
 type PriorVideoRow={
   id:string;scene_id:string;source_type:string;provider:string|null;storage_path:string|null;
