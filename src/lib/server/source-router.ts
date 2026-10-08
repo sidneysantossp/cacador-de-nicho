@@ -21,9 +21,9 @@ import {
   verifiedStockGapNeedsTransientRecovery, verifiedStockGapNeedsVisualModelRecovery
 } from '@/lib/stock-media-policy';
 import {
-  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteForScene,
-  sourceRouteRequiresAuthenticEvidence,
-  VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction
+  applyDocumentarySourcePolicy, archiveTemporalEvidence, routePrefersMotion, sourceRouteExecutionKey,
+  sourceRouteForScene, sourceRouteRequiresAuthenticEvidence,
+  VIDEO_FIRST_FALLBACK_POLICY_VERSION, type SourceRouteAction, type SourceRoutePlan
 } from '@/lib/source-router-policy';
 import type { SceneAsset, StockMediaProvider } from '@/lib/types';
 import {
@@ -145,6 +145,35 @@ async function markVideoFirstFallback(input:{
     },
     updated_at:new Date().toISOString()
   }).eq('id',input.assetId));
+}
+
+async function markSourceRouteTerminal(input:{
+  stockJobId:string;
+  route:SourceRoutePlan;
+  status:'gap'|'operator-source-required';
+  action:SourceRouteAction|null;
+  reason:string;
+}){
+  const row=checked(await db().from('radar_verified_stock_jobs')
+    .select('result')
+    .eq('id',input.stockJobId)
+    .maybeSingle());
+  const result=row?.result&&typeof row.result==='object'
+    ?row.result as Record<string,unknown>
+    :{};
+  checked(await db().from('radar_verified_stock_jobs').update({
+    result:{
+      ...result,
+      sourceRouteTerminal:{
+        key:sourceRouteExecutionKey(input.route),
+        status:input.status,
+        action:input.action,
+        reason:input.reason,
+        completedAt:new Date().toISOString()
+      }
+    },
+    updated_at:new Date().toISOString()
+  }).eq('id',input.stockJobId));
 }
 
 async function revalidateExistingUploadedStill(input:{
@@ -476,11 +505,21 @@ export async function resolveSourceForScene(input:{
           candidates
         });
         if(candidates.length){
+          const reason='Foram encontrados vídeos Creative Commons no YouTube. A plataforma preservou provenance e exige uma origem direta autorizada para ingestão do arquivo, sem baixar a watch page por scraping.';
+          if(exhaustedStockJobId){
+            await markSourceRouteTerminal({
+              stockJobId:exhaustedStockJobId,
+              route,
+              status:'operator-source-required',
+              action,
+              reason
+            });
+          }
           return {
             status:'operator-source-required' as const,
             route,
             action,
-            reason:'Foram encontrados vídeos Creative Commons no YouTube. A plataforma preservou provenance e exige uma origem direta autorizada para ingestão do arquivo, sem baixar a watch page por scraping.',
+            reason,
             candidates,
             attempts
           };
@@ -577,15 +616,25 @@ export async function resolveSourceForScene(input:{
     attempts.push({action:'uploaded-revalidation',status:'failed',error:error instanceof Error?error.message:'Falha ao revalidar upload existente.'});
   }
 
+  const reason=sourceRouteRequiresAuthenticEvidence(route)
+    ?'Beat factual sem fonte real validada; geração sintética está bloqueada.'
+    :route.syntheticAllowed
+      ?'Nenhuma fonte visual passou pelos gates automáticos.'
+      :'Nenhuma fonte real motion-first passou pelos gates automáticos; a cena pode ser deferida sem bloquear outras cenas.';
+  if(exhaustedStockJobId){
+    await markSourceRouteTerminal({
+      stockJobId:exhaustedStockJobId,
+      route,
+      status:'gap',
+      action:null,
+      reason
+    });
+  }
   return {
     status:'gap' as const,
     route,
     action:null as SourceRouteAction|null,
-    reason:sourceRouteRequiresAuthenticEvidence(route)
-      ?'Beat factual sem fonte real validada; geração sintética está bloqueada.'
-      :route.syntheticAllowed
-        ?'Nenhuma fonte visual passou pelos gates automáticos.'
-        :'Nenhuma fonte real motion-first passou pelos gates automáticos; a cena pode ser deferida sem bloquear outras cenas.',
+    reason,
     attempts
   };
 }
