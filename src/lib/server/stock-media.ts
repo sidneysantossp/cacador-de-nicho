@@ -7,7 +7,7 @@ import { providerSecret } from './providers';
 import { parseVecteezyConfig, vecteezyHeaders } from './vecteezy';
 import { loadVisualPromptSet } from './visual-prompt-engine';
 import { deleteSceneAsset, persistStockSceneAsset, selectSceneAsset } from './asset-factory';
-import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
+import { ensureSceneAssetVisualQa, selectLocalMotionFallbackTrim } from './visual-asset-preflight';
 import { analyzeVisualAsset, bestVisualSegment, loadVisualIntelligence } from './visual-intelligence';
 import {
   deterministicStockFallbackTrim, rankStockMediaResults, stockCandidateAccepted,
@@ -972,13 +972,32 @@ export async function resolveVerifiedStockMediaForScene(input:{
           }
         }
 
+        const localMotionTrim=!match&&analysisFallbackReason
+          ?await selectLocalMotionFallbackTrim({
+            assetId:asset.id,
+            desiredDurationSeconds:input.desiredDurationSeconds,
+            excludedSourceRanges
+          }).catch(()=>null)
+          :null;
         const fallbackTrim=!match&&analysisFallbackReason
-          ?deterministicStockFallbackTrim({
+          ?localMotionTrim??deterministicStockFallbackTrim({
             durationSeconds:candidate.result.durationSeconds,
             desiredDurationSeconds:input.desiredDurationSeconds,
             seed:scene.sequence+candidateIndex*17
           })
           :null;
+        if(localMotionTrim){
+          attempts.push({
+            provider,
+            providerAssetId:candidate.result.providerAssetId,
+            stage:'local-motion-fallback',
+            sourceStartSeconds:localMotionTrim.sourceStartSeconds,
+            sourceEndSeconds:localMotionTrim.sourceEndSeconds,
+            freezeRatio:localMotionTrim.freezeRatio,
+            blackRatio:localMotionTrim.blackRatio,
+            meaningfulMotion:localMotionTrim.meaningfulMotion
+          });
+        }
         const sourceStartSeconds=match?.sourceStartSeconds??fallbackTrim?.sourceStartSeconds??null;
         const sourceEndSeconds=match?.sourceEndSeconds??fallbackTrim?.sourceEndSeconds??null;
         const constraints=match
