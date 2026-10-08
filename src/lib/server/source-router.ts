@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
+
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { downloadMedia } from './media-storage';
@@ -33,6 +35,8 @@ import {
   visualGenerationBudgetDecision, type VisualCostSnapshot
 } from '@/lib/production-cost-policy';
 import { stockVisualProxyQuery } from '@/lib/stock-visual-proxy-policy';
+import { scoreVisualSegment } from '@/lib/media-library-policy';
+import { ensureSceneAssetVisualQa } from './visual-asset-preflight';
 
 const STOCK_IMAGE_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
 const STOCK_VIDEO_PROVIDERS:StockMediaProvider[]=['vecteezy','pexels','pixabay'];
@@ -364,6 +368,336 @@ async function resolveStillCandidates(input:{
   return {status:'gap' as const,asset:null,attempts};
 }
 
+
+const PRIOR_VIDEO_REUSE_POLICY_VERSION='prior-scene-video-reuse@1';
+
+type PriorVideoRow={
+  id:string;scene_id:string;source_type:string;provider:string|null;storage_path:string|null;
+  mime_type:string|null;original_name:string|null;bytes:number|string|null;width:number|string|null;
+  height:number|string|null;duration_seconds:number|string|null;payload:unknown;
+};
+
+function objectValue(value:unknown):Record<string,unknown>{
+  return value&&typeof value==='object'?value as Record<string,unknown>:{};
+}
+
+function priorVideoSearchText(row:PriorVideoRow){
+  const payload=objectValue(row.payload);
+  const verified=objectValue(payload.verifiedStock);
+  const router=objectValue(payload.sourceRouterVerification);
+  const qa=objectValue(payload.visualQa);
+  const evidence=Array.isArray(qa.evidence)?qa.evidence.map(String).join(' '):'';
+  return [
+    verified.query,
+    router.query,
+    router.summary,
+    qa.query,
+    qa.summary,
+    evidence,
+    payload.prompt
+  ].map(value=>String(value??'').trim()).filter(Boolean).join(' ');
+}
+
+function priorVideoProviderIdentity(row:PriorVideoRow){
+  const payload=objectValue(row.payload);
+  const stock=objectValue(payload.stock);
+  const verified=objectValue(payload.verifiedStock);
+  const provider=String(verified.provider??row.provider??'').trim();
+  const providerAssetId=String(stock.providerAssetId??verified.providerAssetId??'').trim();
+  return provider&&providerAssetId?{provider,providerAssetId}:null;
+}
+
+async function priorVersionVideoRows(promptSetId:string,currentSceneIds:Set<string>){
+  const rows=checked(await db().from('radar_scene_assets')
+    .select('id,scene_id,source_type,provider,storage_path,mime_type,original_name,bytes,width,height,duration_seconds,payload')
+    .eq('visual_prompt_set_id',promptSetId)
+    .eq('asset_kind','video')
+    .eq('source_type','stock')
+    .eq('status','ready')
+    .eq('selected',true)
+    .limit(2500)) as PriorVideoRow[];
+  return (rows??[]).filter(row=>{
+    if(currentSceneIds.has(String(row.scene_id)))return false;
+    if(!row.storage_path)return false;
+    const payload=objectValue(row.payload);
+    const qa=objectValue(payload.visualQa);
+    const motion=objectValue(qa.motion);
+    const license=objectValue(payload.license);
+    return qa.status==='pass'&&motion.meaningfulMotion!==false&&String(license.type??'unknown')!=='unknown';
+  });
+}
+
+async function attachPriorVersionVideo(input:{
+  promptSet:Awaited<ReturnType<typeof loadVisualPromptSet>>;
+  scene:NonNullable<Awaited<ReturnType<typeof loadScenePlan>>>['scenes'][number];
+  visual:NonNullable<Awaited<ReturnType<typeof loadVisualPromptSet>>>['scenePrompts'][number];
+  query:string;
+  candidateRows:PriorVideoRow[];
+  stockUses:Awaited<ReturnType<typeof selectedStockReuseObservations>>;
+  usedCandidateIds:Set<string>;
+}){
+  if(!input.promptSet)return {status:'gap' as const,reason:'prompt-set-missing' as const};
+  const ranked=input.candidateRows.flatMap(row=>{
+    if(input.usedCandidateIds.has(row.id))return [];
+    const identity=priorVideoProviderIdentity(row);
+    if(!identity)return [];
+    const payload=objectValue(row.payload);
+    const verified=objectValue(payload.verifiedStock);
+    const start=Number(verified.sourceStartSeconds??0);
+    const end=Number(verified.sourceEndSeconds??start);
+    const decision=sourceReuseDecision({
+      sourceType:'stock',
+      targetSequence:Number(input.scene.sequence),
+      observations:input.stockUses.get(identity.provider+':'+identity.providerAssetId)??[],
+      candidateStartSeconds:Number.isFinite(start)?start:null,
+      candidateEndSeconds:Number.isFinite(end)?end:null
+    });
+    if(!decision.ok)return [];
+    const score=scoreVisualSegment(input.query,priorVideoSearchText(row));
+    return score>=.25?[{row,score,identity}]:[];
+  }).sort((a,b)=>b.score-a.score);
+
+  for(const item of ranked.slice(0,3)){
+    const row=item.row;
+    const sourcePayload=objectValue(row.payload);
+    const sourceVerified=objectValue(sourcePayload.verifiedStock);
+    const verifiedStock={
+      ...sourceVerified,
+      cachedFromAssetId:String(sourceVerified.cachedFromAssetId??row.id)
+    };
+    const id=crypto.randomUUID();
+    const payload={
+      ...sourcePayload,
+      timecodeLabel:input.visual.timecodeLabel,
+      promptSetVersion:input.promptSet.version,
+      prompt:input.visual.prompt,
+      promptHash:createHash('sha256').update(input.visual.prompt,'utf8').digest('hex'),
+      verifiedStock,
+      visualQa:undefined,
+      videoFirstFallback:undefined,
+      priorVersionReuse:{
+        policyVersion:PRIOR_VIDEO_REUSE_POLICY_VERSION,
+        sourceAssetId:row.id,
+        sourceSceneId:row.scene_id,
+        score:Number(item.score.toFixed(4)),
+        query:input.query,
+        reusedAt:new Date().toISOString()
+      }
+    };
+    const reservation=await db().rpc('reserve_scene_asset',{
+      p_id:id,
+      p_channel_id:input.promptSet.channelId,
+      p_episode_id:input.promptSet.episodeId,
+      p_scene_plan_id:input.promptSet.scenePlanId,
+      p_visual_prompt_set_id:input.promptSet.id,
+      p_scene_id:input.scene.id,
+      p_asset_kind:'video',
+      p_source_type:'stock',
+      p_provider:row.provider,
+      p_mime_type:String(row.mime_type??'video/mp4'),
+      p_original_name:row.original_name,
+      p_payload:payload
+    });
+    if(reservation.error)continue;
+    const ready=await db().from('radar_scene_assets').update({
+      status:'ready',
+      selected:false,
+      storage_path:row.storage_path,
+      mime_type:row.mime_type??'video/mp4',
+      bytes:Number(row.bytes??0),
+      width:row.width===null?null:Number(row.width),
+      height:row.height===null?null:Number(row.height),
+      duration_seconds:row.duration_seconds===null?null:Number(row.duration_seconds),
+      payload,
+      updated_at:new Date().toISOString()
+    }).eq('id',id);
+    if(ready.error)continue;
+
+    try{
+      const review=await ensureSceneAssetVisualQa(id);
+      if(review.status==='pass'){
+        await selectSceneAsset(id);
+        input.usedCandidateIds.add(row.id);
+        return {
+          status:'matched' as const,
+          assetId:id,
+          sourceAssetId:row.id,
+          score:item.score,
+          provider:row.provider
+        };
+      }
+      await db().from('radar_scene_assets').update({
+        status:'rejected',selected:false,updated_at:new Date().toISOString()
+      }).eq('id',id);
+    }catch{
+      await db().from('radar_scene_assets').update({
+        status:'rejected',selected:false,updated_at:new Date().toISOString()
+      }).eq('id',id);
+    }
+  }
+
+  return {status:'gap' as const,reason:'no-prior-video-passed-current-visual-qa' as const};
+}
+
+export async function remediateMotionCoverageFromPriorVideos(input:{
+  promptSetId:string;
+  maxScenes?:number;
+}){
+  const promptSet=await loadVisualPromptSet(input.promptSetId);
+  if(!promptSet||promptSet.status!=='approved')throw new HttpError('Visual Prompt Set aprovado não encontrado.',409);
+  const [plan,dna]=await Promise.all([
+    loadScenePlan(promptSet.scenePlanId),
+    loadProductionDna(promptSet.channelId)
+  ]);
+  if(!plan||plan.status!=='approved')throw new HttpError('Scene Plan aprovado não encontrado.',409);
+  const currentSceneIds=new Set(plan.scenes.map(scene=>scene.id));
+  const selected=checked(await db().from('radar_scene_assets')
+    .select('id,scene_id,asset_kind,payload')
+    .eq('visual_prompt_set_id',promptSet.id)
+    .eq('selected',true)
+    .eq('status','ready')
+    .limit(2500)) as Array<{id:string;scene_id:string;asset_kind:string;payload:unknown}>;
+  const selectedByScene=new Map(
+    (selected??[]).filter(row=>currentSceneIds.has(String(row.scene_id))).map(row=>[String(row.scene_id),row])
+  );
+  const documentaryMode=dna?.research?.documentaryMode===true;
+  const promptByScene=new Map(promptSet.scenePrompts.map(prompt=>[prompt.sceneId,prompt]));
+  const motionSceneIds=new Set(plan.scenes.flatMap(scene=>{
+    const prompt=promptByScene.get(scene.id);
+    const route=applyDocumentarySourcePolicy(
+      sourceRouteForScene(scene,prompt?.direction),
+      documentaryMode
+    );
+    return routePrefersMotion(route)?[scene.id]:[];
+  }));
+  const kindByScene=new Map<string,'video'|'image'>();
+  for(const scene of plan.scenes){
+    if(!motionSceneIds.has(scene.id))continue;
+    const row=selectedByScene.get(scene.id);
+    kindByScene.set(scene.id,row?.asset_kind==='video'?'video':'image');
+  }
+
+  const stats=()=>{
+    let videoSeconds=0,imageSeconds=0,currentRun=0,longestImageRunSeconds=0;
+    for(const scene of [...plan.scenes].sort((a,b)=>a.sequence-b.sequence)){
+      if(!motionSceneIds.has(scene.id)){currentRun=0;continue;}
+      if(kindByScene.get(scene.id)==='video'){
+        videoSeconds+=scene.durationSeconds;
+        currentRun=0;
+      }else{
+        imageSeconds+=scene.durationSeconds;
+        currentRun+=scene.durationSeconds;
+        longestImageRunSeconds=Math.max(longestImageRunSeconds,currentRun);
+      }
+    }
+    const total=videoSeconds+imageSeconds;
+    return {
+      videoSeconds,imageSeconds,
+      videoRatio:total?videoSeconds/total:0,
+      longestImageRunSeconds
+    };
+  };
+  const targetReached=()=>stats().videoRatio>=.52&&stats().longestImageRunSeconds<=28;
+  if(targetReached())return {targetReached:true,exhausted:false,attempted:0,matched:0,...stats()};
+
+  const candidateRows=await priorVersionVideoRows(promptSet.id,currentSceneIds);
+  const sequenceByScene=new Map(plan.scenes.map(scene=>[scene.id,Number(scene.sequence)]));
+  const stockUses=await selectedStockReuseObservations(promptSet.id,sequenceByScene);
+  const usedCandidateIds=new Set<string>();
+  for(const row of selected??[]){
+    const payload=objectValue(row.payload);
+    const reuse=objectValue(payload.priorVersionReuse);
+    const sourceAssetId=String(reuse.sourceAssetId??'').trim();
+    if(sourceAssetId)usedCandidateIds.add(sourceAssetId);
+  }
+
+  const exhaustedSceneIds=new Set<string>();
+  for(const row of selected??[]){
+    const payload=objectValue(row.payload);
+    const retry=objectValue(payload.priorVideoReuseAttempt);
+    if(retry.policyVersion===PRIOR_VIDEO_REUSE_POLICY_VERSION&&retry.status==='exhausted'){
+      exhaustedSceneIds.add(String(row.scene_id));
+    }
+  }
+
+  const maxScenes=Math.max(1,Math.min(12,Math.floor(input.maxScenes??6)));
+  let attempted=0,matched=0;
+
+  const chooseScene=()=>{
+    const ordered=[...plan.scenes].sort((a,b)=>a.sequence-b.sequence);
+    const runs:Array<{scenes:typeof ordered;duration:number}>=[];
+    let current:typeof ordered=[];
+    let duration=0;
+    const flush=()=>{if(current.length)runs.push({scenes:current,duration});current=[];duration=0;};
+    for(const scene of ordered){
+      if(
+        motionSceneIds.has(scene.id)&&
+        kindByScene.get(scene.id)==='image'&&
+        !exhaustedSceneIds.has(scene.id)
+      ){
+        current.push(scene);duration+=scene.durationSeconds;
+      }else flush();
+    }
+    flush();
+    runs.sort((a,b)=>b.duration-a.duration);
+    const run=runs[0];
+    if(!run?.scenes.length)return null;
+    return run.scenes[Math.floor(run.scenes.length/2)];
+  };
+
+  while(attempted<maxScenes&&!targetReached()){
+    const scene=chooseScene();
+    if(!scene)break;
+    const visual=promptByScene.get(scene.id);
+    const selectedRow=selectedByScene.get(scene.id);
+    if(!visual||!selectedRow){exhaustedSceneIds.add(scene.id);continue;}
+    const route=applyDocumentarySourcePolicy(
+      sourceRouteForScene(scene,visual.direction),
+      documentaryMode
+    );
+    const query=sourceRouteRequiresAuthenticEvidence(route)
+      ?route.query
+      :stockVisualProxyQuery({canonical:route.query,direction:visual.direction});
+    attempted++;
+    const result=await attachPriorVersionVideo({
+      promptSet,scene,visual,query,candidateRows,stockUses,usedCandidateIds
+    });
+    if(result.status==='matched'){
+      matched++;
+      kindByScene.set(scene.id,'video');
+      continue;
+    }
+    exhaustedSceneIds.add(scene.id);
+    const payload=objectValue(selectedRow.payload);
+    await db().from('radar_scene_assets').update({
+      payload:{
+        ...payload,
+        priorVideoReuseAttempt:{
+          policyVersion:PRIOR_VIDEO_REUSE_POLICY_VERSION,
+          status:'exhausted',
+          query,
+          attemptedAt:new Date().toISOString()
+        }
+      },
+      updated_at:new Date().toISOString()
+    }).eq('id',selectedRow.id);
+  }
+
+  const finalStats=stats();
+  const remaining=plan.scenes.filter(scene=>
+    motionSceneIds.has(scene.id)&&
+    kindByScene.get(scene.id)==='image'&&
+    !exhaustedSceneIds.has(scene.id)
+  ).length;
+  return {
+    targetReached:finalStats.videoRatio>=.52&&finalStats.longestImageRunSeconds<=28,
+    exhausted:remaining===0&&!(
+      finalStats.videoRatio>=.52&&finalStats.longestImageRunSeconds<=28
+    ),
+    attempted,matched,remaining,...finalStats
+  };
+}
+
 export async function resolveSourceForScene(input:{
   promptSetId:string;
   sceneId:string;
@@ -449,6 +783,23 @@ export async function resolveSourceForScene(input:{
     }
 
     if(action==='stock-image'){
+      if(videoFirst&&videoExhausted){
+        const currentSceneIds=new Set(plan.scenes.map(item=>item.id));
+        const priorRows=await priorVersionVideoRows(promptSet.id,currentSceneIds);
+        const reused=await attachPriorVersionVideo({
+          promptSet,
+          scene,
+          visual:visual!,
+          query:sourceQuery,
+          candidateRows:priorRows,
+          stockUses,
+          usedCandidateIds:new Set<string>()
+        });
+        attempts.push({action:'prior-video-reuse',status:reused.status,details:reused});
+        if(reused.status==='matched'){
+          return {status:'matched' as const,route,action:'prior-video-reuse' as const,result:reused,attempts};
+        }
+      }
       for(const provider of STOCK_IMAGE_PROVIDERS){
         let result:Awaited<ReturnType<typeof resolveStillCandidates>>;
         try{
