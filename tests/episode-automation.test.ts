@@ -282,6 +282,20 @@ test('Operator Golden Path exposes bounded arm and drain API without enabling gl
   assert.doesNotMatch(armBlock,/assertAutopilotControlRunning/);
 });
 
+test('Automation worker lease accepts only Autonomous or explicitly armed Operator Factory runs',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const start=source.indexOf('async function assertAutomationWorkerLease');
+  const end=source.indexOf('async function acquireOperatorAutomationLease',start);
+  assert.ok(start>=0&&end>start,'worker lease guard missing');
+  const block=source.slice(start,end);
+  assert.match(block,/\.select\('id,mode,status,worker_token,lease_until,payload'\)/);
+  assert.match(block,/payload\.operatorFactory===true/);
+  assert.match(block,/payload\.factoryTarget==='master'/);
+  assert.match(block,/String\(row\.mode\)!=='autonomous'/);
+  assert.match(block,/String\(row\.mode\)==='assisted'/);
+  assert.match(block,/!operatorFactory/);
+});
+
 test('Operator Factory worker auto-resumes marked assisted runs without global Autopilot',()=>{
   const worker=readFileSync('scripts/episode-automation-worker.mjs','utf8');
   const route=readFileSync('src/app/api/episode-automation/worker-step/route.ts','utf8');
