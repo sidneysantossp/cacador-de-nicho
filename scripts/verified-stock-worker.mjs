@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 
 const DATABASE_URL=(process.env.DATABASE_API_URL||process.env.SUPABASE_URL||'').replace(/\/$/,'');
 const SERVICE_KEY=process.env.DATABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'';
@@ -10,6 +11,7 @@ const DRAIN_YIELD_MS=Number.isFinite(drainYieldConfigured)
   ?Math.max(50,Math.min(2000,Math.floor(drainYieldConfigured)))
   :250;
 const LEASE_SECONDS=Math.max(300,Math.min(7200,Number(process.env.VERIFIED_STOCK_WORKER_LEASE_SECONDS||1800)));
+const DRAIN_FILE=(process.env.VERIFIED_STOCK_WORKER_DRAIN_FILE||'/tmp/cacadores-verified-stock-drain').trim();
 
 if(!DATABASE_URL||!SERVICE_KEY){console.error('Verified Stock worker requires database service credentials.');process.exit(1);}
 if(!BASE_WORKER_URL||WORKER_SECRET.length<32){console.error('Verified Stock worker requires URL and 32+ character secret.');process.exit(1);}
@@ -18,6 +20,7 @@ const WORKER_URL=new URL('/api/workers/verified-stock',BASE_WORKER_URL).toString
 const authHeaders={apikey:SERVICE_KEY,Authorization:'Bearer '+SERVICE_KEY};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const safeError=error=>String(error instanceof Error?error.message:error).slice(0,4000);
+const drainRequested=()=>Boolean(DRAIN_FILE)&&existsSync(DRAIN_FILE);
 
 async function rpc(name,args){
   const response=await fetch(DATABASE_URL+'/rest/v1/rpc/'+encodeURIComponent(name),{
@@ -58,9 +61,14 @@ console.log(JSON.stringify({
   event:'verified-stock-worker-started',
   pollMs:POLL_MS,
   drainYieldMs:DRAIN_YIELD_MS,
-  leaseSeconds:LEASE_SECONDS
+  leaseSeconds:LEASE_SECONDS,
+  drainFile:DRAIN_FILE
 }));
 while(true){
+  if(drainRequested()){
+    console.log(JSON.stringify({event:'verified-stock-worker-drained',reason:'drain-file-before-claim'}));
+    break;
+  }
   try{
     const claimed=await claim();
     if(!claimed){await sleep(POLL_MS);continue;}
@@ -73,9 +81,22 @@ while(true){
       executionFailed=true;
       console.error(JSON.stringify({event:'verified-stock-job-error',jobId:claimed.jobId,error:safeError(error)}));
     }
+    if(drainRequested()){
+      console.log(JSON.stringify({
+        event:'verified-stock-worker-drained',
+        reason:'drain-file-after-job',
+        jobId:claimed.jobId
+      }));
+      break;
+    }
     await sleep(executionFailed?POLL_MS:DRAIN_YIELD_MS);
   }catch(error){
     console.error(JSON.stringify({event:'verified-stock-worker-loop-error',error:safeError(error)}));
+    if(drainRequested()){
+      console.log(JSON.stringify({event:'verified-stock-worker-drained',reason:'drain-file-after-loop-error'}));
+      break;
+    }
     await sleep(Math.max(POLL_MS,5000));
   }
 }
+console.log(JSON.stringify({event:'verified-stock-worker-stopped'}));
