@@ -282,6 +282,49 @@ test('Operator Golden Path exposes bounded arm and drain API without enabling gl
   assert.doesNotMatch(armBlock,/assertAutopilotControlRunning/);
 });
 
+test('Operator Factory worker auto-resumes marked assisted runs without global Autopilot',()=>{
+  const worker=readFileSync('scripts/episode-automation-worker.mjs','utf8');
+  const route=readFileSync('src/app/api/episode-automation/worker-step/route.ts','utf8');
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  const schema=readFileSync('docs/schema.sql','utf8');
+
+  assert.match(worker,/claim_operator_factory_automation_run/);
+  const factoryClaim=worker.indexOf("rpc('claim_operator_factory_automation_run'");
+  const autonomousClaim=worker.indexOf("rpc('claim_episode_automation_run'");
+  assert.ok(factoryClaim>=0&&autonomousClaim>factoryClaim,'factory claims should be checked before autonomous backlog');
+  assert.match(worker,/factory:true/);
+  assert.match(worker,/factory:false/);
+
+  assert.match(route,/factory:z\.boolean\(\)\.optional\(\)\.default\(false\)/);
+  assert.match(route,/advanceClaimedOperatorFactoryAutomationRun/);
+
+  const armStart=source.indexOf('export async function armOperatorFactoryAutomationRun');
+  const armEnd=source.indexOf('export async function resumeEpisodeAutomationRun',armStart);
+  const armBlock=source.slice(armStart,armEnd);
+  assert.match(armBlock,/operatorFactory:true/);
+  assert.match(armBlock,/factoryTarget:'master'/);
+
+  const claimedStart=source.indexOf('export async function advanceClaimedOperatorFactoryAutomationRun');
+  const claimedEnd=source.indexOf('export async function cancelEpisodeAutomationRun',claimedStart);
+  const claimedBlock=source.slice(claimedStart,claimedEnd);
+  assert.ok(claimedStart>=0&&claimedEnd>claimedStart,'factory claimed worker function missing');
+  assert.match(claimedBlock,/run\.mode!=='assisted'/);
+  assert.match(claimedBlock,/run\.operatorFactory!==true/);
+  assert.match(claimedBlock,/run\.factoryTarget!=='master'/);
+  assert.doesNotMatch(claimedBlock,/loadAutopilotControl|assertAutopilotControlRunning/);
+
+  const sqlStart=schema.indexOf('create or replace function public.claim_operator_factory_automation_run');
+  const sqlEnd=schema.indexOf('create or replace function public.heartbeat_episode_automation_run',sqlStart);
+  const sql=schema.slice(sqlStart,sqlEnd);
+  assert.ok(sqlStart>=0&&sqlEnd>sqlStart,'operator factory claim RPC missing');
+  assert.match(sql,/payload->>'operatorFactory'/);
+  assert.match(sql,/payload->>'factoryTarget'/);
+  assert.match(sql,/current_step not in \('packaging','publish'\)/);
+  assert.match(sql,/radar_verified_stock_jobs/);
+  assert.match(sql,/radar_render_jobs/);
+  assert.doesNotMatch(sql,/control_status is distinct from 'running'/);
+});
+
 test('Assisted Automation serializes direct advances with an exclusive operator lease',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/async function acquireOperatorAutomationLease/);
