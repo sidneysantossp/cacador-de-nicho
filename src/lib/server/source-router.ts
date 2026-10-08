@@ -626,7 +626,7 @@ export async function resolveSourceForScene(input:{
       const reused=await revalidateExistingUploadedStill({
       promptSetId:input.promptSetId,
       sceneId:input.sceneId,
-      query:route.query
+      query:sourceQuery
     });
     if(reused?.status==='matched'){
       if(videoFirst&&videoExhausted){
