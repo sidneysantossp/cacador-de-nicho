@@ -12,7 +12,7 @@ import { loadScenePlan } from './scene-timecode';
 import { loadTranscript } from './transcription-engine';
 import {
   buildInitialVideoEdit, normalizeVideoEdit, resolveVideoEditorChapter,
-  upgradeVideoEditPayload, videoEditApprovalIssues
+  suggestMusicTrack, suggestSfxEvents, upgradeVideoEditPayload, videoEditApprovalIssues
 } from '@/lib/video-editor-policy';
 import { loadProductionDna } from './production-dna';
 import { listAudioAssets } from './audio-library';
@@ -135,8 +135,14 @@ export async function createVideoEditFromTimeline(timelineId:string):Promise<Vid
   const existing=await loadVideoEditByTimeline(timelineId);
   if(existing)return existing;
   const {timeline,transcript}=await eligibleContext(timelineId);
-  const dna=await loadProductionDna(timeline.channelId);
-  return saveVideoEdit(buildInitialVideoEdit(timeline,transcript,dna),'draft',0);
+  const [dna,audioAssets]=await Promise.all([
+    loadProductionDna(timeline.channelId),
+    listAudioAssets(timeline.channelId)
+  ]);
+  const draft=buildInitialVideoEdit(timeline,transcript,dna);
+  draft.musicTrack=suggestMusicTrack(draft,audioAssets,dna);
+  draft.sfxEvents=suggestSfxEvents(draft,timeline,audioAssets);
+  return saveVideoEdit(draft,'draft',0);
 }
 
 export async function refreshVideoEditFromTimeline(timelineId:string):Promise<VideoEdit>{
