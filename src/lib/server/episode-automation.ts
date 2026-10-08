@@ -1636,7 +1636,7 @@ async function executeAutomationTransition(
             if(!promptSetId)throw new HttpError('Visual Prompt Set não identificado para corrigir motion coverage.',409);
             const remediation=await remediateMotionCoverageFromPriorVideos({
               promptSetId,
-              maxScenes:6
+              maxScenes:96
             });
             if(!remediation.targetReached){
               if(remediation.exhausted){
