@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { errorResponse, HttpError, requireOperator } from '@/lib/server/auth';
-import { headMedia, r2StoragePath, signedMediaPutUrl } from '@/lib/server/media-storage';
+import { mediaIntegrity, r2StoragePath, signedMediaPutUrl } from '@/lib/server/media-storage';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -49,7 +49,7 @@ export async function POST(request:Request){
         storagePath,
         'application/octet-stream',
         900,
-        {cacheControl:'no-store',metadata:{sha256:body.sha256}}
+        {cacheControl:'no-store'}
       );
       if(!uploadUrl)throw new HttpError('R2 indisponível para backup.',503);
       return Response.json({
@@ -59,25 +59,22 @@ export async function POST(request:Request){
           expiresSeconds:900,
           headers:{
             'Content-Type':'application/octet-stream',
-            'Cache-Control':'no-store',
-            'x-amz-meta-sha256':body.sha256
+            'Cache-Control':'no-store'
           }
         }
       },{headers:{'Cache-Control':'no-store'}});
     }
 
     assertBackupPath(body.storagePath);
-    const head=await headMedia(body.storagePath);
-    const storedSha=String(head.metadata?.sha256??'').toLowerCase();
-    if(head.bytes!==body.bytes||storedSha!==body.sha256){
+    const remote=await mediaIntegrity(body.storagePath);
+    if(remote.bytes!==body.bytes||remote.sha256!==body.sha256){
       throw new HttpError('Backup no R2 não passou na verificação de integridade.',409);
     }
     return Response.json({
       verified:true,
       storagePath:body.storagePath,
-      bytes:head.bytes,
-      sha256:storedSha,
-      etag:head.etag
+      bytes:remote.bytes,
+      sha256:remote.sha256
     },{headers:{'Cache-Control':'no-store'}});
   }catch(error){
     return errorResponse(error);

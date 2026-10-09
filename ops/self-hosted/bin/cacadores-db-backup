@@ -50,7 +50,13 @@ PREPARED="$("$AGENT_API" POST /api/database-backup "$PREPARE_BODY")"
 UPLOAD_URL="$(jq -er '.upload.url' <<<"$PREPARED")"
 STORAGE_PATH="$(jq -er '.upload.storagePath' <<<"$PREPARED")"
 
-curl -fsS --retry 3 --retry-all-errors --connect-timeout 10 --max-time 300   -X PUT   -H 'Content-Type: application/octet-stream'   -H 'Cache-Control: no-store'   -H "x-amz-meta-sha256: $SHA"   --data-binary "@$FILE"   "$UPLOAD_URL" >/dev/null
+curl -fsS --retry 3 --retry-all-errors --connect-timeout 10 --max-time 300 \
+  -X PUT \
+  -H 'Content-Type: application/octet-stream' \
+  -H 'Cache-Control: no-store' \
+  --data-binary "@$FILE" \
+  "$UPLOAD_URL" >/dev/null
+
 
 VERIFY_BODY="$(jq -cn --arg storagePath "$STORAGE_PATH" --argjson bytes "$BYTES" --arg sha256 "$SHA"   '{action:"verify",storagePath:$storagePath,bytes:$bytes,sha256:$sha256}')"
 VERIFIED="$("$AGENT_API" POST /api/database-backup "$VERIFY_BODY")"
