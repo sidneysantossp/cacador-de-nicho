@@ -250,11 +250,12 @@ function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescripto
   };
 
   for(const unit of competitorEvidenceUnits(competitor)){
-    const rawUnitTokens=lexicalTargetTokens(unit);
+    const rawUnitTokens=lexicalTokens(unit);
+    const targetAwareUnitTokens=lexicalTargetTokens(unit);
     const unitTokens=new Set(rawUnitTokens);
     const targetMatchedTerms=targetKeywordPhrases.length
       ?targetKeywordPhrases
-        .filter(keyword=>containsTokenPhrase(rawUnitTokens,keyword.tokens))
+        .filter(keyword=>containsTokenPhrase(targetAwareUnitTokens,keyword.tokens))
         .map(keyword=>keyword.label)
       :targetTerms.filter(term=>unitTokens.has(term));
     const domainAnchorMatchedTerms=domainAnchorTerms.filter(term=>unitTokens.has(term));
@@ -309,7 +310,8 @@ export function universeGapEvidenceMatch(
   const hasExplicitKeywords=!!gap.targetKeywords?.length;
   const familyMatch=hasExplicitKeywords?false:semanticGapFamilyMatch(competitor,gapText);
   const strongDomainAnchors=strongGapDomainAnchors(direct.domainAnchorMatchedTerms);
-  const directKeywordMatch=direct.targetMatchedTerms.length>=1&&direct.matchedTerms.length>=2;
+  const explicitTargetPhraseMatch=direct.targetMatchedTerms.some(label=>lexicalTargetTokens(label).length>=2);
+  const directKeywordMatch=explicitTargetPhraseMatch||(direct.targetMatchedTerms.length>=1&&direct.matchedTerms.length>=2);
   const strongAnchorMatch=strongDomainAnchors.length>=1&&direct.matchedTerms.length>=2;
   const directDomainMatch=directKeywordMatch||strongAnchorMatch;
   return {
