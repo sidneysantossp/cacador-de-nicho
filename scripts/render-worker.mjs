@@ -1466,6 +1466,10 @@ async function loop(){
       }
     }catch(error){
       console.error(JSON.stringify({event:'worker-loop-error',error:safeError(error)}));
+      if(ONE_SHOT){
+        process.exitCode=1;
+        return;
+      }
       await sleep(Math.max(POLL_MS,5000));
     }
   }
