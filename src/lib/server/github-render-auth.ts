@@ -78,6 +78,6 @@ export async function requireGithubRenderWorker(request:Request):Promise<JwtPayl
   if(!payload.exp||payload.exp<now-30||payload.nbf&&payload.nbf>now+30)throw new HttpError('GitHub OIDC token expirado.',401);
   if(payload.repository!==REPOSITORY||payload.repository_owner_id!==OWNER_ID)throw new HttpError('GitHub repository não autorizado.',403);
   if(payload.ref!=='refs/heads/master'||payload.workflow_ref!==WORKFLOW_REF)throw new HttpError('GitHub workflow/ref não autorizado.',403);
-  if(!['schedule','workflow_dispatch'].includes(String(payload.event_name??'')))throw new HttpError('GitHub event não autorizado.',403);
+  if(!['schedule','workflow_dispatch','push'].includes(String(payload.event_name??'')))throw new HttpError('GitHub event não autorizado.',403);
   return payload;
 }
