@@ -1,5 +1,5 @@
 /** Pure, deterministic pre-pilot feasibility gate. Market evidence always comes first. */
-export const PRODUCTION_AUTONOMY_VERSION = 'production-autonomy@1.1.0' as const;
+export const PRODUCTION_AUTONOMY_VERSION = 'production-autonomy@1.2.0' as const;
 export const PRODUCTION_AUTONOMY_STAGES = [
   'research', 'claims', 'script', 'voice', 'transcript', 'scenes', 'asset-sourcing',
   'rights', 'timeline', 'render', 'quality', 'packaging', 'publish', 'learning',
@@ -8,6 +8,7 @@ export type ProductionAutonomyStatus = 'approved' | 'rejected' | 'blocked' | 'no
 /** Supply state is deliberately separate from the legacy gate status. */
 export type ProductionAutonomySupplyStatus = 'market-not-eligible' | 'market-valid-but-supply-unproven' | 'supply-discoverable' | 'supply-verified' | 'autonomy-approved';
 export type ProductionAutonomyStage = typeof PRODUCTION_AUTONOMY_STAGES[number];
+export type ProductionAutonomyTarget = 'master' | 'closed-loop';
 export type VisualSimulationBeat = {
   id: string;
   durationSeconds: number;
@@ -112,6 +113,7 @@ export type ProductionAutonomyInput = {
     basis: 'observed' | 'quoted' | 'unknown';
   };
   automation: { stage: ProductionAutonomyStage; status: 'automatic' | 'manual' | 'unavailable' | 'unknown'; evidenceRef?: string }[];
+  automationTarget?: ProductionAutonomyTarget;
   generation: { available: boolean | null; evidenceRef?: string };
   preflight?: SupplyPreflight;
   repeatability: {
@@ -140,6 +142,7 @@ export type VisualSupplyAllocation = {
 };
 export type ProductionAutonomyAssessment = {
   version: typeof PRODUCTION_AUTONOMY_VERSION;
+  automationTarget: ProductionAutonomyTarget;
   status: ProductionAutonomyStatus;
   supplyStatus: ProductionAutonomySupplyStatus;
   marketEligible: boolean;
@@ -225,6 +228,10 @@ function freeInterval(start: number, end: number, duration: number, used: [numbe
 
 export function evaluateProductionAutonomy(input: ProductionAutonomyInput): ProductionAutonomyAssessment {
   const policy = { ...DEFAULT_PRODUCTION_AUTONOMY_POLICY, ...input.policy };
+  const automationTarget: ProductionAutonomyTarget = input.automationTarget ?? 'closed-loop';
+  const requiredAutomationStages = automationTarget === 'master'
+    ? PRODUCTION_AUTONOMY_STAGES.slice(0, PRODUCTION_AUTONOMY_STAGES.indexOf('quality') + 1)
+    : PRODUCTION_AUTONOMY_STAGES;
   const reasons: ProductionAutonomyReason[] = [];
   const add = (code: string, severity: ProductionAutonomyReason['severity'], message: string, evidenceRefs: string[] = []) => {
     if (!reasons.some(reason => reason.code === code && reason.message === message)) reasons.push({ code, severity, message, evidenceRefs });
@@ -404,7 +411,7 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
 
   let automaticStages = 0;
   let unknownStages = 0;
-  for (const stage of PRODUCTION_AUTONOMY_STAGES) {
+  for (const stage of requiredAutomationStages) {
     const evidence = input.automation.find(item => item.stage === stage);
     if (!evidence || evidence.status === 'unknown' || !evidence.evidenceRef?.trim()) {
       unknownStages++;
@@ -431,7 +438,7 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
     time: timeKnown ? Math.min(budgetScore(input.economics.cycleMinutes!, policy.maximumCycleMinutes), budgetScore(input.economics.operatorMinutes!, policy.maximumOperatorMinutes)) : null,
     factuality: simulationValid && unknownFactSeconds <= EPSILON ? percentage(factualSeconds, totalSeconds) : null,
     repeatability: repeatability.find(item => item.episodes === 15)!.score,
-    endToEndAutonomy: unknownStages ? null : percentage(automaticStages, PRODUCTION_AUTONOMY_STAGES.length),
+    endToEndAutonomy: unknownStages ? null : percentage(automaticStages, requiredAutomationStages.length),
   };
   const score = round((scores.visualSupplyCoverage ?? 0) * .25 + (scores.generationIndependence ?? 0) * .1 + (scores.rights ?? 0) * .15 + (scores.cost ?? 0) * .1 + (scores.time ?? 0) * .05 + (scores.factuality ?? 0) * .15 + (scores.repeatability ?? 0) * .1 + (scores.endToEndAutonomy ?? 0) * .1);
   if (score < policy.minimumScore && !reasons.some(reason => reason.severity === 'blocker' || reason.severity === 'rejection')) add('overall-score-below-policy', 'rejection', `Score ${score} abaixo do mínimo de ${policy.minimumScore}.`);
@@ -439,7 +446,7 @@ export function evaluateProductionAutonomy(input: ProductionAutonomyInput): Prod
   const supplyStatus: ProductionAutonomySupplyStatus = !marketEligible ? 'market-not-eligible' : status === 'approved' ? 'autonomy-approved' : supplySeconds > EPSILON && unresolvedSeconds <= EPSILON && discoverableSeconds <= EPSILON && generationSeconds <= EPSILON ? 'supply-verified' : discoverableSeconds > EPSILON ? 'supply-discoverable' : 'market-valid-but-supply-unproven';
   const evidenceConfidence = totalSeconds > 0 ? round(Math.min(1, (supplySeconds + discoverableSeconds * 0.5) / totalSeconds)) : null;
   return {
-    version: PRODUCTION_AUTONOMY_VERSION, status, supplyStatus, marketEligible, score, scores,
+    version: PRODUCTION_AUTONOMY_VERSION, automationTarget, status, supplyStatus, marketEligible, score, scores,
     coverage: { totalSeconds: round(totalSeconds), ownedSeconds: round(ownedSeconds), stockSeconds: round(stockSeconds), generationSeconds: round(generationSeconds), unresolvedSeconds: round(unresolvedSeconds), ownedPercent: percentage(ownedSeconds, totalSeconds), stockPercent: percentage(stockSeconds, totalSeconds), supplyPercent, readySupplyCoverage:{seconds:round(supplySeconds),percent:supplyPercent,confidence:supplySeconds>0?1:0}, discoverableSupplyCoverage:{seconds:round(discoverableSeconds),percent:discoverablePercent,confidence:discoverableSeconds>0?0.5:0}, projectedAutonomousCoverage:{seconds:round(projectedSeconds),percent:projectedPercent,confidence:discoverableSeconds>0?0.5:projectedSeconds>0?1:0,isProjection:true}, evidenceConfidence, generationPercent, unresolvedPercent: percentage(unresolvedSeconds, totalSeconds), distinctSources: sourceUses.size, allocations, classifications, titles: titleCoverage },
     repeatability, economics: { ...input.economics, evidenceRefs: [...input.economics.evidenceRefs] }, reasons, policy, preflight: input.preflight,
   };
