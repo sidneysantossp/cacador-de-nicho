@@ -178,7 +178,7 @@ export default function CompetitorUniverse({
   const rawEntries=useMemo(()=>importText.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).length,[importText]);
   const duplicateEntries=Math.max(0,rawEntries-parsed.length);
   const modelIdFor=(item:UniverseCompetitor)=>priorityModelForCard(item)?.id??null;
-  const strategicCompetitors=useMemo(()=>competitors.filter(item=>!!priorityModelForCard(item)),[competitors]);
+  const strategicCompetitors=useMemo(()=>competitors.filter(item=>!!item.priorityModelId&&!!priorityModelForCard(item)),[competitors]);
   const scopedCompetitors=useMemo(()=>priorityFilter==='all'
     ?competitors
     :priorityFilter==='approved'
