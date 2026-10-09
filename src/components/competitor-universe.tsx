@@ -136,6 +136,8 @@ function CompetitorCard({
 
 export default function CompetitorUniverse({
   competitors,
+  priorityModels,
+  priorityDiscovery,
   mode,
   busy,
   onImport,
@@ -146,10 +148,13 @@ export default function CompetitorUniverse({
   onCurves,
   queue,
   onQueue,
+  onPriorityDiscover,
   onCycle,
   onOpenDna
 }:{
   competitors:UniverseCompetitor[];
+  priorityModels:PriorityContentModel[];
+  priorityDiscovery?:UniversePriorityDiscovery|null;
   mode:'demo'|'live';
   busy:string;
   onImport:(inputs:string[])=>Promise<void>;
@@ -160,22 +165,31 @@ export default function CompetitorUniverse({
   onCurves:()=>Promise<boolean|undefined>;
   queue?:UniverseImportQueueSummary|null;
   onQueue:()=>Promise<boolean|undefined>;
+  onPriorityDiscover:(modelIds?:string[])=>Promise<boolean|undefined>;
   onCycle:()=>Promise<boolean|undefined>;
   onOpenDna:(competitor:UniverseCompetitor)=>void;
 }){
   const [query,setQuery]=useState('');
   const [cluster,setCluster]=useState('Todos');
   const [status,setStatus]=useState('Todos');
+  const [priorityFilter,setPriorityFilter]=useState('approved');
   const [showImport,setShowImport]=useState(false);
   const [importText,setImportText]=useState('');
   const [section,setSection]=useState<'competitors'|'curves'|'gaps'>('competitors');
   const parsed=useMemo(()=>extractInputs(importText),[importText]);
   const rawEntries=useMemo(()=>importText.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).length,[importText]);
   const duplicateEntries=Math.max(0,rawEntries-parsed.length);
-  const clusters=useMemo(()=>[...new Set(competitors.map(item=>item.cluster||'A classificar'))].sort(),[competitors]);
-  const visible=useMemo(()=>competitors
+  const modelIdFor=(item:UniverseCompetitor)=>priorityModelForCard(item)?.id??null;
+  const strategicCompetitors=useMemo(()=>competitors.filter(item=>!!priorityModelForCard(item)),[competitors]);
+  const scopedCompetitors=useMemo(()=>priorityFilter==='all'
+    ?competitors
+    :priorityFilter==='approved'
+      ?strategicCompetitors
+      :competitors.filter(item=>modelIdFor(item)===priorityFilter),[competitors,strategicCompetitors,priorityFilter]);
+  const clusters=useMemo(()=>[...new Set(scopedCompetitors.map(item=>item.cluster||'A classificar'))].sort(),[scopedCompetitors]);
+  const visible=useMemo(()=>scopedCompetitors
     .filter(item=>(cluster==='Todos'||item.cluster===cluster)&&(status==='Todos'||item.status===status)&&(`${item.name} ${item.handle} ${item.cluster} ${item.subniche} ${item.description}`.toLowerCase().includes(query.toLowerCase())))
-    .sort((a,b)=>statusMeta[b.status].rank-statusMeta[a.status].rank||(b.breakoutRatio??0)-(a.breakoutRatio??0)),[competitors,cluster,status,query]);
+    .sort((a,b)=>statusMeta[b.status].rank-statusMeta[a.status].rank||(b.breakoutRatio??0)-(a.breakoutRatio??0)),[scopedCompetitors,cluster,status,query]);
   const grouped=useMemo(()=>{
     const map=new Map<string,UniverseCompetitor[]>();
     for(const item of visible){
@@ -185,12 +199,16 @@ export default function CompetitorUniverse({
     return [...map.entries()].sort((a,b)=>b[1].length-a[1].length);
   },[visible]);
   const now=Date.now();
-  const newVideos24h=competitors.reduce((sum,item)=>sum+item.recentUploads.filter(video=>now-Date.parse(video.publishedAt)<=86400000).length,0);
-  const signals=competitors.filter(item=>item.signals.length>0).length;
-  const breakout=competitors.filter(item=>item.status==='breakout').length;
-  const dnaReady=competitors.filter(item=>!!item.dna).length;
-  const dnaPending=Math.max(0,competitors.length-dnaReady);
-  const dnaProgressPct=competitors.length?Math.round((dnaReady/competitors.length)*100):0;
+  const newVideos24h=strategicCompetitors.reduce((sum,item)=>sum+item.recentUploads.filter(video=>now-Date.parse(video.publishedAt)<=86400000).length,0);
+  const signals=strategicCompetitors.filter(item=>item.signals.length>0).length;
+  const breakout=strategicCompetitors.filter(item=>item.status==='breakout').length;
+  const dnaReady=strategicCompetitors.filter(item=>!!item.dna).length;
+  const dnaPending=Math.max(0,strategicCompetitors.length-dnaReady);
+  const dnaProgressPct=strategicCompetitors.length?Math.round((dnaReady/strategicCompetitors.length)*100):0;
+  const modelCounts=Object.fromEntries((priorityModels.length?priorityModels:PRIORITY_CONTENT_MODELS).map(model=>[
+    model.id,
+    strategicCompetitors.filter(item=>modelIdFor(item)===model.id).length
+  ]));
   const gaps=intelligence?.gaps.length??0;
   const curves=intelligence?.curves.length??0;
   const competitorName=(channelId:string)=>competitors.find(item=>item.channelId===channelId)?.name??channelId;
