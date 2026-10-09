@@ -205,6 +205,17 @@ function lexicalTokens(value:string){
     .filter(token=>token.length>=3&&!GAP_MATCH_STOP_WORDS.has(token))
     .map(lexicalCanonicalToken);
 }
+
+const GAP_TARGET_DOMAIN_QUALIFIERS=new Set([
+  'ancient','historical','history','space','cosmic','planetary','urban','coastal','medical','wildlife','animal','animals'
+]);
+
+function lexicalTargetTokens(value:string){
+  return lexicalNormalize(value)
+    .split(' ')
+    .filter(token=>token.length>=3&&(!GAP_MATCH_STOP_WORDS.has(token)||GAP_TARGET_DOMAIN_QUALIFIERS.has(token)))
+    .map(lexicalCanonicalToken);
+}
 function competitorEvidenceUnits(competitor:UniverseCompetitor){
   return competitor.recentUploads
     .slice(0,30)
@@ -225,10 +236,10 @@ function containsTokenPhrase(unitTokens:string[],phraseTokens:string[]){
 
 function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescriptor){
   const targetText=universeGapTargetText(gap);
-  const targetTerms=[...new Set(lexicalTokens(targetText))];
-  const domainAnchorTerms=[...new Set(lexicalTokens(gap.targetSpace))];
+  const targetTerms=[...new Set(lexicalTargetTokens(targetText))];
+  const domainAnchorTerms=[...new Set(lexicalTargetTokens(gap.targetSpace))];
   const targetKeywordPhrases=(gap.targetKeywords??[])
-    .map(keyword=>({label:keyword,tokens:lexicalTokens(keyword)}))
+    .map(keyword=>({label:keyword,tokens:lexicalTargetTokens(keyword)}))
     .filter(item=>item.tokens.length>0);
   const titleTerms=[...new Set(lexicalTokens(gap.title))];
   const allTerms=[...new Set([...targetTerms,...domainAnchorTerms,...titleTerms])];
