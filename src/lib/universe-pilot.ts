@@ -169,7 +169,7 @@ export function buildUniversePilotContentHandoff(input:{
       theme:pilot.targetSpace,
       thesis:pilot.hypothesis,
       angle:`${pilot.testPlan.preserveMechanism}\n\nVariável alterada: ${pilot.testPlan.changedVariable}`,
-      promise:'',
+      promise:'Deliver the approved pilot hypothesis as a clear, evidence-backed explanation that lets the viewer see the mechanism, understand why it matters, and remember the key transformation or failure.',
       workingTitle:pilot.firstTest,
       thumbnailConcept:'',
       targetAudience:brain?.constitution.audience?.trim()??'',

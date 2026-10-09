@@ -8,7 +8,7 @@ import type {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { loadContentProject, saveContentProject } from './content-os';
-import { generateContentResearchForProject } from './content-research-ai';
+import { contentResearchNeedsGeneration, generateContentResearchForProject } from './content-research-ai';
 import { loadProductionDna } from './production-dna';
 import { generateScriptForProject, loadEpisodeScript, saveEpisodeScript } from './episode-script';
 import { generateElevenLabsVoice, loadVoiceAsset } from './voice-engine';
@@ -1212,14 +1212,25 @@ async function executeAutomationTransition(
       const documentaryMode=Boolean(
         productionDna?.research?.documentaryMode||productionDna?.research?.requireClaimLedger
       );
-      const researchEmpty=!project.research.pack&&project.research.sources.length===0&&
-        project.research.factChecks.length===0&&!project.research.notes.trim();
-      if(documentaryMode&&researchEmpty){
+      const researchNeedsGeneration=contentResearchNeedsGeneration(project);
+      if(documentaryMode&&researchNeedsGeneration){
         if(!providerAiAutorun())throw new HttpError('Pesquisa autônoma requer CACADORES_AI_AUTORUN ativo.',409);
         if(!run.policy.autoGenerateResearch)throw new HttpError('Geração automática de Research Pack está desativada.',409);
         project=await generateContentResearchForProject(run.contentProjectId);
       }
-      const payload=payloadOnly(project);
+      let payload=payloadOnly(project);
+      const universePilotHandoff=Boolean(
+        payload.opportunityId&&payload.research.notes.includes('Universe Pilot Brief')
+      );
+      if(universePilotHandoff&&!payload.brief.promise.trim()){
+        payload={
+          ...payload,
+          brief:{
+            ...payload.brief,
+            promise:'Deliver the approved pilot hypothesis as a clear, evidence-backed explanation that lets the viewer see the mechanism, understand why it matters, and remember the key transformation or failure.'
+          }
+        };
+      }
       await saveContentProject({
         ...payload,
         approval:{
@@ -1229,7 +1240,7 @@ async function executeAutomationTransition(
             'Aprovado pelo Episode Automation após passar no gate objetivo do Content OS.'
         }
       },project.version);
-      return documentaryMode&&researchEmpty
+      return documentaryMode&&researchNeedsGeneration
         ?'Research Pack + Claim Ledger gerados e Content Project aprovado pelo gate objetivo.'
         :'Content Project aprovado pelo gate objetivo.';
     }
