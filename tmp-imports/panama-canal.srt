@@ -997,6 +997,7 @@ By the time Panama assumed full control, that
 250
 00:10:54,140 --> 00:10:56,640
 constraint was becoming impossible to ignore.
+
 251
 00:10:57,140 --> 00:10:59,540
 The original locks were built around a chamber
