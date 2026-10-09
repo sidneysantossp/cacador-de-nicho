@@ -38,12 +38,28 @@ export async function putMedia(key:string,bytes:Buffer,contentType:string,option
   }catch{throw new Error('r2-upload-failed');}
 }
 
-export async function signedMediaPutUrl(path:string,contentType:string,expiresSeconds=600){
+export async function signedMediaPutUrl(
+  path:string,
+  contentType:string,
+  expiresSeconds=600,
+  options:{cacheControl?:string;metadata?:Record<string,string>}={}
+){
   if(!path||!isR2Path(path))return null;
   const target=await r2();
   if(!target)return null;
-  try{return await getSignedUrl(target.client,new PutObjectCommand({Bucket:target.config.bucket,Key:r2Key(path),ContentType:contentType,CacheControl:'31536000'}),{expiresIn:Math.max(60,Math.min(expiresSeconds,3600))});}
-  catch{return null;}
+  try{
+    return await getSignedUrl(
+      target.client,
+      new PutObjectCommand({
+        Bucket:target.config.bucket,
+        Key:r2Key(path),
+        ContentType:contentType,
+        CacheControl:options.cacheControl??'31536000',
+        Metadata:options.metadata
+      }),
+      {expiresIn:Math.max(60,Math.min(expiresSeconds,3600))}
+    );
+  }catch{return null;}
 }
 
 export async function signedMediaUrl(path:string,expiresSeconds=3600){
@@ -105,7 +121,12 @@ export async function headMedia(path:string){
   const target=await r2();
   if(!target)throw new Error('r2-not-configured');
   const result=await target.client.send(new HeadObjectCommand({Bucket:target.config.bucket,Key:r2Key(path)}));
-  return {bytes:Number(result.ContentLength??0),contentType:String(result.ContentType??''),etag:String(result.ETag??'').replace(/^\"|\"$/g,'')};
+  return {
+    bytes:Number(result.ContentLength??0),
+    contentType:String(result.ContentType??''),
+    etag:String(result.ETag??'').replace(/^\"|\"$/g,''),
+    metadata:result.Metadata??{}
+  };
 }
 
 export async function downloadMediaToFile(storagePath:string,targetPath:string){

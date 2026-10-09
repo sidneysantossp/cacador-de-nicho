@@ -82,7 +82,7 @@ if p.exists():
 print(value)
 PYRENDER
 )"
-UNITS=(cacadores-auto-deploy.timer)
+UNITS=(cacadores-auto-deploy.timer cacadores-db-backup.timer)
 if (( BACKGROUND_HOLD == 0 )); then
   UNITS+=(
     cacadores-episode-automation-worker-sync.timer

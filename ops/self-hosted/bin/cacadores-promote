@@ -220,7 +220,7 @@ PYRENDER
   for FILE in "$ROOT"/ops/self-hosted/systemd/*.timer; do
     [[ -f "$FILE" ]] || continue
     TIMER="$(basename "$FILE")"
-    if (( BACKGROUND_HOLD == 1 )) && [[ "$TIMER" != "cacadores-auto-deploy.timer" && "$TIMER" != "cacadores-health-watch.timer" ]]; then
+    if (( BACKGROUND_HOLD == 1 )) && [[ "$TIMER" != "cacadores-auto-deploy.timer" && "$TIMER" != "cacadores-health-watch.timer" && "$TIMER" != "cacadores-db-backup.timer" ]]; then
       systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
       continue
     fi

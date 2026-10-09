@@ -1,0 +1,14 @@
+[Unit]
+Description=Caçadores PostgreSQL backup to Cloudflare R2
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/auditseo-deploy/bin/cacadores-db-backup
+TimeoutStartSec=20min
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=50%
+MemoryMax=256M
+TasksMax=128

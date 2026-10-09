@@ -62,6 +62,7 @@ allowed=(
     "/api/autopilot-readiness",
     "/api/channel-brain",
     "/api/content-os",
+    "/api/database-backup",
     "/api/episode-automation",
     "/api/external-import",
     "/api/media-library",

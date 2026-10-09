@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE=/srv/auditseo-deploy
+PROJECT=cacador-de-nicho
+BACKUP_DIR="$BASE/backups/$PROJECT"
+STATE_FILE="$BASE/state/$PROJECT-db-backup.json"
+LOCK_DIR="$BASE/state/.$PROJECT-db-backup.lock"
+AGENT_API="$BASE/bin/cacadores-agent-api"
+MIN_FREE_KB="${CACADORES_BACKUP_MIN_FREE_KB:-1048576}"
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "DB_BACKUP_SKIPPED reason=already-running"
+  exit 0
+fi
+trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+
+mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
+
+FREE_KB="$(df -Pk "$BACKUP_DIR" | awk 'NR==2 {print $4}')"
+if [[ ! "$FREE_KB" =~ ^[0-9]+$ ]] || (( FREE_KB < MIN_FREE_KB )); then
+  echo "DB_BACKUP_BLOCKED reason=low-disk free_kb=$FREE_KB" >&2
+  exit 1
+fi
+
+IFS='|' read -r DB_USER DB_NAME < <(
+  docker exec cacadores-postgres sh -lc 'printf "%s|%s\n" "$POSTGRES_USER" "$POSTGRES_DB"'
+)
+[[ -n "$DB_USER" && -n "$DB_NAME" ]] || { echo "DB_BACKUP_BLOCKED reason=db-env" >&2; exit 1; }
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TMP="$BACKUP_DIR/.cacadores-$STAMP.dump.tmp"
+
+cleanup_tmp(){ rm -f "$TMP" >/dev/null 2>&1 || true; }
+trap 'cleanup_tmp; rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+
+docker exec cacadores-postgres pg_dump -U "$DB_USER" -d "$DB_NAME" -Fc --no-owner --no-acl > "$TMP"
+docker exec -i cacadores-postgres pg_restore --list < "$TMP" >/dev/null
+
+SHA="$(sha256sum "$TMP" | awk '{print $1}')"
+FILE="$BACKUP_DIR/cacadores-$STAMP-${SHA:0:12}.dump"
+mv "$TMP" "$FILE"
+chmod 600 "$FILE"
+BYTES="$(stat -c %s "$FILE")"
+NAME="$(basename "$FILE")"
+
+PREPARE_BODY="$(jq -cn --arg fileName "$NAME" --argjson bytes "$BYTES" --arg sha256 "$SHA"   '{action:"prepare",fileName:$fileName,bytes:$bytes,sha256:$sha256}')"
+PREPARED="$("$AGENT_API" POST /api/database-backup "$PREPARE_BODY")"
+UPLOAD_URL="$(jq -er '.upload.url' <<<"$PREPARED")"
+STORAGE_PATH="$(jq -er '.upload.storagePath' <<<"$PREPARED")"
+
+curl -fsS --retry 3 --retry-all-errors --connect-timeout 10 --max-time 300   -X PUT   -H 'Content-Type: application/octet-stream'   -H 'Cache-Control: no-store'   -H "x-amz-meta-sha256: $SHA"   --data-binary "@$FILE"   "$UPLOAD_URL" >/dev/null
+
+VERIFY_BODY="$(jq -cn --arg storagePath "$STORAGE_PATH" --argjson bytes "$BYTES" --arg sha256 "$SHA"   '{action:"verify",storagePath:$storagePath,bytes:$bytes,sha256:$sha256}')"
+VERIFIED="$("$AGENT_API" POST /api/database-backup "$VERIFY_BODY")"
+jq -e --argjson bytes "$BYTES" --arg sha256 "$SHA"   '.verified == true and .bytes == $bytes and .sha256 == $sha256' <<<"$VERIFIED" >/dev/null
+
+python3 - "$STATE_FILE" "$STORAGE_PATH" "$BYTES" "$SHA" "$FILE" <<'PY'
+from pathlib import Path
+import datetime,json,sys
+Path(sys.argv[1]).write_text(json.dumps({
+  "status":"verified",
+  "storage":"r2",
+  "storagePath":sys.argv[2],
+  "bytes":int(sys.argv[3]),
+  "sha256":sys.argv[4],
+  "localFile":sys.argv[5],
+  "verifiedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
+},indent=2)+"\n")
+PY
+chmod 600 "$STATE_FILE"
+
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'cacadores-*.dump' -mtime +3 -delete
+
+echo "DB_BACKUP_OK storage=r2 path=$STORAGE_PATH bytes=$BYTES sha256=$SHA"
