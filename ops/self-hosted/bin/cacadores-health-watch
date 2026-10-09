@@ -8,6 +8,7 @@ PUBLIC=https://cacadores.159.198.40.98.sslip.io/api/health
 # Keep infrastructure schedulers alive. Editorial/market schedulers are only
 # self-healed when the operation is not in assisted-manual mode.
 MODE_FILE="$BASE/state/cacador-de-nicho-operation-mode.json"
+RENDER_BACKEND_FILE="$BASE/state/cacador-de-nicho-render-backend.json"
 OPERATION_MODE="$(python3 - "$MODE_FILE" <<'PYMODE'
 from pathlib import Path
 import json,sys
@@ -19,13 +20,26 @@ if p.exists():
 print(mode)
 PYMODE
 )"
+RENDER_BACKEND="$(python3 - "$RENDER_BACKEND_FILE" <<'PYRENDER'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+value=""
+if p.exists():
+    try: value=str(json.loads(p.read_text()).get("backend",""))
+    except Exception: pass
+print(value)
+PYRENDER
+)"
 UNITS=(
   cacadores-auto-deploy.timer
   cacadores-episode-automation-worker-sync.timer
   cacadores-owned-visual-worker-sync.timer
-  cacadores-render-worker-sync.timer
   cacadores-verified-stock-worker-sync.timer
 )
+if [[ "$RENDER_BACKEND" != "github-actions" ]]; then
+  UNITS+=(cacadores-render-worker-sync.timer)
+fi
 if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
   UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer cacadores-youtube-publish-worker-sync.timer)
 fi
