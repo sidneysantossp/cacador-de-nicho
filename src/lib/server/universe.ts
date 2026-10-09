@@ -10,6 +10,7 @@ import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailur
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
 import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION, inferPriorityContentModel, priorityContentModelById, priorityDiscoverySeed, priorityTextMatchesTerm, type PriorityContentModel } from '@/lib/priority-content-models';
+import { isoDurationSeconds, MIN_LONG_FORM_SECONDS } from '@/lib/opportunity-criteria';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -94,8 +95,12 @@ function competitorLooksEnglish(competitor:UniverseCompetitor){
 
 export function priorityModelForCompetitor(competitor:UniverseCompetitor):PriorityContentModel|null{
   if(!competitorLooksEnglish(competitor))return null;
-  const titles=competitor.recentUploads.slice(0,10).map(video=>video.title);
-  if(!titles.length)return inferPriorityContentModel(priorityModelText(competitor));
+  const uploads=competitor.recentUploads.slice(0,10);
+  if(uploads.length<3)return null;
+  const longFormCount=uploads.filter(video=>isoDurationSeconds(video.duration)>=MIN_LONG_FORM_SECONDS).length;
+  const requiredLongForm=Math.max(3,Math.ceil(uploads.length*.5));
+  if(longFormCount<requiredLongForm)return null;
+  const titles=uploads.map(video=>video.title);
   const explicit=priorityContentModelById(competitor.priorityModelId);
   const ranked=PRIORITY_CONTENT_MODELS.map(model=>({
     model,
