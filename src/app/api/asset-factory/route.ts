@@ -6,6 +6,7 @@ import {
   resolveOwnedMediaForPromptSet, resolveOwnedMediaForScene, selectSceneAsset, startGoogleVideo, uploadSceneAsset
 } from '@/lib/server/asset-factory';
 import { remediateMotionCoverageFromPriorVideos, remediateSourceDiversity, resolveSourceForScene } from '@/lib/server/source-router';
+import { recordOperatorSceneAssetVisualQa } from '@/lib/server/visual-asset-preflight';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -69,6 +70,16 @@ const schema=z.discriminatedUnion('action',[
     matchScore:z.number().min(0).max(1).optional(),
     visualCoverage:z.number().min(0).max(1).optional(),
     select:z.boolean().optional()
+  }).strict(),
+  z.object({
+    action:z.literal('operatorVisualQa'),
+    assetId:z.string().uuid(),
+    relevance:z.number().min(.50).max(1),
+    qualityScore:z.number().min(.50).max(1),
+    editorialUsefulness:z.number().min(.50).max(1),
+    visualClass:z.enum(['live-footage','cinematic-scene','map','diagram','interface-card','text-card','evidence-board','document','other']),
+    staticGraphic:z.boolean(),
+    summary:z.string().trim().min(20).max(1500)
   }).strict(),
   z.object({action:z.literal('refreshVideo'),assetId:z.string().uuid()}).strict(),
   z.object({action:z.literal('select'),assetId:z.string().uuid()}).strict(),
@@ -193,6 +204,13 @@ export async function POST(request:Request){
         message:'Trecho da Biblioteca OWNED vinculado à cena sem duplicar o arquivo.',
         asset,
         assets:await listSceneAssets(body.promptSetId)
+      });
+    }
+    if(body.action==='operatorVisualQa'){
+      const review=await recordOperatorSceneAssetVisualQa(body);
+      return Response.json({
+        message:'Visual QA aprovado manualmente pelo operador após indisponibilidade do revisor automático.',
+        review
       });
     }
     if(body.action==='refreshVideo'){
