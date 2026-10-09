@@ -52,9 +52,27 @@ if (( FAST_WORKERS>0 )); then
   [[ -n "$FAST_WORKER_URL" ]] || { echo "AUTOMATION_WORKER_URL is required for fast verified-stock workers" >&2; exit 1; }
 fi
 
+main_drain_marker_path(){
+  [[ "$DRAIN_FILE" == /tmp/* ]] || return 1
+  printf '%s/%s\n' "$WORK_DIR" "${DRAIN_FILE#/tmp/}"
+}
+
+main_drain_marker_present(){
+  local marker
+  marker="$(main_drain_marker_path 2>/dev/null || true)"
+  [[ -n "$marker" && -e "$marker" ]]
+}
+
+clear_main_drain_marker(){
+  local marker
+  marker="$(main_drain_marker_path 2>/dev/null || true)"
+  [[ -n "$marker" ]] && rm -f -- "$marker"
+}
+
 main_matches_target(){
   [[ "$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "auditseo.verified-stock.sha"}}' 2>/dev/null || true)" == "$SHA" ]] &&
-  [[ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] &&
+  [[ "$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || true)" == "running" ]] &&
+  ! main_drain_marker_present &&
   [[ "$(docker inspect "$CONTAINER" --format '{{.HostConfig.Memory}}' 2>/dev/null || true)" == "$TARGET_MEMORY" ]] &&
   [[ "$(docker inspect "$CONTAINER" --format '{{.HostConfig.NanoCpus}}' 2>/dev/null || true)" == "$TARGET_CPUS" ]]
 }
@@ -62,15 +80,21 @@ main_matches_target(){
 fast_matches_target(){
   local name="$1"
   [[ "$(docker inspect "$name" --format '{{index .Config.Labels "auditseo.verified-stock-fast.sha"}}' 2>/dev/null || true)" == "$SHA" ]] &&
-  [[ "$(docker inspect "$name" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] &&
+  [[ "$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || true)" == "running" ]] &&
   [[ "$(docker inspect "$name" --format '{{.HostConfig.Memory}}' 2>/dev/null || true)" == "$FAST_MEMORY" ]] &&
   [[ "$(docker inspect "$name" --format '{{.HostConfig.NanoCpus}}' 2>/dev/null || true)" == "$FAST_CPUS" ]]
 }
 
 wait_running(){
   local name="$1"
-  for _ in $(seq 1 30); do
-    [[ "$(docker inspect "$name" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] && return 0
+  local stable=0
+  for _ in $(seq 1 40); do
+    if [[ "$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || true)" == "running" ]]; then
+      stable=$((stable+1))
+      (( stable>=4 )) && return 0
+    else
+      stable=0
+    fi
     sleep 0.5
   done
   docker logs "$name" --tail 100 || true
@@ -79,11 +103,17 @@ wait_running(){
 
 request_drain(){
   local name="$1"
-  [[ "$(docker inspect "$name" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] || return 0
+  local status
+  status="$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || true)"
+  [[ -n "$status" ]] || return 0
   docker update --restart=no "$name" >/dev/null 2>&1 || true
+  if [[ "$status" != "running" ]]; then
+    docker stop -t 5 "$name" >/dev/null 2>&1 || true
+    return 0
+  fi
   docker exec "$name" sh -lc "touch '$DRAIN_FILE'" >/dev/null 2>&1 || true
   for _ in $(seq 1 $((DRAIN_WAIT_SECONDS*2))); do
-    [[ "$(docker inspect "$name" --format '{{.State.Running}}' 2>/dev/null || true)" != "true" ]] && return 0
+    [[ "$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || true)" != "running" ]] && return 0
     sleep 0.5
   done
   return 1
@@ -96,6 +126,9 @@ remove_after_drain(){
     return 1
   fi
   docker rm -f "$name" >/dev/null 2>&1 || true
+  if [[ "$name" == "$CONTAINER" ]]; then
+    clear_main_drain_marker
+  fi
   return 0
 }
 
