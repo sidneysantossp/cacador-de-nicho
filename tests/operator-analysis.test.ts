@@ -61,3 +61,9 @@ test('Operator Analysis is exposed through the scoped host-side agent channel',(
   assert.match(helper,/\/api\/operator-analysis/);
   assert.match(auth,/\/api\/operator-analysis/);
 });
+
+
+test('Universe market operator import accepts persisted legacy DNA timestamp strings',()=>{
+  const route=readFileSync('src/app/api/operator-analysis/route.ts','utf8');
+  assert.match(route,/expectedDnaGeneratedAt:z\.string\(\)\.trim\(\)\.min\(1\)\.max\(80\)\.nullable\(\)/);
+});
