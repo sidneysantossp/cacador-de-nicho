@@ -10,4 +10,6 @@ test('Universe priority scope validates recurring content and language before in
   assert.match(source,/Math\.max\(3,Math\.ceil\(titles\.length\*\.5\)\)/);
   assert.match(source,/export async function revalidatePriorityUniverseScope/);
   assert.match(source,/priorityModelId:classified\.id/);
+  assert.match(source,/kind==='universe-priority-assignment'/);
+  assert.match(source,/reactivated\+\+/);
 });
