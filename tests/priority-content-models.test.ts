@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION } from '../src/lib/priority-content-models';
+import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION, inferPriorityContentModel } from '../src/lib/priority-content-models';
 
 test('priority content model catalog only contains approved 9/10 and 10/10 models',()=>{
   assert.equal(PRIORITY_CONTENT_MODEL_VERSION,'priority-content-models@1.0.0');
@@ -11,5 +11,14 @@ test('priority content model catalog only contains approved 9/10 and 10/10 model
   assert.ok(PRIORITY_CONTENT_MODELS.every(model=>model.fitScore>=9));
   assert.ok(PRIORITY_CONTENT_MODELS.every(model=>model.status==='approved'));
   assert.ok(PRIORITY_CONTENT_MODELS.every(model=>model.searchSeeds.length>=3));
+  assert.ok(PRIORITY_CONTENT_MODELS.every(model=>model.matchTerms.length>=5));
   assert.ok(PRIORITY_CONTENT_MODELS.every(model=>model.exampleAngles.length>=3));
+});
+
+
+test('priority model inference keeps known documentary domains inside the approved catalog',()=>{
+  assert.equal(inferPriorityContentModel('urban history and city evolution documentary')?.id,'city-history-evolution');
+  assert.equal(inferPriorityContentModel('black hole astronomy cosmology documentary')?.id,'universe-space-astronomy');
+  assert.equal(inferPriorityContentModel('roman empire ancient civilization archaeology')?.id,'history-civilizations-empires');
+  assert.equal(inferPriorityContentModel('gardening pruning roses summer flowers'),null);
 });
