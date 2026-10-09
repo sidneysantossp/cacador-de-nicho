@@ -217,6 +217,20 @@ export async function discoverPriorityUniverse(modelIds?:string[]):Promise<Unive
   return report;
 }
 
+export async function runPriorityUniverseDiscovery(modelIds?:string[]){
+  const discovery=await discoverPriorityUniverse(modelIds);
+  const bootstrap=discovery.queuedChannels>0
+    ?await processUniverseImportQueue(Math.min(25,discovery.queuedChannels))
+    :{processed:0,succeeded:0,failed:0,summary:await universeQueueSummary()};
+  const finalReport:UniversePriorityDiscovery={
+    ...discovery,
+    importedChannels:bootstrap.succeeded,
+    failedImports:bootstrap.failed
+  };
+  await put('radar_analyses',finalReport.id,finalReport);
+  return {discovery:finalReport,bootstrap};
+}
+
 type UniverseQueueRow={
   id:string;
   input:string;
@@ -326,7 +340,7 @@ export async function refreshUniverseCompetitors(ids?:string[],maxItems=25){
   const all=await universeState();
   const wanted=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId))
-    :all
+    :priorityUniverseCompetitors(all)
       .filter(item=>universeCompetitorDue(item))
       .sort((a,b)=>Date.parse(a.lastMonitoredAt)-Date.parse(b.lastMonitoredAt))
       .slice(0,maxItems);
@@ -378,16 +392,17 @@ export async function backfillUniverseSourceClusters(maxRefresh=25){
 
 export async function operatorUniverseDnaContext(ids?:string[]){
   const all=await universeState();
+  const scoped=priorityUniverseCompetitors(all);
   const selected=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
-    :selectUniverseDnaBootstrapBatch(all,await universeMarketIntelligenceState(),5,2);
+    :selectUniverseDnaBootstrapBatch(scoped,await universeMarketIntelligenceState(),5,2);
   return {
     selected:selected.map(item=>({
       competitor:item,
       expectedLastMonitoredAt:item.lastMonitoredAt
     })),
-    ready:all.filter(item=>!!item.dna).length,
-    total:all.length
+    ready:scoped.filter(item=>!!item.dna).length,
+    total:scoped.length
   };
 }
 
@@ -469,17 +484,18 @@ export async function importOperatorUniverseDNA(input:{
 export async function runUniverseIntelligence(ids?:string[]){
   if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
   const all=await universeState();
+  const scoped=priorityUniverseCompetitors(all);
   const selected=ids?.length
     ?all.filter(item=>ids.includes(item.id)||ids.includes(item.channelId)).slice(0,5)
-    :selectUniverseDnaBootstrapBatch(all,await universeMarketIntelligenceState(),5,2);
+    :selectUniverseDnaBootstrapBatch(scoped,await universeMarketIntelligenceState(),5,2);
   if(!selected.length){
-    const ready=all.filter(item=>!!item.dna).length;
+    const ready=scoped.filter(item=>!!item.dna).length;
     return {
       analyzed:0,
       updated:[],
-      total:all.length,
+      total:scoped.length,
       ready,
-      remaining:Math.max(0,all.length-ready),
+      remaining:Math.max(0,scoped.length-ready),
       message:all.length&&ready===all.length
         ?'Channel DNA já concluído para todos os concorrentes.'
         :'Nenhum concorrente disponível para Channel DNA.'
@@ -551,7 +567,7 @@ export async function runUniverseIntelligence(ids?:string[]){
     await put('radar_managed_channels',next.id,next);
     updated.push(next.name);
   }
-  const after=await universeState();
+  const after=priorityUniverseCompetitors(await universeState());
   const ready=after.filter(item=>!!item.dna).length;
   const remaining=Math.max(0,after.length-ready);
   return {
