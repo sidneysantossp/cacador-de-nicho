@@ -112,3 +112,11 @@ test('Authorized external media URL import validates network target and runs Vis
   assert.match(route,/requireOperator\(request\)/);
   assert.match(route,/licenseType:z\.enum\(\['owned','licensed'\]\)/);
 });
+
+
+test('external media URL route is available to the scoped operator agent',()=>{
+  const auth=readFileSync('src/lib/server/auth.ts','utf8');
+  const helper=readFileSync('ops/self-hosted/bin/cacadores-agent-api','utf8');
+  assert.match(auth,/\/api\/external-media-url/);
+  assert.match(helper,/\/api\/external-media-url/);
+});

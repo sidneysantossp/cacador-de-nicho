@@ -66,6 +66,7 @@ allowed=(
     "/api/database-backup",
     "/api/episode-automation",
     "/api/external-import",
+    "/api/external-media-url",
     "/api/media-library",
     "/api/narrative",
     "/api/nexlev-evidence",
