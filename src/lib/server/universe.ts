@@ -597,7 +597,7 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
   const errors:string[]=[];
 
   while(attemptedChannels<cap&&Date.now()-startedAt<budget){
-    const all=await universeState();
+    const all=priorityUniverseCompetitors(await universeState());
     const eligible=all.filter(item=>!attempted.has(item.id)&&!attempted.has(item.channelId));
     const targetedIds=new Set(selectUniverseGapValidationDnaBatch(eligible,market,2).map(item=>item.id));
     const selected=selectUniverseDnaBootstrapBatch(
@@ -625,7 +625,7 @@ export async function runUniverseDnaBootstrap(maxCompetitors=15,timeBudgetMs=120
     }
   }
 
-  const after=await universeState();
+  const after=priorityUniverseCompetitors(await universeState());
   const ready=after.filter(item=>!!item.dna).length;
   const remaining=Math.max(0,after.length-ready);
   return {
@@ -693,14 +693,14 @@ export async function universePreviousMarketIntelligenceState(){
 export async function revalidateUniverseMarketEvidence(){
   const current=await universeMarketIntelligenceState();
   if(!current)return null;
-  const competitors=await universeState();
+  const competitors=priorityUniverseCompetitors(await universeState());
   const report=revalidateUniverseMarketEvidenceReport(current,competitors);
   await put('radar_analyses',report.id,report);
   return report;
 }
 
 export async function universeMarketRefreshState(){
-  const competitors=await universeState();
+  const competitors=priorityUniverseCompetitors(await universeState());
   const dnaCount=competitors.filter(item=>!!item.dna).length;
   const current=await universeMarketIntelligenceState();
   return universeMarketRefreshDecision(dnaCount,current?.dnaCount);
@@ -711,7 +711,7 @@ export async function shouldRefreshUniverseMarketIntelligence(){
 }
 
 export async function operatorUniverseMarketContext(){
-  const all=await universeState();
+  const all=priorityUniverseCompetitors(await universeState());
   const withDna=all.filter(item=>!!item.dna);
   const sample=selectUniverseCurveEvidence(withDna,40,8);
   if(sample.length<2)throw new Error('O Universe precisa de Channel DNA em pelo menos 2 concorrentes antes de extrair curvas.');
@@ -735,7 +735,7 @@ export async function importOperatorUniverseMarket(input:{
   raw:z.infer<typeof universeCurvesGapsSchema>;
 }):Promise<UniverseMarketIntelligence>{
   const raw=universeCurvesGapsSchema.parse(input.raw);
-  const all=await universeState();
+  const all=priorityUniverseCompetitors(await universeState());
   const withDna=all.filter(item=>!!item.dna);
   const byChannel=new Map(withDna.map(item=>[item.channelId,item]));
   const sample:UniverseCompetitor[]=[];
@@ -868,7 +868,7 @@ export async function importOperatorUniverseMarket(input:{
 
 export async function runUniverseMarketIntelligence():Promise<UniverseMarketIntelligence>{
   if(process.env.CACADORES_AI_AUTORUN!=='1')throw new HttpError('Operator-first ativo: provider AI desabilitado; use Operator Analysis.',409);
-  const all=await universeState();
+  const all=priorityUniverseCompetitors(await universeState());
   const previous=await universeMarketIntelligenceState();
   const olderPrevious=await universePreviousMarketIntelligenceState();
   const withDna=all.filter(item=>!!item.dna);
