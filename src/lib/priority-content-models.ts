@@ -27,7 +27,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivo histórico','Mapas','Stock urbano','Fotografia','Drone/timelapse'],
     searchSeeds:['city evolution','city history documentary','then and now city','urban history','city transformation'],
-    matchTerms:['city evolution','urban history','urban development','city history','megacity','city transformation','historic city','then and now','urbanization'],
+    matchTerms:['city evolution','urban history','urban development','city history','megacity','city transformation','historic city','then and now','urbanization','evolution of','fixed camera timelapse','fixed-camera timelapse'],
     exampleAngles:[
       'How Tokyo Became the World’s Largest City',
       'Paris Before the Eiffel Tower',
@@ -48,7 +48,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['NASA/ESA','Observatórios','Simulações','Animações','Imagens geradas'],
     searchSeeds:['space documentary','astronomy explained','universe documentary','black hole documentary','cosmology explained'],
-    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics'],
+    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics','space','starship','satellite','cosmos','planet'],
     exampleAngles:[
       'What Happens When the Last Star in the Universe Dies?',
       'The Largest Objects Ever Found in the Universe',
@@ -69,7 +69,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivos','Pinturas','Mapas','Ruínas','Reconstituições'],
     searchSeeds:['history documentary','ancient civilization documentary','empire history','historical events documentary','ancient history'],
-    matchTerms:['ancient civilization','ancient history','roman empire','empire history','medieval history','civilization','archaeology','pharaoh','viking','historical event'],
+    matchTerms:['ancient civilization','ancient history','roman empire','empire history','medieval history','civilization','archaeology','pharaoh','viking','historical event','ancient','history of','historical','medieval','roman','egypt'],
     exampleAngles:[
       'The Last 24 Hours of Pompeii',
       'What Life Was Really Like in London in 1666',
@@ -90,7 +90,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Mapas','Satélite','Stock geográfico','Infraestrutura','Arquivos'],
     searchSeeds:['geography documentary','borders explained','country geography','geopography documentary','why nobody lives'],
-    matchTerms:['geography','borders explained','country geography','geopolitics','geopolitical','map explained','why nobody lives','population geography','territory'],
+    matchTerms:['geography','borders explained','country geography','geopolitics','geopolitical','map explained','why nobody lives','population geography','territory','border','country','population','island','nation'],
     exampleAngles:[
       'Why Nobody Lives in 80% of Australia',
       'The Strange Border Between Belgium and the Netherlands',
@@ -111,7 +111,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Drone','Renders','Mapas','Obras','Material institucional'],
     searchSeeds:['megaproject documentary','engineering megaprojects','future city documentary','infrastructure documentary','mega construction'],
-    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project'],
+    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project','engineering','tunnel','bridge','pipeline','railway','airport','construction','desalination','dam','built','building'],
     exampleAngles:[
       'The $500 Billion City Being Built in the Desert',
       'The Largest Airport Ever Attempted',
@@ -132,7 +132,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivos','Ruínas','Mapas','Documentos','Atmosfera'],
     searchSeeds:['historical mystery documentary','abandoned places documentary','lost city history','unsolved history','forgotten places'],
-    matchTerms:['historical mystery','abandoned place','lost city','unsolved history','forgotten place','ghost town','mysterious history','lost civilization','archaeological mystery'],
+    matchTerms:['historical mystery','abandoned place','lost city','unsolved history','forgotten place','ghost town','mysterious history','lost civilization','archaeological mystery','abandoned','mystery','unsolved','forgotten'],
     exampleAngles:[
       'The City That Vanished From the Map',
       'Inside the World’s Most Mysterious Abandoned Places',
