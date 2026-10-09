@@ -929,6 +929,14 @@ export async function collectUniverseCompetitor(input:string,existing?:UniverseC
     dna:existing?.dna,
     dnaTags:existing?.dnaTags??[cluster,format].filter(Boolean),
     gapSummary:existing?.gapSummary,
+    priorityModelId:existing?.priorityModelId,
+    priorityModelName:existing?.priorityModelName,
+    priorityModelFit:existing?.priorityModelFit,
+    priorityModelTier:existing?.priorityModelTier,
+    priorityDiscoverySeed:existing?.priorityDiscoverySeed,
+    priorityDiscoveredAt:existing?.priorityDiscoveredAt,
+    priorityEvidenceVideoId:existing?.priorityEvidenceVideoId,
+    priorityEvidenceVideoTitle:existing?.priorityEvidenceVideoTitle,
     updatedAt:observedAt
   };
 }
