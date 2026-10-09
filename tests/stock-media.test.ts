@@ -511,7 +511,7 @@ test('Verified Stock worker only treats a selected motion-QA video as resolved',
 
 test('Verified stock sync keeps fast workers on the promoted release and stable URL',()=>{
   const source=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
-  assert.match(source,/FAST_WORKERS="\$\{VERIFIED_STOCK_FAST_WORKERS:-5\}"/);
+  assert.match(source,/FAST_WORKERS="\$\{VERIFIED_STOCK_FAST_WORKERS:-1\}"/);
   assert.match(source,/auditseo\.verified-stock-fast\.sha/);
   assert.match(source,/\$PROJECT-stock-fast-\$i/);
   assert.match(source,/--env-file "\$ENV_FILE"/);

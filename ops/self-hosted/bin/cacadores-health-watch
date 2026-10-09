@@ -4,6 +4,57 @@ BASE=/srv/auditseo-deploy
 STATE="$BASE/state/cacador-de-nicho.json"
 WATCH="$BASE/state/cacador-de-nicho-health-watch.json"
 PUBLIC=https://cacadores.159.198.40.98.sslip.io/api/health
+MAINTENANCE_HOLD="$BASE/state/cacador-de-nicho-maintenance-hold"
+RESOURCE_HOLD="$BASE/state/cacador-de-nicho-resource-hold.json"
+MIN_MEM_AVAILABLE_KB="${CACADORES_MIN_MEM_AVAILABLE_KB:-786432}"
+MAX_ROOT_DISK_USED_PCT="${CACADORES_MAX_ROOT_DISK_USED_PCT:-90}"
+
+WORKER_TIMERS=(
+  cacadores-episode-automation-worker-sync.timer
+  cacadores-owned-visual-worker-sync.timer
+  cacadores-verified-stock-worker-sync.timer
+  cacadores-youtube-publish-worker-sync.timer
+)
+WORKER_CONTAINERS=(
+  cacador-de-nicho-episode-automation-worker
+  cacador-de-nicho-owned-visual-worker
+  cacador-de-nicho-verified-stock-worker
+  cacador-de-nicho-youtube-publish-worker
+  cacador-de-nicho-closed-loop-worker
+)
+
+MEM_AVAILABLE_KB="$(awk '/MemAvailable:/ {print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)"
+ROOT_USED_PCT="$(df -P / 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}' || echo 100)"
+RESOURCE_PRESSURE=0
+if [[ "$MEM_AVAILABLE_KB" =~ ^[0-9]+$ ]] && (( MEM_AVAILABLE_KB < MIN_MEM_AVAILABLE_KB )); then RESOURCE_PRESSURE=1; fi
+if [[ "$ROOT_USED_PCT" =~ ^[0-9]+$ ]] && (( ROOT_USED_PCT >= MAX_ROOT_DISK_USED_PCT )); then RESOURCE_PRESSURE=1; fi
+
+if (( RESOURCE_PRESSURE == 1 )); then
+  for UNIT in "${WORKER_TIMERS[@]}"; do
+    systemctl disable --now "$UNIT" >/dev/null 2>&1 || true
+  done
+  for CONTAINER in "${WORKER_CONTAINERS[@]}"; do
+    docker stop -t 20 "$CONTAINER" >/dev/null 2>&1 || true
+  done
+  while read -r CONTAINER; do
+    [[ -n "$CONTAINER" ]] || continue
+    docker stop -t 20 "$CONTAINER" >/dev/null 2>&1 || true
+  done < <(docker ps --format '{{.Names}}' | grep '^cacador-de-nicho-stock-fast-[0-9]\+$' || true)
+  python3 - "$RESOURCE_HOLD" "$MEM_AVAILABLE_KB" "$ROOT_USED_PCT" <<'PYRESOURCE'
+from pathlib import Path
+import datetime,json,sys
+Path(sys.argv[1]).write_text(json.dumps({
+  "reason":"resource-pressure",
+  "memAvailableKb":int(sys.argv[2]) if sys.argv[2].isdigit() else 0,
+  "rootDiskUsedPct":int(sys.argv[3]) if sys.argv[3].isdigit() else 100,
+  "trippedAt":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  "requiresReview":True
+},indent=2)+"\n")
+PYRESOURCE
+fi
+
+BACKGROUND_HOLD=0
+if [[ -f "$MAINTENANCE_HOLD" || -f "$RESOURCE_HOLD" ]]; then BACKGROUND_HOLD=1; fi
 
 # Keep infrastructure schedulers alive. Editorial/market schedulers are only
 # self-healed when the operation is not in assisted-manual mode.
@@ -31,17 +82,19 @@ if p.exists():
 print(value)
 PYRENDER
 )"
-UNITS=(
-  cacadores-auto-deploy.timer
-  cacadores-episode-automation-worker-sync.timer
-  cacadores-owned-visual-worker-sync.timer
-  cacadores-verified-stock-worker-sync.timer
-)
-if [[ "$RENDER_BACKEND" != "github-actions" ]]; then
-  UNITS+=(cacadores-render-worker-sync.timer)
-fi
-if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
-  UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer cacadores-youtube-publish-worker-sync.timer)
+UNITS=(cacadores-auto-deploy.timer)
+if (( BACKGROUND_HOLD == 0 )); then
+  UNITS+=(
+    cacadores-episode-automation-worker-sync.timer
+    cacadores-owned-visual-worker-sync.timer
+    cacadores-verified-stock-worker-sync.timer
+  )
+  if [[ "$RENDER_BACKEND" != "github-actions" ]]; then
+    UNITS+=(cacadores-render-worker-sync.timer)
+  fi
+  if [[ "$OPERATION_MODE" != "assisted-manual" ]]; then
+    UNITS+=(cacadores-universe-cycle.timer cacadores-market-intelligence.timer cacadores-youtube-publish-worker-sync.timer)
+  fi
 fi
 for UNIT in "${UNITS[@]}"; do
   if ! systemctl is-enabled --quiet "$UNIT"; then

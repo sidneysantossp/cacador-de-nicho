@@ -7,8 +7,10 @@ import { pipeline } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+const DATABASE_URL=(process.env.DATABASE_API_URL||process.env.SUPABASE_URL||'').replace(/\/$/,'');
+const DATABASE_SERVICE_KEY=process.env.DATABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const SUPABASE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
-const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
+const SUPABASE_SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const CLIENT_ID=process.env.YOUTUBE_OAUTH_CLIENT_ID||'';
 const CLIENT_SECRET=process.env.YOUTUBE_OAUTH_CLIENT_SECRET||'';
 const ENCRYPTION_SECRET=process.env.YOUTUBE_TOKEN_ENCRYPTION_KEY||'';
@@ -28,8 +30,8 @@ const TEST_FREE_DISK_BYTES=process.env.NODE_ENV==='test'
   ?Math.max(0,Number(process.env.YOUTUBE_PUBLISH_TEST_FREE_DISK_BYTES||0))
   :0;
 
-if(!SUPABASE_URL||!SERVICE_KEY){
-  console.error('YouTube publish worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+if(!DATABASE_URL||!DATABASE_SERVICE_KEY){
+  console.error('YouTube publish worker requires DATABASE_API_URL/DATABASE_SERVICE_ROLE_KEY or Supabase fallback credentials.');
   process.exit(1);
 }
 if(!CLIENT_ID||!CLIENT_SECRET||ENCRYPTION_SECRET.length<32){
@@ -37,7 +39,10 @@ if(!CLIENT_ID||!CLIENT_SECRET||ENCRYPTION_SECRET.length<32){
   process.exit(1);
 }
 
-const authHeaders={apikey:SERVICE_KEY,Authorization:'Bearer '+SERVICE_KEY};
+const authHeaders={apikey:DATABASE_SERVICE_KEY,Authorization:'Bearer '+DATABASE_SERVICE_KEY};
+const legacyStorageAuthHeaders=SUPABASE_SERVICE_KEY
+  ?{apikey:SUPABASE_SERVICE_KEY,Authorization:'Bearer '+SUPABASE_SERVICE_KEY}
+  :{};
 const cryptoKey=createHash('sha256').update(ENCRYPTION_SECRET,'utf8').digest();
 let r2StorageCache=null;
 
@@ -78,13 +83,13 @@ function decryptSecret(ciphertext,aad){
 }
 
 async function rest(pathname,options={}){
-  const response=await fetch(SUPABASE_URL+pathname,{
+  const response=await fetch(DATABASE_URL+pathname,{
     ...options,
     headers:{...authHeaders,...(options.headers||{})}
   });
   if(!response.ok){
     const body=await response.text().catch(()=>'');
-    throw new Error('Supabase '+response.status+' '+pathname+' '+body.slice(0,800));
+    throw new Error('Database '+response.status+' '+pathname+' '+body.slice(0,800));
   }
   if(response.status===204)return null;
   const body=await response.text();
@@ -217,7 +222,7 @@ async function storageObjectInfo(storagePath){
   }
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
-    {method:'HEAD',headers:authHeaders}
+    {method:'HEAD',headers:legacyStorageAuthHeaders}
   );
   if(!response.ok)return null;
   return {
@@ -243,7 +248,7 @@ async function downloadStorage(storagePath,destination){
 
   const response=await fetch(
     SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+pathUrl(storagePath),
-    {headers:authHeaders}
+    {headers:legacyStorageAuthHeaders}
   );
   if(!response.ok)throw new Error('Storage download failed '+response.status+' '+storagePath);
   if(!response.body)throw new Error('Storage object has no response body: '+storagePath);
