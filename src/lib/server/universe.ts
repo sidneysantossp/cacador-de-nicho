@@ -9,7 +9,7 @@ import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, universeCha
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
-import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION, inferPriorityContentModel, priorityContentModelById, priorityDiscoverySeed, type PriorityContentModel } from '@/lib/priority-content-models';
+import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION, inferPriorityContentModel, priorityContentModelById, priorityDiscoverySeed, priorityTextMatchesTerm, type PriorityContentModel } from '@/lib/priority-content-models';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -76,8 +76,7 @@ function normalizePriorityEvidence(value:string){
 }
 
 function titleMatchesPriorityModel(title:string,model:PriorityContentModel){
-  const clean=normalizePriorityEvidence(title);
-  return !!clean&&model.matchTerms.some(term=>clean.includes(normalizePriorityEvidence(term)));
+  return model.matchTerms.some(term=>priorityTextMatchesTerm(title,term));
 }
 
 function competitorLooksEnglish(competitor:UniverseCompetitor){
