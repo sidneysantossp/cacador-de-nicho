@@ -108,7 +108,7 @@ export function priorityModelForCompetitor(competitor:UniverseCompetitor):Priori
 }
 
 export function priorityUniverseCompetitors(items:UniverseCompetitor[]){
-  return items.filter(item=>!!priorityModelForCompetitor(item));
+  return items.filter(item=>!!item.priorityModelId&&!!priorityModelForCompetitor(item));
 }
 
 export async function revalidatePriorityUniverseScope(){
