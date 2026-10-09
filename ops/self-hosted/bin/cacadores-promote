@@ -184,6 +184,7 @@ if [[ -d "$ROOT/ops/self-hosted/systemd" ]]; then
   done
   systemctl daemon-reload
   MODE_FILE="$BASE/state/cacador-de-nicho-operation-mode.json"
+  RENDER_BACKEND_FILE="$BASE/state/cacador-de-nicho-render-backend.json"
   OPERATION_MODE="$(python3 - "$MODE_FILE" <<'PYMODE'
 from pathlib import Path
 import json,sys
@@ -195,9 +196,24 @@ if p.exists():
 print(mode)
 PYMODE
 )"
+  RENDER_BACKEND="$(python3 - "$RENDER_BACKEND_FILE" <<'PYRENDER'
+from pathlib import Path
+import json,sys
+p=Path(sys.argv[1])
+value=""
+if p.exists():
+    try: value=str(json.loads(p.read_text()).get("backend",""))
+    except Exception: pass
+print(value)
+PYRENDER
+)"
   for FILE in "$ROOT"/ops/self-hosted/systemd/*.timer; do
     [[ -f "$FILE" ]] || continue
     TIMER="$(basename "$FILE")"
+    if [[ "$RENDER_BACKEND" == "github-actions" && "$TIMER" == "cacadores-render-worker-sync.timer" ]]; then
+      systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
+      continue
+    fi
     if [[ "$OPERATION_MODE" == "assisted-manual" ]] && [[ "$TIMER" == "cacadores-universe-cycle.timer" || "$TIMER" == "cacadores-market-intelligence.timer" || "$TIMER" == "cacadores-youtube-publish-worker-sync.timer" ]]; then
       systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
       continue
