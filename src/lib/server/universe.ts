@@ -113,9 +113,57 @@ export function priorityUniverseCompetitors(items:UniverseCompetitor[]){
 
 export async function revalidatePriorityUniverseScope(){
   const all=await universeState();
-  let kept=0,reclassified=0,rejected=0;
+  const byChannel=new Map(all.map(item=>[item.channelId,item]));
+  const analyses=await list<unknown>('radar_analyses',1000);
+  const assignments=analyses.filter((item):item is UniversePriorityAssignment=>
+    !!item&&typeof item==='object'&&(item as {kind?:string}).kind==='universe-priority-assignment'
+  );
+  let kept=0,reclassified=0,rejected=0,reactivated=0;
   const rejectedNames:string[]=[];
-  for(const competitor of all.filter(item=>!!item.priorityModelId)){
+  const evaluated=new Set<string>();
+
+  for(const assignment of assignments){
+    const competitor=byChannel.get(assignment.channelId);
+    if(!competitor)continue;
+    evaluated.add(competitor.channelId);
+    const candidate=applyPriorityAssignment(competitor,assignment);
+    const classified=priorityModelForCompetitor(candidate);
+    if(!classified){
+      if(competitor.priorityModelId){
+        const {
+          priorityModelId:_priorityModelId,
+          priorityModelName:_priorityModelName,
+          priorityModelFit:_priorityModelFit,
+          priorityModelTier:_priorityModelTier,
+          priorityDiscoverySeed:_priorityDiscoverySeed,
+          priorityDiscoveredAt:_priorityDiscoveredAt,
+          priorityEvidenceVideoId:_priorityEvidenceVideoId,
+          priorityEvidenceVideoTitle:_priorityEvidenceVideoTitle,
+          ...rest
+        }=competitor;
+        await put('radar_managed_channels',competitor.id,{...rest,updatedAt:new Date().toISOString()});
+      }
+      rejected++;
+      rejectedNames.push(competitor.name);
+      continue;
+    }
+
+    const wasActive=!!competitor.priorityModelId;
+    if(!wasActive)reactivated++;
+    if(competitor.priorityModelId&&classified.id!==competitor.priorityModelId)reclassified++;
+    const enriched:UniverseCompetitor={
+      ...candidate,
+      priorityModelId:classified.id,
+      priorityModelName:classified.name,
+      priorityModelFit:classified.fitScore,
+      priorityModelTier:classified.tier,
+      updatedAt:new Date().toISOString()
+    };
+    await put('radar_managed_channels',enriched.id,enriched);
+    kept++;
+  }
+
+  for(const competitor of all.filter(item=>!!item.priorityModelId&&!evaluated.has(item.channelId))){
     const classified=priorityModelForCompetitor(competitor);
     if(!classified){
       const {
@@ -147,7 +195,7 @@ export async function revalidatePriorityUniverseScope(){
       reclassified++;
     }
   }
-  return {kept,reclassified,rejected,rejectedNames:rejectedNames.slice(0,20)};
+  return {kept,reclassified,rejected,reactivated,rejectedNames:rejectedNames.slice(0,20)};
 }
 
 async function loadPriorityAssignment(channelId:string):Promise<UniversePriorityAssignment|null>{
