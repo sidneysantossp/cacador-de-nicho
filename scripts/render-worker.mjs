@@ -33,7 +33,11 @@ const R2_MULTIPART_PART_BYTES=Math.max(
   8,
   Number(process.env.RENDER_R2_MULTIPART_PART_MB||64)
 )*1024*1024;
+const REMOTE_MEDIA_API_URL=(process.env.RENDER_REMOTE_MEDIA_API_URL||'').replace(/\/$/,'');
+const GITHUB_OIDC_AUDIENCE=(process.env.GITHUB_OIDC_AUDIENCE||'cacadores-render').trim();
+const ONE_SHOT=['1','true','yes'].includes(String(process.env.RENDER_WORKER_ONESHOT||'').toLowerCase());
 let lastWorkerHeartbeatAt=0;
+let githubOidcCache=null;
 
 function renderDiskReady(requiredAdditionalBytes=0){
   try{
@@ -57,10 +61,36 @@ if(!DATABASE_URL||!SERVICE_KEY){
   process.exit(1);
 }
 
-const authHeaders={
-  apikey:SERVICE_KEY,
-  Authorization:'Bearer '+SERVICE_KEY
-};
+function jwtExpiry(token){
+  try{
+    const payload=JSON.parse(Buffer.from(String(token).split('.')[1]||'','base64url').toString('utf8'));
+    return Number(payload.exp||0);
+  }catch{return 0;}
+}
+
+async function githubOidcToken(){
+  const requestUrl=(process.env.ACTIONS_ID_TOKEN_REQUEST_URL||'').trim();
+  const requestToken=(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN||'').trim();
+  if(!requestUrl||!requestToken)return SERVICE_KEY;
+  const now=Math.floor(Date.now()/1000);
+  if(githubOidcCache&&githubOidcCache.exp>now+60)return githubOidcCache.token;
+  const url=new URL(requestUrl);
+  url.searchParams.set('audience',GITHUB_OIDC_AUDIENCE);
+  const response=await fetch(url,{headers:{Authorization:'bearer '+requestToken}});
+  if(!response.ok)throw new Error('GitHub OIDC token request failed '+response.status);
+  const body=await response.json();
+  if(!body?.value)throw new Error('GitHub OIDC token response is empty.');
+  githubOidcCache={token:String(body.value),exp:jwtExpiry(body.value)};
+  return githubOidcCache.token;
+}
+
+async function authHeaders(){
+  const token=await githubOidcToken();
+  return {
+    apikey:token,
+    Authorization:'Bearer '+token
+  };
+}
 const storageAuthHeaders={
   apikey:SUPABASE_STORAGE_KEY,
   Authorization:'Bearer '+SUPABASE_STORAGE_KEY
@@ -107,7 +137,7 @@ async function withLeaseHeartbeat(jobId,token,progress,stage,task){
 async function rest(pathname,options={}){
   const response=await fetch(DATABASE_URL+pathname,{
     ...options,
-    headers:{...authHeaders,...(options.headers||{})}
+    headers:{...(await authHeaders()),...(options.headers||{})}
   });
   if(!response.ok){
     const text=await response.text().catch(()=>'');
@@ -263,6 +293,24 @@ async function localProviderSecret(provider){
   return decryptLocalProviderSecret(ciphertext);
 }
 
+async function remoteMediaRequest(body){
+  if(!REMOTE_MEDIA_API_URL)throw new Error('Remote media API is not configured.');
+  const token=await githubOidcToken();
+  const response=await fetch(REMOTE_MEDIA_API_URL,{
+    method:'POST',
+    headers:{
+      Authorization:'Bearer '+token,
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify(body)
+  });
+  if(!response.ok){
+    const text=await response.text().catch(()=>'');
+    throw new Error('Remote media API '+response.status+' '+text.slice(0,500));
+  }
+  return response.json();
+}
+
 async function r2Storage(){
   if(r2StorageCache)return r2StorageCache;
   const secret=process.env.DATABASE_API_URL
@@ -284,6 +332,13 @@ async function r2Storage(){
 }
 
 async function downloadStorage(storagePath,destination){
+  if(String(storagePath).startsWith('r2:')&&REMOTE_MEDIA_API_URL){
+    const prepared=await remoteMediaRequest({action:'get',storagePath:String(storagePath)});
+    const response=await fetch(prepared.url);
+    if(!response.ok)throw new Error('Remote media download failed '+response.status+' '+storagePath);
+    if(!response.body)throw new Error('Remote media download returned no body: '+storagePath);
+    return streamToFile(response.body,destination);
+  }
   if(String(storagePath).startsWith('r2:')){
     const target=await r2Storage();
     if(!target)throw new Error('Cloudflare R2 is not configured for '+storagePath);
@@ -353,6 +408,28 @@ async function uploadR2Multipart(target,storagePath,filePath,size){
 async function uploadStorage(storagePath,filePath){
   const info=await stat(filePath);
   if(!info.size)throw new Error('Render output is empty: '+filePath);
+  if(REMOTE_MEDIA_API_URL){
+    const prepared=await remoteMediaRequest({
+      action:'put',
+      storagePath:String(storagePath),
+      contentType:'video/mp4'
+    });
+    const response=await fetch(prepared.url,{
+      method:'PUT',
+      headers:{
+        'Content-Type':'video/mp4',
+        'Cache-Control':'31536000',
+        'Content-Length':String(info.size)
+      },
+      body:createReadStream(filePath),
+      duplex:'half'
+    });
+    if(!response.ok){
+      const text=await response.text().catch(()=>'');
+      throw new Error('Remote media upload failed '+response.status+' '+text.slice(0,500));
+    }
+    return {bytes:info.size,path:String(prepared.path)};
+  }
   const target=await r2Storage();
   if(target){
     if(info.size>=R2_MULTIPART_THRESHOLD_BYTES){
@@ -1358,6 +1435,10 @@ async function loop(){
           freeGb:Math.round(disk.freeBytes/1024/1024/1024*100)/100,
           requiredGb:Math.round(MIN_FREE_DISK_BYTES/1024/1024/1024*100)/100
         }));
+        if(ONE_SHOT){
+          process.exitCode=1;
+          return;
+        }
         await sleep(Math.max(POLL_MS,30000));
         continue;
       }
@@ -1370,8 +1451,17 @@ async function loop(){
       if(jobId){
         await touchRenderWorker('busy',String(jobId),true);
         await processJob(String(jobId),token);
+        if(ONE_SHOT){
+          const finished=await queryJob(String(jobId));
+          if(finished?.status!=='completed')process.exitCode=1;
+          return;
+        }
       }else{
         await touchRenderWorker('online',null);
+        if(ONE_SHOT){
+          console.log(JSON.stringify({event:'render-worker-no-job',workerId:WORKER_ID}));
+          return;
+        }
         await sleep(POLL_MS);
       }
     }catch(error){
