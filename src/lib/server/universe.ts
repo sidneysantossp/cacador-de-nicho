@@ -60,6 +60,9 @@ function priorityModelText(competitor:UniverseCompetitor){
     competitor.cluster,
     competitor.subniche,
     competitor.format,
+    competitor.priorityEvidenceVideoTitle,
+    competitor.strongestRecentVideo?.title,
+    ...competitor.recentUploads.slice(0,10).map(video=>video.title),
     competitor.dna?.primaryNiche,
     competitor.dna?.subniche,
     competitor.dna?.formatSignature,
@@ -68,12 +71,81 @@ function priorityModelText(competitor:UniverseCompetitor){
   ].filter(Boolean).join(' ');
 }
 
+function normalizePriorityEvidence(value:string){
+  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function titleMatchesPriorityModel(title:string,model:PriorityContentModel){
+  const clean=normalizePriorityEvidence(title);
+  return !!clean&&model.matchTerms.some(term=>clean.includes(normalizePriorityEvidence(term)));
+}
+
+function competitorLooksEnglish(competitor:UniverseCompetitor){
+  const language=(competitor.language??'').toLowerCase();
+  if(language&&!language.startsWith('en'))return false;
+  const sample=competitor.recentUploads.slice(0,10).map(video=>video.title).join(' ');
+  const letters=[...sample].filter(char=>/\p{L}/u.test(char));
+  if(letters.length<30)return true;
+  const asciiLetters=letters.filter(char=>/[A-Za-z]/.test(char)).length;
+  return asciiLetters/letters.length>=.9;
+}
+
 export function priorityModelForCompetitor(competitor:UniverseCompetitor):PriorityContentModel|null{
-  return priorityContentModelById(competitor.priorityModelId)??inferPriorityContentModel(priorityModelText(competitor));
+  if(!competitorLooksEnglish(competitor))return null;
+  const titles=competitor.recentUploads.slice(0,10).map(video=>video.title);
+  if(!titles.length)return inferPriorityContentModel(priorityModelText(competitor));
+  const explicit=priorityContentModelById(competitor.priorityModelId);
+  const ranked=PRIORITY_CONTENT_MODELS.map(model=>({
+    model,
+    hits:titles.filter(title=>titleMatchesPriorityModel(title,model)).length
+  })).sort((a,b)=>b.hits-a.hits||Number(b.model.id===explicit?.id)-Number(a.model.id===explicit?.id)||b.model.fitScore-a.model.fitScore);
+  const best=ranked[0];
+  const requiredHits=Math.max(2,Math.ceil(titles.length*.3));
+  if(!best||best.hits<requiredHits)return null;
+  return best.model;
 }
 
 export function priorityUniverseCompetitors(items:UniverseCompetitor[]){
   return items.filter(item=>!!priorityModelForCompetitor(item));
+}
+
+export async function revalidatePriorityUniverseScope(){
+  const all=await universeState();
+  let kept=0,reclassified=0,rejected=0;
+  const rejectedNames:string[]=[];
+  for(const competitor of all.filter(item=>!!item.priorityModelId)){
+    const classified=priorityModelForCompetitor(competitor);
+    if(!classified){
+      const {
+        priorityModelId:_priorityModelId,
+        priorityModelName:_priorityModelName,
+        priorityModelFit:_priorityModelFit,
+        priorityModelTier:_priorityModelTier,
+        priorityDiscoverySeed:_priorityDiscoverySeed,
+        priorityDiscoveredAt:_priorityDiscoveredAt,
+        priorityEvidenceVideoId:_priorityEvidenceVideoId,
+        priorityEvidenceVideoTitle:_priorityEvidenceVideoTitle,
+        ...rest
+      }=competitor;
+      await put('radar_managed_channels',competitor.id,{...rest,updatedAt:new Date().toISOString()});
+      rejected++;
+      rejectedNames.push(competitor.name);
+      continue;
+    }
+    kept++;
+    if(classified.id!==competitor.priorityModelId){
+      await put('radar_managed_channels',competitor.id,{
+        ...competitor,
+        priorityModelId:classified.id,
+        priorityModelName:classified.name,
+        priorityModelFit:classified.fitScore,
+        priorityModelTier:classified.tier,
+        updatedAt:new Date().toISOString()
+      });
+      reclassified++;
+    }
+  }
+  return {kept,reclassified,rejected,rejectedNames:rejectedNames.slice(0,20)};
 }
 
 async function loadPriorityAssignment(channelId:string):Promise<UniversePriorityAssignment|null>{
@@ -222,13 +294,14 @@ export async function runPriorityUniverseDiscovery(modelIds?:string[]){
   const bootstrap=discovery.queuedChannels>0
     ?await processUniverseImportQueue(Math.min(25,discovery.queuedChannels))
     :{processed:0,succeeded:0,failed:0,summary:await universeQueueSummary()};
+  const qualification=await revalidatePriorityUniverseScope();
   const finalReport:UniversePriorityDiscovery={
     ...discovery,
     importedChannels:bootstrap.succeeded,
     failedImports:bootstrap.failed
   };
   await put('radar_analyses',finalReport.id,finalReport);
-  return {discovery:finalReport,bootstrap};
+  return {discovery:finalReport,bootstrap,qualification};
 }
 
 type UniverseQueueRow={
