@@ -432,6 +432,12 @@ test('Verified Stock workers roll releases by drain marker instead of force-kill
   assert.match(sync,/touch '\$DRAIN_FILE'/);
   assert.match(sync,/VERIFIED_STOCK_WORKERS_DRAINING/);
   assert.match(sync,/deferredWorkers/);
+  assert.match(sync,/\.State\.Status/);
+  assert.match(sync,/main_drain_marker_present/);
+  assert.match(sync,/clear_main_drain_marker/);
+  assert.match(sync,/stable>=4/);
+  assert.match(sync,/State\.Status/);
+  assert.match(sync,/\$status.*!=.*running/);
   assert.doesNotMatch(sync,/if ! main_matches_target; then\n\s+docker rm -f "\$CONTAINER"/);
   assert.doesNotMatch(sync,/if fast_matches_target "\$name"; then[\s\S]{0,120}docker rm -f "\$name"/);
 });
