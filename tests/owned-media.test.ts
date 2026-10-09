@@ -212,7 +212,7 @@ test('Owned Media can issue a short-lived R2 PUT URL without exposing provider c
   const owned=readFileSync('src/lib/server/owned-media.ts','utf8');
   assert.match(storage,/signedMediaPutUrl/);
   assert.match(storage,/new PutObjectCommand/);
-  assert.match(storage,/expiresIn:Math\.max\(60,Math\.min\(expiresSeconds,900\)\)/);
+  assert.match(storage,/expiresIn:Math\.max\(60,Math\.min\(expiresSeconds,3600\)\)/);
   assert.match(owned,/directUploadUrl/);
   assert.match(owned,/signedMediaPutUrl\(storagePath,mimeType,600\)/);
 });
