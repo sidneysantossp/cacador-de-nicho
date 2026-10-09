@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
@@ -42,7 +43,7 @@ export async function signedMediaPutUrl(
   path:string,
   contentType:string,
   expiresSeconds=600,
-  options:{cacheControl?:string;metadata?:Record<string,string>}={}
+  options:{cacheControl?:string}={}
 ){
   if(!path||!isR2Path(path))return null;
   const target=await r2();
@@ -54,8 +55,7 @@ export async function signedMediaPutUrl(
         Bucket:target.config.bucket,
         Key:r2Key(path),
         ContentType:contentType,
-        CacheControl:options.cacheControl??'31536000',
-        Metadata:options.metadata
+        CacheControl:options.cacheControl??'31536000'
       }),
       {expiresIn:Math.max(60,Math.min(expiresSeconds,3600))}
     );
@@ -127,6 +127,23 @@ export async function headMedia(path:string){
     etag:String(result.ETag??'').replace(/^\"|\"$/g,''),
     metadata:result.Metadata??{}
   };
+}
+
+export async function mediaIntegrity(path:string){
+  if(!isR2Path(path))throw new Error('media-integrity-r2-only');
+  const target=await r2();
+  if(!target)throw new Error('r2-not-configured');
+  const result=await target.client.send(new GetObjectCommand({Bucket:target.config.bucket,Key:r2Key(path)}));
+  if(!result.Body)throw new Error('r2-empty-body');
+  const stream=Readable.fromWeb(result.Body.transformToWebStream() as never);
+  const hash=createHash('sha256');
+  let bytes=0;
+  for await(const chunk of stream){
+    const value=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+    bytes+=value.length;
+    hash.update(value);
+  }
+  return {bytes,sha256:hash.digest('hex')};
 }
 
 export async function downloadMediaToFile(storagePath:string,targetPath:string){

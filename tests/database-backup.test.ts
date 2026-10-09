@@ -15,8 +15,8 @@ test('database backup endpoint is agent-scoped and stores only under the dedicat
   assert.match(route,/requireOperator\(request\)/);
   assert.match(route,/backups\/postgres\//);
   assert.match(route,/signedMediaPutUrl/);
-  assert.match(route,/headMedia/);
-  assert.match(route,/x-amz-meta-sha256/);
+  assert.match(route,/mediaIntegrity/);
+  assert.match(route,/sha256/);
   assert.match(route,/Backup no R2 não passou na verificação de integridade/);
 });
 
@@ -28,7 +28,7 @@ test('database backup host script validates archive, uploads via presigned URL a
   assert.match(source,/pg_restore --list/);
   assert.match(source,/sha256sum/);
   assert.match(source,/\/api\/database-backup/);
-  assert.match(source,/x-amz-meta-sha256/);
+  assert.doesNotMatch(source,/x-amz-meta-sha256/);
   assert.match(source,/DB_BACKUP_OK storage=r2/);
   assert.doesNotMatch(source,/SUPABASE_/);
 });
