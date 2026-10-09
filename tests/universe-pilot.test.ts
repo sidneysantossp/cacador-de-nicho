@@ -188,7 +188,7 @@ test('approved Universe Pilot Brief creates only a draft Content OS handoff',()=
   assert.equal(project.opportunityId,decision.id);
   assert.equal(project.brief.theme,'bridge engineering');
   assert.equal(project.brief.workingTitle,'Every Type of Bridge Failure Explained');
-  assert.equal(project.brief.promise,'');
+  assert.match(project.brief.promise,/evidence-backed explanation/);
   assert.equal(project.brief.targetAudience,'');
   assert.equal(project.research.factChecks.length,1);
   assert.equal(project.research.factChecks[0].status,'unverified');

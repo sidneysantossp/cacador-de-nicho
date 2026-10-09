@@ -215,16 +215,34 @@ function safeNarrationRule(
   }catch(error){throw aiError(error);}
 }
 
+export function contentResearchNeedsGeneration(project:ContentProject){
+  const research=project.research;
+  if(research.pack||research.sources.length>0)return false;
+  if(research.factChecks.length===0&&!research.notes.trim())return true;
+  const placeholder=research.factChecks.length===1?research.factChecks[0]:null;
+  return Boolean(
+    placeholder&&
+    placeholder.status==='unverified'&&
+    placeholder.sourceIds.length===0&&
+    placeholder.notes.includes('Bloqueio criado automaticamente pelo handoff do Universe Pilot')&&
+    research.notes.includes('Universe Pilot Brief')
+  );
+}
+
 export async function generateContentResearchForProject(projectId:string):Promise<ContentProject>{
   const project=await loadContentProject(projectId);
   if(!project)throw new HttpError('Content Project não encontrado para pesquisa autônoma.',404);
-  const hasExisting=Boolean(project.research.pack)||project.research.sources.length>0||
-    project.research.factChecks.length>0||project.research.notes.trim().length>0;
-  if(hasExisting)return project;
+  if(!contentResearchNeedsGeneration(project))return project;
   const generated=await researchContentBrief(project.brief);
+  const evidenceNotes=project.research.notes.trim();
   const payload:ContentProjectPayload={
     ...project,
-    research:generated.research,
+    research:{
+      ...generated.research,
+      notes:evidenceNotes
+        ?evidenceNotes+'\n\n'+generated.research.notes
+        :generated.research.notes
+    },
     approval:{...project.approval,status:'draft'}
   };
   const {version:_version,status:_status,...savePayload}=payload as ContentProject;
