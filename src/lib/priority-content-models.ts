@@ -27,7 +27,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivo histórico','Mapas','Stock urbano','Fotografia','Drone/timelapse'],
     searchSeeds:['city evolution','city history documentary','then and now city','urban history','city transformation'],
-    matchTerms:['city evolution','urban history','urban development','city history','megacity','city transformation','historic city','then and now','urbanization','evolution of','fixed camera timelapse','fixed-camera timelapse'],
+    matchTerms:['city evolution','urban history','urban development','city history','megacity','city transformation','historic city','urbanization','fixed camera timelapse','fixed-camera timelapse','fixed view reconstruction','fixed-view reconstruction'],
     exampleAngles:[
       'How Tokyo Became the World’s Largest City',
       'Paris Before the Eiffel Tower',
@@ -48,7 +48,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['NASA/ESA','Observatórios','Simulações','Animações','Imagens geradas'],
     searchSeeds:['space documentary','astronomy explained','universe documentary','black hole documentary','cosmology explained'],
-    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics','space','spacex','starship','satellite','cosmos','planet','moon','europa','mars','rocket','asteroid','comet','telescope'],
+    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics','spacex','starship','satellite','cosmos','planet','moon','europa','mars','rocket','asteroid','comet','telescope'],
     exampleAngles:[
       'What Happens When the Last Star in the Universe Dies?',
       'The Largest Objects Ever Found in the Universe',
@@ -90,7 +90,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Mapas','Satélite','Stock geográfico','Infraestrutura','Arquivos'],
     searchSeeds:['geography documentary','borders explained','country geography','geopography documentary','why nobody lives'],
-    matchTerms:['geography','borders explained','country geography','geopolitics','geopolitical','map explained','why nobody lives','population geography','territory','border','country','population','island','nation'],
+    matchTerms:['geography','borders explained','country geography','geopolitics','geopolitical','map explained','why nobody lives','population geography','territory','border','international border','national border'],
     exampleAngles:[
       'Why Nobody Lives in 80% of Australia',
       'The Strange Border Between Belgium and the Netherlands',
@@ -111,7 +111,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Drone','Renders','Mapas','Obras','Material institucional'],
     searchSeeds:['megaproject documentary','engineering megaprojects','future city documentary','infrastructure documentary','mega construction'],
-    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project','engineering','engineers','tunnel','bridge','pipeline','railway','airport','construction','desalination','dam','built','building','sea level','concrete','solar panels','water project','sea wall','river','high speed rail','chip factory'],
+    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project','engineering','engineers','tunnel','bridge','pipeline','railway','airport','construction','desalination','dam','sea wall','high speed rail','chip factory','land reclamation','flood control'],
     exampleAngles:[
       'The $500 Billion City Being Built in the Desert',
       'The Largest Airport Ever Attempted',
@@ -132,7 +132,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivos','Ruínas','Mapas','Documentos','Atmosfera'],
     searchSeeds:['historical mystery documentary','abandoned places documentary','lost city history','unsolved history','forgotten places'],
-    matchTerms:['historical mystery','abandoned place','lost city','unsolved history','forgotten place','ghost town','mysterious history','lost civilization','archaeological mystery','abandoned','mystery','unsolved','forgotten'],
+    matchTerms:['historical mystery','abandoned place','lost city','unsolved history','forgotten place','ghost town','mysterious history','lost civilization','archaeological mystery','abandoned city','abandoned town','lost settlement'],
     exampleAngles:[
       'The City That Vanished From the Map',
       'Inside the World’s Most Mysterious Abandoned Places',
@@ -141,7 +141,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
   }
 ];
 
-export const PRIORITY_CONTENT_MODEL_VERSION='priority-content-models@1.0.0';
+export const PRIORITY_CONTENT_MODEL_VERSION='priority-content-models@1.1.0';
 
 
 export function priorityContentModelById(id:string|undefined|null){
