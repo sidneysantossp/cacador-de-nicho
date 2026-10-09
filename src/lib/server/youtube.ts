@@ -197,13 +197,12 @@ export async function discoverUniversePriorityChannels(
     relevanceLanguage:'en',
     regionCode:'US',
     safeSearch:'moderate'
-  },'universe-discovery',requestKey,true);
+  },'universe-discovery',requestKey+':video-v2',true);
   const ids=[...new Set(search.map(idOf).filter(Boolean))].slice(0,25);
-  if(!ids.length)return [];
-  const videos=await youtube('videos',{
+  const videos=ids.length?await youtube('videos',{
     part:'snippet,contentDetails,statistics',
     id:ids.join(',')
-  });
+  }):[];
   const byChannel=new Map<string,UniversePriorityChannelCandidate>();
   for(const video of videos){
     const durationSeconds=isoDurationSeconds(video.contentDetails?.duration??'PT0S');
@@ -224,7 +223,40 @@ export async function discoverUniversePriorityChannels(
     const prior=byChannel.get(channelId);
     if(!prior||candidate.views>prior.views)byChannel.set(channelId,candidate);
   }
-  return [...byChannel.values()].sort((a,b)=>b.views-a.views).slice(0,cap);
+  if(byChannel.size){
+    return [...byChannel.values()].sort((a,b)=>b.views-a.views).slice(0,cap);
+  }
+
+  // Some broad documentary queries can return a search page dominated by shorts,
+  // premieres, or unavailable videos. Fall back to channel discovery and let the
+  // Universe upload sampler + strict priority qualifier decide whether the channel
+  // really belongs to the approved 9/10–10/10 scope.
+  const channelSearch=await youtubeSearch({
+    part:'snippet',
+    type:'channel',
+    q:clean,
+    order:'relevance',
+    maxResults:String(Math.min(25,Math.max(cap*2,10))),
+    relevanceLanguage:'en',
+    regionCode:'US',
+    safeSearch:'moderate'
+  },'universe-discovery',requestKey+':channel-v2',true);
+  for(const item of channelSearch){
+    const channelId=idOf(item);
+    if(!channelId)continue;
+    byChannel.set(channelId,{
+      channelId,
+      channelTitle:item.snippet.title??'',
+      videoId:'',
+      videoTitle:'Channel discovery: '+(item.snippet.title??clean),
+      publishedAt:item.snippet.publishedAt??new Date().toISOString(),
+      views:0,
+      durationSeconds:0,
+      thumbnail:thumb(item)
+    });
+    if(byChannel.size>=cap)break;
+  }
+  return [...byChannel.values()].slice(0,cap);
 }
 
 const thumb=(item:Item)=>
