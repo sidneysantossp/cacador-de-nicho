@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
 import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence, UniversePriorityDiscovery } from '@/lib/types';
-import { PRIORITY_CONTENT_MODELS, inferPriorityContentModel, priorityContentModelById, type PriorityContentModel } from '@/lib/priority-content-models';
+import { PRIORITY_CONTENT_MODELS, priorityTextMatchesTerm, type PriorityContentModel } from '@/lib/priority-content-models';
+import { isoDurationSeconds, MIN_LONG_FORM_SECONDS } from '@/lib/opportunity-criteria';
 import ProductionAutonomyPanel from './production-autonomy-panel';
 
 function compact(value:number|null){
@@ -17,19 +18,17 @@ function relativeDate(value:string){
   return `${days}d`;
 }
 function priorityModelForCard(competitor:UniverseCompetitor){
-  return priorityContentModelById(competitor.priorityModelId)??inferPriorityContentModel([
-    competitor.name,
-    competitor.description,
-    competitor.sourceCluster,
-    competitor.cluster,
-    competitor.subniche,
-    competitor.format,
-    competitor.dna?.primaryNiche,
-    competitor.dna?.subniche,
-    competitor.dna?.formatSignature,
-    ...(competitor.dna?.contentPillars??[]),
-    ...(competitor.dna?.titlePatterns??[])
-  ].filter(Boolean).join(' '));
+  const uploads=competitor.recentUploads.slice(0,10);
+  if(uploads.length<3)return null;
+  const longFormCount=uploads.filter(video=>isoDurationSeconds(video.duration)>=MIN_LONG_FORM_SECONDS).length;
+  if(longFormCount<Math.max(3,Math.ceil(uploads.length*.5)))return null;
+  const ranked=PRIORITY_CONTENT_MODELS.map(model=>({
+    model,
+    hits:uploads.filter(video=>model.matchTerms.some(term=>priorityTextMatchesTerm(video.title,term))).length
+  })).sort((a,b)=>b.hits-a.hits||b.model.fitScore-a.model.fitScore);
+  const best=ranked[0];
+  if(!best||best.hits<Math.max(3,Math.ceil(uploads.length*.5)))return null;
+  return best.model;
 }
 
 const statusMeta:Record<UniverseCompetitorStatus,{label:string;className:string;rank:number}>={
