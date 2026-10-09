@@ -8,6 +8,7 @@ export type PriorityContentModel={
   whyItFits:string[];
   assetAdvantages:string[];
   searchSeeds:string[];
+  matchTerms:string[];
   exampleAngles:string[];
 };
 
@@ -26,6 +27,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivo histórico','Mapas','Stock urbano','Fotografia','Drone/timelapse'],
     searchSeeds:['city evolution','city history documentary','then and now city','urban history','city transformation'],
+    matchTerms:['city evolution','urban history','urban development','city history','megacity','city transformation','historic city','then and now','urbanization'],
     exampleAngles:[
       'How Tokyo Became the World’s Largest City',
       'Paris Before the Eiffel Tower',
@@ -46,6 +48,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['NASA/ESA','Observatórios','Simulações','Animações','Imagens geradas'],
     searchSeeds:['space documentary','astronomy explained','universe documentary','black hole documentary','cosmology explained'],
+    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics'],
     exampleAngles:[
       'What Happens When the Last Star in the Universe Dies?',
       'The Largest Objects Ever Found in the Universe',
@@ -66,6 +69,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivos','Pinturas','Mapas','Ruínas','Reconstituições'],
     searchSeeds:['history documentary','ancient civilization documentary','empire history','historical events documentary','ancient history'],
+    matchTerms:['ancient civilization','ancient history','roman empire','empire history','medieval history','civilization','archaeology','pharaoh','viking','historical event'],
     exampleAngles:[
       'The Last 24 Hours of Pompeii',
       'What Life Was Really Like in London in 1666',
@@ -86,6 +90,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Mapas','Satélite','Stock geográfico','Infraestrutura','Arquivos'],
     searchSeeds:['geography documentary','borders explained','country geography','geopography documentary','why nobody lives'],
+    matchTerms:['geography','borders explained','country geography','geopolitics','geopolitical','map explained','why nobody lives','population geography','territory'],
     exampleAngles:[
       'Why Nobody Lives in 80% of Australia',
       'The Strange Border Between Belgium and the Netherlands',
@@ -106,6 +111,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Drone','Renders','Mapas','Obras','Material institucional'],
     searchSeeds:['megaproject documentary','engineering megaprojects','future city documentary','infrastructure documentary','mega construction'],
+    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project'],
     exampleAngles:[
       'The $500 Billion City Being Built in the Desert',
       'The Largest Airport Ever Attempted',
@@ -126,6 +132,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Arquivos','Ruínas','Mapas','Documentos','Atmosfera'],
     searchSeeds:['historical mystery documentary','abandoned places documentary','lost city history','unsolved history','forgotten places'],
+    matchTerms:['historical mystery','abandoned place','lost city','unsolved history','forgotten place','ghost town','mysterious history','lost civilization','archaeological mystery'],
     exampleAngles:[
       'The City That Vanished From the Map',
       'Inside the World’s Most Mysterious Abandoned Places',
@@ -135,3 +142,27 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
 ];
 
 export const PRIORITY_CONTENT_MODEL_VERSION='priority-content-models@1.0.0';
+
+
+export function priorityContentModelById(id:string|undefined|null){
+  return id?PRIORITY_CONTENT_MODELS.find(model=>model.id===id)??null:null;
+}
+
+function normalizePriorityText(value:string){
+  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+
+export function inferPriorityContentModel(text:string){
+  const clean=normalizePriorityText(text);
+  if(!clean)return null;
+  const ranked=PRIORITY_CONTENT_MODELS.map(model=>({
+    model,
+    score:model.matchTerms.reduce((sum,term)=>sum+(clean.includes(normalizePriorityText(term))?1:0),0)
+  })).filter(item=>item.score>0).sort((a,b)=>b.score-a.score||b.model.fitScore-a.model.fitScore);
+  return ranked[0]?.model??null;
+}
+
+export function priorityDiscoverySeed(model:PriorityContentModel,now=new Date()){
+  const day=Math.floor(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate())/86400000);
+  return model.searchSeeds[Math.abs(day)%model.searchSeeds.length];
+}
