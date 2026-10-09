@@ -1,0 +1,64 @@
+name: GitHub Render Workers
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: github-render-workers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render slot ${{ matrix.slot }}
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+
+    env:
+      DATABASE_API_URL: https://cacadores.159.198.40.98.sslip.io/api/github-render-db
+      DATABASE_SERVICE_ROLE_KEY: github-oidc
+      RENDER_REMOTE_MEDIA_API_URL: https://cacadores.159.198.40.98.sslip.io/api/github-render-media
+      RENDER_WORKER_ONESHOT: '1'
+      RENDER_MIN_FREE_DISK_GB: '4'
+      RENDER_WORKER_POLL_MS: '2000'
+      RENDER_WORKER_ID: github-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.slot }}
+      APP_COMMIT_SHA: ${{ github.sha }}
+      RENDER_WORKER_MEMORY_BYTES: '17179869184'
+      RENDER_WORKER_NANO_CPUS: '4000000000'
+      GITHUB_OIDC_AUDIENCE: cacadores-render
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Ensure FFmpeg
+        shell: bash
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          df -h /tmp
+
+      - name: Claim and render one queued master
+        run: node scripts/render-worker.mjs
