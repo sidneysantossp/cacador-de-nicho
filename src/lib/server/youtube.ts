@@ -167,6 +167,66 @@ export async function searchYouTubeCreativeCommonsSources(
     .slice(0,cap);
 }
 
+export type UniversePriorityChannelCandidate={
+  channelId:string;
+  channelTitle:string;
+  videoId:string;
+  videoTitle:string;
+  publishedAt:string;
+  views:number;
+  durationSeconds:number;
+  thumbnail:string;
+};
+
+export async function discoverUniversePriorityChannels(
+  query:string,
+  requestKey:string,
+  limit=6
+):Promise<UniversePriorityChannelCandidate[]>{
+  const clean=query.trim().replace(/\s+/g,' ').slice(0,180);
+  if(clean.length<2)throw new HttpError('A descoberta do Universe precisa de uma consulta válida.',400);
+  const cap=Math.max(1,Math.min(12,Math.floor(limit||6)));
+  const publishedAfter=new Date(Date.now()-240*86400000).toISOString();
+  const search=await youtubeSearch({
+    part:'snippet',
+    type:'video',
+    q:clean,
+    order:'viewCount',
+    maxResults:'25',
+    publishedAfter,
+    relevanceLanguage:'en',
+    regionCode:'US',
+    safeSearch:'moderate'
+  },'universe-discovery',requestKey,true);
+  const ids=[...new Set(search.map(idOf).filter(Boolean))].slice(0,25);
+  if(!ids.length)return [];
+  const videos=await youtube('videos',{
+    part:'snippet,contentDetails,statistics',
+    id:ids.join(',')
+  });
+  const byChannel=new Map<string,UniversePriorityChannelCandidate>();
+  for(const video of videos){
+    const durationSeconds=isoDurationSeconds(video.contentDetails?.duration??'PT0S');
+    if(durationSeconds<MIN_LONG_FORM_SECONDS)continue;
+    const channelId=video.snippet.channelId??'';
+    const videoId=idOf(video);
+    if(!channelId||!videoId)continue;
+    const candidate:UniversePriorityChannelCandidate={
+      channelId,
+      channelTitle:video.snippet.channelTitle??'',
+      videoId,
+      videoTitle:video.snippet.title,
+      publishedAt:video.snippet.publishedAt,
+      views:Number(video.statistics?.viewCount??0),
+      durationSeconds,
+      thumbnail:thumb(video)
+    };
+    const prior=byChannel.get(channelId);
+    if(!prior||candidate.views>prior.views)byChannel.set(channelId,candidate);
+  }
+  return [...byChannel.values()].sort((a,b)=>b.views-a.views).slice(0,cap);
+}
+
 const thumb=(item:Item)=>
   item.snippet.thumbnails?.high?.url??
   item.snippet.thumbnails?.medium?.url??
