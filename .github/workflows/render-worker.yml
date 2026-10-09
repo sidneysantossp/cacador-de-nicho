@@ -2,6 +2,10 @@ name: GitHub Render Workers
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/render-worker.yml'
   schedule:
     - cron: '*/10 * * * *'
 
