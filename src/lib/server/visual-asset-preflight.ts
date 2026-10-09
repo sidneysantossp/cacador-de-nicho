@@ -406,6 +406,64 @@ export async function ensureSceneAssetVisualQa(assetId:string):Promise<SceneAsse
   return review;
 }
 
+export async function recordOperatorSceneAssetVisualQa(input:{
+  assetId:string;
+  relevance:number;
+  qualityScore:number;
+  editorialUsefulness:number;
+  visualClass:SceneAssetVisualQa['visualClass'];
+  staticGraphic:boolean;
+  summary:string;
+}){
+  const row=await assetRow(input.assetId);
+  if(!row)throw new HttpError('Asset visual não encontrado para revisão do operador.',404);
+  if(row.status!=='ready')throw new HttpError('O asset precisa estar pronto para revisão do operador.',409);
+  const payload=object(row.payload);
+  const prior=visualQa(payload);
+  if(!prior||prior.status!=='blocked'){
+    throw new HttpError('O fallback humano só pode substituir um Visual QA bloqueado por indisponibilidade do revisor.',409);
+  }
+  for(const value of [input.relevance,input.qualityScore,input.editorialUsefulness]){
+    if(!Number.isFinite(value)||value<.50||value>1){
+      throw new HttpError('Os scores do review humano precisam ficar entre 0.50 e 1.00.',400);
+    }
+  }
+  const reviewedAt=new Date().toISOString();
+  const review:SceneAssetVisualQa={
+    policyVersion:VISUAL_QA_POLICY_VERSION,
+    status:'pass',
+    reviewedAt,
+    model:'operator-manual-review',
+    query:prior.query,
+    relevance:input.relevance,
+    qualityScore:input.qualityScore,
+    editorialUsefulness:input.editorialUsefulness,
+    placeholderLike:false,
+    templateLike:false,
+    staticGraphic:input.staticGraphic,
+    visualClass:input.visualClass,
+    issues:[],
+    summary:input.summary.trim(),
+    motion:prior.motion
+  };
+  const history=Array.isArray(payload.visualQaHistory)?payload.visualQaHistory:[];
+  checked(await db().from('radar_scene_assets').update({
+    payload:{
+      ...payload,
+      visualQa:review,
+      visualQaHistory:[...history,prior].slice(-20),
+      operatorVisualQa:{
+        reviewedAt,
+        reason:'automated-reviewer-unavailable',
+        priorStatus:prior.status,
+        priorModel:prior.model
+      }
+    },
+    updated_at:reviewedAt
+  }).eq('id',row.id));
+  return review;
+}
+
 export async function assertSceneAssetVisualQa(assetId:string){
   const review=await ensureSceneAssetVisualQa(assetId);
   if(review.status!=='pass'){
