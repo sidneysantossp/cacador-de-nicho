@@ -250,7 +250,7 @@ function directGapMatches(competitor:UniverseCompetitor,gap:UniverseGapDescripto
   };
 
   for(const unit of competitorEvidenceUnits(competitor)){
-    const rawUnitTokens=lexicalTokens(unit);
+    const rawUnitTokens=lexicalTargetTokens(unit);
     const unitTokens=new Set(rawUnitTokens);
     const targetMatchedTerms=targetKeywordPhrases.length
       ?targetKeywordPhrases
