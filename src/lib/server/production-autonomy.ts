@@ -548,6 +548,7 @@ async function loadSubject(subject:SubjectInput):Promise<{input:ProductionAutono
     providers:[r2Status,...liveDiscovery.providers],
     economics,
     automation,
+    automationTarget:subject.subjectType==='next-episode'?'closed-loop':'master',
     generation:{available:null},repeatability:[15,50,100].map(episodes=>({episodes:episodes as 15|50|100,distinctTitleCount:null,supplyCoveragePercent:null,evidenceRefs:[]})),
     preflight:{status:marketValidated?'completed':'blocked',sampledBeatCount:representativeBeatIds.length,representativeBeatIds,materializedAssetCount,discoverableAssetCount,materialization:liveDiscovery.materialization,evidenceRefs:[...marketRefs,...liveDiscovery.evidenceRefs,...liveImages.evidenceRefs,...liveDiscovery.materialization.evidenceRefs]}};
   return {input,fingerprint:hash({subject,input})};
