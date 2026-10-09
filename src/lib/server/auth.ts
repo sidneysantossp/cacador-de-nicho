@@ -11,6 +11,7 @@ const agentOperatorPaths=[
   '/api/autopilot-readiness',
   '/api/channel-brain',
   '/api/content-os',
+  '/api/content-research',
   '/api/database-backup',
   '/api/episode-automation',
   '/api/external-import',
