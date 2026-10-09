@@ -249,7 +249,7 @@ export type MissionBrief = {
 };
 export type YouTubeSearchPurpose =
  'reference-resolution' | 'radar-discovery' | 'channel-resolution' |
- 'channel-study' | 'similar-channels' | 'source-media';
+ 'channel-study' | 'similar-channels' | 'source-media' | 'universe-discovery';
 export type YouTubeSearchBudgetState = {
  kind: 'youtube-search-budget';
  id: string;
@@ -362,7 +362,40 @@ export type UniverseCompetitor = {
  lastDnaError?: string;
  dnaTags: string[];
  gapSummary?: string;
+ priorityModelId?: string;
+ priorityModelName?: string;
+ priorityModelFit?: 9|10;
+ priorityModelTier?: 'core'|'expansion';
+ priorityDiscoverySeed?: string;
+ priorityDiscoveredAt?: string;
+ priorityEvidenceVideoId?: string;
+ priorityEvidenceVideoTitle?: string;
  updatedAt: string;
+};
+export type UniversePriorityDiscovery = {
+ kind:'universe-priority-discovery';
+ id:'universe-priority-discovery:latest';
+ generatedAt:string;
+ modelVersion:string;
+ searchedModelIds:string[];
+ searchedQueries:number;
+ candidateChannels:number;
+ queuedChannels:number;
+ existingChannels:number;
+ duplicateQueueChannels:number;
+ importedChannels?:number;
+ failedImports?:number;
+ modelResults:Array<{
+  modelId:string;
+  modelName:string;
+  fitScore:9|10;
+  tier:'core'|'expansion';
+  seed:string;
+  candidates:number;
+  queued:number;
+  existing:number;
+ }>;
+ errors:string[];
 };
 export type UniverseCurveClassification = 'hypothesis' | 'emerging' | 'structural';
 export type UniverseCurve = {
@@ -2648,7 +2681,7 @@ export type EpisodeAutomationEvent = {
 };
 export type Settings = { queries: string[]; languages: string[]; minViews: number; maxVideoAgeHours: number; maxChannelVideos: number; maxChannelAgeDays: number; enabled: boolean; autoAnalyze: boolean; maxAnalysesPerRun: number; analysisModel: string; scriptModel: string };
 export type Integration = { id: string; name: string; configured: boolean; detail: string };
-export type RadarData = { mode: 'demo' | 'live'; factoryControl?: import('./factory-control').FactoryControlState; priorityContentModels?: import('./priority-content-models').PriorityContentModel[]; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
+export type RadarData = { mode: 'demo' | 'live'; factoryControl?: import('./factory-control').FactoryControlState; priorityContentModels?: import('./priority-content-models').PriorityContentModel[]; universePriorityDiscovery?: UniversePriorityDiscovery|null; channels: Channel[]; universeCompetitors?: UniverseCompetitor[]; universeMarketIntelligence?: UniverseMarketIntelligence | null; universeQueue?: UniverseImportQueueSummary | null; channelStudies: ChannelStudy[]; opportunityReports?: OpportunityReport[]; missionBrief?: MissionBrief | null; youtubeSearchBudget?: YouTubeSearchBudgetState | null; gaps: GapOpportunity[]; managedChannels: ManagedChannel[]; channelBrains?: ChannelBrain[]; decisions: Decision[]; contexts: ResearchContext[]; scripts: Script[]; runs: Run[]; settings: Settings; integrations: Integration[]; authenticated: boolean; authConfigured: boolean; lastUpdated: string | null; policyApproved: boolean };
 export const defaultSettings: Settings = { queries: ['animated history', '3d animation engineering', 'animated storytelling', 'animated science explained', 'animated military history'], languages: ['en'], minViews: 500000, maxVideoAgeHours: 72, maxChannelVideos: 20, maxChannelAgeDays: 180, enabled: false, autoAnalyze: false, maxAnalysesPerRun: 6, analysisModel: 'gpt-5.6-terra', scriptModel: 'gpt-5.6-sol' };
 
 
