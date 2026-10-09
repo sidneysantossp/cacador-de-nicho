@@ -46,7 +46,7 @@ const postSchema=z.discriminatedUnion('action',[
     snapshot:z.array(z.object({
       channelId:z.string().trim().min(1).max(180),
       expectedLastMonitoredAt:z.string().datetime(),
-      expectedDnaGeneratedAt:z.string().datetime().nullable()
+      expectedDnaGeneratedAt:z.string().trim().min(1).max(80).nullable()
     }).strict()).min(2).max(40),
     raw:universeCurvesGapsSchema
   }).strict()
