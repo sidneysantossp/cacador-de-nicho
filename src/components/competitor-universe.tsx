@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { ArrowUpRight, BrainCircuit, FileUp, Globe2, Layers3, RefreshCw, Search, Sparkles, TrendingUp, UsersRound, Video, X } from 'lucide-react';
-import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import type { UniverseCompetitor, UniverseCompetitorStatus, UniverseImportQueueSummary, UniverseMarketIntelligence, UniversePriorityDiscovery } from '@/lib/types';
+import { PRIORITY_CONTENT_MODELS, inferPriorityContentModel, priorityContentModelById, type PriorityContentModel } from '@/lib/priority-content-models';
 import ProductionAutonomyPanel from './production-autonomy-panel';
 
 function compact(value:number|null){
@@ -15,6 +16,22 @@ function relativeDate(value:string){
   const days=Math.floor(hours/24);
   return `${days}d`;
 }
+function priorityModelForCard(competitor:UniverseCompetitor){
+  return priorityContentModelById(competitor.priorityModelId)??inferPriorityContentModel([
+    competitor.name,
+    competitor.description,
+    competitor.sourceCluster,
+    competitor.cluster,
+    competitor.subniche,
+    competitor.format,
+    competitor.dna?.primaryNiche,
+    competitor.dna?.subniche,
+    competitor.dna?.formatSignature,
+    ...(competitor.dna?.contentPillars??[]),
+    ...(competitor.dna?.titlePatterns??[])
+  ].filter(Boolean).join(' '));
+}
+
 const statusMeta:Record<UniverseCompetitorStatus,{label:string;className:string;rank:number}>={
   'production-reference':{label:'Production Reference',className:'production',rank:8},
   'gap-found':{label:'Gap Found',className:'gap',rank:7},
@@ -58,6 +75,7 @@ function CompetitorCard({
 }){
   const status=statusMeta[competitor.status];
   const best=competitor.strongestRecentVideo;
+  const priorityModel=priorityModelForCard(competitor);
   return <article className={`universe-card status-${status.className}`}>
     <div className="universe-card-head">
       <div className="universe-identity">
@@ -68,6 +86,7 @@ function CompetitorCard({
     </div>
 
     <div className="universe-meta">
+      {priorityModel&&<span className="universe-priority-tag">{priorityModel.fitScore}/10 · {priorityModel.name}</span>}
       <span>{competitor.country||'—'}</span><span>{competitor.language?.toUpperCase()||'LANG —'}</span><span>{competitor.format}</span>
     </div>
 
