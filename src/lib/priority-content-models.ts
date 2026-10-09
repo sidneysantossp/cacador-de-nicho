@@ -48,7 +48,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['NASA/ESA','Observatórios','Simulações','Animações','Imagens geradas'],
     searchSeeds:['space documentary','astronomy explained','universe documentary','black hole documentary','cosmology explained'],
-    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics','space','starship','satellite','cosmos','planet'],
+    matchTerms:['astronomy','universe','space documentary','cosmology','black hole','galaxy','nasa','esa','planetary','astrophysics','space','spacex','starship','satellite','cosmos','planet','moon','europa','mars','rocket','asteroid','comet','telescope'],
     exampleAngles:[
       'What Happens When the Last Star in the Universe Dies?',
       'The Largest Objects Ever Found in the Universe',
@@ -111,7 +111,7 @@ export const PRIORITY_CONTENT_MODELS:PriorityContentModel[]=[
     ],
     assetAdvantages:['Drone','Renders','Mapas','Obras','Material institucional'],
     searchSeeds:['megaproject documentary','engineering megaprojects','future city documentary','infrastructure documentary','mega construction'],
-    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project','engineering','tunnel','bridge','pipeline','railway','airport','construction','desalination','dam','built','building'],
+    matchTerms:['megaproject','mega project','engineering project','infrastructure','future city','construction documentary','bridge engineering','tunnel engineering','airport project','rail project','engineering','engineers','tunnel','bridge','pipeline','railway','airport','construction','desalination','dam','built','building','sea level','concrete','solar panels','water project','sea wall','river','high speed rail','chip factory'],
     exampleAngles:[
       'The $500 Billion City Being Built in the Desert',
       'The Largest Airport Ever Attempted',
@@ -152,12 +152,27 @@ function normalizePriorityText(value:string){
   return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
 
-export function inferPriorityContentModel(text:string){
+function priorityTermVariants(term:string){
+  if(term.includes(' '))return [term];
+  const variants=[term,term+'s'];
+  if(term.endsWith('y')&&term.length>2)variants.push(term.slice(0,-1)+'ies');
+  return variants;
+}
+
+export function priorityTextMatchesTerm(text:string,term:string){
   const clean=normalizePriorityText(text);
-  if(!clean)return null;
+  const target=normalizePriorityText(term);
+  if(!clean||!target)return false;
+  if(target.includes(' '))return (' '+clean+' ').includes(' '+target+' ');
+  const tokens=new Set(clean.split(' ').filter(Boolean));
+  return priorityTermVariants(target).some(variant=>tokens.has(variant));
+}
+
+export function inferPriorityContentModel(text:string){
+  if(!normalizePriorityText(text))return null;
   const ranked=PRIORITY_CONTENT_MODELS.map(model=>({
     model,
-    score:model.matchTerms.reduce((sum,term)=>sum+(clean.includes(normalizePriorityText(term))?1:0),0)
+    score:model.matchTerms.reduce((sum,term)=>sum+(priorityTextMatchesTerm(text,term)?1:0),0)
   })).filter(item=>item.score>0).sort((a,b)=>b.score-a.score||b.model.fitScore-a.model.fitScore);
   return ranked[0]?.model??null;
 }
