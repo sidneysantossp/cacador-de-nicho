@@ -1,14 +1,15 @@
 import 'server-only';
 
-import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence } from '@/lib/types';
+import type { ManagedChannel, UniverseCompetitor, UniverseImportQueueSummary, UniverseMarketIntelligence, UniversePriorityDiscovery } from '@/lib/types';
 import { z } from 'zod';
 import { checked, db, list, put } from './db';
 import { HttpError } from './auth';
-import { collectUniverseCompetitor } from './youtube';
+import { collectUniverseCompetitor, discoverUniversePriorityChannels, type UniversePriorityChannelCandidate } from './youtube';
 import { analyzeUniverseCompetitorDNA, analyzeUniverseCurvesAndGaps, universeChannelDnaSchema, universeCurvesGapsSchema, UNIVERSE_DNA_MODEL } from './ai';
 import { summarizeUniverseQueueRows, universeCompetitorDue, universeImportFailureIsPermanent, universeMarketRefreshDecision, UNIVERSE_STATUS_RANK } from '@/lib/universe-policy';
 import { resolveUniverseGapEvidence, selectUniverseCurveEvidence, selectUniverseDnaBootstrapBatch, selectUniverseGapValidationDnaBatch, universeCurveClassification, universeGapDemandStatus, universeKey } from '@/lib/universe-market';
 import { preserveUniverseMarketContinuity, revalidateUniverseMarketEvidenceReport } from '@/lib/universe-market-continuity';
+import { PRIORITY_CONTENT_MODELS, PRIORITY_CONTENT_MODEL_VERSION, inferPriorityContentModel, priorityContentModelById, priorityDiscoverySeed, type PriorityContentModel } from '@/lib/priority-content-models';
 
 function isCompetitor(value:unknown):value is UniverseCompetitor{
   return !!value&&typeof value==='object'&&(value as {kind?:string}).kind==='competitor';
@@ -30,6 +31,190 @@ async function mapLimit<T,R>(items:T[],limit:number,work:(item:T,index:number)=>
 export async function universeState(){
   const records=await list<ManagedChannel|UniverseCompetitor>('radar_managed_channels',1000);
   return records.filter(isCompetitor);
+}
+
+type UniversePriorityAssignment={
+  kind:'universe-priority-assignment';
+  id:string;
+  channelId:string;
+  modelId:string;
+  modelName:string;
+  fitScore:9|10;
+  tier:'core'|'expansion';
+  seed:string;
+  discoveredAt:string;
+  evidenceVideoId:string;
+  evidenceVideoTitle:string;
+  evidenceViews:number;
+};
+
+function priorityAssignmentId(channelId:string){
+  return 'universe-priority-assignment:'+channelId;
+}
+
+function priorityModelText(competitor:UniverseCompetitor){
+  return [
+    competitor.name,
+    competitor.description,
+    competitor.sourceCluster,
+    competitor.cluster,
+    competitor.subniche,
+    competitor.format,
+    competitor.dna?.primaryNiche,
+    competitor.dna?.subniche,
+    competitor.dna?.formatSignature,
+    ...(competitor.dna?.contentPillars??[]),
+    ...(competitor.dna?.titlePatterns??[])
+  ].filter(Boolean).join(' ');
+}
+
+export function priorityModelForCompetitor(competitor:UniverseCompetitor):PriorityContentModel|null{
+  return priorityContentModelById(competitor.priorityModelId)??inferPriorityContentModel(priorityModelText(competitor));
+}
+
+export function priorityUniverseCompetitors(items:UniverseCompetitor[]){
+  return items.filter(item=>!!priorityModelForCompetitor(item));
+}
+
+async function loadPriorityAssignment(channelId:string):Promise<UniversePriorityAssignment|null>{
+  const result=await db().from('radar_analyses').select('payload').eq('id',priorityAssignmentId(channelId)).maybeSingle();
+  if(result.error)throw new HttpError('Falha ao ler a proveniência estratégica do Universe.',502);
+  const payload=result.data?.payload as UniversePriorityAssignment|undefined;
+  return payload?.kind==='universe-priority-assignment'?payload:null;
+}
+
+function applyPriorityAssignment(competitor:UniverseCompetitor,assignment:UniversePriorityAssignment|null){
+  if(!assignment)return competitor;
+  return {
+    ...competitor,
+    priorityModelId:assignment.modelId,
+    priorityModelName:assignment.modelName,
+    priorityModelFit:assignment.fitScore,
+    priorityModelTier:assignment.tier,
+    priorityDiscoverySeed:assignment.seed,
+    priorityDiscoveredAt:assignment.discoveredAt,
+    priorityEvidenceVideoId:assignment.evidenceVideoId,
+    priorityEvidenceVideoTitle:assignment.evidenceVideoTitle
+  } satisfies UniverseCompetitor;
+}
+
+export async function universePriorityDiscoveryState():Promise<UniversePriorityDiscovery|null>{
+  const result=await db().from('radar_analyses').select('payload').eq('id','universe-priority-discovery:latest').maybeSingle();
+  if(result.error)throw new HttpError('Falha ao ler a descoberta estratégica do Universe.',502);
+  const payload=result.data?.payload as UniversePriorityDiscovery|undefined;
+  return payload?.kind==='universe-priority-discovery'?payload:null;
+}
+
+export async function discoverPriorityUniverse(modelIds?:string[]):Promise<UniversePriorityDiscovery>{
+  const requested=modelIds?.length?new Set(modelIds):null;
+  const models=PRIORITY_CONTENT_MODELS.filter(model=>!requested||requested.has(model.id));
+  if(!models.length)throw new HttpError('Nenhum modelo prioritário válido foi selecionado.',400);
+
+  const existing=await universeState();
+  const byChannel=new Map(existing.map(item=>[item.channelId,item]));
+  const queueRows=checked(await db().from('radar_universe_queue').select('input,status')) as Array<Pick<UniverseQueueRow,'input'|'status'>>;
+  const queuedInputs=new Set(queueRows.map(row=>row.input));
+  const discoveredAt=new Date().toISOString();
+  const candidateMap=new Map<string,{model:PriorityContentModel;seed:string;candidate:UniversePriorityChannelCandidate}>();
+  const modelResults:UniversePriorityDiscovery['modelResults']=[];
+  const errors:string[]=[];
+  let searchedQueries=0;
+
+  for(const model of models){
+    const seed=priorityDiscoverySeed(model);
+    let candidates:UniversePriorityChannelCandidate[]=[];
+    try{
+      candidates=await discoverUniversePriorityChannels(seed,'priority:'+model.id+':'+seed,6);
+      searchedQueries++;
+    }catch(error){
+      errors.push(model.name+': '+(error instanceof Error?error.message:'falha não identificada'));
+    }
+    let modelExisting=0;
+    let modelQueued=0;
+    for(const candidate of candidates){
+      const prior=candidateMap.get(candidate.channelId);
+      if(!prior||model.fitScore>prior.model.fitScore||candidate.views>prior.candidate.views){
+        candidateMap.set(candidate.channelId,{model,seed,candidate});
+      }
+      if(byChannel.has(candidate.channelId))modelExisting++;
+      else if(!queuedInputs.has(candidate.channelId))modelQueued++;
+    }
+    modelResults.push({
+      modelId:model.id,
+      modelName:model.name,
+      fitScore:model.fitScore,
+      tier:model.tier,
+      seed,
+      candidates:candidates.length,
+      queued:modelQueued,
+      existing:modelExisting
+    });
+  }
+
+  let queuedChannels=0;
+  let existingChannels=0;
+  let duplicateQueueChannels=0;
+  const ranked=[...candidateMap.values()].sort((a,b)=>b.model.fitScore-a.model.fitScore||b.candidate.views-a.candidate.views);
+
+  for(const item of ranked){
+    const assignment:UniversePriorityAssignment={
+      kind:'universe-priority-assignment',
+      id:priorityAssignmentId(item.candidate.channelId),
+      channelId:item.candidate.channelId,
+      modelId:item.model.id,
+      modelName:item.model.name,
+      fitScore:item.model.fitScore,
+      tier:item.model.tier,
+      seed:item.seed,
+      discoveredAt,
+      evidenceVideoId:item.candidate.videoId,
+      evidenceVideoTitle:item.candidate.videoTitle,
+      evidenceViews:item.candidate.views
+    };
+    await put('radar_analyses',assignment.id,assignment);
+
+    const current=byChannel.get(item.candidate.channelId);
+    if(current){
+      existingChannels++;
+      const enriched=applyPriorityAssignment(current,assignment);
+      await put('radar_managed_channels',enriched.id,enriched);
+      byChannel.set(enriched.channelId,enriched);
+      continue;
+    }
+    if(queuedInputs.has(item.candidate.channelId)){
+      duplicateQueueChannels++;
+      continue;
+    }
+    const id='universe-priority:'+item.candidate.channelId;
+    checked(await db().from('radar_universe_queue').insert({
+      id,
+      input:item.candidate.channelId,
+      status:'pending',
+      attempts:0,
+      last_error:null,
+      created_at:discoveredAt,
+      updated_at:discoveredAt
+    }));
+    queuedInputs.add(item.candidate.channelId);
+    queuedChannels++;
+  }
+
+  const report:UniversePriorityDiscovery={
+    kind:'universe-priority-discovery',
+    id:'universe-priority-discovery:latest',
+    generatedAt:discoveredAt,
+    modelVersion:PRIORITY_CONTENT_MODEL_VERSION,
+    searchedModelIds:models.map(model=>model.id),
+    searchedQueries,
+    candidateChannels:ranked.length,
+    queuedChannels,
+    existingChannels,
+    duplicateQueueChannels,
+    modelResults,
+    errors:errors.slice(0,8)
+  };
+  await put('radar_analyses',report.id,report);
+  return report;
 }
 
 type UniverseQueueRow={
@@ -81,7 +266,8 @@ export async function processUniverseImportQueue(maxItems=25){
   const results=await mapLimit(rows,4,async row=>{
     try{
       const snapshot=await collectUniverseCompetitor(row.input);
-      const merged=mergeCompetitorSnapshot(snapshot,byChannel.get(snapshot.channelId));
+      const assignment=await loadPriorityAssignment(snapshot.channelId);
+      const merged=applyPriorityAssignment(mergeCompetitorSnapshot(snapshot,byChannel.get(snapshot.channelId)),assignment);
       await put('radar_managed_channels',merged.id,merged);
       byChannel.set(merged.channelId,merged);
       checked(await db().from('radar_universe_queue')
@@ -118,7 +304,8 @@ export async function importUniverseCompetitors(inputs:string[]){
     try{
       const snapshot=await collectUniverseCompetitor(input);
       const prior=byChannel.get(snapshot.channelId);
-      const merged=mergeCompetitorSnapshot(snapshot,prior);
+      const assignment=await loadPriorityAssignment(snapshot.channelId);
+      const merged=applyPriorityAssignment(mergeCompetitorSnapshot(snapshot,prior),assignment);
       await put('radar_managed_channels',merged.id,merged);
       return {ok:true as const,input,name:merged.name,id:merged.id};
     }catch(error){
