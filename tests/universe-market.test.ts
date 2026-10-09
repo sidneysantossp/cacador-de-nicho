@@ -71,6 +71,28 @@ test('gap demand cannot be observed without target evidence',()=>{
   assert.equal(universeGapDemandStatus('emerging',['a','b']),'partial');
 });
 
+test('gap target matching preserves semantic qualifiers such as ancient',()=>{
+  const modern=competitor('modern-bridge','Engineering');
+  modern.recentUploads=[{
+    id:'modern-video',title:'How China Built a Giant Bridge Across the Sea',publishedAt:'2026-09-20T00:00:00Z',
+    views:100000,duration:'PT12M',thumbnail:'',url:'https://youtube.com/watch?v=modern-video'
+  }];
+  const ancient=competitor('ancient-bridge','History');
+  ancient.recentUploads=[{
+    id:'ancient-video',title:'Ancient Bridges That Still Stand After 2,000 Years',publishedAt:'2026-09-20T00:00:00Z',
+    views:100000,duration:'PT12M',thumbnail:'',url:'https://youtube.com/watch?v=ancient-video'
+  }];
+  const gap={
+    title:'How Rome Built Aqueducts That Worked for 2,000 Years',
+    targetSpace:'Ancient infrastructure',
+    targetKeywords:['ancient engineering','Roman aqueducts','ancient bridges'],
+    changedVariable:'Modern to ancient infrastructure',
+    firstTests:['A','B','C']
+  };
+  const resolved=resolveUniverseGapEvidence([modern,ancient],gap,[]);
+  assert.deepEqual(resolved.channelIds,['ancient-bridge']);
+});
+
 test('curve evidence selection preserves multiple clusters instead of taking one dominant cluster only',()=>{
   const items=[
     ...Array.from({length:10},(_,i)=>competitor('history-'+i,'History',i<2?'breakout':'watch')),
