@@ -13,20 +13,49 @@ permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: github-render-workers-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  plan:
+    name: Check render queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.queue.outputs.matrix }}
+    steps:
+      - name: Request GitHub OIDC token
+        id: oidc
+        shell: bash
+        run: |
+          TOKEN="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=cacadores-render" | jq -r '.value')"
+          test -n "$TOKEN" && test "$TOKEN" != "null"
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Check queued renders
+        id: queue
+        shell: bash
+        env:
+          TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          JSON="$(curl -fsS             -H "Authorization: Bearer $TOKEN"             'https://cacadores.159.198.40.98.sslip.io/api/github-render-db/rest/v1/radar_render_jobs?status=eq.queued&select=id&limit=6')"
+          COUNT="$(printf '%s' "$JSON" | jq 'length')"
+          if [ "$COUNT" -le 0 ]; then
+            MATRIX='[]'
+          else
+            MATRIX="$(seq 1 "$COUNT" | jq -Rsc 'split("\n")[:-1] | map(tonumber)')"
+          fi
+          echo "Queued renders: $COUNT"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
   render:
     name: Render slot ${{ matrix.slot }}
-    if: github.ref == 'refs/heads/master'
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        slot: [1, 2, 3, 4, 5, 6]
+        slot: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     env:
       DATABASE_API_URL: https://cacadores.159.198.40.98.sslip.io/api/github-render-db
