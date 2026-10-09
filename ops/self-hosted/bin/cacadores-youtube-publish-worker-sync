@@ -31,8 +31,8 @@ for raw in Path(sys.argv[1]).read_text(errors="ignore").splitlines():
     key,value=line.split("=",1)
     values[key.strip()]=value.strip().strip('"').strip("'")
 required=[
-    "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "DATABASE_API_URL",
+    "DATABASE_SERVICE_ROLE_KEY",
     "YOUTUBE_OAUTH_CLIENT_ID",
     "YOUTUBE_OAUTH_CLIENT_SECRET",
 ]
@@ -73,8 +73,8 @@ RUNNING="$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null
 MEMORY="$(docker inspect "$CONTAINER" --format '{{.HostConfig.Memory}}' 2>/dev/null || true)"
 CPUS="$(docker inspect "$CONTAINER" --format '{{.HostConfig.NanoCpus}}' 2>/dev/null || true)"
 
-TARGET_MEMORY=1073741824
-TARGET_CPUS=500000000
+TARGET_MEMORY=402653184
+TARGET_CPUS=350000000
 
 if [[ "$CURRENT_SHA" == "$SHA" && "$RUNNING" == "true" && "$MEMORY" == "$TARGET_MEMORY" && "$CPUS" == "$TARGET_CPUS" ]]; then
   exit 0
@@ -88,9 +88,12 @@ docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   --env-file "$ENV_FILE" \
-  --memory 1g \
-  --cpus 0.5 \
-  --pids-limit 256 \
+  -e YOUTUBE_PUBLISH_WORKER_POLL_MS=30000 \
+  --cgroup-parent=cacadores-workers.slice \
+  --memory 384m \
+  --memory-swap 512m \
+  --cpus 0.35 \
+  --pids-limit 192 \
   -v "$WORK_DIR:/tmp" \
   --label auditseo.role=youtube-publish-worker \
   --label "auditseo.youtube-publish.sha=$SHA" \
@@ -114,10 +117,10 @@ Path(sys.argv[1]).write_text(json.dumps({
   "sha":sys.argv[2],
   "image":sys.argv[3],
   "container":"cacador-de-nicho-youtube-publish-worker",
-  "memoryBytes":1073741824,
-  "nanoCpus":500000000,
+  "memoryBytes":402653184,
+  "nanoCpus":350000000,
   "syncedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
 },indent=2)+"\n")
 PY
 
-echo "YOUTUBE_PUBLISH_WORKER_SYNCED sha=$SHA image=$IMAGE memory=1g cpus=0.5"
+echo "YOUTUBE_PUBLISH_WORKER_SYNCED sha=$SHA image=$IMAGE memory=384m cpus=0.35"

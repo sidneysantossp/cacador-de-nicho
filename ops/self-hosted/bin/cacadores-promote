@@ -82,13 +82,19 @@ if ! docker inspect cacadores-postgrest >/dev/null 2>&1 || [[ "$(docker inspect 
   echo "self-hosted PostgREST is not running" >&2
   exit 1
 fi
+# Re-assert self-hosted data-plane resource ceilings on every production promotion.
+docker update --memory 768m --memory-swap 1g --cpus 0.75 --pids-limit 256 cacadores-postgres >/dev/null
+docker update --memory 256m --memory-swap 384m --cpus 0.25 --pids-limit 128 cacadores-postgrest >/dev/null
+if docker inspect cacadores-postgrest-proxy >/dev/null 2>&1; then
+  docker update --memory 128m --memory-swap 192m --cpus 0.20 --pids-limit 128 cacadores-postgrest-proxy >/dev/null
+fi
 if [[ -f "$LEGACY_PGP_HOST" ]]; then
   install -m 0640 -o root -g 1001 "$LEGACY_PGP_HOST" "$LEGACY_PGP_RUNTIME"
   LEGACY_ARGS=(--env "PROVIDER_SECRETS_LEGACY_PGP_PASSPHRASE_FILE=/run/secrets/cacadores-migration-pgp-passphrase" --volume "$LEGACY_PGP_RUNTIME:/run/secrets/cacadores-migration-pgp-passphrase:ro")
 else
   LEGACY_ARGS=()
 fi
-docker run -d --name "$CANDIDATE_CONTAINER" --restart unless-stopped --env-file "$ENV_FILE" --network cacadores-infra -p "127.0.0.1:$CANDIDATE_PORT:3000" "${LEGACY_ARGS[@]}" "$IMAGE" >/dev/null
+docker run -d --name "$CANDIDATE_CONTAINER" --restart unless-stopped --env-file "$ENV_FILE" --network cacadores-infra --memory 768m --memory-swap 1g --cpus 0.75 --pids-limit 256 -p "127.0.0.1:$CANDIDATE_PORT:3000" "${LEGACY_ARGS[@]}" "$IMAGE" >/dev/null
 
 BODY=""
 for i in $(seq 1 30); do
@@ -207,9 +213,17 @@ if p.exists():
 print(value)
 PYRENDER
 )"
+  BACKGROUND_HOLD=0
+  if [[ -f "$BASE/state/cacador-de-nicho-maintenance-hold" || -f "$BASE/state/cacador-de-nicho-resource-hold.json" ]]; then
+    BACKGROUND_HOLD=1
+  fi
   for FILE in "$ROOT"/ops/self-hosted/systemd/*.timer; do
     [[ -f "$FILE" ]] || continue
     TIMER="$(basename "$FILE")"
+    if (( BACKGROUND_HOLD == 1 )) && [[ "$TIMER" != "cacadores-auto-deploy.timer" && "$TIMER" != "cacadores-health-watch.timer" ]]; then
+      systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
+      continue
+    fi
     if [[ "$RENDER_BACKEND" == "github-actions" && "$TIMER" == "cacadores-render-worker-sync.timer" ]]; then
       systemctl disable --now "$TIMER" >/dev/null 2>&1 || true
       continue

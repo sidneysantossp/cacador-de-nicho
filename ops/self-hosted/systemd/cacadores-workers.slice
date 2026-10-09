@@ -1,0 +1,11 @@
+[Unit]
+Description=Caçadores worker resource isolation
+
+[Slice]
+CPUAccounting=true
+MemoryAccounting=true
+IOAccounting=true
+CPUQuota=125%
+MemoryHigh=1280M
+MemoryMax=1536M
+TasksMax=1024

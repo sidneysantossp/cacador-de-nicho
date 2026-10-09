@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
-const SUPABASE_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
-const SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
+const DATABASE_URL=(process.env.DATABASE_API_URL||process.env.SUPABASE_URL||'').replace(/\/$/,'');
+const SERVICE_KEY=process.env.DATABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||'';
 const BASE_WORKER_URL=(process.env.OWNED_VISUAL_WORKER_URL||process.env.AUTOMATION_WORKER_URL||'').trim();
 const WORKER_SECRET=(process.env.OWNED_VISUAL_WORKER_SECRET||process.env.AUTOMATION_WORKER_SECRET||'').trim();
 const POLL_MS=Math.max(3000,Number(process.env.OWNED_VISUAL_WORKER_POLL_MS||5000));
 const LEASE_SECONDS=Math.max(300,Math.min(7200,Number(process.env.OWNED_VISUAL_WORKER_LEASE_SECONDS||3600)));
 
-if(!SUPABASE_URL||!SERVICE_KEY){
-  console.error('Owned Visual worker requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+if(!DATABASE_URL||!SERVICE_KEY){
+  console.error('Owned Visual worker requires DATABASE_API_URL/DATABASE_SERVICE_ROLE_KEY or Supabase fallback credentials.');
   process.exit(1);
 }
 if(!BASE_WORKER_URL||WORKER_SECRET.length<32){
@@ -24,7 +24,7 @@ function safeError(error){return String(error instanceof Error?error.message:err
 
 async function rpc(name,args){
   const response=await fetch(
-    SUPABASE_URL+'/rest/v1/rpc/'+encodeURIComponent(name),
+    DATABASE_URL+'/rest/v1/rpc/'+encodeURIComponent(name),
     {
       method:'POST',
       headers:{...authHeaders,'Content-Type':'application/json'},
@@ -33,7 +33,7 @@ async function rpc(name,args){
   );
   if(!response.ok){
     const body=await response.text().catch(()=>'');
-    throw new Error('Supabase RPC '+name+' failed '+response.status+' '+body.slice(0,1000));
+    throw new Error('Database RPC '+name+' failed '+response.status+' '+body.slice(0,1000));
   }
   const text=await response.text();
   return text?JSON.parse(text):null;

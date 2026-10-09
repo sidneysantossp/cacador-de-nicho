@@ -10,11 +10,11 @@ WORK_DIR="$BASE/work/$PROJECT-verified-stock"
 CONTAINER="$PROJECT-verified-stock-worker"
 LOCK_DIR="$BASE/state/.cacadores-verified-stock-worker-sync.lock"
 
-TARGET_MEMORY=2147483648
-TARGET_CPUS=1000000000
-FAST_MEMORY=335544320
-FAST_CPUS=350000000
-FAST_WORKERS="${VERIFIED_STOCK_FAST_WORKERS:-5}"
+TARGET_MEMORY=805306368
+TARGET_CPUS=500000000
+FAST_MEMORY=268435456
+FAST_CPUS=250000000
+FAST_WORKERS="${VERIFIED_STOCK_FAST_WORKERS:-1}"
 DRAIN_FILE="${VERIFIED_STOCK_WORKER_DRAIN_FILE:-/tmp/cacadores-verified-stock-drain}"
 DRAIN_WAIT_SECONDS="${VERIFIED_STOCK_WORKER_DRAIN_WAIT_SECONDS:-8}"
 
@@ -112,9 +112,12 @@ if ! main_matches_target; then
       --env-file "$ENV_FILE" \
       --network cacadores-infra \
       -e VERIFIED_STOCK_WORKER_URL=http://127.0.0.1:3000/ \
-      --memory 2g \
-      --cpus 1 \
-      --pids-limit 512 \
+      -e VERIFIED_STOCK_WORKER_POLL_MS=15000 \
+      --cgroup-parent=cacadores-workers.slice \
+      --memory 768m \
+      --memory-swap 896m \
+      --cpus 0.5 \
+      --pids-limit 256 \
       -v "$WORK_DIR:/tmp" \
       --label auditseo.role=verified-stock-worker \
       --label "auditseo.verified-stock.sha=$SHA" \
@@ -137,10 +140,12 @@ for i in $(seq 1 "$FAST_WORKERS"); do
       --env-file "$ENV_FILE" \
       --network cacadores-infra \
       -e VERIFIED_STOCK_WORKER_URL="$FAST_WORKER_URL" \
-      -e VERIFIED_STOCK_WORKER_POLL_MS=3000 \
-      -e VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS=75 \
-      --memory 320m \
-      --cpus 0.35 \
+      -e VERIFIED_STOCK_WORKER_POLL_MS=15000 \
+      -e VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS=250 \
+      --cgroup-parent=cacadores-workers.slice \
+      --memory 256m \
+      --memory-swap 320m \
+      --cpus 0.25 \
       --pids-limit 128 \
       --label auditseo.role=verified-stock-fast-worker \
       --label "auditseo.verified-stock-fast.sha=$SHA" \
@@ -168,12 +173,12 @@ Path(sys.argv[1]).write_text(json.dumps({
   "sha":sys.argv[2],
   "image":sys.argv[3],
   "container":"cacador-de-nicho-verified-stock-worker",
-  "memoryBytes":2147483648,
-  "nanoCpus":1000000000,
+  "memoryBytes":805306368,
+  "nanoCpus":500000000,
   "fastWorkers":int(sys.argv[4]),
   "deferredWorkers":int(sys.argv[5]),
-  "fastWorkerMemoryBytes":335544320,
-  "fastWorkerNanoCpus":350000000,
+  "fastWorkerMemoryBytes":268435456,
+  "fastWorkerNanoCpus":250000000,
   "syncedAt":datetime.datetime.now(datetime.timezone.utc).isoformat()
 },indent=2)+"\n")
 PY
