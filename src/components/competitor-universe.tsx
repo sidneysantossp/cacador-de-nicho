@@ -221,11 +221,11 @@ export default function CompetitorUniverse({
         <p>Concorrentes conhecidos são monitorados como evidência de mercado. O objetivo não é copiar canais: é detectar sinais, curvas e lacunas que merecem virar produção.</p>
       </div>
       <div className="universe-hero-actions">
-        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar atrasados'}</button>
-        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length||dnaPending===0} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':dnaPending===0?'DNA completo':'Gerar próximo lote DNA'}</button>
-        <button className="button subtle" disabled={mode==='demo'||!!busy||!competitors.length} onClick={()=>void onCycle()}><RefreshCw size={16}/>{busy==='universeCycle'?'Executando ciclo…':'Executar ciclo completo'}</button>
+        <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>void onPriorityDiscover()}><Search size={16}/>{busy==='universePriorityDiscover'?'Pesquisando…':'Pesquisar modelos aprovados'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||!strategicCompetitors.length} onClick={()=>void onRefresh([])}><RefreshCw size={16}/>{busy==='universeRefresh'?'Atualizando…':'Atualizar escopo'}</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy||!strategicCompetitors.length||dnaPending===0} onClick={()=>void onIntelligence([])}><Sparkles size={16}/>{busy==='universeIntelligence'?'Analisando…':dnaPending===0?'DNA completo':'Gerar próximo lote DNA'}</button>
         <button className="button subtle" disabled={mode==='demo'||!!busy||dnaReady<2} onClick={()=>void onCurves()}><Layers3 size={16}/>{busy==='universeCurves'?'Extraindo…':'Extrair curvas'}</button>
-        <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar concorrentes</button>
+        <button className="button subtle" disabled={mode==='demo'||!!busy} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar manualmente</button>
       </div>
     </section>
 
