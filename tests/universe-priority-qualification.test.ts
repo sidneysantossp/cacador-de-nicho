@@ -12,4 +12,5 @@ test('Universe priority scope validates recurring content and language before in
   assert.match(source,/priorityModelId:classified\.id/);
   assert.match(source,/kind==='universe-priority-assignment'/);
   assert.match(source,/reactivated\+\+/);
+  assert.match(source,/items\.filter\(item=>!!item\.priorityModelId&&!!priorityModelForCompetitor\(item\)\)/);
 });
