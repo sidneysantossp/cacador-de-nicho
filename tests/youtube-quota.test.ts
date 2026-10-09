@@ -25,7 +25,9 @@ test('YouTube search budget starts with 100 calls and purpose reserves',()=>{
   assert.equal(state.purposeLimits['channel-study'],16);
   assert.equal(state.purposeLimits['similar-channels'],24);
   assert.equal(state.purposeLimits['source-media'],20);
+  assert.equal(state.purposeLimits['universe-discovery'],18);
   assert.equal(state.byPurpose['source-media'],0);
+  assert.equal(state.byPurpose['universe-discovery'],0);
 });
 
 test('discovery cannot consume investigation reserves',()=>{
@@ -45,6 +47,15 @@ test('source media has a bounded purpose quota without consuming other purpose c
   }
   assert.deepEqual(canSpendYouTubeSearch(state,'source-media'),{allowed:false,reason:'purpose-limit'});
   assert.deepEqual(canSpendYouTubeSearch(state,'channel-study'),{allowed:true,reason:null});
+});
+
+test('Universe discovery has an isolated bounded search budget',()=>{
+  let state=emptyYouTubeSearchBudget(new Date('2026-09-23T12:00:00Z'));
+  for(let i=0;i<YOUTUBE_SEARCH_PURPOSE_LIMITS['universe-discovery'];i++){
+    state=spendYouTubeSearch(state,'universe-discovery',`universe-${i}`);
+  }
+  assert.deepEqual(canSpendYouTubeSearch(state,'universe-discovery'),{allowed:false,reason:'purpose-limit'});
+  assert.deepEqual(canSpendYouTubeSearch(state,'radar-discovery'),{allowed:true,reason:null});
 });
 
 test('global limit blocks every search purpose',()=>{
