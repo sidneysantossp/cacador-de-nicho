@@ -139,6 +139,8 @@ export default function Dashboard(){
     {view==='factory'&&<FactoryControlWorkspace context={data.contexts.find(item=>item.id==='factory-control:live')}/>}
     {view==='universe'&&<CompetitorUniverse
       competitors={data.universeCompetitors??[]}
+      priorityModels={data.priorityContentModels??[]}
+      priorityDiscovery={data.universePriorityDiscovery}
       intelligence={data.universeMarketIntelligence}
       queue={data.universeQueue}
       mode={data.mode}
@@ -149,6 +151,7 @@ export default function Dashboard(){
       onIntelligence={(ids)=>action({action:'universeIntelligence',universeIds:ids},'universeIntelligence')}
       onCurves={()=>action({action:'universeCurves'},'universeCurves')}
       onQueue={()=>action({action:'universeQueue'},'universeQueue')}
+      onPriorityDiscover={(modelIds)=>action({action:'universePriorityDiscover',priorityModelIds:modelIds},'universePriorityDiscover')}
       onCycle={()=>action({action:'universeCycle'},'universeCycle')}
       onOpenDna={(competitor)=>{setUniverseDnaId(competitor.id);setView('universeDna');window.scrollTo({top:0,behavior:'smooth'});}}
     />}
