@@ -149,7 +149,6 @@ export default function CompetitorUniverse({
   queue,
   onQueue,
   onPriorityDiscover,
-  onCycle,
   onOpenDna
 }:{
   competitors:UniverseCompetitor[];
@@ -166,7 +165,6 @@ export default function CompetitorUniverse({
   queue?:UniverseImportQueueSummary|null;
   onQueue:()=>Promise<boolean|undefined>;
   onPriorityDiscover:(modelIds?:string[])=>Promise<boolean|undefined>;
-  onCycle:()=>Promise<boolean|undefined>;
   onOpenDna:(competitor:UniverseCompetitor)=>void;
 }){
   const [query,setQuery]=useState('');
