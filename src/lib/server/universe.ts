@@ -83,11 +83,14 @@ function titleMatchesPriorityModel(title:string,model:PriorityContentModel){
 function competitorLooksEnglish(competitor:UniverseCompetitor){
   const language=(competitor.language??'').toLowerCase();
   if(language&&!language.startsWith('en'))return false;
-  const sample=competitor.recentUploads.slice(0,10).map(video=>video.title).join(' ');
+  const titles=competitor.recentUploads.slice(0,10).map(video=>video.title);
+  const nonLatinTitles=titles.filter(title=>/[\p{Script=Devanagari}\p{Script=Arabic}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Thai}]/u.test(title)).length;
+  if(titles.length>=3&&nonLatinTitles>=Math.ceil(titles.length*.3))return false;
+  const sample=titles.join(' ');
   const letters=[...sample].filter(char=>/\p{L}/u.test(char));
   if(letters.length<30)return true;
   const asciiLetters=letters.filter(char=>/[A-Za-z]/.test(char)).length;
-  return asciiLetters/letters.length>=.9;
+  return asciiLetters/letters.length>=.88;
 }
 
 export function priorityModelForCompetitor(competitor:UniverseCompetitor):PriorityContentModel|null{
@@ -100,7 +103,7 @@ export function priorityModelForCompetitor(competitor:UniverseCompetitor):Priori
     hits:titles.filter(title=>titleMatchesPriorityModel(title,model)).length
   })).sort((a,b)=>b.hits-a.hits||Number(b.model.id===explicit?.id)-Number(a.model.id===explicit?.id)||b.model.fitScore-a.model.fitScore);
   const best=ranked[0];
-  const requiredHits=Math.max(2,Math.ceil(titles.length*.3));
+  const requiredHits=Math.max(3,Math.ceil(titles.length*.5));
   if(!best||best.hits<requiredHits)return null;
   return best.model;
 }
