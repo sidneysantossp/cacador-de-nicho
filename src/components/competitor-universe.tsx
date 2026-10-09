@@ -264,11 +264,11 @@ export default function CompetitorUniverse({
       </div>}
     </section>
 
-    {competitors.length>0&&<section className="universe-bootstrap">
+    {strategicCompetitors.length>0&&<section className="universe-bootstrap">
       <div className="universe-bootstrap-head">
         <div>
-          <span className="eyebrow">CHANNEL DNA / PIPELINE</span>
-          <h3>{dnaReady} de {competitors.length} concorrentes com DNA persistido</h3>
+          <span className="eyebrow">CHANNEL DNA / ESCOPO APROVADO</span>
+          <h3>{dnaReady} de {strategicCompetitors.length} concorrentes com DNA persistido</h3>
           <p>{dnaPending} pendente(s) · lotes de até 5 · gaps em investigação + cobertura de clusters + sinais fortes</p>
         </div>
         <button className="button primary small" disabled={mode==='demo'||!!busy||dnaPending===0} onClick={()=>void onIntelligence([])}>
@@ -295,7 +295,7 @@ export default function CompetitorUniverse({
     </section>}
 
     <div className="universe-tabs">
-      <button className={section==='competitors'?'active':''} onClick={()=>setSection('competitors')}>Competitors <span>{competitors.length}</span></button>
+      <button className={section==='competitors'?'active':''} onClick={()=>setSection('competitors')}>Competitors <span>{strategicCompetitors.length}</span></button>
       <button className={section==='curves'?'active':''} onClick={()=>setSection('curves')}>Curves <span>{curves}</span></button>
       <button className={section==='gaps'?'active':''} onClick={()=>setSection('gaps')}>Gaps <span>{gaps}</span></button>
     </div>
@@ -303,13 +303,21 @@ export default function CompetitorUniverse({
     {section==='competitors'&&<>
     <div className="universe-filterbar">
       <label><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar concorrente, nicho, formato…"/></label>
+      <select value={priorityFilter} onChange={e=>{setPriorityFilter(e.target.value);setCluster('Todos');}}>
+        <option value="approved">Escopo aprovado</option>
+        {(priorityModels.length?priorityModels:PRIORITY_CONTENT_MODELS).map(model=><option key={model.id} value={model.id}>{model.fitScore}/10 · {model.name}</option>)}
+        <option value="all">Todos + legado</option>
+      </select>
       <select value={cluster} onChange={e=>setCluster(e.target.value)}><option>Todos</option>{clusters.map(item=><option key={item}>{item}</option>)}</select>
       <select value={status} onChange={e=>setStatus(e.target.value)}><option>Todos</option>{Object.entries(statusMeta).map(([key,value])=><option value={key} key={key}>{value.label}</option>)}</select>
-      <span>{visible.length} de {competitors.length}</span>
+      <span>{visible.length} de {scopedCompetitors.length}</span>
     </div>
 
-    {!competitors.length?<section className="universe-empty">
-      <Globe2 size={32}/><h3>Seu Competitor Universe está vazio.</h3><p>Importe URLs, @handles ou channelIds. O onboarding inicial não usa search.list e cria os primeiros cards a partir dos uploads públicos recentes.</p>
+    {!strategicCompetitors.length&&priorityFilter!=='all'?<section className="universe-empty">
+      <Globe2 size={32}/><h3>O escopo aprovado ainda não tem canais.</h3><p>Use “Pesquisar modelos aprovados”. O Universe buscará long-form em inglês dentro dos seis territórios 9/10 e 10/10 e colocará os melhores canais na fila automaticamente.</p>
+      <button className="button primary" disabled={mode==='demo'||!!busy} onClick={()=>void onPriorityDiscover()}><Search size={16}/>Pesquisar modelos aprovados</button>
+    </section>:!scopedCompetitors.length?<section className="universe-empty">
+      <Globe2 size={32}/><h3>Seu Competitor Universe está vazio.</h3><p>Importe URLs, @handles ou channelIds para inspeção manual.</p>
       <button className="button primary" disabled={mode==='demo'} onClick={()=>setShowImport(true)}><FileUp size={16}/>Importar primeiros canais</button>
     </section>:grouped.map(([name,items])=><section className="universe-cluster" key={name}>
       <div className="universe-cluster-head">
