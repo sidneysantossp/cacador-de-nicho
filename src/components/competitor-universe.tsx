@@ -230,12 +230,38 @@ export default function CompetitorUniverse({
     </section>
 
     <section className="universe-summary">
-      <div><UsersRound size={18}/><span>MONITORADOS</span><strong>{competitors.length}</strong></div>
+      <div><UsersRound size={18}/><span>NO ESCOPO</span><strong>{strategicCompetitors.length}</strong></div>
       <div><Video size={18}/><span>NOVOS VÍDEOS 24H</span><strong>{newVideos24h}</strong></div>
       <div><Sparkles size={18}/><span>COM SINAL</span><strong>{signals}</strong></div>
       <div><TrendingUp size={18}/><span>BREAKOUT</span><strong>{breakout}</strong></div>
       <div><BrainCircuit size={18}/><span>DNA PRONTO</span><strong>{dnaReady}</strong></div>
       <div><Layers3 size={18}/><span>GAPS REGISTRADOS</span><strong>{gaps}</strong></div>
+    </section>
+
+    <section className="universe-priority-scope">
+      <div className="universe-priority-head">
+        <div>
+          <span className="eyebrow">ESCOPO ESTRATÉGICO / 9–10 DE FIT</span>
+          <h3>O Universe agora pesquisa apenas os modelos que aprovamos.</h3>
+          <p>{strategicCompetitors.length} canal(is) no escopo · {competitors.length-strategicCompetitors.length} legado(s) fora do escopo automático.{priorityDiscovery?' Última busca registrada.':''}</p>
+        </div>
+        <button className="button primary small" disabled={mode==='demo'||!!busy} onClick={()=>void onPriorityDiscover()}>
+          <Search size={15}/>{busy==='universePriorityDiscover'?'Pesquisando 6 modelos…':'Pesquisar 6 modelos'}
+        </button>
+      </div>
+      <div className="universe-priority-models">
+        {(priorityModels.length?priorityModels:PRIORITY_CONTENT_MODELS).map(model=><button key={model.id} className={priorityFilter===model.id?'active':''} onClick={()=>{setPriorityFilter(priorityFilter===model.id?'approved':model.id);setCluster('Todos');}}>
+          <span>{model.fitScore}/10 · {model.tier==='core'?'CORE':'EXPANSÃO'}</span>
+          <strong>{model.name}</strong>
+          <small>{modelCounts[model.id]??0} canal(is)</small>
+        </button>)}
+      </div>
+      {priorityDiscovery&&<div className="universe-priority-last">
+        <span><strong>{priorityDiscovery.candidateChannels}</strong> candidatos</span>
+        <span><strong>{priorityDiscovery.queuedChannels}</strong> novos na fila</span>
+        <span><strong>{priorityDiscovery.importedChannels??0}</strong> importados</span>
+        <span><strong>{priorityDiscovery.searchedQueries}</strong> buscas YouTube</span>
+      </div>}
     </section>
 
     {competitors.length>0&&<section className="universe-bootstrap">
