@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+BASE=/srv/auditseo-deploy
+STATE_FILE="$BASE/state/cacador-de-nicho.json"
+AUTO_FILE="$BASE/state/cacador-de-nicho-auto.json"
+HISTORY="$BASE/state/cacador-de-nicho-deployments.jsonl"
+LOG_DIR="$BASE/logs/cacador-de-nicho"
+REPO=https://github.com/sidneysantossp/cacador-de-nicho.git
+mkdir -p "$LOG_DIR"
+
+REMOTE_SHA="$(git ls-remote "$REPO" refs/heads/master | awk '{print $1}')"
+if [[ -z "$REMOTE_SHA" ]]; then
+  echo "unable to resolve master sha" >&2
+  exit 1
+fi
+
+DEPLOY_TAG="deploy-$REMOTE_SHA"
+DEPLOY_ASSET="cacador-de-nicho-$REMOTE_SHA.tar.gz"
+DEPLOY_URL="https://github.com/sidneysantossp/cacador-de-nicho/releases/download/$DEPLOY_TAG/$DEPLOY_ASSET"
+if ! curl -fsSIL --retry 2 --connect-timeout 10 --max-time 30 "$DEPLOY_URL" >/dev/null 2>&1; then
+  echo "deploy artifact not ready sha=$REMOTE_SHA; deferring"
+  exit 0
+fi
+
+RENDER_ACTIVE="$(docker exec cacadores-postgres psql -U postgres -d cacadores -Atqc "SELECT count(*) FROM radar_render_jobs WHERE status IN ('queued','processing');" 2>/dev/null || true)"
+if [[ ! "$RENDER_ACTIVE" =~ ^[0-9]+$ ]]; then
+  echo "unable to verify active render jobs; deferring auto deploy sha=$REMOTE_SHA" >&2
+  exit 0
+fi
+if (( RENDER_ACTIVE > 0 )); then
+  echo "active render jobs=$RENDER_ACTIVE; deferring auto deploy sha=$REMOTE_SHA"
+  exit 0
+fi
+
+STOCK_ACTIVE="$(docker exec cacadores-postgres psql -U postgres -d cacadores -Atqc "SELECT count(*) FROM radar_verified_stock_jobs WHERE status='processing';" 2>/dev/null || true)"
+if [[ ! "$STOCK_ACTIVE" =~ ^[0-9]+$ ]]; then
+  echo "unable to verify active verified-stock jobs; deferring auto deploy sha=$REMOTE_SHA" >&2
+  exit 0
+fi
+if (( STOCK_ACTIVE > 0 )); then
+  echo "active verified-stock jobs=$STOCK_ACTIVE; deferring auto deploy sha=$REMOTE_SHA"
+  exit 0
+fi
+
+AUTOMATION_ACTIVE="$(docker exec cacadores-postgres psql -U postgres -d cacadores -Atqc "SELECT count(*) FROM radar_episode_automation_runs WHERE status='running' AND worker_token IS NOT NULL AND lease_until IS NOT NULL AND lease_until>now();" 2>/dev/null || true)"
+if [[ ! "$AUTOMATION_ACTIVE" =~ ^[0-9]+$ ]]; then
+  echo "unable to verify active automation leases; deferring auto deploy sha=$REMOTE_SHA" >&2
+  exit 0
+fi
+if (( AUTOMATION_ACTIVE > 0 )); then
+  echo "active automation leases=$AUTOMATION_ACTIVE; deferring auto deploy sha=$REMOTE_SHA"
+  exit 0
+fi
+
+readarray -t VALUES < <(python3 - "$STATE_FILE" "$AUTO_FILE" <<'PY'
+from pathlib import Path
+import json,sys
+state_path=Path(sys.argv[1]); auto_path=Path(sys.argv[2])
+state={}; auto={}
+if state_path.exists():
+    try: state=json.loads(state_path.read_text())
+    except Exception: pass
+if auto_path.exists():
+    try: auto=json.loads(auto_path.read_text())
+    except Exception: pass
+print((state.get('production') or {}).get('sha',''))
+print(auto.get('lastAttemptedSha',''))
+PY
+)
+PROD_SHA="${VALUES[0]:-}"
+LAST_ATTEMPTED="${VALUES[1]:-}"
+
+if [[ "$REMOTE_SHA" == "$PROD_SHA" ]]; then exit 0; fi
+if [[ "$REMOTE_SHA" == "$LAST_ATTEMPTED" ]]; then exit 0; fi
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+LOG="$LOG_DIR/auto-$STAMP-${REMOTE_SHA:0:7}.log"
+
+python3 - "$AUTO_FILE" "$REMOTE_SHA" <<'PY'
+from pathlib import Path
+import json,sys,datetime
+p=Path(sys.argv[1]); sha=sys.argv[2]
+state={}
+if p.exists():
+    try: state=json.loads(p.read_text())
+    except Exception: pass
+state.update({'lastAttemptedSha':sha,'status':'building','startedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'finishedAt':None,'message':None})
+p.write_text(json.dumps(state,indent=2)+'\n')
+PY
+
+echo "[$(date -u +%FT%TZ)] auto deploy start sha=$REMOTE_SHA" | tee "$LOG"
+if "$BASE/bin/cacadores-promote" "$REMOTE_SHA" >>"$LOG" 2>&1; then
+  "$BASE/bin/cacadores-gc" >>"$LOG" 2>&1 || true
+  STATUS=success
+  MESSAGE="production promoted"
+  EXIT_CODE=0
+else
+  STATUS=failed
+  MESSAGE="promotion failed; previous production preserved"
+  EXIT_CODE=1
+fi
+
+python3 - "$AUTO_FILE" "$HISTORY" "$REMOTE_SHA" "$STATUS" "$MESSAGE" <<'PY'
+from pathlib import Path
+import json,sys,datetime
+auto_path=Path(sys.argv[1]); history=Path(sys.argv[2])
+sha,status,message=sys.argv[3:6]
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+state={}
+if auto_path.exists():
+    try: state=json.loads(auto_path.read_text())
+    except Exception: pass
+state.update({'status':status,'finishedAt':now,'message':message})
+auto_path.write_text(json.dumps(state,indent=2)+'\n')
+with history.open('a') as f: f.write(json.dumps({'sha':sha,'status':status,'finishedAt':now,'message':message},separators=(',',':'))+'\n')
+PY
+
+echo "[$(date -u +%FT%TZ)] auto deploy $STATUS sha=$REMOTE_SHA" | tee -a "$LOG"
+exit "$EXIT_CODE"

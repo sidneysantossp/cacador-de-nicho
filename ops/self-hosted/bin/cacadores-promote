@@ -46,7 +46,33 @@ git checkout -f --detach "$FULL_SHA"
 git reset --hard "$FULL_SHA"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  docker build --pull=false -t "$IMAGE" .
+  DEPLOY_TAG="deploy-$FULL_SHA"
+  DEPLOY_ASSET="$PROJECT-$FULL_SHA.tar.gz"
+  DEPLOY_BASE_URL="https://github.com/sidneysantossp/cacador-de-nicho/releases/download/$DEPLOY_TAG"
+  DEPLOY_TMP_ROOT="$BASE/tmp"
+  DEPLOY_TMP="$DEPLOY_TMP_ROOT/deploy-$SHORT-$$"
+  FREE_KB="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+  MIN_FREE_KB=$((6*1024*1024))
+  if [[ ! "$FREE_KB" =~ ^[0-9]+$ ]] || (( FREE_KB < MIN_FREE_KB )); then
+    echo "insufficient free disk for deploy image: available_kb=$FREE_KB required_kb=$MIN_FREE_KB" >&2
+    exit 78
+  fi
+  mkdir -p "$DEPLOY_TMP"
+  cleanup_deploy_tmp(){ rm -rf "$DEPLOY_TMP"; }
+  trap cleanup_deploy_tmp EXIT
+  if ! curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 900     -o "$DEPLOY_TMP/$DEPLOY_ASSET" "$DEPLOY_BASE_URL/$DEPLOY_ASSET"; then
+    echo "deploy image asset is not ready for sha=$FULL_SHA" >&2
+    exit 75
+  fi
+  curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 60     -o "$DEPLOY_TMP/$DEPLOY_ASSET.sha256" "$DEPLOY_BASE_URL/$DEPLOY_ASSET.sha256"
+  (
+    cd "$DEPLOY_TMP"
+    sha256sum -c "$DEPLOY_ASSET.sha256"
+  )
+  gzip -dc "$DEPLOY_TMP/$DEPLOY_ASSET" | docker load >/dev/null
+  docker image inspect "$IMAGE" >/dev/null
+  cleanup_deploy_tmp
+  trap - EXIT
 fi
 
 CURRENT_PORT="$(python3 - "$STATE_FILE" <<'PY'
