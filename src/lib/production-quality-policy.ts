@@ -98,7 +98,7 @@ export function structuralQualityChecks(input:{
       {durationSeconds:manifest.durationSeconds,externalMaster:true}
     ));
     checks.push(check(
-      'visual-cadence','visual','Cadência visual ≤ 4 segundos','manual-review',
+      'visual-cadence','visual','Cadência visual por tipo de mídia','manual-review',
       'O master veio do AutoEditor e não possui a lista de cortes no manifest interno. Confirme que nenhum beat visualmente inalterado ultrapassa 4 segundos.',
       ['regra global: alvo 3–4s · teto 4s',...evidence],
       {hardCeilingSeconds:4,externalMaster:true}
@@ -183,18 +183,63 @@ export function structuralQualityChecks(input:{
     {clipCount:clips.length,durationSeconds:manifest.durationSeconds}
   ));
 
-  const cadenceViolations=clips.filter(clip=>clip.durationSeconds>4+EPSILON);
+  const imageHasEditorialMotion=(clip:typeof clips[number])=>{
+    if(clip.kind!=='image')return false;
+    const style=clip.style;
+    if(style.motionPreset&&style.motionPreset!=='none')return true;
+    return (
+      Math.abs(style.scaleEnd-style.scaleStart)>.005||
+      Math.abs(style.xEnd-style.xStart)>.005||
+      Math.abs(style.yEnd-style.yStart)>.005
+    );
+  };
+  const staticImageCadenceBlockers=clips.filter(
+    clip=>clip.kind==='image'&&!imageHasEditorialMotion(clip)&&clip.durationSeconds>4+EPSILON
+  );
+  const movingVisuals=clips.filter(
+    clip=>clip.kind==='video'||imageHasEditorialMotion(clip)
+  );
+  const movingCadenceBlockers=movingVisuals.filter(
+    clip=>clip.durationSeconds>10+EPSILON
+  );
+  const movingCadenceWarnings=movingVisuals.filter(
+    clip=>clip.durationSeconds>8+EPSILON&&clip.durationSeconds<=10+EPSILON
+  );
+  const cadenceBlockers=[...staticImageCadenceBlockers,...movingCadenceBlockers];
   const maxVisualDuration=clips.length?Math.max(...clips.map(clip=>clip.durationSeconds)):0;
+  const cadenceStatus=cadenceBlockers.length
+    ?'blocker'
+    :movingCadenceWarnings.length
+      ?'warning'
+      :'pass';
   checks.push(check(
-    'visual-cadence','visual','Cadência visual ≤ 4 segundos',
-    cadenceViolations.length?'blocker':'pass',
-    cadenceViolations.length
-      ?'Um ou mais beats visuais ultrapassam o teto global de 4 segundos.'
-      :'Todos os beats visuais respeitam o teto global de 4 segundos.',
-    cadenceViolations.length
-      ?cadenceViolations.slice(0,30).map(clip=>`scene=${clip.sceneId.slice(0,8)} · ${clip.durationSeconds.toFixed(2)}s`)
-      :[`max=${maxVisualDuration.toFixed(2)}s · target=3–4s`],
-    {hardCeilingSeconds:4,maxVisualDuration:Number(maxVisualDuration.toFixed(3)),violations:cadenceViolations.length}
+    'visual-cadence','visual','Cadência visual por movimento editorial',
+    cadenceStatus,
+    cadenceBlockers.length
+      ?'Há imagem realmente estática acima de 4s ou visual em movimento acima de 10s; ajuste a montagem antes da publicação.'
+      :movingCadenceWarnings.length
+        ?'Há visuais em movimento entre 8s e 10s; a montagem é aceitável, mas merece revisão de ritmo.'
+        :'A cadência respeita os limites de movimento editorial.',
+    cadenceBlockers.length
+      ?cadenceBlockers.slice(0,30).map(clip=>
+        `scene=${clip.sceneId.slice(0,8)} · ${clip.kind} · ${clip.durationSeconds.toFixed(2)}s`
+      )
+      :movingCadenceWarnings.length
+        ?movingCadenceWarnings.slice(0,30).map(clip=>
+          `scene=${clip.sceneId.slice(0,8)} · ${clip.kind} · ${clip.durationSeconds.toFixed(2)}s`
+        )
+        :[`max=${maxVisualDuration.toFixed(2)}s · static-image≤4s · moving-visual≤8s target`],
+    {
+      staticImageHardCeilingSeconds:4,
+      movingVisualWarningSeconds:8,
+      movingVisualHardCeilingSeconds:10,
+      maxVisualDuration:Number(maxVisualDuration.toFixed(3)),
+      staticImageViolations:staticImageCadenceBlockers.length,
+      movingVisualViolations:movingCadenceBlockers.length,
+      movingVisualWarnings:movingCadenceWarnings.length,
+      animatedImageCount:clips.filter(imageHasEditorialMotion).length,
+      violations:cadenceBlockers.length
+    }
   ));
 
   const motion=input.motionCoverage;
