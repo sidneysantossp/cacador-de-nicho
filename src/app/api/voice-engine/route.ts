@@ -3,8 +3,9 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   addElevenLabsSharedVoice, deleteVoiceAsset, discoverElevenLabsSharedVoice,
-  finalizeVoiceAssetUpload, generateElevenLabsVoice, getElevenLabsVoice, listElevenLabsVoices,
-  listVoiceAssets, loadVoiceAsset, prepareVoiceAssetUpload, selectVoiceAsset, uploadVoiceAsset
+  finalizeVoiceAssetUpload, generateVoiceWithProvider, getVoiceProviderVoice,
+  listVoiceProviderVoices, listVoiceAssets, loadVoiceAsset, prepareVoiceAssetUpload,
+  selectVoiceAsset, uploadVoiceAsset
 } from '@/lib/server/voice-engine';
 import {
   createTranscriptFromAlignment, loadTranscriptByVoiceAsset, transcribeWithOpenAI, transcribeWithScribe
@@ -26,6 +27,7 @@ const jsonSchema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('generate'),
     scriptId:z.string().uuid(),
+    provider:z.enum(['elevenlabs','voiceapi']).optional(),
     voiceId:z.string().trim().min(1).max(200).optional(),
     voiceName:z.string().trim().max(250).optional(),
     modelId:z.enum(['eleven_flash_v2_5','eleven_multilingual_v2']).optional()
@@ -52,9 +54,13 @@ export async function GET(request:Request){
     if(!authenticated(request))throw new HttpError('Entre com a senha da operação para continuar.',401);
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Voice Engine.',503);
     const url=new URL(request.url);
-    if(url.searchParams.get('voices')==='elevenlabs'){
+    const voiceProvider=url.searchParams.get('voices');
+    if(voiceProvider==='elevenlabs'||voiceProvider==='voiceapi'){
       const search=url.searchParams.get('search')?.trim()??'';
-      return Response.json({voices:await listElevenLabsVoices(search)},{headers:{'Cache-Control':'no-store'}});
+      return Response.json({
+        provider:voiceProvider,
+        voices:await listVoiceProviderVoices(voiceProvider,search)
+      },{headers:{'Cache-Control':'no-store'}});
     }
     const discoverVoiceId=url.searchParams.get('discoverVoiceId')?.trim();
     if(discoverVoiceId){
@@ -62,7 +68,11 @@ export async function GET(request:Request){
     }
     const voiceId=url.searchParams.get('voiceId')?.trim();
     if(voiceId){
-      return Response.json({voice:await getElevenLabsVoice(voiceId)},{headers:{'Cache-Control':'no-store'}});
+      const provider=url.searchParams.get('provider')==='voiceapi'?'voiceapi':'elevenlabs';
+      return Response.json({
+        provider,
+        voice:await getVoiceProviderVoice(provider,voiceId)
+      },{headers:{'Cache-Control':'no-store'}});
     }
     const scriptId=url.searchParams.get('scriptId')?.trim();
     if(!scriptId||!z.string().uuid().safeParse(scriptId).success)throw new HttpError('Roteiro inválido.',400);
@@ -106,7 +116,7 @@ export async function POST(request:Request){
       return Response.json({message:'Voz compartilhada adicionada ao workspace ElevenLabs.',voice});
     }
     if(body.action==='generate'){
-      const asset=await generateElevenLabsVoice(body);
+      const asset=await generateVoiceWithProvider(body);
       const chunks=asset.generationChunks?.length??1;
       const cacheHits=asset.generationChunks?.filter(chunk=>chunk.cacheHit).length??0;
       return Response.json({

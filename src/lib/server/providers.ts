@@ -12,14 +12,20 @@ import {
   parseVecteezyConfig, serializeVecteezyConfig, testVecteezyConfig,
   vecteezyConfigFromEnv, type VecteezyConfig
 } from './vecteezy';
+import {
+  compatibleVoiceApiFromEnv, compatibleVoiceApiPublicConfig,
+  parseCompatibleVoiceApiConfig, serializeCompatibleVoiceApiConfig,
+  testCompatibleVoiceApiConfig, type CompatibleVoiceApiConfig
+} from './compatible-voice-api';
 
 export type Provider=
-  'openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
+  'openai'|'youtube'|'elevenlabs'|'voiceapi'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 
 const names:Record<Provider,string>={
   openai:'openai_api_key',
   youtube:'youtube_api_key',
   elevenlabs:'elevenlabs_api_key',
+  voiceapi:'voice_api_config',
   googleai:'google_ai_api_key',
   pexels:'pexels_api_key',
   pixabay:'pixabay_api_key',
@@ -32,6 +38,10 @@ function envValue(provider:Provider){
   if(provider==='openai')return process.env.OPENAI_API_KEY;
   if(provider==='youtube')return process.env.YOUTUBE_API_KEY;
   if(provider==='elevenlabs')return process.env.ELEVENLABS_API_KEY;
+  if(provider==='voiceapi'){
+    const config=compatibleVoiceApiFromEnv();
+    return config?serializeCompatibleVoiceApiConfig(config):undefined;
+  }
   if(provider==='googleai')return process.env.GOOGLE_AI_API_KEY;
   if(provider==='pexels')return process.env.PEXELS_API_KEY;
   if(provider==='pixabay')return process.env.PIXABAY_API_KEY;
@@ -48,6 +58,7 @@ function label(provider:Provider){
   if(provider==='openai')return 'OpenAI';
   if(provider==='youtube')return 'YouTube Data API';
   if(provider==='elevenlabs')return 'ElevenLabs';
+  if(provider==='voiceapi')return 'Voice API externa';
   if(provider==='googleai')return 'Google AI';
   if(provider==='pexels')return 'Pexels';
   if(provider==='pixabay')return 'Pixabay';
@@ -62,6 +73,9 @@ function last4(provider:Provider,value:string){
   }
   if(provider==='vecteezy'){
     try{return parseVecteezyConfig(value).secretKey.slice(-4);}catch{return '';}
+  }
+  if(provider==='voiceapi'){
+    try{return parseCompatibleVoiceApiConfig(value).apiKey.slice(-4);}catch{return '';}
   }
   return value.slice(-4);
 }
@@ -170,6 +184,11 @@ export async function saveVecteezyProviderConfig(config:VecteezyConfig){
   await saveProviderSecret('vecteezy',serializeVecteezyConfig(config));
 }
 
+export async function saveCompatibleVoiceApiProviderConfig(config:CompatibleVoiceApiConfig){
+  await testCompatibleVoiceApiConfig(config);
+  await saveProviderSecret('voiceapi',serializeCompatibleVoiceApiConfig(config));
+}
+
 export async function removeProviderSecret(provider:Provider){
   if(databaseMode()==='self-hosted'){
     checked(await db().from('radar_provider_secrets').delete().eq('provider',provider));
@@ -186,8 +205,15 @@ export async function providerStatuses(){
     if(!result.error&&Array.isArray(result.data)){
       for(const item of result.data as Array<{provider:string;ciphertext:string}>){
         try{
-          const secret=await localProviderSecret(item.provider as Provider);
-          if(secret)rows.push({secret_name:names[item.provider as Provider],last4:last4(item.provider as Provider,secret)});
+          const provider=item.provider as Provider;
+          const secret=await localProviderSecret(provider);
+          if(secret){
+            const row:Record<string,unknown>={secret_name:names[provider],last4:last4(provider,secret)};
+            if(provider==='voiceapi'){
+              try{Object.assign(row,compatibleVoiceApiPublicConfig(parseCompatibleVoiceApiConfig(secret)));}catch{}
+            }
+            rows.push(row);
+          }
         }catch(error){
           console.warn('[provider-status-local-read-failed]',item.provider,error instanceof Error?error.message:'unknown-error');
         }
@@ -198,13 +224,28 @@ export async function providerStatuses(){
     if(result.error)throw new HttpError('O cofre de credenciais ainda não foi instalado. Aplique o schema atualizado.',503);
     if(Array.isArray(result.data))rows.push(...result.data);
   }
-  return (['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2'] as Provider[]).map(provider=>{
+  return (['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2'] as Provider[]).map(provider=>{
     const name=names[provider];
     const row=rows.find(item=>item.secret_name===name);
     const fallback=envValue(provider);
-    if(row)return {provider,configured:true,source:databaseMode()==='self-hosted'?'local-encrypted-db' as const:'vault' as const,last4:String(row.last4??'')};
-    if(fallback)return {provider,configured:true,source:'environment' as const,last4:last4(provider,fallback)};
-    return {provider,configured:false,source:null,last4:null};
+    const base={
+      provider,
+      configured:Boolean(row||fallback),
+      source:row?(databaseMode()==='self-hosted'?'local-encrypted-db' as const:'vault' as const):(fallback?'environment' as const:null),
+      last4:row?String(row.last4??''):(fallback?last4(provider,fallback):null)
+    };
+    if(provider!=='voiceapi')return base;
+    if(row){
+      return {
+        ...base,
+        baseUrl:typeof row.baseUrl==='string'?row.baseUrl:undefined,
+        authMode:row.authMode==='bearer'?'bearer':row.authMode==='xi-api-key'?'xi-api-key':undefined
+      };
+    }
+    try{
+      const config=fallback?parseCompatibleVoiceApiConfig(fallback):null;
+      return {...base,...(config?compatibleVoiceApiPublicConfig(config):{})};
+    }catch{return base;}
   });
 }
 
@@ -265,6 +306,10 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
       const safe=message.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
       throw new HttpError('A ElevenLabs não conseguiu validar Text to Speech'+(safe?': '+safe:'')+'.',422);
     }
+    return;
+  }
+  if(provider==='voiceapi'){
+    await testCompatibleVoiceApiConfig(parseCompatibleVoiceApiConfig(key));
     return;
   }
   if(provider==='googleai'){
