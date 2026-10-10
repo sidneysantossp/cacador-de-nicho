@@ -40,3 +40,11 @@ test('health watch rearms timers that are active but elapsed',()=>{
   assert.match(source,/== "elapsed"/);
   assert.match(source,/systemctl restart "\$UNIT"/);
 });
+
+
+test('auto deploy service is canonical and bounded in the repository',()=>{
+  const service=readFileSync(resolve(process.cwd(),'ops/self-hosted/systemd/cacadores-auto-deploy.service'),'utf8');
+  assert.match(service,/ExecStart=\/srv\/auditseo-deploy\/bin\/cacadores-auto-deploy/);
+  assert.match(service,/MemoryMax=768M/);
+  assert.match(service,/TimeoutStartSec=15min/);
+});

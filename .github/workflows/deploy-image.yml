@@ -1,0 +1,85 @@
+name: Build Deploy Image
+
+on:
+  push:
+    branches: [master, 'infra/github-built-deploy']
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA to package. Empty uses the workflow commit.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-image-${{ github.event.inputs.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build deploy image off-host
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: ${{ github.event.inputs.sha || github.sha }}
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_SHA="$(git rev-parse HEAD)"
+          SHORT="${FULL_SHA:0:7}"
+          IMAGE="auditseo/cacador-de-nicho:${SHORT}"
+          TAG="deploy-${FULL_SHA}"
+          ASSET="cacador-de-nicho-${FULL_SHA}.tar.gz"
+          {
+            echo "full_sha=${FULL_SHA}"
+            echo "short=${SHORT}"
+            echo "image=${IMAGE}"
+            echo "tag=${TAG}"
+            echo "asset=${ASSET}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build production image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull=false -t "${{ steps.meta.outputs.image }}" .
+          docker image inspect "${{ steps.meta.outputs.image }}" >/dev/null
+
+      - name: Package and checksum image
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSET="${{ steps.meta.outputs.asset }}"
+          docker save "${{ steps.meta.outputs.image }}" | gzip -1 > "/tmp/${ASSET}"
+          cd /tmp
+          sha256sum "${ASSET}" > "${ASSET}.sha256"
+          ls -lh "${ASSET}" "${ASSET}.sha256"
+
+      - name: Publish immutable deploy release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          ASSET="${{ steps.meta.outputs.asset }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "/tmp/$ASSET" "/tmp/$ASSET.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "/tmp/$ASSET" "/tmp/$ASSET.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "${{ steps.meta.outputs.full_sha }}" \
+              --title "Deploy ${{ steps.meta.outputs.short }}" \
+              --notes "Immutable production image built by GitHub Actions for commit ${{ steps.meta.outputs.full_sha }}." \
+              --prerelease
+          fi
