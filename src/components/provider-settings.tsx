@@ -7,8 +7,11 @@ import {
 import { modelOptions as fallbackModels } from '@/lib/models';
 import { defaultSettings } from '@/lib/types';
 
-type Provider='openai'|'youtube'|'elevenlabs'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
-type Status={provider:Provider;configured:boolean;source:'vault'|'environment'|null;last4:string|null};
+type Provider='openai'|'youtube'|'elevenlabs'|'voiceapi'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
+type Status={
+ provider:Provider;configured:boolean;source:'vault'|'local-encrypted-db'|'environment'|null;last4:string|null;
+ baseUrl?:string;authMode?:'xi-api-key'|'bearer';
+};
 type Model={id:string;name:string;description:string};
 type NexLevStatus={configured:boolean;status:'connected'|'needs-reauth'|'disconnected';toolCount:number;scopes?:string[];lastValidatedAt?:string;error?:string};
 type Payload={providers:Status[];models:readonly Model[];selection:{analysisModel:string;scriptModel:string};message?:string};
@@ -23,7 +26,7 @@ export default function ProviderSettings({
   onMessage:(message:string)=>void;
 }){
  const [providers,setProviders]=useState<Status[]>(()=>
-   ['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2'].map(provider=>{
+   ['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2'].map(provider=>{
      const env=provider==='openai'?environmentProviders.openai:provider==='youtube'?environmentProviders.youtube:false;
      return {provider:provider as Provider,configured:env,source:env?'environment':null,last4:null};
    })
@@ -34,6 +37,9 @@ export default function ProviderSettings({
  const [openaiKey,setOpenaiKey]=useState('');
  const [youtubeKey,setYoutubeKey]=useState('');
  const [elevenlabsKey,setElevenlabsKey]=useState('');
+ const [voiceApiBaseUrl,setVoiceApiBaseUrl]=useState('');
+ const [voiceApiKey,setVoiceApiKey]=useState('');
+ const [voiceApiAuthMode,setVoiceApiAuthMode]=useState<'xi-api-key'|'bearer'>('xi-api-key');
  const [googleAiKey,setGoogleAiKey]=useState('');
  const [pexelsKey,setPexelsKey]=useState('');
  const [pixabayKey,setPixabayKey]=useState('');
@@ -82,6 +88,9 @@ export default function ProviderSettings({
  }
  function apply(body:Payload){
    setProviders(body.providers);
+   const voiceApi=body.providers.find(item=>item.provider==='voiceapi');
+   if(voiceApi?.baseUrl)setVoiceApiBaseUrl(voiceApi.baseUrl);
+   if(voiceApi?.authMode)setVoiceApiAuthMode(voiceApi.authMode);
    setModels(body.models);
    setAnalysisModel(body.selection.analysisModel);
    setScriptModel(body.selection.scriptModel);
@@ -105,7 +114,7 @@ export default function ProviderSettings({
 
  const ready=authenticated&&supabaseConfigured;
  const status=(provider:Provider)=>providers.find(x=>x.provider===provider)??{provider,configured:false,source:null,last4:null};
- const openai=status('openai'),youtube=status('youtube'),elevenlabs=status('elevenlabs'),googleai=status('googleai');
+ const openai=status('openai'),youtube=status('youtube'),elevenlabs=status('elevenlabs'),voiceapi=status('voiceapi'),googleai=status('googleai');
  const pexels=status('pexels'),pixabay=status('pixabay'),unsplash=status('unsplash');
  const vecteezy=status('vecteezy'),r2=status('r2');
 
@@ -131,6 +140,28 @@ export default function ProviderSettings({
    <CredentialCard provider="openai" title="OpenAI API" description="Pesquisa, anatomia, crítica e roteiros." status={openai} value={openaiKey} onChange={setOpenaiKey} disabled={!ready} busy={busy} icon={<BrainCircuit size={20}/>} placeholder="sk-…" onSave={async()=>{if(await send({action:'saveSecret',provider:'openai',key:openaiKey},'openai-save'))setOpenaiKey('');}} onTest={()=>void send({action:'test',provider:'openai'},'openai-test')} onRemove={()=>void send({action:'removeSecret',provider:'openai'},'openai-remove')}/>
    <CredentialCard provider="youtube" title="YouTube Data API" description="Descoberta e estatísticas públicas dos canais." status={youtube} value={youtubeKey} onChange={setYoutubeKey} disabled={!ready} busy={busy} icon={<Play size={20}/>} placeholder="AIza…" onSave={async()=>{if(await send({action:'saveSecret',provider:'youtube',key:youtubeKey},'youtube-save'))setYoutubeKey('');}} onTest={()=>void send({action:'test',provider:'youtube'},'youtube-test')} onRemove={()=>void send({action:'removeSecret',provider:'youtube'},'youtube-remove')}/>
    <CredentialCard provider="elevenlabs" title="ElevenLabs" description="Narração e vozes do Voice Engine. Cole a chave secreta completa criada pela ElevenLabs; ela deve começar com sk_. Não use o API Key ID. Permissões mínimas: Text to Speech: Access + Voices: Read." status={elevenlabs} value={elevenlabsKey} onChange={setElevenlabsKey} disabled={!ready} busy={busy} icon={<Mic2 size={20}/>} placeholder="sk_…" minLength={8} onSave={async()=>{if(!elevenlabsKey.trim().startsWith('sk_')){onMessage('A chave da ElevenLabs precisa começar com sk_. O API Key ID não funciona como credencial.');return;}if(await send({action:'saveSecret',provider:'elevenlabs',key:elevenlabsKey},'elevenlabs-save'))setElevenlabsKey('');}} onTest={()=>void send({action:'test',provider:'elevenlabs'},'elevenlabs-test')} onRemove={()=>void send({action:'removeSecret',provider:'elevenlabs'},'elevenlabs-remove')}/>
+   <VoiceApiCard
+     status={voiceapi}
+     disabled={!ready}
+     busy={busy}
+     baseUrl={voiceApiBaseUrl}
+     apiKey={voiceApiKey}
+     authMode={voiceApiAuthMode}
+     onBaseUrl={setVoiceApiBaseUrl}
+     onApiKey={setVoiceApiKey}
+     onAuthMode={setVoiceApiAuthMode}
+     onSave={async()=>{
+       const ok=await send({
+         action:'saveVoiceApi',
+         baseUrl:voiceApiBaseUrl,
+         apiKey:voiceApiKey,
+         authMode:voiceApiAuthMode
+       },'voiceapi-save');
+       if(ok)setVoiceApiKey('');
+     }}
+     onTest={()=>void send({action:'test',provider:'voiceapi'},'voiceapi-test')}
+     onRemove={()=>void send({action:'removeSecret',provider:'voiceapi'},'voiceapi-remove')}
+   />
    <CredentialCard provider="googleai" title="Google AI" description="Nano Banana e Veo para o Asset Factory." status={googleai} value={googleAiKey} onChange={setGoogleAiKey} disabled={!ready} busy={busy} icon={<ImageIcon size={20}/>} placeholder="AIza…" onSave={async()=>{if(await send({action:'saveSecret',provider:'googleai',key:googleAiKey},'googleai-save'))setGoogleAiKey('');}} onTest={()=>void send({action:'test',provider:'googleai'},'googleai-test')} onRemove={()=>void send({action:'removeSecret',provider:'googleai'},'googleai-remove')}/>
 
    <CredentialCard provider="pexels" title="Pexels" description="Fotos e vídeos para o Stock Media Engine." status={pexels} value={pexelsKey} onChange={setPexelsKey} disabled={!ready} busy={busy} icon={<Images size={20}/>} placeholder="Pexels API key" onSave={async()=>{if(await send({action:'saveSecret',provider:'pexels',key:pexelsKey},'pexels-save'))setPexelsKey('');}} onTest={()=>void send({action:'test',provider:'pexels'},'pexels-test')} onRemove={()=>void send({action:'removeSecret',provider:'pexels'},'pexels-remove')}/>
@@ -235,7 +266,25 @@ function CredentialCard({
   <div className="credential-head"><span className={`integration-icon ${prefix}`}>{icon}</span><div><h3>{title}</h3><p>{description}</p></div><span className={`tag ${status.configured?'green':''}`}>{status.configured?(status.last4?`Chave salva · ••••${status.last4}`:'Chave salva'):'Pendente'}</span></div>
   <label>Chave privada<input type="password" autoComplete="new-password" spellCheck={false} placeholder={status.configured?'Cole uma nova chave para substituir':placeholder} value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}/></label>
   <p className="credential-note">{status.source==='vault'?'Cifrada no Supabase Vault. Use “Testar conexão” para validar acesso e quota.':status.source==='environment'?'Definida no ambiente de hospedagem. Use “Testar conexão” para validar acesso e quota.':'O valor nunca retorna para o navegador.'}</p>
-  <div className="credential-actions"><button className="button primary small" disabled={disabled||value.trim().length<minLength||!!busy} onClick={onSave}>{busy===`${prefix}-save`?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy===`${prefix}-test`?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label={`Remover chave ${title}`} disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
+  <div className="credential-actions"><button className="button primary small" disabled={disabled||value.trim().length<minLength||!!busy} onClick={onSave}>{busy===`${prefix}-save`?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy===`${prefix}-test`?'Testando…':'Testar conexão'}</button>{(status.source==='vault'||status.source==='local-encrypted-db')&&<button className="icon-button danger" aria-label={`Remover chave ${title}`} disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
+ </article>;
+}
+
+function VoiceApiCard({
+ status,disabled,busy,baseUrl,apiKey,authMode,onBaseUrl,onApiKey,onAuthMode,onSave,onTest,onRemove
+}:{
+ status:Status;disabled:boolean;busy:string;baseUrl:string;apiKey:string;authMode:'xi-api-key'|'bearer';
+ onBaseUrl:(value:string)=>void;onApiKey:(value:string)=>void;onAuthMode:(value:'xi-api-key'|'bearer')=>void;
+ onSave:()=>void;onTest:()=>void;onRemove:()=>void;
+}){
+ const complete=/^https:\/\//i.test(baseUrl.trim())&&apiKey.trim().length>=8;
+ return <article className="credential-card">
+  <div className="credential-head"><span className="integration-icon voiceapi"><Mic2 size={20}/></span><div><h3>Voice API externa</h3><p>Substituta de voz compatível com a API ElevenLabs. A chave e a Base URL ficam cifradas no cofre local.</p></div><span className={`tag ${status.configured?'green':''}`}>{status.configured?(status.last4?`Conectado · ••••${status.last4}`:'Conectado'):'Pendente'}</span></div>
+  <label>Base URL<input value={baseUrl} disabled={disabled} onChange={e=>onBaseUrl(e.target.value)} placeholder="https://api.seuprovedor.com"/></label>
+  <label>API Key<input type="password" autoComplete="new-password" spellCheck={false} value={apiKey} disabled={disabled} onChange={e=>onApiKey(e.target.value)} placeholder={status.configured?'Cole uma nova chave para substituir':'API key da provedora'}/></label>
+  <label>Autenticação<select value={authMode} disabled={disabled} onChange={e=>onAuthMode(e.target.value as 'xi-api-key'|'bearer')}><option value="xi-api-key">xi-api-key · compatível ElevenLabs</option><option value="bearer">Authorization: Bearer</option></select></label>
+  <p className="credential-note">A validação consulta apenas a lista de vozes. O teste não gera áudio nem consome créditos de TTS.</p>
+  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='voiceapi-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='voiceapi-test'?'Testando…':'Testar conexão'}</button>{(status.source==='vault'||status.source==='local-encrypted-db')&&<button className="icon-button danger" aria-label="Remover Voice API externa" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
  </article>;
 }
 
@@ -252,7 +301,7 @@ function VecteezyCard({
   <label>ID da conta<input inputMode="numeric" autoComplete="off" value={accountId} disabled={disabled} onChange={e=>onAccountId(e.target.value.replace(/\D/g,''))} placeholder={status.configured?'Preencha os dois campos para substituir':'ID numérico da conta Vecteezy'}/></label>
   <label>Chave Secreta<input type="password" autoComplete="new-password" spellCheck={false} value={secretKey} disabled={disabled} onChange={e=>onSecretKey(e.target.value)} placeholder="Vecteezy Secret Key"/></label>
   <p className="credential-note">A busca usa a API V2 oficial com filtro para conteúdo não gerado por IA. Downloads preservam licença e atribuição no Asset Vault.</p>
-  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='vecteezy-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='vecteezy-test'?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label="Remover Vecteezy" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
+  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='vecteezy-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='vecteezy-test'?'Testando…':'Testar conexão'}</button>{(status.source==='vault'||status.source==='local-encrypted-db')&&<button className="icon-button danger" aria-label="Remover Vecteezy" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
  </article>;
 }
 
@@ -274,6 +323,6 @@ function R2Card({
   <label>Bucket<input value={bucket} disabled={disabled} onChange={e=>onBucket(e.target.value)} placeholder="cacadores-media"/></label>
   <label>Public URL <small>opcional</small><input value={publicUrl} disabled={disabled} onChange={e=>onPublicUrl(e.target.value)} placeholder="https://media.seudominio.com"/></label>
   <p className="credential-note"><Cloud size={13}/> Mídia nova usa R2 quando esta conexão está ativa. Assets antigos do Supabase continuam legíveis pelo storage híbrido.</p>
-  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='r2-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='r2-test'?'Testando…':'Testar conexão'}</button>{status.source==='vault'&&<button className="icon-button danger" aria-label="Remover Cloudflare R2" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
+  <div className="credential-actions"><button className="button primary small" disabled={disabled||!complete||!!busy} onClick={onSave}>{busy==='r2-save'?'Validando…':'Validar e salvar'}</button><button className="button subtle small" disabled={disabled||!status.configured||!!busy} onClick={onTest}>{busy==='r2-test'?'Testando…':'Testar conexão'}</button>{(status.source==='vault'||status.source==='local-encrypted-db')&&<button className="icon-button danger" aria-label="Remover Cloudflare R2" disabled={!!busy} onClick={onRemove}><Trash2 size={17}/></button>}</div>
  </article>;
 }

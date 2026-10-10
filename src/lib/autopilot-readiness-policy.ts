@@ -7,6 +7,7 @@ export type AutopilotReadinessInput={
  providers:{
   openai:boolean;
   elevenlabs:boolean;
+  voiceapi?:boolean;
  };
  workers:{
   automation:boolean;
@@ -77,10 +78,12 @@ export function buildAutopilotReadiness(input:AutopilotReadinessInput):Autopilot
    'Configure AUTOMATION_WORKER_URL e AUTOMATION_WORKER_SECRET.'
   ),
   check(
-   'elevenlabs-provider','ElevenLabs','production','autonomous',
-   input.providers.elevenlabs,
-   'ElevenLabs configurada para geração automática de voz.',
-   'Configure a ElevenLabs para o modo Autonomous.'
+   'elevenlabs-provider','Voice Provider','production','autonomous',
+   input.providers.elevenlabs||Boolean(input.providers.voiceapi),
+   input.providers.voiceapi
+     ?'Voice API externa configurada para geração automática de voz.'
+     :'ElevenLabs configurada para geração automática de voz.',
+   'Configure ElevenLabs ou a Voice API externa para o modo Autonomous.'
   ),
   check(
    'youtube-oauth','YouTube OAuth','youtube','closed-loop',

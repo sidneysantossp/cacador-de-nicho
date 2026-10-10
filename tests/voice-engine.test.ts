@@ -122,8 +122,9 @@ test('Voice Engine surfaces only sanitized ElevenLabs 401 detail',()=>{
 test('Voice Engine can validate an exact ElevenLabs voice id without generating audio',()=>{
   const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
   const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
-  assert.match(route,/getElevenLabsVoice/);
+  assert.match(route,/getVoiceProviderVoice/);
   assert.match(route,/searchParams\.get\('voiceId'\)/);
+  assert.match(route,/searchParams\.get\('provider'\)/);
   assert.match(server,/\/v1\/voices\/'\+encodeURIComponent\(id\)/);
   assert.match(server,/não está disponível para a credencial atual/);
 });
@@ -144,4 +145,29 @@ test('Voice Engine can search ElevenLabs voices by name',()=>{
   const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
   assert.match(route,/searchParams\.get\('search'\)/);
   assert.match(server,/params\.set\('search',search\.trim\(\)\)/);
+});
+
+
+test('Voice Engine can generate through an external ElevenLabs-compatible API without changing the take pipeline',()=>{
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  const adapter=readFileSync(resolve(process.cwd(),'src/lib/server/compatible-voice-api.ts'),'utf8');
+  assert.match(route,/provider:z\.enum\(\['elevenlabs','voiceapi'\]\)/);
+  assert.match(route,/generateVoiceWithProvider/);
+  assert.match(server,/VoiceGenerationProvider='elevenlabs'\|'voiceapi'/);
+  assert.match(server,/generateVoiceProviderChunk/);
+  assert.match(server,/application\/octet-stream/);
+  assert.match(server,/audio_base64/);
+  assert.match(server,/reserveAsset\(script,'generated',provider/);
+  assert.match(adapter,/\/v2\/voices/);
+  assert.match(adapter,/\/v1\/voices/);
+});
+
+test('Episode Automation prefers the external voice provider when configured unless Production DNA explicitly asks for ElevenLabs',()=>{
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  const automation=readFileSync(resolve(process.cwd(),'src/lib/server/episode-automation.ts'),'utf8');
+  assert.match(server,/generatePreferredVoice/);
+  assert.match(server,/providerAvailable\('voiceapi'\)/);
+  assert.match(server,/includes\('elevenlabs'\)/);
+  assert.match(automation,/generatePreferredVoice/);
 });

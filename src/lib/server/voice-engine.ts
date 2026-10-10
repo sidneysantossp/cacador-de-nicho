@@ -11,7 +11,11 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { providerSecret } from './providers';
+import { providerAvailable, providerSecret } from './providers';
+import {
+  compatibleVoiceApiHeaders, compatibleVoiceApiUrl, listCompatibleVoiceApiVoices,
+  parseCompatibleVoiceApiConfig
+} from './compatible-voice-api';
 import {
   downloadMedia, downloadMediaToFile, headMedia, putMedia, r2StoragePath, removeMedia,
   signedMediaPutUrl, signedMediaUrl
@@ -39,6 +43,62 @@ type ElevenTtsResponse={
   alignment?:ElevenAlignment;
   normalized_alignment?:ElevenAlignment;
 };
+
+export type VoiceGenerationProvider='elevenlabs'|'voiceapi';
+
+type VoiceProviderRuntime={
+  provider:VoiceGenerationProvider;
+  baseUrl:string;
+  key:string;
+  authMode:'xi-api-key'|'bearer';
+};
+
+async function voiceProviderRuntime(provider:VoiceGenerationProvider):Promise<VoiceProviderRuntime>{
+  if(provider==='elevenlabs'){
+    return {
+      provider,
+      baseUrl:'https://api.elevenlabs.io',
+      key:await providerSecret('elevenlabs'),
+      authMode:'xi-api-key'
+    };
+  }
+  const config=parseCompatibleVoiceApiConfig(await providerSecret('voiceapi'));
+  return {
+    provider,
+    baseUrl:config.baseUrl,
+    key:config.apiKey,
+    authMode:config.authMode
+  };
+}
+
+function voiceProviderHeaders(runtime:VoiceProviderRuntime,json=false){
+  if(runtime.provider==='voiceapi'){
+    return compatibleVoiceApiHeaders({
+      baseUrl:runtime.baseUrl,
+      apiKey:runtime.key,
+      authMode:runtime.authMode
+    },json);
+  }
+  return {
+    'xi-api-key':runtime.key,
+    ...(json?{'Content-Type':'application/json'}:{})
+  };
+}
+
+function voiceProviderUrl(runtime:VoiceProviderRuntime,pathValue:string){
+  if(runtime.provider==='voiceapi'){
+    return compatibleVoiceApiUrl({
+      baseUrl:runtime.baseUrl,
+      apiKey:runtime.key,
+      authMode:runtime.authMode
+    },pathValue);
+  }
+  return runtime.baseUrl+(pathValue.startsWith('/')?pathValue:'/'+pathValue);
+}
+
+function voiceProviderLabel(provider:VoiceGenerationProvider){
+  return provider==='voiceapi'?'Voice API externa':'ElevenLabs';
+}
 
 export type ElevenVoiceOption={
   voiceId:string;
@@ -164,12 +224,18 @@ function normalizeVoiceListRow(row:{
 }
 
 function voiceChunkCacheKey(input:{
+  provider:VoiceGenerationProvider;endpointKey:string;
   voiceId:string;modelId:string;text:string;previousText:string;nextText:string;
 }){
   return createHash('sha256').update(JSON.stringify({
-    provider:'elevenlabs',
+    provider:input.provider,
+    endpointKey:input.endpointKey,
     outputFormat:'mp3_44100_128',
-    ...input
+    voiceId:input.voiceId,
+    modelId:input.modelId,
+    text:input.text,
+    previousText:input.previousText,
+    nextText:input.nextText
   }),'utf8').digest('hex');
 }
 
@@ -220,82 +286,129 @@ async function stitchMp3Files(files:string[],outputPath:string,root:string){
 
 function sleep(ms:number){return new Promise(resolve=>setTimeout(resolve,ms));}
 
-async function generateElevenLabsChunk(input:{
-  key:string;voiceId:string;modelId:string;text:string;previousText:string;nextText:string;
+async function parseVoiceProviderSuccess(
+  response:Response,
+  provider:VoiceGenerationProvider
+){
+  const contentType=(response.headers.get('content-type')??'').toLowerCase();
+  if(contentType.startsWith('audio/')||contentType.includes('application/octet-stream')){
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(!bytes.length)throw new HttpError('A '+voiceProviderLabel(provider)+' devolveu um trecho de áudio vazio.',502);
+    return {bytes,alignment:undefined as VoiceAlignment|undefined};
+  }
+
+  const raw=await response.text();
+  let body:Record<string,unknown>={};
+  try{body=JSON.parse(raw) as Record<string,unknown>;}
+  catch{throw new HttpError('A '+voiceProviderLabel(provider)+' respondeu sem áudio utilizável.',502);}
+
+  const nested=body.data&&typeof body.data==='object'?body.data as Record<string,unknown>:{};
+  const audioBase64=String(body.audio_base64??body.audio??nested.audio_base64??nested.audio??'').trim();
+  if(!audioBase64)throw new HttpError('A '+voiceProviderLabel(provider)+' não devolveu áudio para um trecho da narração.',502);
+  const bytes=Buffer.from(audioBase64,'base64');
+  if(!bytes.length)throw new HttpError('A '+voiceProviderLabel(provider)+' devolveu um trecho de áudio vazio.',502);
+  const alignment=normalizeAlignment(
+    (body.normalized_alignment??body.alignment??nested.normalized_alignment??nested.alignment) as ElevenAlignment|undefined
+  );
+  return {bytes,alignment};
+}
+
+async function generateVoiceProviderChunk(input:{
+  runtime:VoiceProviderRuntime;
+  voiceId:string;modelId:string;text:string;previousText:string;nextText:string;
 }){
+  const label=voiceProviderLabel(input.runtime.provider);
+  const encodedVoice=encodeURIComponent(input.voiceId);
+  const endpoints=[
+    '/v1/text-to-speech/'+encodedVoice+'/with-timestamps?output_format=mp3_44100_128',
+    '/v1/text-to-speech/'+encodedVoice+'?output_format=mp3_44100_128'
+  ];
   let lastStatus=0;
   let lastBody='';
-  for(let attempt=0;attempt<3;attempt++){
-    let response:Response;
-    try{
-      response=await fetch(
-        'https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(input.voiceId)+'/with-timestamps?output_format=mp3_44100_128',
-        {
+
+  for(let endpointIndex=0;endpointIndex<endpoints.length;endpointIndex++){
+    const endpoint=endpoints[endpointIndex];
+    for(let attempt=0;attempt<3;attempt++){
+      let response:Response;
+      try{
+        response=await fetch(voiceProviderUrl(input.runtime,endpoint),{
           method:'POST',
-          headers:{'xi-api-key':input.key,'Content-Type':'application/json'},
+          headers:voiceProviderHeaders(input.runtime,true),
           body:JSON.stringify({
             text:input.text,
             model_id:input.modelId,
-            previous_text:input.previousText||undefined,
-            next_text:input.nextText||undefined
+            previous_text:endpointIndex===0?(input.previousText||undefined):undefined,
+            next_text:endpointIndex===0?(input.nextText||undefined):undefined
           }),
           signal:AbortSignal.timeout(180000),
           cache:'no-store'
+        });
+      }catch{
+        if(attempt<2){await sleep(1000*(attempt+1));continue;}
+        throw new HttpError('A '+label+' excedeu o tempo de geração de um trecho da narração.',504);
+      }
+
+      if(response.ok){
+        const generated=await parseVoiceProviderSuccess(response,input.runtime.provider);
+        if(input.runtime.provider==='elevenlabs'&&endpointIndex===0&&!generated.alignment){
+          throw new HttpError('A ElevenLabs não devolveu timestamps válidos para um trecho da narração.',502);
         }
-      );
-    }catch{
-      if(attempt<2){await sleep(1000*(attempt+1));continue;}
-      throw new HttpError('A ElevenLabs excedeu o tempo de geração de um trecho da narração.',504);
-    }
-
-    if(response.ok){
-      const body=await response.json() as ElevenTtsResponse;
-      if(!body.audio_base64)throw new HttpError('A ElevenLabs não devolveu áudio para um trecho da narração.',502);
-      const bytes=Buffer.from(body.audio_base64,'base64');
-      if(!bytes.length)throw new HttpError('A ElevenLabs devolveu um trecho de áudio vazio.',502);
-      const alignment=normalizeAlignment(body.normalized_alignment??body.alignment);
-      if(!alignment)throw new HttpError('A ElevenLabs não devolveu timestamps válidos para um trecho da narração.',502);
-      return {bytes,alignment};
-    }
-
-    lastStatus=response.status;
-    lastBody=await response.text().catch(()=>'');
-    if(response.status===401){
-      let status='';
-      let message='';
-      try{
-        const parsed=JSON.parse(lastBody) as {detail?:{status?:unknown;message?:unknown}};
-        status=typeof parsed.detail?.status==='string'?parsed.detail.status:'';
-        message=typeof parsed.detail?.message==='string'?parsed.detail.message:'';
-      }catch{}
-      if(status==='missing_permissions'){
-        throw new HttpError('A chave ElevenLabs é válida, mas ainda não possui permissão Text to Speech.',422);
+        return generated;
       }
-      if(status==='invalid_api_key'){
-        throw new HttpError('A chave ElevenLabs usada pela plataforma foi invalidada, revogada ou expirou.',422);
+
+      lastStatus=response.status;
+      lastBody=await response.text().catch(()=>'');
+      if((response.status===404||response.status===405||response.status===501)&&endpointIndex===0)break;
+
+      if(response.status===401||response.status===403){
+        let status='';
+        let message='';
+        try{
+          const parsed=JSON.parse(lastBody) as {
+            detail?:{status?:unknown;message?:unknown};
+            error?:{status?:unknown;message?:unknown};
+          };
+          const detail=parsed.detail??parsed.error;
+          status=typeof detail?.status==='string'?detail.status:'';
+          message=typeof detail?.message==='string'?detail.message:'';
+        }catch{}
+        if(status==='missing_permissions'){
+          if(input.runtime.provider==='elevenlabs'){
+            throw new HttpError('A chave ElevenLabs é válida, mas ainda não possui permissão Text to Speech.',422);
+          }
+          throw new HttpError('A credencial da '+label+' não possui permissão de Text to Speech.',422);
+        }
+        if(status==='invalid_api_key'&&input.runtime.provider==='elevenlabs'){
+          throw new HttpError('A chave ElevenLabs usada pela plataforma foi invalidada, revogada ou expirou.',422);
+        }
+        const safeStatus=status.replace(/[^a-zA-Z0-9_.-]/g,'').slice(0,80);
+        const safeMessage=message.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,220);
+        throw new HttpError(
+          'A '+label+' recusou a autenticação do Text to Speech'+
+          (safeStatus?' ['+safeStatus+']':'')+
+          (safeMessage?': '+safeMessage:'')+'.',
+          422
+        );
       }
-      const safeStatus=status.replace(/[^a-zA-Z0-9_.-]/g,'').slice(0,80);
-      const safeMessage=message.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,220);
-      throw new HttpError(
-        'A ElevenLabs recusou a autenticação do Text to Speech'+
-        (safeStatus?' ['+safeStatus+']':'')+
-        (safeMessage?': '+safeMessage:'')+'.',
-        422
-      );
-    }
-    if(response.status===403){
-      throw new HttpError('A ElevenLabs bloqueou o Text to Speech por permissão ou restrição de IP.',422);
-    }
-    if(response.status===422)throw new HttpError('A ElevenLabs recusou a voz, o modelo ou um trecho do texto enviado.',422);
-    if(response.status!==429&&response.status<500)break;
-    if(attempt<2){
-      const retryAfter=Number(response.headers.get('retry-after')??0);
-      await sleep(Math.max(1000*(attempt+1),Number.isFinite(retryAfter)?retryAfter*1000:0));
+
+      if(response.status===422){
+        throw new HttpError('A '+label+' recusou a voz, o modelo ou um trecho do texto enviado.',422);
+      }
+      if(response.status!==429&&response.status<500)break;
+      if(attempt<2){
+        const retryAfter=Number(response.headers.get('retry-after')??0);
+        await sleep(Math.max(1000*(attempt+1),Number.isFinite(retryAfter)?retryAfter*1000:0));
+      }
     }
   }
 
-  if(lastStatus===429)throw new HttpError('A ElevenLabs atingiu o limite de uso ou créditos da conta.',429);
-  throw new HttpError('A ElevenLabs falhou ao gerar um trecho da narração'+(lastBody?' ('+lastBody.slice(0,180)+')':'')+'.',502);
+  if(lastStatus===429)throw new HttpError('A '+voiceProviderLabel(input.runtime.provider)+' atingiu o limite de uso ou créditos da conta.',429);
+  const safe=lastBody.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,180);
+  throw new HttpError(
+    'A '+voiceProviderLabel(input.runtime.provider)+' falhou ao gerar um trecho da narração'+
+    (safe?' ('+safe+')':'')+'.',
+    502
+  );
 }
 
 async function persistVoiceChunk(input:{
@@ -718,20 +831,44 @@ export async function listElevenLabsVoices(search=''):Promise<ElevenVoiceOption[
   })).filter(item=>!!item.voiceId);
 }
 
-export async function generateElevenLabsVoice(input:{
+export async function listVoiceProviderVoices(
+  provider:VoiceGenerationProvider,
+  search=''
+):Promise<ElevenVoiceOption[]>{
+  if(provider==='elevenlabs')return listElevenLabsVoices(search);
+  const config=parseCompatibleVoiceApiConfig(await providerSecret('voiceapi'));
+  return listCompatibleVoiceApiVoices(config,search);
+}
+
+export async function getVoiceProviderVoice(
+  provider:VoiceGenerationProvider,
+  voiceId:string
+):Promise<ElevenVoiceOption>{
+  if(provider==='elevenlabs')return getElevenLabsVoice(voiceId);
+  const id=voiceId.trim();
+  if(!id)throw new HttpError('Voice ID da Voice API externa inválido.',400);
+  const voices=await listVoiceProviderVoices('voiceapi',id);
+  const exact=voices.find(item=>item.voiceId===id)??voices[0];
+  if(!exact)throw new HttpError('Esta voz não está disponível na Voice API externa.',404);
+  return exact;
+}
+
+export async function generateVoiceWithProvider(input:{
   scriptId:string;
+  provider?:VoiceGenerationProvider;
   voiceId?:string;
   voiceName?:string;
   modelId?:string;
 }){
+  const provider=input.provider??'elevenlabs';
   const script=await approvedScript(input.scriptId);
   const dna=await loadProductionDna(script.channelId);
   const voiceId=(input.voiceId??dna?.voice.voiceId??'').trim();
-  if(!voiceId)throw new HttpError('Selecione uma voz ElevenLabs antes de gerar a narração.',400);
+  if(!voiceId)throw new HttpError('Selecione uma voz antes de gerar a narração.',400);
 
   const modelId=(input.modelId??'eleven_flash_v2_5').trim();
   const issues=voiceGenerationIssues(script.content.length,modelId);
-  if(issues.includes('unsupported-model'))throw new HttpError('Modelo ElevenLabs não suportado pelo Voice Engine.',400);
+  if(issues.includes('unsupported-model'))throw new HttpError('Modelo de voz não suportado pelo Voice Engine.',400);
   if(issues.includes('empty-script'))throw new HttpError('O roteiro aprovado está vazio.',409);
   if(issues.includes('text-too-long')){
     throw new HttpError(
@@ -744,7 +881,7 @@ export async function generateElevenLabsVoice(input:{
   const chunks=splitVoiceText(script.content,modelId);
   if(!chunks.length)throw new HttpError('Não foi possível dividir o roteiro para geração de voz.',409);
 
-  const key=await providerSecret('elevenlabs');
+  const runtime=await voiceProviderRuntime(provider);
   const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-voice-'));
   const files:string[]=[];
   const alignmentParts:Array<{alignment:VoiceAlignment;offsetSeconds:number}>=[];
@@ -754,6 +891,8 @@ export async function generateElevenLabsVoice(input:{
   try{
     for(const chunk of chunks){
       const cacheKey=voiceChunkCacheKey({
+        provider,
+        endpointKey:runtime.baseUrl,
         voiceId,
         modelId,
         text:chunk.text,
@@ -783,8 +922,8 @@ export async function generateElevenLabsVoice(input:{
       }
 
       if(!cacheHit){
-        const generated=await generateElevenLabsChunk({
-          key,
+        const generated=await generateVoiceProviderChunk({
+          runtime,
           voiceId,
           modelId,
           text:chunk.text,
@@ -850,11 +989,35 @@ export async function generateElevenLabsVoice(input:{
       generationChunks,
       alignment
     };
-    const reservation=await reserveAsset(script,'generated','elevenlabs','audio/mpeg',null,metadata);
+    const reservation=await reserveAsset(script,'generated',provider,'audio/mpeg',null,metadata);
     return persistAudio(script,reservation,bytes,'audio/mpeg',null,metadata);
   }finally{
     await rm(root,{recursive:true,force:true}).catch(()=>{});
   }
+}
+
+export async function generateElevenLabsVoice(input:{
+  scriptId:string;
+  voiceId?:string;
+  voiceName?:string;
+  modelId?:string;
+}){
+  return generateVoiceWithProvider({...input,provider:'elevenlabs'});
+}
+
+export async function generatePreferredVoice(input:{scriptId:string}){
+  const script=await approvedScript(input.scriptId);
+  const dna=await loadProductionDna(script.channelId);
+  const preferences=(dna?.voice.providerPreference??[]).map(item=>String(item).trim().toLowerCase());
+  let provider:VoiceGenerationProvider='elevenlabs';
+  if(preferences.some(item=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
+    provider='voiceapi';
+  }else if(preferences.some(item=>item.includes('elevenlabs'))){
+    provider='elevenlabs';
+  }else if(await providerAvailable('voiceapi')){
+    provider='voiceapi';
+  }
+  return generateVoiceWithProvider({scriptId:input.scriptId,provider});
 }
 
 export async function selectVoiceAsset(scriptId:string,assetId:string){

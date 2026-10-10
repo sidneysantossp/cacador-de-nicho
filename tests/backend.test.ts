@@ -61,6 +61,22 @@ test('ElevenLabs replacement key UI and validation use the same minimum and real
   assert.match(providers,/payment_issue/);
 });
 
+test('External Voice API stores base URL and key through the protected provider settings flow',()=>{
+  const ui=readFileSync(resolve(process.cwd(),'src/components/provider-settings.tsx'),'utf8');
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/provider-settings/route.ts'),'utf8');
+  const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
+  const adapter=readFileSync(resolve(process.cwd(),'src/lib/server/compatible-voice-api.ts'),'utf8');
+  assert.match(ui,/Voice API externa/);
+  assert.match(ui,/action:'saveVoiceApi'/);
+  assert.match(route,/saveCompatibleVoiceApiProviderConfig/);
+  assert.match(providers,/voiceapi:'voice_api_config'/);
+  assert.match(providers,/encryptSecret/);
+  assert.match(adapter,/https:/);
+  assert.match(adapter,/xi-api-key/);
+  assert.match(adapter,/Authorization='Bearer '/);
+  assert.match(adapter,/testCompatibleVoiceApiConfig/);
+});
+
 test('ElevenLabs key validation surfaces safe voice-list diagnostics',()=>{
   const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
   assert.match(providers,/page_size=10/);

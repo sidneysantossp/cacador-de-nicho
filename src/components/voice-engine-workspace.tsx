@@ -9,7 +9,8 @@ import type { EpisodeScriptListItem, ManagedChannel, VoiceAssetListItem } from '
 import { estimatedVoiceChunkCount } from '@/lib/voice-policy';
 
 type VoiceAssetView=VoiceAssetListItem;
-type ElevenVoice={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
+type VoiceProvider='elevenlabs'|'voiceapi';
+type VoiceOption={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
 
 function bytes(value:number){
   if(value<1024)return value+' B';
@@ -27,7 +28,8 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
   const [scripts,setScripts]=useState<EpisodeScriptListItem[]>([]);
   const [scriptId,setScriptId]=useState('');
   const [assets,setAssets]=useState<VoiceAssetView[]>([]);
-  const [voices,setVoices]=useState<ElevenVoice[]>([]);
+  const [voices,setVoices]=useState<VoiceOption[]>([]);
+  const [voiceProvider,setVoiceProvider]=useState<VoiceProvider>('elevenlabs');
   const [voiceId,setVoiceId]=useState('');
   const [voiceName,setVoiceName]=useState('');
   const [modelId,setModelId]=useState<'eleven_flash_v2_5'|'eleven_multilingual_v2'>('eleven_flash_v2_5');
@@ -59,12 +61,14 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
   async function loadInitial(){
     setLoading(true);setMessage('');
     try{
-      const [scriptsRes,dnaRes]=await Promise.all([
+      const [scriptsRes,dnaRes,providerRes]=await Promise.all([
         fetch('/api/script-engine?channelId='+encodeURIComponent(channel.id),{cache:'no-store'}),
-        fetch('/api/production-dna?channelId='+encodeURIComponent(channel.id),{cache:'no-store'})
+        fetch('/api/production-dna?channelId='+encodeURIComponent(channel.id),{cache:'no-store'}),
+        fetch('/api/provider-settings',{cache:'no-store'})
       ]);
       const scriptsBody=await scriptsRes.json().catch(()=>({}));
       const dnaBody=await dnaRes.json().catch(()=>({}));
+      const providerBody=await providerRes.json().catch(()=>({}));
       if(!scriptsRes.ok)throw new Error(scriptsBody.message??'Falha ao carregar roteiros.');
       const approved=(scriptsBody.scripts??[]).filter((item:EpisodeScriptListItem)=>item.status==='approved');
       setScripts(approved);
@@ -73,6 +77,17 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
       if(dnaRes.ok&&dnaBody.dna){
         setVoiceId(String(dnaBody.dna.voice?.voiceId??''));
         setVoiceName(String(dnaBody.dna.voice?.voiceName??''));
+        const preferences=(dnaBody.dna.voice?.providerPreference??[]).map((item:unknown)=>String(item).trim().toLowerCase());
+        if(preferences.some((item:string)=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
+          setVoiceProvider('voiceapi');
+        }else if(preferences.some((item:string)=>item.includes('elevenlabs'))){
+          setVoiceProvider('elevenlabs');
+        }else if(providerRes.ok){
+          const statuses=Array.isArray(providerBody.providers)?providerBody.providers:[];
+          const voiceApi=statuses.find((item:{provider?:string})=>item.provider==='voiceapi');
+          const eleven=statuses.find((item:{provider?:string})=>item.provider==='elevenlabs');
+          if(voiceApi?.configured&&!eleven?.configured)setVoiceProvider('voiceapi');
+        }
       }
       if(first)await loadAssets(first);
     }catch(error){setMessage(error instanceof Error?error.message:'Falha ao carregar Voice Engine.');}
@@ -84,15 +99,15 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
   async function loadVoices(){
     setBusy('voices');setVoicesError('');
     try{
-      const res=await fetch('/api/voice-engine?voices=elevenlabs',{cache:'no-store'});
+      const res=await fetch('/api/voice-engine?voices='+encodeURIComponent(voiceProvider),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
-      if(!res.ok)throw new Error(body.message??'Falha ao listar vozes ElevenLabs.');
+      if(!res.ok)throw new Error(body.message??'Falha ao listar vozes do provedor.');
       setVoices(body.voices??[]);
       if(!voiceId&&body.voices?.length){
         setVoiceId(body.voices[0].voiceId);
         setVoiceName(body.voices[0].name);
       }
-    }catch(error){setVoicesError(error instanceof Error?error.message:'Falha ao listar vozes ElevenLabs.');}
+    }catch(error){setVoicesError(error instanceof Error?error.message:'Falha ao listar vozes do provedor.');}
     finally{setBusy('');}
   }
 
@@ -103,7 +118,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
       const res=await fetch('/api/voice-engine',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'generate',scriptId,voiceId:voiceId.trim(),voiceName:voiceName.trim()||undefined,modelId})
+        body:JSON.stringify({action:'generate',scriptId,provider:voiceProvider,voiceId:voiceId.trim(),voiceName:voiceName.trim()||undefined,modelId})
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao gerar narração.');
@@ -167,8 +182,9 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
 
       <div className="voice-engine-two">
         <section className="voice-generator">
-          <div className="voice-section-head"><div><span>ELEVENLABS</span><h3>Gerar narração.</h3></div><WandSparkles size={21}/></div>
+          <div className="voice-section-head"><div><span>{voiceProvider==='voiceapi'?'VOICE API EXTERNA':'ELEVENLABS'}</span><h3>Gerar narração.</h3></div><WandSparkles size={21}/></div>
           <div className="voice-provider-row">
+            <label>Provedor<select value={voiceProvider} onChange={e=>{setVoiceProvider(e.target.value as VoiceProvider);setVoices([]);setVoicesError('');setVoiceName('');}}><option value="voiceapi">Voice API externa</option><option value="elevenlabs">ElevenLabs</option></select></label>
             <label>Modelo<select value={modelId} onChange={e=>setModelId(e.target.value as typeof modelId)}><option value="eleven_flash_v2_5">Flash v2.5 · 40k/chunk · long-form automático</option><option value="eleven_multilingual_v2">Multilingual v2 · 10k/chunk · long-form automático</option></select></label>
             <button className="button subtle small" disabled={busy==='voices'} onClick={()=>void loadVoices()}><RefreshCw size={14}/>{busy==='voices'?'Carregando…':'Carregar minhas vozes'}</button>
           </div>
@@ -180,7 +196,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
         </section>
 
         <section className="voice-upload">
-          <div className="voice-section-head"><div><span>EXTERNAL AUDIO</span><h3>Usar ElevenLabs ou outra ferramenta fora daqui.</h3></div><Upload size={21}/></div>
+          <div className="voice-section-head"><div><span>EXTERNAL AUDIO</span><h3>Usar qualquer ferramenta de voz fora daqui.</h3></div><Upload size={21}/></div>
           <p>Envie a narração pronta em MP3, WAV, M4A, OGG ou WebM. O arquivo fica privado e entra no mesmo fluxo dos áudios gerados internamente.</p>
           <label className="voice-file-picker"><FileAudio size={24}/><span>{file?file.name:'Selecionar áudio'}<small>{file?bytes(file.size):'até 100 MB'}</small></span><input id="voice-upload-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm" onChange={e=>setFile(e.target.files?.[0]??null)}/></label>
           <button className="button primary" disabled={!file||!!busy} onClick={()=>void upload()}><Upload size={15}/>{busy==='upload'?'Enviando…':'Salvar como novo take'}</button>

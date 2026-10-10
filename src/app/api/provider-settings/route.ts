@@ -5,17 +5,19 @@ import { modelSchema } from '@/lib/server/validation';
 import { modelOptions } from '@/lib/models';
 import {
   providerSecret, providerStatuses, removeProviderSecret, saveProviderSecret,
-  saveR2ProviderConfig, saveVecteezyProviderConfig, testProvider
+  saveCompatibleVoiceApiProviderConfig, saveR2ProviderConfig,
+  saveVecteezyProviderConfig, testProvider
 } from '@/lib/server/providers';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
-const provider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
+const provider=z.enum(['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
+const simpleProvider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash']);
 const schema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('saveSecret'),
-    provider,
+    provider:simpleProvider,
     key:z.string().trim().min(8).max(1000)
   }).strict().superRefine((value,ctx)=>{
     if(value.provider==='elevenlabs'&&!value.key.startsWith('sk_')){
@@ -38,6 +40,12 @@ const schema=z.discriminatedUnion('action',[
     action:z.literal('saveVecteezy'),
     accountId:z.string().trim().regex(/^\d+$/).max(50),
     secretKey:z.string().trim().min(8).max(1000)
+  }).strict(),
+  z.object({
+    action:z.literal('saveVoiceApi'),
+    baseUrl:z.string().trim().url().max(1000),
+    apiKey:z.string().trim().min(8).max(2000),
+    authMode:z.enum(['xi-api-key','bearer']).default('xi-api-key')
   }).strict(),
   z.object({action:z.literal('test'),provider}).strict(),
   z.object({action:z.literal('removeSecret'),provider}).strict(),
@@ -89,6 +97,15 @@ export async function POST(request:Request){
     if(body.action==='saveVecteezy'){
       await saveVecteezyProviderConfig({accountId:body.accountId,secretKey:body.secretKey});
       return Response.json({...await payload(),message:'Vecteezy validado e salvo no cofre.'});
+    }
+
+    if(body.action==='saveVoiceApi'){
+      await saveCompatibleVoiceApiProviderConfig({
+        baseUrl:body.baseUrl,
+        apiKey:body.apiKey,
+        authMode:body.authMode
+      });
+      return Response.json({...await payload(),message:'Voice API externa validada e salva no cofre.'});
     }
 
     if(body.action==='removeSecret'){

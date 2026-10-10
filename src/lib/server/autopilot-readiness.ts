@@ -60,7 +60,8 @@ export async function loadAutopilotReadiness(channelId:string):Promise<Autopilot
   hasProductionDna:Boolean(dna),
   providers:{
    openai:Boolean(providerMap.get('openai')),
-   elevenlabs:Boolean(providerMap.get('elevenlabs'))
+   elevenlabs:Boolean(providerMap.get('elevenlabs')),
+   voiceapi:Boolean(providerMap.get('voiceapi'))
   },
   workers:{
    automation:workerConfigured(

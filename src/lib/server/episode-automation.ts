@@ -11,7 +11,7 @@ import { loadContentProject, saveContentProject } from './content-os';
 import { contentResearchNeedsGeneration, generateContentResearchForProject } from './content-research-ai';
 import { loadProductionDna } from './production-dna';
 import { generateScriptForProject, loadEpisodeScript, saveEpisodeScript } from './episode-script';
-import { generateElevenLabsVoice, loadVoiceAsset } from './voice-engine';
+import { generatePreferredVoice, loadVoiceAsset } from './voice-engine';
 import {
   createTranscriptFromAlignment, loadTranscript, saveTranscript, transcribeWithScribe
 } from './transcription-engine';
@@ -1272,7 +1272,7 @@ async function executeAutomationTransition(
       if(!run.policy.autoGenerateVoice)throw new HttpError('Geração automática de voz está desativada.',409);
       const scriptId=automationStep(run,'script')?.entityId;
       if(!scriptId)throw new HttpError('Roteiro aprovado não identificado para Voice Engine.',409);
-      const asset=await generateElevenLabsVoice({scriptId});
+      const asset=await generatePreferredVoice({scriptId});
       return 'Narração gerada e selecionada: take '+asset.take+'.';
     }
 
