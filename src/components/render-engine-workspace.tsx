@@ -360,7 +360,7 @@ export default function RenderEngineWorkspace({channel}:{channel:ManagedChannel}
 
         <div className="render-job-details">
           <span>{job.payload.compilerVersion}</span>
-          <span>{job.payload.preset??'source'} · {job.payload.encoderPreset??(job.payload.preset==='draft-720p30'?'ultrafast':'medium')}</span>
+          <span>{job.payload.preset??'source'} · {job.payload.encoderPreset??(job.payload.preset==='draft-720p30'?'ultrafast':job.payload.preset==='hd-1080p30'?'veryfast':'medium')}</span>
           <span>CRF {job.payload.crf}</span>
           <span>AAC {job.payload.audioBitrateKbps} kbps</span>
           <span>{(job.payload.outputFormat??job.payload.manifest.format).width}×{(job.payload.outputFormat??job.payload.manifest.format).height}</span>
