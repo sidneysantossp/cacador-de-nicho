@@ -36,6 +36,7 @@ function includesAny(value:string,terms:string[]){
 
 export function inferYoutubeCategory(channel:Pick<ManagedChannel,'niche'|'format'>){
   const value=(channel.niche+' '+channel.format).toLowerCase();
+  if(includesAny(value,['automotive','car','vehicle','mechanic','battery','alternator','tyre','tire','motor']))return '2';
   if(includesAny(value,['music','song','guitar','piano','viola','musical']))return '10';
   if(includesAny(value,['pet','animal','dog','cat','wildlife','bird','fish']))return '15';
   if(includesAny(value,['sport','football','soccer','basketball','tennis','fitness']))return '17';
