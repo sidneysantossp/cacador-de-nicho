@@ -61,3 +61,28 @@ test('authenticated dashboard background refresh is visibility-gated and no fast
   assert.match(dashboard,/300000/);
   assert.doesNotMatch(dashboard,/setInterval\(\(\)=>void refresh\(\),30000\)/);
 });
+
+
+test('production deploy consumes an immutable GitHub-built image instead of building on the VPS',()=>{
+  const promote=read('ops/self-hosted/bin/cacadores-promote');
+  const workflow=read('.github/workflows/deploy-image.yml');
+  assert.doesNotMatch(promote,/docker build/);
+  assert.match(promote,/releases\/download\/\$DEPLOY_TAG/);
+  assert.match(promote,/sha256sum -c/);
+  assert.match(promote,/docker load/);
+  assert.match(promote,/MIN_FREE_KB/);
+  assert.match(workflow,/docker build --pull=false/);
+  assert.match(workflow,/docker save/);
+  assert.match(workflow,/gh release create/);
+  assert.match(workflow,/sha256sum/);
+});
+
+test('auto deploy waits for the GitHub image artifact before recording an attempt',()=>{
+  const auto=read('ops/self-hosted/bin/cacadores-auto-deploy');
+  const artifactCheck=auto.indexOf('deploy artifact not ready');
+  const attemptWrite=auto.indexOf("lastAttemptedSha':sha");
+  assert.ok(artifactCheck>=0);
+  assert.ok(attemptWrite>artifactCheck);
+  assert.match(auto,/curl -fsSIL/);
+  assert.match(auto,/releases\/download\/\$DEPLOY_TAG/);
+});
