@@ -183,7 +183,7 @@ test('Algrow provider uses the official async REST generation contract and inges
   assert.match(adapter,/\/api\/job-status\//);
   assert.match(adapter,/generate_srt/);
   assert.match(adapter,/audio\.algrow\.online/);
-  assert.match(adapter,/status==='completed'/);
+  assert.match(adapter,/state==='completed'/);
   assert.match(server,/generateAlgrowTts/);
   assert.match(server,/algrowTranscriptUrl/);
   assert.match(server,/reserveAsset\(script,'generated','algrow'/);
