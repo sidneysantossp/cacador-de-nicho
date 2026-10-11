@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { db, dbConfigured, checked, databaseMode } from './db';
 import { HttpError } from './auth';
+import { testAlgrowApiKey } from './algrow-voice';
 import {
   parseR2Config, r2ConfigFromEnv, serializeR2Config, testR2Config, type R2Config
 } from './r2';
@@ -19,13 +20,14 @@ import {
 } from './compatible-voice-api';
 
 export type Provider=
-  'openai'|'youtube'|'elevenlabs'|'voiceapi'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
+  'openai'|'youtube'|'elevenlabs'|'voiceapi'|'algrow'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 
 const names:Record<Provider,string>={
   openai:'openai_api_key',
   youtube:'youtube_api_key',
   elevenlabs:'elevenlabs_api_key',
   voiceapi:'voice_api_config',
+  algrow:'algrow_api_key',
   googleai:'google_ai_api_key',
   pexels:'pexels_api_key',
   pixabay:'pixabay_api_key',
@@ -42,6 +44,7 @@ function envValue(provider:Provider){
     const config=compatibleVoiceApiFromEnv();
     return config?serializeCompatibleVoiceApiConfig(config):undefined;
   }
+  if(provider==='algrow')return process.env.ALGROW_API_KEY;
   if(provider==='googleai')return process.env.GOOGLE_AI_API_KEY;
   if(provider==='pexels')return process.env.PEXELS_API_KEY;
   if(provider==='pixabay')return process.env.PIXABAY_API_KEY;
@@ -59,6 +62,7 @@ function label(provider:Provider){
   if(provider==='youtube')return 'YouTube Data API';
   if(provider==='elevenlabs')return 'ElevenLabs';
   if(provider==='voiceapi')return 'Voice API externa';
+  if(provider==='algrow')return 'Algrow TTS';
   if(provider==='googleai')return 'Google AI';
   if(provider==='pexels')return 'Pexels';
   if(provider==='pixabay')return 'Pixabay';
@@ -224,7 +228,7 @@ export async function providerStatuses(){
     if(result.error)throw new HttpError('O cofre de credenciais ainda não foi instalado. Aplique o schema atualizado.',503);
     if(Array.isArray(result.data))rows.push(...result.data);
   }
-  return (['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2'] as Provider[]).map(provider=>{
+  return (['openai','youtube','elevenlabs','voiceapi','algrow','googleai','pexels','pixabay','unsplash','vecteezy','r2'] as Provider[]).map(provider=>{
     const name=names[provider];
     const row=rows.find(item=>item.secret_name===name);
     const fallback=envValue(provider);
@@ -310,6 +314,10 @@ export async function testProvider(provider:Provider,key:string,model='gpt-5.6-t
   }
   if(provider==='voiceapi'){
     await testCompatibleVoiceApiConfig(parseCompatibleVoiceApiConfig(key));
+    return;
+  }
+  if(provider==='algrow'){
+    await testAlgrowApiKey(key);
     return;
   }
   if(provider==='googleai'){

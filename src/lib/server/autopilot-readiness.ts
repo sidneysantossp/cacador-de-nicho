@@ -61,7 +61,8 @@ export async function loadAutopilotReadiness(channelId:string):Promise<Autopilot
   providers:{
    openai:Boolean(providerMap.get('openai')),
    elevenlabs:Boolean(providerMap.get('elevenlabs')),
-   voiceapi:Boolean(providerMap.get('voiceapi'))
+   voiceapi:Boolean(providerMap.get('voiceapi')),
+   algrow:Boolean(providerMap.get('algrow'))
   },
   workers:{
    automation:workerConfigured(

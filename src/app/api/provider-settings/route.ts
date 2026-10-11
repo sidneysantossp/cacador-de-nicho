@@ -12,8 +12,8 @@ import {
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
-const provider=z.enum(['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
-const simpleProvider=z.enum(['openai','youtube','elevenlabs','googleai','pexels','pixabay','unsplash']);
+const provider=z.enum(['openai','youtube','elevenlabs','voiceapi','algrow','googleai','pexels','pixabay','unsplash','vecteezy','r2']);
+const simpleProvider=z.enum(['openai','youtube','elevenlabs','algrow','googleai','pexels','pixabay','unsplash']);
 const schema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('saveSecret'),

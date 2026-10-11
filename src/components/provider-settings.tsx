@@ -7,7 +7,7 @@ import {
 import { modelOptions as fallbackModels } from '@/lib/models';
 import { defaultSettings } from '@/lib/types';
 
-type Provider='openai'|'youtube'|'elevenlabs'|'voiceapi'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
+type Provider='openai'|'youtube'|'elevenlabs'|'voiceapi'|'algrow'|'googleai'|'pexels'|'pixabay'|'unsplash'|'vecteezy'|'r2';
 type Status={
  provider:Provider;configured:boolean;source:'vault'|'local-encrypted-db'|'environment'|null;last4:string|null;
  baseUrl?:string;authMode?:'xi-api-key'|'bearer';
@@ -26,7 +26,7 @@ export default function ProviderSettings({
   onMessage:(message:string)=>void;
 }){
  const [providers,setProviders]=useState<Status[]>(()=>
-   ['openai','youtube','elevenlabs','voiceapi','googleai','pexels','pixabay','unsplash','vecteezy','r2'].map(provider=>{
+   ['openai','youtube','elevenlabs','voiceapi','algrow','googleai','pexels','pixabay','unsplash','vecteezy','r2'].map(provider=>{
      const env=provider==='openai'?environmentProviders.openai:provider==='youtube'?environmentProviders.youtube:false;
      return {provider:provider as Provider,configured:env,source:env?'environment':null,last4:null};
    })
@@ -40,6 +40,7 @@ export default function ProviderSettings({
  const [voiceApiBaseUrl,setVoiceApiBaseUrl]=useState('');
  const [voiceApiKey,setVoiceApiKey]=useState('');
  const [voiceApiAuthMode,setVoiceApiAuthMode]=useState<'xi-api-key'|'bearer'>('xi-api-key');
+ const [algrowKey,setAlgrowKey]=useState('');
  const [googleAiKey,setGoogleAiKey]=useState('');
  const [pexelsKey,setPexelsKey]=useState('');
  const [pixabayKey,setPixabayKey]=useState('');
@@ -114,7 +115,7 @@ export default function ProviderSettings({
 
  const ready=authenticated&&supabaseConfigured;
  const status=(provider:Provider)=>providers.find(x=>x.provider===provider)??{provider,configured:false,source:null,last4:null};
- const openai=status('openai'),youtube=status('youtube'),elevenlabs=status('elevenlabs'),voiceapi=status('voiceapi'),googleai=status('googleai');
+ const openai=status('openai'),youtube=status('youtube'),elevenlabs=status('elevenlabs'),voiceapi=status('voiceapi'),algrow=status('algrow'),googleai=status('googleai');
  const pexels=status('pexels'),pixabay=status('pixabay'),unsplash=status('unsplash');
  const vecteezy=status('vecteezy'),r2=status('r2');
 
@@ -162,6 +163,7 @@ export default function ProviderSettings({
      onTest={()=>void send({action:'test',provider:'voiceapi'},'voiceapi-test')}
      onRemove={()=>void send({action:'removeSecret',provider:'voiceapi'},'voiceapi-remove')}
    />
+   <CredentialCard provider="algrow" title="Algrow TTS" description="Geração de voz via API oficial Algrow. Suporta ElevenLabs, Stealth e MiniMax por uma única chave Bearer." status={algrow} value={algrowKey} onChange={setAlgrowKey} disabled={!ready} busy={busy} icon={<Mic2 size={20}/>} placeholder="Algrow API key" minLength={8} onSave={async()=>{if(await send({action:'saveSecret',provider:'algrow',key:algrowKey},'algrow-save'))setAlgrowKey('');}} onTest={()=>void send({action:'test',provider:'algrow'},'algrow-test')} onRemove={()=>void send({action:'removeSecret',provider:'algrow'},'algrow-remove')}/>
    <CredentialCard provider="googleai" title="Google AI" description="Nano Banana e Veo para o Asset Factory." status={googleai} value={googleAiKey} onChange={setGoogleAiKey} disabled={!ready} busy={busy} icon={<ImageIcon size={20}/>} placeholder="AIza…" onSave={async()=>{if(await send({action:'saveSecret',provider:'googleai',key:googleAiKey},'googleai-save'))setGoogleAiKey('');}} onTest={()=>void send({action:'test',provider:'googleai'},'googleai-test')} onRemove={()=>void send({action:'removeSecret',provider:'googleai'},'googleai-remove')}/>
 
    <CredentialCard provider="pexels" title="Pexels" description="Fotos e vídeos para o Stock Media Engine." status={pexels} value={pexelsKey} onChange={setPexelsKey} disabled={!ready} busy={busy} icon={<Images size={20}/>} placeholder="Pexels API key" onSave={async()=>{if(await send({action:'saveSecret',provider:'pexels',key:pexelsKey},'pexels-save'))setPexelsKey('');}} onTest={()=>void send({action:'test',provider:'pexels'},'pexels-test')} onRemove={()=>void send({action:'removeSecret',provider:'pexels'},'pexels-remove')}/>

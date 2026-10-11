@@ -27,10 +27,11 @@ const jsonSchema=z.discriminatedUnion('action',[
   z.object({
     action:z.literal('generate'),
     scriptId:z.string().uuid(),
-    provider:z.enum(['elevenlabs','voiceapi']).optional(),
+    provider:z.enum(['elevenlabs','voiceapi','algrow']).optional(),
     voiceId:z.string().trim().min(1).max(200).optional(),
     voiceName:z.string().trim().max(250).optional(),
-    modelId:z.enum(['eleven_flash_v2_5','eleven_multilingual_v2']).optional()
+    modelId:z.enum(['eleven_flash_v2_5','eleven_multilingual_v2']).optional(),
+    algrowProvider:z.enum(['elevenlabs','stealth','minimax']).optional()
   }).strict(),
   z.object({
     action:z.literal('select'),
@@ -55,11 +56,14 @@ export async function GET(request:Request){
     if(!dbConfigured())throw new HttpError('Configure o Supabase para usar Voice Engine.',503);
     const url=new URL(request.url);
     const voiceProvider=url.searchParams.get('voices');
-    if(voiceProvider==='elevenlabs'||voiceProvider==='voiceapi'){
+    if(voiceProvider==='elevenlabs'||voiceProvider==='voiceapi'||voiceProvider==='algrow'){
       const search=url.searchParams.get('search')?.trim()??'';
+      const algrowProvider=url.searchParams.get('algrowProvider');
+      const engine=algrowProvider==='stealth'?'stealth':algrowProvider==='minimax'?'minimax':'elevenlabs';
       return Response.json({
         provider:voiceProvider,
-        voices:await listVoiceProviderVoices(voiceProvider,search)
+        algrowProvider:voiceProvider==='algrow'?engine:undefined,
+        voices:await listVoiceProviderVoices(voiceProvider,search,engine)
       },{headers:{'Cache-Control':'no-store'}});
     }
     const discoverVoiceId=url.searchParams.get('discoverVoiceId')?.trim();
@@ -68,10 +72,14 @@ export async function GET(request:Request){
     }
     const voiceId=url.searchParams.get('voiceId')?.trim();
     if(voiceId){
-      const provider=url.searchParams.get('provider')==='voiceapi'?'voiceapi':'elevenlabs';
+      const requested=url.searchParams.get('provider');
+      const provider=requested==='voiceapi'||requested==='algrow'?requested:'elevenlabs';
+      const algrowProvider=url.searchParams.get('algrowProvider');
+      const engine=algrowProvider==='stealth'?'stealth':algrowProvider==='minimax'?'minimax':'elevenlabs';
       return Response.json({
         provider,
-        voice:await getVoiceProviderVoice(provider,voiceId)
+        algrowProvider:provider==='algrow'?engine:undefined,
+        voice:await getVoiceProviderVoice(provider,voiceId,engine)
       },{headers:{'Cache-Control':'no-store'}});
     }
     const scriptId=url.searchParams.get('scriptId')?.trim();
