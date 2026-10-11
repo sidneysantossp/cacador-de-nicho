@@ -396,3 +396,29 @@ test('External Voice API satisfies the autonomous voice-provider prerequisite',(
   assert.equal(result.productionAutonomousReady,true);
   assert.ok(result.checks.some(check=>check.code==='elevenlabs-provider'&&check.status==='pass'));
 });
+
+test('Algrow satisfies the autonomous voice-provider prerequisite',()=>{
+  const input={
+    channelId:'11111111-1111-4111-8111-111111111111',
+    hasBrain:true,
+    hasProductionDna:true,
+    providers:{openai:true,elevenlabs:false,voiceapi:false,algrow:true},
+    workers:{automation:true,learningLoop:true},
+    youtube:{
+      oauthConfigured:true,connected:true,
+      scopes:[
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/yt-analytics.readonly'
+      ]
+    },
+    operations:{
+      automaticAcceptanceInLast24Hours:false,
+      activeEpisodeAutomation:false,
+      activeLearningLoop:false
+    }
+  };
+  const result=buildAutopilotReadiness(input);
+  assert.equal(result.productionAutonomousReady,true);
+  assert.ok(result.checks.some(check=>check.code==='elevenlabs-provider'&&check.status==='pass'));
+});

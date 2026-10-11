@@ -152,9 +152,9 @@ test('Voice Engine can generate through an external ElevenLabs-compatible API wi
   const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
   const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
   const adapter=readFileSync(resolve(process.cwd(),'src/lib/server/compatible-voice-api.ts'),'utf8');
-  assert.match(route,/provider:z\.enum\(\['elevenlabs','voiceapi'\]\)/);
+  assert.match(route,/provider:z\.enum\(\['elevenlabs','voiceapi','algrow'\]\)/);
   assert.match(route,/generateVoiceWithProvider/);
-  assert.match(server,/VoiceGenerationProvider='elevenlabs'\|'voiceapi'/);
+  assert.match(server,/VoiceGenerationProvider='elevenlabs'\|'voiceapi'\|'algrow'/);
   assert.match(server,/generateVoiceProviderChunk/);
   assert.match(server,/application\/octet-stream/);
   assert.match(server,/audio_base64/);
@@ -170,4 +170,32 @@ test('Episode Automation prefers the external voice provider when configured unl
   assert.match(server,/providerAvailable\('voiceapi'\)/);
   assert.match(server,/includes\('elevenlabs'\)/);
   assert.match(automation,/generatePreferredVoice/);
+});
+
+
+test('Algrow provider uses the official async REST generation contract and ingests the permanent audio',()=>{
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/voice-engine/route.ts'),'utf8');
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  const adapter=readFileSync(resolve(process.cwd(),'src/lib/server/algrow-voice.ts'),'utf8');
+  const ui=readFileSync(resolve(process.cwd(),'src/components/voice-engine-workspace.tsx'),'utf8');
+  assert.match(route,/algrowProvider:z\.enum\(\['elevenlabs','stealth','minimax'\]\)/);
+  assert.match(adapter,/\/api\/generate-simple/);
+  assert.match(adapter,/\/api\/job-status\//);
+  assert.match(adapter,/generate_srt/);
+  assert.match(adapter,/audio\.algrow\.online/);
+  assert.match(adapter,/state==='completed'/);
+  assert.match(server,/generateAlgrowTts/);
+  assert.match(server,/algrowTranscriptUrl/);
+  assert.match(server,/reserveAsset\(script,'generated','algrow'/);
+  assert.match(ui,/Algrow · ElevenLabs/);
+  assert.match(ui,/Algrow · Stealth/);
+  assert.match(ui,/Algrow · MiniMax/);
+});
+
+test('Episode Automation can prefer Algrow without removing the existing voice providers',()=>{
+  const server=readFileSync(resolve(process.cwd(),'src/lib/server/voice-engine.ts'),'utf8');
+  assert.match(server,/item==='algrow'/);
+  assert.match(server,/providerAvailable\('algrow'\)/);
+  assert.match(server,/providerAvailable\('voiceapi'\)/);
+  assert.match(server,/includes\('elevenlabs'\)/);
 });

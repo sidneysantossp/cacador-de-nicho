@@ -17,6 +17,9 @@ import {
   parseCompatibleVoiceApiConfig
 } from './compatible-voice-api';
 import {
+  generateAlgrowTts, listAlgrowVoices, type AlgrowTtsProvider
+} from './algrow-voice';
+import {
   downloadMedia, downloadMediaToFile, headMedia, putMedia, r2StoragePath, removeMedia,
   signedMediaPutUrl, signedMediaUrl
 } from './media-storage';
@@ -44,16 +47,17 @@ type ElevenTtsResponse={
   normalized_alignment?:ElevenAlignment;
 };
 
-export type VoiceGenerationProvider='elevenlabs'|'voiceapi';
+export type VoiceGenerationProvider='elevenlabs'|'voiceapi'|'algrow';
+type DirectVoiceGenerationProvider=Exclude<VoiceGenerationProvider,'algrow'>;
 
 type VoiceProviderRuntime={
-  provider:VoiceGenerationProvider;
+  provider:DirectVoiceGenerationProvider;
   baseUrl:string;
   key:string;
   authMode:'xi-api-key'|'bearer';
 };
 
-async function voiceProviderRuntime(provider:VoiceGenerationProvider):Promise<VoiceProviderRuntime>{
+async function voiceProviderRuntime(provider:DirectVoiceGenerationProvider):Promise<VoiceProviderRuntime>{
   if(provider==='elevenlabs'){
     return {
       provider,
@@ -97,6 +101,7 @@ function voiceProviderUrl(runtime:VoiceProviderRuntime,pathValue:string){
 }
 
 function voiceProviderLabel(provider:VoiceGenerationProvider){
+  if(provider==='algrow')return 'Algrow';
   return provider==='voiceapi'?'Voice API externa':'ElevenLabs';
 }
 
@@ -224,7 +229,7 @@ function normalizeVoiceListRow(row:{
 }
 
 function voiceChunkCacheKey(input:{
-  provider:VoiceGenerationProvider;endpointKey:string;
+  provider:DirectVoiceGenerationProvider;endpointKey:string;
   voiceId:string;modelId:string;text:string;previousText:string;nextText:string;
 }){
   return createHash('sha256').update(JSON.stringify({
@@ -833,23 +838,28 @@ export async function listElevenLabsVoices(search=''):Promise<ElevenVoiceOption[
 
 export async function listVoiceProviderVoices(
   provider:VoiceGenerationProvider,
-  search=''
+  search='',
+  algrowProvider:AlgrowTtsProvider='elevenlabs'
 ):Promise<ElevenVoiceOption[]>{
   if(provider==='elevenlabs')return listElevenLabsVoices(search);
+  if(provider==='algrow'){
+    return listAlgrowVoices(await providerSecret('algrow'),algrowProvider,search);
+  }
   const config=parseCompatibleVoiceApiConfig(await providerSecret('voiceapi'));
   return listCompatibleVoiceApiVoices(config,search);
 }
 
 export async function getVoiceProviderVoice(
   provider:VoiceGenerationProvider,
-  voiceId:string
+  voiceId:string,
+  algrowProvider:AlgrowTtsProvider='elevenlabs'
 ):Promise<ElevenVoiceOption>{
   if(provider==='elevenlabs')return getElevenLabsVoice(voiceId);
   const id=voiceId.trim();
-  if(!id)throw new HttpError('Voice ID da Voice API externa inválido.',400);
-  const voices=await listVoiceProviderVoices('voiceapi',id);
+  if(!id)throw new HttpError('Voice ID inválido.',400);
+  const voices=await listVoiceProviderVoices(provider,id,algrowProvider);
   const exact=voices.find(item=>item.voiceId===id)??voices[0];
-  if(!exact)throw new HttpError('Esta voz não está disponível na Voice API externa.',404);
+  if(!exact)throw new HttpError('Esta voz não está disponível no provedor selecionado.',404);
   return exact;
 }
 
@@ -859,6 +869,7 @@ export async function generateVoiceWithProvider(input:{
   voiceId?:string;
   voiceName?:string;
   modelId?:string;
+  algrowProvider?:AlgrowTtsProvider;
 }){
   const provider=input.provider??'elevenlabs';
   const script=await approvedScript(input.scriptId);
@@ -867,6 +878,50 @@ export async function generateVoiceWithProvider(input:{
   if(!voiceId)throw new HttpError('Selecione uma voz antes de gerar a narração.',400);
 
   const modelId=(input.modelId??'eleven_flash_v2_5').trim();
+
+  if(provider==='algrow'){
+    if(!script.content.trim())throw new HttpError('O roteiro aprovado está vazio.',409);
+    if(script.content.length>200000)throw new HttpError('O roteiro excede o limite máximo de 200.000 caracteres da integração Algrow.',413);
+    const algrowProvider=input.algrowProvider??'elevenlabs';
+    const generated=await generateAlgrowTts({
+      apiKey:await providerSecret('algrow'),
+      script:script.content,
+      voiceId,
+      provider:algrowProvider,
+      modelId:algrowProvider==='elevenlabs'?modelId:undefined
+    });
+    if(generated.bytes.length>MAX_AUDIO_BYTES)throw new HttpError('O áudio final excede o limite de 100 MB.',413);
+    const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-algrow-'));
+    try{
+      const filePath=path.join(root,'algrow.'+extensionForMime(generated.mimeType));
+      await writeFile(filePath,generated.bytes);
+      const finalDuration=await audioDuration(filePath);
+      const metadata={
+        scriptVersion:script.version,
+        scriptWordCount:script.wordCount,
+        textHash:textHash(script.content),
+        modelId:algrowProvider==='elevenlabs'?modelId:undefined,
+        voiceId,
+        voiceName:(input.voiceName??dna?.voice.voiceName??'').trim()||undefined,
+        durationSeconds:finalDuration===null?null:Number(finalDuration.toFixed(6)),
+        characterCount:script.content.length,
+        generationChunks:[{
+          index:0,
+          characterCount:script.content.length,
+          durationSeconds:finalDuration===null?0:Number(finalDuration.toFixed(6)),
+          cacheHit:false
+        }],
+        algrowProvider,
+        algrowJobId:generated.jobId,
+        algrowAudioUrl:generated.audioUrl,
+        algrowTranscriptUrl:generated.transcriptUrl
+      };
+      const reservation=await reserveAsset(script,'generated','algrow',generated.mimeType,null,metadata);
+      return persistAudio(script,reservation,generated.bytes,generated.mimeType,null,metadata);
+    }finally{
+      await rm(root,{recursive:true,force:true}).catch(()=>{});
+    }
+  }
   const issues=voiceGenerationIssues(script.content.length,modelId);
   if(issues.includes('unsupported-model'))throw new HttpError('Modelo de voz não suportado pelo Voice Engine.',400);
   if(issues.includes('empty-script'))throw new HttpError('O roteiro aprovado está vazio.',409);
@@ -881,7 +936,7 @@ export async function generateVoiceWithProvider(input:{
   const chunks=splitVoiceText(script.content,modelId);
   if(!chunks.length)throw new HttpError('Não foi possível dividir o roteiro para geração de voz.',409);
 
-  const runtime=await voiceProviderRuntime(provider);
+  const runtime=await voiceProviderRuntime(provider as DirectVoiceGenerationProvider);
   const root=await mkdtemp(path.join(os.tmpdir(),'cacadores-voice-'));
   const files:string[]=[];
   const alignmentParts:Array<{alignment:VoiceAlignment;offsetSeconds:number}>=[];
@@ -1010,10 +1065,14 @@ export async function generatePreferredVoice(input:{scriptId:string}){
   const dna=await loadProductionDna(script.channelId);
   const preferences=(dna?.voice.providerPreference??[]).map(item=>String(item).trim().toLowerCase());
   let provider:VoiceGenerationProvider='elevenlabs';
-  if(preferences.some(item=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
+  if(preferences.some(item=>item==='algrow'||item.includes('algrow'))){
+    provider='algrow';
+  }else if(preferences.some(item=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
     provider='voiceapi';
   }else if(preferences.some(item=>item.includes('elevenlabs'))){
     provider='elevenlabs';
+  }else if(await providerAvailable('algrow')){
+    provider='algrow';
   }else if(await providerAvailable('voiceapi')){
     provider='voiceapi';
   }

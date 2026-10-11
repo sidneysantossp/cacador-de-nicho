@@ -9,7 +9,8 @@ import type { EpisodeScriptListItem, ManagedChannel, VoiceAssetListItem } from '
 import { estimatedVoiceChunkCount } from '@/lib/voice-policy';
 
 type VoiceAssetView=VoiceAssetListItem;
-type VoiceProvider='elevenlabs'|'voiceapi';
+type VoiceProvider='elevenlabs'|'voiceapi'|'algrow';
+type AlgrowProvider='elevenlabs'|'stealth'|'minimax';
 type VoiceOption={voiceId:string;name:string;category:string;description:string;previewUrl:string;labels:Record<string,string>};
 
 function bytes(value:number){
@@ -30,6 +31,7 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
   const [assets,setAssets]=useState<VoiceAssetView[]>([]);
   const [voices,setVoices]=useState<VoiceOption[]>([]);
   const [voiceProvider,setVoiceProvider]=useState<VoiceProvider>('elevenlabs');
+  const [algrowProvider,setAlgrowProvider]=useState<AlgrowProvider>('elevenlabs');
   const [voiceId,setVoiceId]=useState('');
   const [voiceName,setVoiceName]=useState('');
   const [modelId,setModelId]=useState<'eleven_flash_v2_5'|'eleven_multilingual_v2'>('eleven_flash_v2_5');
@@ -78,15 +80,19 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
         setVoiceId(String(dnaBody.dna.voice?.voiceId??''));
         setVoiceName(String(dnaBody.dna.voice?.voiceName??''));
         const preferences=(dnaBody.dna.voice?.providerPreference??[]).map((item:unknown)=>String(item).trim().toLowerCase());
-        if(preferences.some((item:string)=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
+        if(preferences.some((item:string)=>item==='algrow'||item.includes('algrow'))){
+          setVoiceProvider('algrow');
+        }else if(preferences.some((item:string)=>item==='voiceapi'||item.includes('voice api')||item.includes('external'))){
           setVoiceProvider('voiceapi');
         }else if(preferences.some((item:string)=>item.includes('elevenlabs'))){
           setVoiceProvider('elevenlabs');
         }else if(providerRes.ok){
           const statuses=Array.isArray(providerBody.providers)?providerBody.providers:[];
+          const algrow=statuses.find((item:{provider?:string})=>item.provider==='algrow');
           const voiceApi=statuses.find((item:{provider?:string})=>item.provider==='voiceapi');
           const eleven=statuses.find((item:{provider?:string})=>item.provider==='elevenlabs');
-          if(voiceApi?.configured&&!eleven?.configured)setVoiceProvider('voiceapi');
+          if(algrow?.configured)setVoiceProvider('algrow');
+          else if(voiceApi?.configured&&!eleven?.configured)setVoiceProvider('voiceapi');
         }
       }
       if(first)await loadAssets(first);
@@ -99,7 +105,9 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
   async function loadVoices(){
     setBusy('voices');setVoicesError('');
     try{
-      const res=await fetch('/api/voice-engine?voices='+encodeURIComponent(voiceProvider),{cache:'no-store'});
+      const query=new URLSearchParams({voices:voiceProvider});
+      if(voiceProvider==='algrow')query.set('algrowProvider',algrowProvider);
+      const res=await fetch('/api/voice-engine?'+query.toString(),{cache:'no-store'});
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??'Falha ao listar vozes do provedor.');
       setVoices(body.voices??[]);
@@ -118,7 +126,15 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
       const res=await fetch('/api/voice-engine',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'generate',scriptId,provider:voiceProvider,voiceId:voiceId.trim(),voiceName:voiceName.trim()||undefined,modelId})
+        body:JSON.stringify({
+          action:'generate',
+          scriptId,
+          provider:voiceProvider,
+          voiceId:voiceId.trim(),
+          voiceName:voiceName.trim()||undefined,
+          modelId,
+          algrowProvider:voiceProvider==='algrow'?algrowProvider:undefined
+        })
       });
       const body=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(body.message??body.error??'Falha ao gerar narração.');
@@ -182,16 +198,19 @@ export default function VoiceEngineWorkspace({channel}:{channel:ManagedChannel})
 
       <div className="voice-engine-two">
         <section className="voice-generator">
-          <div className="voice-section-head"><div><span>{voiceProvider==='voiceapi'?'VOICE API EXTERNA':'ELEVENLABS'}</span><h3>Gerar narração.</h3></div><WandSparkles size={21}/></div>
+          <div className="voice-section-head"><div><span>{voiceProvider==='algrow'?'ALGROW TTS':voiceProvider==='voiceapi'?'VOICE API EXTERNA':'ELEVENLABS'}</span><h3>Gerar narração.</h3></div><WandSparkles size={21}/></div>
           <div className="voice-provider-row">
-            <label>Provedor<select value={voiceProvider} onChange={e=>{setVoiceProvider(e.target.value as VoiceProvider);setVoices([]);setVoicesError('');setVoiceName('');}}><option value="voiceapi">Voice API externa</option><option value="elevenlabs">ElevenLabs</option></select></label>
-            <label>Modelo<select value={modelId} onChange={e=>setModelId(e.target.value as typeof modelId)}><option value="eleven_flash_v2_5">Flash v2.5 · 40k/chunk · long-form automático</option><option value="eleven_multilingual_v2">Multilingual v2 · 10k/chunk · long-form automático</option></select></label>
-            <button className="button subtle small" disabled={busy==='voices'} onClick={()=>void loadVoices()}><RefreshCw size={14}/>{busy==='voices'?'Carregando…':'Carregar minhas vozes'}</button>
+            <label>Provedor<select value={voiceProvider} onChange={e=>{setVoiceProvider(e.target.value as VoiceProvider);setVoices([]);setVoicesError('');setVoiceName('');}}><option value="algrow">Algrow TTS</option><option value="voiceapi">Voice API externa</option><option value="elevenlabs">ElevenLabs direto</option></select></label>
+            {voiceProvider==='algrow'&&<label>Engine<select value={algrowProvider} onChange={e=>{setAlgrowProvider(e.target.value as AlgrowProvider);setVoices([]);setVoicesError('');setVoiceId('');setVoiceName('');}}><option value="elevenlabs">Algrow · ElevenLabs</option><option value="stealth">Algrow · Stealth</option><option value="minimax">Algrow · MiniMax</option></select></label>}
+            {(voiceProvider!=='algrow'||algrowProvider==='elevenlabs')&&<label>Modelo<select value={modelId} onChange={e=>setModelId(e.target.value as typeof modelId)}><option value="eleven_flash_v2_5">Flash v2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option></select></label>}
+            <button className="button subtle small" disabled={busy==='voices'} onClick={()=>void loadVoices()}><RefreshCw size={14}/>{busy==='voices'?'Carregando…':'Carregar vozes'}</button>
           </div>
           {voicesError&&<div className="voice-inline-warning"><CircleAlert size={15}/>{voicesError}</div>}
           {voices.length>0?<label>Voz<select value={voiceId} onChange={e=>{const v=voices.find(item=>item.voiceId===e.target.value);setVoiceId(e.target.value);setVoiceName(v?.name??'');}}><option value="">Selecione</option>{voices.map(voice=><option key={voice.voiceId} value={voice.voiceId}>{voice.name}{voice.category?' · '+voice.category:''}</option>)}</select></label>:<label>Voice ID<input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Cole o Voice ID ou carregue suas vozes"/></label>}
           {voiceName&&<div className="voice-selected-name"><Volume2 size={14}/>{voiceName}</div>}
-          {selectedScript&&generationChunkCount>0&&<div className="voice-selected-name"><Sparkles size={14}/>{generationChunkCount===1?'1 geração direta':generationChunkCount+' chunks estimados · stitching automático'}</div>}
+          {selectedScript&&<div className="voice-selected-name"><Sparkles size={14}/>{voiceProvider==='algrow'
+            ?'1 job Algrow · áudio hospedado + SRT quando disponível'
+            :generationChunkCount===1?'1 geração direta':generationChunkCount+' chunks estimados · stitching automático'}</div>}
           <button className="button primary" disabled={!voiceId.trim()||!!busy} onClick={()=>void generate()}><Sparkles size={15}/>{busy==='generate'?'Gerando narração long-form…':'Gerar novo take'}</button>
         </section>
 

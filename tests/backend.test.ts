@@ -61,6 +61,22 @@ test('ElevenLabs replacement key UI and validation use the same minimum and real
   assert.match(providers,/payment_issue/);
 });
 
+test('Algrow TTS stores only the API key in the protected provider vault and validates voices read-only',()=>{
+  const ui=readFileSync(resolve(process.cwd(),'src/components/provider-settings.tsx'),'utf8');
+  const route=readFileSync(resolve(process.cwd(),'src/app/api/provider-settings/route.ts'),'utf8');
+  const providers=readFileSync(resolve(process.cwd(),'src/lib/server/providers.ts'),'utf8');
+  const adapter=readFileSync(resolve(process.cwd(),'src/lib/server/algrow-voice.ts'),'utf8');
+  assert.match(ui,/provider="algrow"/);
+  assert.match(ui,/Algrow TTS/);
+  assert.match(route,/algrow/);
+  assert.match(providers,/algrow:'algrow_api_key'/);
+  assert.match(providers,/testAlgrowApiKey/);
+  assert.match(adapter,/https:\/\/api\.algrow\.online/);
+  assert.match(adapter,/Authorization:'Bearer '/);
+  assert.match(adapter,/\/api\/voices\?page_size=1/);
+  assert.doesNotMatch(adapter,/YOUR_API_KEY/);
+});
+
 test('External Voice API stores base URL and key through the protected provider settings flow',()=>{
   const ui=readFileSync(resolve(process.cwd(),'src/components/provider-settings.tsx'),'utf8');
   const route=readFileSync(resolve(process.cwd(),'src/app/api/provider-settings/route.ts'),'utf8');

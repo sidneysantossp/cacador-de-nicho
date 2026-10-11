@@ -8,6 +8,7 @@ export type AutopilotReadinessInput={
   openai:boolean;
   elevenlabs:boolean;
   voiceapi?:boolean;
+  algrow?:boolean;
  };
  workers:{
   automation:boolean;
@@ -79,11 +80,13 @@ export function buildAutopilotReadiness(input:AutopilotReadinessInput):Autopilot
   ),
   check(
    'elevenlabs-provider','Voice Provider','production','autonomous',
-   input.providers.elevenlabs||Boolean(input.providers.voiceapi),
-   input.providers.voiceapi
-     ?'Voice API externa configurada para geração automática de voz.'
-     :'ElevenLabs configurada para geração automática de voz.',
-   'Configure ElevenLabs ou a Voice API externa para o modo Autonomous.'
+   input.providers.elevenlabs||Boolean(input.providers.voiceapi)||Boolean(input.providers.algrow),
+   input.providers.algrow
+     ?'Algrow TTS configurada para geração automática de voz.'
+     :input.providers.voiceapi
+       ?'Voice API externa configurada para geração automática de voz.'
+       :'ElevenLabs configurada para geração automática de voz.',
+   'Configure Algrow, ElevenLabs ou a Voice API externa para o modo Autonomous.'
   ),
   check(
    'youtube-oauth','YouTube OAuth','youtube','closed-loop',
