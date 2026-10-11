@@ -84,8 +84,7 @@ async function algrowJson(
   try{body=raw?JSON.parse(raw) as Record<string,unknown>:{};}catch{}
   if(response.ok)return body;
 
-  const error=String(body.error??body.error_message??body.message??'').replace(/[
-	]+/g,' ').trim().slice(0,240);
+  const error=String(body.error??body.error_message??body.message??'').replace(/[\r\n\t]+/g,' ').trim().slice(0,240);
   if(response.status===401)throw new HttpError('A Algrow recusou a API key. Confira a chave em Settings → API Keys.',422);
   if(response.status===402)throw new HttpError('A Algrow informou saldo/créditos insuficientes para esta geração.',402);
   if(response.status===403)throw new HttpError('Seu plano Algrow não permite este recurso de voz.',422);
@@ -189,8 +188,7 @@ export async function generateAlgrowTts(input:{
       };
     }
     if(state==='failed'){
-      const detail=String(status.error_message??status.error??status.status_detail_message??'Falha na geração').replace(/[
-	]+/g,' ').trim().slice(0,260);
+      const detail=String(status.error_message??status.error??status.status_detail_message??'Falha na geração').replace(/[\r\n\t]+/g,' ').trim().slice(0,260);
       const code=String(status.error_code??'').replace(/[^A-Z0-9_.-]/gi,'').slice(0,80);
       throw new HttpError('A Algrow falhou na geração'+(code?' ['+code+']':'')+': '+detail,422);
     }
