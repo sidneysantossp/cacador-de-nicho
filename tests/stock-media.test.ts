@@ -442,6 +442,16 @@ test('Verified Stock workers roll releases by drain marker instead of force-kill
   assert.doesNotMatch(sync,/if fast_matches_target "\$name"; then[\s\S]{0,120}docker rm -f "\$name"/);
 });
 
+test('Main verified-stock worker clears its persisted drain marker before restart',()=>{
+  const sync=readFileSync(resolve(process.cwd(),'ops/self-hosted/bin/cacadores-verified-stock-worker-sync'),'utf8');
+  assert.match(sync,/clear_main_drain_marker/);
+  assert.match(sync,/marker_name="\$\(basename "\$DRAIN_FILE"\)"/);
+  assert.match(sync,/rm -f "\$WORK_DIR\/\$marker_name"/);
+  const clearIndex=sync.indexOf('clear_main_drain_marker');
+  const mainRunIndex=sync.indexOf('docker run -d \\',sync.indexOf('if remove_after_drain "$CONTAINER"'));
+  assert.ok(clearIndex>=0&&mainRunIndex>clearIndex,'persistent drain marker must be cleared before main worker restart');
+});
+
 test('Verified Stock worker drains backlog quickly but keeps normal idle/error polling',()=>{
   const source=readFileSync(resolve(process.cwd(),'scripts/verified-stock-worker.mjs'),'utf8');
   assert.match(source,/VERIFIED_STOCK_WORKER_DRAIN_YIELD_MS/);
