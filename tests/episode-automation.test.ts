@@ -247,6 +247,9 @@ test('Episode Automation exposes one concise operator snapshot with progress, qu
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   const route=readFileSync('src/app/api/episode-automation/route.ts','utf8');
   assert.match(source,/export async function episodeAutomationOperatorSnapshot/);
+  assert.match(source,/currentSceneIds/);
+  assert.match(source,/sourceDiversityAssessment/);
+  assert.match(source,/motionRouteAssetSatisfied/);
   assert.match(source,/selectedPass/);
   assert.match(source,/stockQueue/);
   assert.match(source,/budgetUsd/);
@@ -259,6 +262,14 @@ test('Episode Automation exposes one concise operator snapshot with progress, qu
   assert.match(route,/operator:await episodeAutomationOperatorSnapshot\(reconciled\)/);
 });
 
+test('Operator snapshot filters historical scene assets and diversity rejects from coverage',()=>{
+  const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
+  assert.match(source,/currentSceneIds\.has\(asset\.sceneId\)/);
+  assert.match(source,/!asset\.stale/);
+  assert.match(source,/acceptedScenes=new Set\(diversity\.acceptedSceneIds\)/);
+  assert.match(source,/selectedPassBase\.filter\(asset=>acceptedScenes\.has\(asset\.sceneId\)\)/);
+  assert.match(source,/generatedActive=assets\.filter\(asset=>[\s\S]*currentSceneIds\.has\(asset\.sceneId\)/);
+});
 test('Visual batch excludes only full-route terminal current-policy stock gaps',()=>{
   const source=readFileSync('src/lib/server/episode-automation.ts','utf8');
   assert.match(source,/verifiedStockGapRecoverable/);
