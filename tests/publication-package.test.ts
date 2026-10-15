@@ -92,6 +92,7 @@ function pkg():PublicationPackagePayload{
 
 test('Publication category inference maps common channel niches',()=>{
   assert.equal(inferYoutubeCategory(channel),'28');
+  assert.equal(inferYoutubeCategory({...channel,niche:'Automotive electrical problems',format:'Long form'}),'2');
   assert.equal(inferYoutubeCategory({...channel,niche:'Pets and animals',format:'Documentary'}),'15');
   assert.equal(inferYoutubeCategory({...channel,niche:'DIY craft',format:'How to'}),'26');
   assert.equal(inferYoutubeCategory({...channel,niche:'History',format:'Explainer'}),'27');
