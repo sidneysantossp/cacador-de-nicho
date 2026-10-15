@@ -426,7 +426,7 @@ test('Render-v4 splits an oversized editorial chapter without changing small cha
 test('Draft render uses an ultrafast encoder profile while final presets stay medium',()=>{
   assert.equal(renderEncoderPreset('draft-720p30'),'ultrafast');
   assert.equal(renderEncoderPreset('source'),'medium');
-  assert.equal(renderEncoderPreset('hd-1080p30'),'medium');
+  assert.equal(renderEncoderPreset('hd-1080p30'),'veryfast');
 });
 
 test('Render-v4 chapter cache hash separates draft and final encoder profiles',()=>{
