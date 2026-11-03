@@ -1,4 +1,4 @@
-# Ponte GoMotionStudio ↔ Caçadores de Nichos (somente leitura)
+# Ponte GoMotionStudio ↔ Caçadores de Nichos — consulta e edição controlada
 
 Esta ponte aproveita **o OAuth do YouTube já existente no Caçadores de Nichos**. Não cria um segundo cliente Google, não duplica refresh tokens e não altera os endpoints de OAuth/publisher.
 
@@ -30,7 +30,7 @@ A rota remota é:
 com o header privado `x-gomotion-bridge-secret`, enviado apenas do servidor GoMotion.
 
 ## Limites e segurança
-- Somente **GET**: status de canal, verificações de escopo, até 12 snapshots já persistidos e até 12 estados de upload. Não oferece tokens, refresh tokens ou Publication Packages completos.
+- A rota de status **GET** mantém acesso somente de leitura: estado do canal, permissões, snapshots persistidos e estados de upload. A rota específica de vídeo exige prévia assinada, validação de propriedade e confirmação explícita para atualizar somente snippet.
 - A rota verifica a credencial com comparação resistente a timing e limita o resultado ao ID de canal configurado no servidor; outras contas/canais não são expostos.
 - Retorna `Cache-Control: no-store`. A URL do Caçadores deve ser HTTPS; exceção somente para loopback em desenvolvimento.
 - Os snapshots representam métricas **já coletadas**, não um download em tempo real de novas estatísticas. Leitura atualizada depende de um job do Analytics existente ou da integração vidIQ.
