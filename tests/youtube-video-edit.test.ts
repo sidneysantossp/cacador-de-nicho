@@ -39,6 +39,8 @@ test('strict length and markup checks',()=>{
  assert.throws(()=>validateVideoEditPatch({description:'a'.repeat(5001)}),/INVALID_DESCRIPTION/);
  assert.throws(()=>validateVideoEditPatch({title:'<script>alert</script>'}),/INVALID_TITLE/);
  assert.throws(()=>validateVideoEditPatch({tags:['a'.repeat(501)]}),/INVALID_TAGS/);
+ const longParagraph=validateVideoEditPatch({description:'Primeira linha\nSegunda linha'});
+ assert.equal(longParagraph.description,'Primeira linha\nSegunda linha');
  const next=editedVideoState(original,{description:''});
  assert.equal(next.description,'');
 });
