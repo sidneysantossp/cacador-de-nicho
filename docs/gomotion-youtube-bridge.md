@@ -45,3 +45,13 @@ com o header privado `x-gomotion-bridge-secret`, enviado apenas do servidor GoMo
 - Nenhuma implantação ou publicação deve ocorrer automaticamente ao mesclar este código.
 
 Status: implementação em branch de revisão; precisa configurar ambientes e validar um canal real antes de declarar conexão operacional.
+
+## Edição de vídeos existentes (novo)
+- Rota `GET /api/gomotion-youtube/video?videoId=...` consulta metadados do **canal exato autorizado**; não aceita vídeo de outro canal.
+- Rota `POST /api/gomotion-youtube/video` aceita somente `action=preview` e `action=apply`.
+- Preview valida mudanças exclusivamente em `title`, `description` e `tags`, preserva `categoryId` e `defaultLanguage`, e emite token HMAC vinculado ao vídeo, ao canal e ao hash dos metadados anteriores, com expiração em 10 minutos.
+- Apply exige token íntegro e vigente, vídeo sem mudanças desde a prévia e confirmação literal `CONFIRMO_ALTERAR_VIDEO`. Só chama `videos.update(part=snippet)`; nunca inclui `status`, `publishAt`, thumbnail, vídeo ou configuração infantil.
+- `youtube.force-ssl` é obrigatório; se faltante, a API pede reconexão OAuth com o consentimento correto.
+- O GoMotionStudio disponibiliza painel local `http://127.0.0.1:8877/youtube-control` com comparação antes/depois e confirmação adicional. A interface nunca recebe a credencial de ponte.
+- **Não habilitar em produção sem revisar o PR, configuração segura do segredo e teste com o vídeo escolhido.** A primeira alteração real requer aprovação específica do usuário, que deve conferir o título/descrição/tags.
+- Alteração de thumbnail será uma etapa distinta, usando API YouTube thumbnails.set e autorização explícita; não está implementada aqui.
