@@ -5,6 +5,7 @@ export type VideoEditState={
 };
 export type VideoEditPatch={title?:string;description?:string;tags?:string[]};
 const charSafe=(s:string)=>!/[<>\u0000-\u001F\u007F]/u.test(s);
+const descriptionSafe=(s:string)=>!/[<>\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(s);
 const utf8=(s:string)=>Buffer.byteLength(s,'utf8');
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -33,7 +34,7 @@ export function validateVideoEditPatch(value:unknown):VideoEditPatch{
   p.title=object.title.trim();
  }
  if('description' in object){
-  if(typeof object.description!=='string'||utf8(object.description)>5000||!charSafe(object.description))throw Error('INVALID_DESCRIPTION');
+  if(typeof object.description!=='string'||utf8(object.description)>5000||!descriptionSafe(object.description))throw Error('INVALID_DESCRIPTION');
   p.description=object.description;
  }
  if('tags' in object){
