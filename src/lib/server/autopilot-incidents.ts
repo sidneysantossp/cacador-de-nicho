@@ -147,6 +147,7 @@ export async function resolveAutopilotIncident(input:{
 }){
   // Acknowledge/ignore is an explicit operator action, but "resolved" must
   // never claim that an active, stale, or waiting run has recovered.
+  let lastSeenAtAtVerification:string|undefined;
   if(input.status==='resolved'){
     const current=checked(await db().from('radar_autopilot_incidents')
       .select('id,area,channel_id,entity_id,status,last_seen_at')
@@ -170,12 +171,21 @@ export async function resolveAutopilotIncident(input:{
         409
       );
     }
+    if(current.area==='episode-automation'){
+      lastSeenAtAtVerification=String(current.last_seen_at);
+    }
   }
-  const rows=checked(await db().from('radar_autopilot_incidents').update({
+  // Recheck last_seen_at in the UPDATE so an incident observed again while
+  // the operator confirms cannot accidentally be marked resolved.
+  let update=db().from('radar_autopilot_incidents').update({
     status:input.status,
     resolved_at:new Date().toISOString(),
     updated_at:new Date().toISOString()
-  }).eq('id',input.incidentId).eq('status','open').select(selection));
+  }).eq('id',input.incidentId).eq('status','open');
+  if(lastSeenAtAtVerification){
+    update=update.eq('last_seen_at',lastSeenAtAtVerification);
+  }
+  const rows=checked(await update.select(selection));
   if(!rows?.length)throw new HttpError('Incidente aberto não encontrado.',404);
   return normalize(rows[0] as unknown as IncidentRow);
 }
