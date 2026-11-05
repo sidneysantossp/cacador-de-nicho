@@ -8,7 +8,7 @@ import { ownedVisualRetryPolicy } from '@/lib/owned-media-worker-policy';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=900;
+export const maxDuration=300;
 
 const schema=z.object({
   jobId:z.string().uuid(),
