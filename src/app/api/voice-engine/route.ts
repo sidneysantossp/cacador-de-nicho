@@ -13,7 +13,7 @@ import {
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
-export const maxDuration=1800;
+export const maxDuration=300;
 
 const jsonSchema=z.discriminatedUnion('action',[
   z.object({action:z.literal('prepareUpload'),scriptId:z.string().uuid(),fileName:z.string().trim().min(1).max(500),mimeType:z.string().trim().min(1).max(160),bytes:z.number().int().positive().max(100*1024*1024)}).strict(),
