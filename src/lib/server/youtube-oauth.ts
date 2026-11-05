@@ -98,7 +98,10 @@ export function youtubeAuthorizationUrl(channelId:string){
   url.searchParams.set('scope',YOUTUBE_OAUTH_SCOPES.join(' '));
   url.searchParams.set('access_type','offline');
   url.searchParams.set('include_granted_scopes','true');
-  url.searchParams.set('prompt','consent');
+  // Force account selection on reconnect: prevents silently reusing the
+  // Google identity that previously returned the wrong YouTube channel.
+  // Google/YouTube may still require an explicit Brand Account selection.
+  url.searchParams.set('prompt','select_account consent');
   url.searchParams.set('state',state);
   return {url:url.toString(),state};
 }
