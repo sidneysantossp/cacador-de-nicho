@@ -6,8 +6,9 @@ import {
   PauseCircle, PlayCircle, RefreshCw, ShieldAlert
 } from 'lucide-react';
 import type {
-  AutopilotControl, AutopilotControlVersion, AutopilotIncident
+  AutopilotControl, AutopilotControlVersion
 } from '@/lib/types';
+import type { IncidentDiagnosis, RunDiagnosis } from '@/lib/autopilot-incident-diagnostics';
 
 type State={
   control:AutopilotControl;
@@ -18,7 +19,8 @@ type State={
     learningScheduled:number;
     learningLeased:number;
   };
-  incidents:AutopilotIncident[];
+  incidents:IncidentDiagnosis[];
+  staleRuns:RunDiagnosis[];
   openCriticalIncidents:number;
 };
 
@@ -178,22 +180,37 @@ export default function AutopilotControlPlane(){
       <div className="autopilot-control-subhead">
         <AlertTriangle size={15}/>
         <strong>Incident Ledger</strong>
-        <span>{state.openCriticalIncidents} critical aberto(s)</span>
+        <span>{state.openCriticalIncidents} crítico(s) aberto(s) · histórico de todos os projetos</span>
       </div>
+      <p>Incidentes antigos não indicam necessariamente falha atual. Resolver exige execução concluída após a ocorrência; Ignorar apenas arquiva o alerta.</p>
+      {!!state.staleRuns?.length&&<div className="autopilot-stale-runs" role="status">
+        <strong>{state.staleRuns.length} execução(ões) sem progresso recente e sem lease válido</strong>
+        <ul>{state.staleRuns.slice(0,10).map(run=><li key={run.id}>
+          <strong>{state.incidents.find(item=>item.entityId===run.id)?.projectName??'Projeto não identificado'}</strong>
+          {' — '}{run.status} / {run.step} · última atualização: {run.lastUpdatedAt?when(run.lastUpdatedAt):'desconhecida'}.
+          Inspecione o worker antes de qualquer retomada.
+        </li>)}</ul>
+      </div>}
       <div className="autopilot-incident-list">
         {state.incidents.slice(0,12).map(incident=><article key={incident.id} className={incident.severity+' '+incident.status}>
           <div>
-            <span>{incident.area} · {incident.code}</span>
+            <span><strong>{incident.projectName??'Projeto não identificado'}</strong> · {incident.area} · {incident.code}</span>
             <strong>{incident.message}</strong>
-            <small>{when(incident.lastSeenAt)} · {incident.occurrences} ocorrência(s) · {incident.status}</small>
+            <small>Última ocorrência: {when(incident.lastSeenAt)} · {incident.occurrences} ocorrência(s) · {incident.status}</small>
+            {incident.run&&<small>Execução: {incident.run.status} / {incident.run.step} · {incident.run.health==='stale'?'Possivelmente abandonada':incident.run.health==='waiting'?'Aguardando condição':incident.run.health==='completed'?'Concluída':'Requer avaliação'}</small>}
+            <small>{incident.recommendedAction??'Verificar o projeto antes de encerrar.'}</small>
           </div>
           {incident.status==='open'&&<div>
-            <button className="button subtle small" disabled={Boolean(busy)} onClick={()=>void action({
-              action:'incident',incidentId:incident.id,disposition:'resolved'
-            },'incident:'+incident.id)}>Resolver</button>
-            <button className="button subtle small" disabled={Boolean(busy)} onClick={()=>void action({
-              action:'incident',incidentId:incident.id,disposition:'ignored'
-            },'ignore:'+incident.id)}>Ignorar</button>
+            <button className="button subtle small" disabled={Boolean(busy)||!incident.canMarkResolved}
+              title={incident.canMarkResolved?'Confirme a recuperação antes de encerrar.':'Bloqueado: execução não comprovadamente concluída.'}
+              onClick={()=>{
+                if(!window.confirm('O resultado deste projeto foi verificado? Marcar incidente como resolvido?'))return;
+                void action({action:'incident',incidentId:incident.id,disposition:'resolved'},'incident:'+incident.id);
+              }}>Resolver</button>
+            <button className="button subtle small" disabled={Boolean(busy)} onClick={()=>{
+              if(!window.confirm('Ignorar apenas arquiva este alerta. Não corrige a falha nem altera o job. Continuar?'))return;
+              void action({action:'incident',incidentId:incident.id,disposition:'ignored'},'ignore:'+incident.id);
+            }}>Ignorar</button>
           </div>}
         </article>)}
         {!state.incidents.length&&<div className="autopilot-no-incidents">Nenhum incidente registrado.</div>}

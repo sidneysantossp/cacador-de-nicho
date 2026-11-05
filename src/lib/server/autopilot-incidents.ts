@@ -12,6 +12,7 @@ import {
 import { checked, db } from './db';
 import { HttpError } from './auth';
 import { pauseAutopilotControlFromSystem } from './autopilot-control';
+import { canMarkIncidentResolved } from '@/lib/autopilot-incident-diagnostics';
 
 type IncidentRow={
   id:string;
@@ -144,6 +145,32 @@ export async function resolveAutopilotIncident(input:{
   incidentId:string;
   status:'resolved'|'ignored';
 }){
+  // Acknowledge/ignore is an explicit operator action, but "resolved" must
+  // never claim that an active, stale, or waiting run has recovered.
+  if(input.status==='resolved'){
+    const current=checked(await db().from('radar_autopilot_incidents')
+      .select('id,area,channel_id,entity_id,status,last_seen_at')
+      .eq('id',input.incidentId).eq('status','open').maybeSingle());
+    if(!current)throw new HttpError('Incidente aberto não encontrado.',404);
+    const run=current.area==='episode-automation'
+      ?checked(await db().from('radar_episode_automation_runs')
+        .select('id,channel_id,status,updated_at,worker_token,lease_until')
+        .eq('id',current.entity_id).maybeSingle())
+      :null;
+    const verified=canMarkIncidentResolved({
+      incidentStatus:String(current.status),
+      incidentChannelId:String(current.channel_id??''),
+      incidentLastSeenAt:String(current.last_seen_at??''),
+      run,
+      nowMs:Date.now()
+    });
+    if(current.area==='episode-automation'&&!verified){
+      throw new HttpError(
+        'Execução ainda não comprovadamente recuperada. Verifique o bloqueio e finalize a execução antes de marcar como resolvido. Use Ignorar somente para arquivamento explícito.',
+        409
+      );
+    }
+  }
   const rows=checked(await db().from('radar_autopilot_incidents').update({
     status:input.status,
     resolved_at:new Date().toISOString(),

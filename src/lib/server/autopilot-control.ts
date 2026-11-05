@@ -9,6 +9,7 @@ import {
 } from '@/lib/autopilot-control-policy';
 import { checked, db } from './db';
 import { HttpError } from './auth';
+import { diagnoseAutomationRun, diagnoseIncidents } from '@/lib/autopilot-incident-diagnostics';
 
 type ControlRow={
   id:string;
@@ -187,7 +188,7 @@ export async function autopilotControlState(){
     loadAutopilotControl(),
     loadAutopilotControlHistory(),
     client.from('radar_episode_automation_runs')
-      .select('status,worker_token,lease_until'),
+      .select('id,channel_id,status,current_step,updated_at,worker_token,lease_until'),
     client.from('radar_learning_loop_jobs')
       .select('status,worker_token,lease_until'),
     client.from('radar_autopilot_incidents')
@@ -214,6 +215,14 @@ export async function autopilotControlState(){
     payload:(row.payload??{}) as Record<string,unknown>
   })) as AutopilotIncident[];
   const now=Date.now();
+  const projectIds=[...new Set(incidents.map(incident=>incident.channelId).filter((value):value is string=>Boolean(value)))];
+  const projectRows=projectIds.length
+    ?(checked(await client.from('radar_managed_channels').select('id,payload').in('id',projectIds))??[])
+    :[];
+  const incidentDiagnostics=diagnoseIncidents(incidents,automation,projectRows,now);
+  const staleRuns=automation
+    .map(run=>diagnoseAutomationRun(run,now))
+    .filter(run=>run?.health==='stale');
   const liveLease=(item:{worker_token?:unknown;lease_until?:unknown})=>{
     const lease=item.lease_until?Date.parse(String(item.lease_until)):0;
     return Boolean(item.worker_token)&&Number.isFinite(lease)&&lease>now;
@@ -234,7 +243,8 @@ export async function autopilotControlState(){
         item.status==='processing'&&liveLease(item)
       ).length
     },
-    incidents,
+    incidents:incidentDiagnostics,
+    staleRuns,
     openCriticalIncidents:incidents.filter(
       incident=>incident.status==='open'&&incident.severity==='critical'
     ).length
