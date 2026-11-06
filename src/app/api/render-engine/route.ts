@@ -3,7 +3,8 @@ import { authenticated, errorResponse, HttpError, requireOperator } from '@/lib/
 import { dbConfigured } from '@/lib/server/db';
 import {
   cancelRenderJob, createRenderJob, finalizeExternalMasterUpload, loadRenderJob,
-  prepareExternalMasterUpload, renderEngineChannelState, retryRenderChapter, retryRenderJob
+  prepareExternalMasterUpload, renderEngineChannelState, retryRenderChapter, retryRenderJob,
+  signExternalMasterUpload
 } from '@/lib/server/render-engine';
 
 export const runtime='nodejs';
@@ -33,6 +34,7 @@ const schema=z.discriminatedUnion('action',[
     }).strict().optional()
   }).strict(),
   z.object({action:z.literal('external-finalize'),jobId:z.string().uuid()}).strict(),
+  z.object({action:z.literal('external-sign'),jobId:z.string().uuid()}).strict(),
   z.object({action:z.literal('cancel'),jobId:z.string().uuid()}).strict(),
   z.object({action:z.literal('retry'),jobId:z.string().uuid()}).strict(),
   z.object({
@@ -78,6 +80,9 @@ export async function POST(request:Request){
     if(body.action==='external-prepare'){
       const prepared=await prepareExternalMasterUpload(body);
       return Response.json({message:'Master externo preparado para upload direto ao R2.',...prepared});
+    }
+    if(body.action==='external-sign'){
+      return Response.json({message:'Link de upload direto R2 renovado.',...(await signExternalMasterUpload(body.jobId))});
     }
     if(body.action==='external-finalize'){
       const job=await finalizeExternalMasterUpload(body.jobId);
