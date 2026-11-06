@@ -7,7 +7,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, signedMediaUrl } from './media-storage';
+import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, signedMediaPutUrl, signedMediaUrl } from './media-storage';
 import { probeStoredVideo } from './media-probe';
 import { loadVideoEdit, listVideoEdits, loadVideoEditWorkspace } from './video-editor';
 import { loadVoiceAsset } from './voice-engine';
@@ -635,6 +635,17 @@ export async function prepareExternalMasterUpload(input:{
     manifest:externalPlaceholderManifest(audioPath,audio?.mimeType)
   };
 
+  // Authorised operators can send external masters straight to R2 rather than
+  // proxying hundreds of megabytes through the memory-constrained VPS.
+  // These presigned PUT URLs are confined to the immutable job paths and expire
+  // after one hour. No long-lived R2 credentials leave the server.
+  const directVideoUploadUrl=await signedMediaPutUrl(videoPath,videoMime,3600);
+  if(!directVideoUploadUrl)throw new HttpError('Não foi possível assinar o upload direto do MP4 ao R2.',502);
+  const directAudioUploadUrl=audioPath
+    ?await signedMediaPutUrl(audioPath,normalizeExternalMime(audio!.mimeType),3600)
+    :null;
+  if(audioPath&&!directAudioUploadUrl)throw new HttpError('Não foi possível assinar o upload direto do áudio ao R2.',502);
+
   const inserted=await db().from('radar_render_jobs').insert({
     id,channel_id:input.channelId,episode_id:input.episodeId,
     video_edit_id:null,video_edit_version:null,
@@ -647,11 +658,38 @@ export async function prepareExternalMasterUpload(input:{
     jobId:id,
     version,
     videoUploadUrl:'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=video',
+    directVideoUploadUrl,
+    directAudioUploadUrl,
     audioUploadUrl:audio?'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=audio':null,
     videoPath,
     audioPath,
     episode:{id:episode.id,sequence:Number(episode.sequence),title}
   };
+}
+
+// Re-issue short-lived upload links for an existing prepared master.
+ // Never accepts an arbitrary object path: signing is limited to the
+ // operator-created render job and to its original expected MIME types.
+export async function signExternalMasterUpload(jobId:string){
+  const row=checked(await db().from('radar_render_jobs')
+    .select('id,status,stage,output_path,payload').eq('id',jobId).maybeSingle()) as {
+      id:string;status:RenderJob['status'];stage:string;output_path:string|null;payload:unknown
+    }|null;
+  if(!row)throw new HttpError('Master externo não encontrado.',404);
+  const payload=row.payload as RenderJobPayload;
+  if(row.status!=='processing'||row.stage!=='external-upload'
+    ||payload.source!=='external-master'||!payload.externalMaster){
+    throw new HttpError('Este job não está aguardando upload de master externo.',409);
+  }
+  if(!row.output_path?.startsWith('r2:'))throw new HttpError('Caminho R2 inválido.',409);
+  const external=payload.externalMaster;
+  const directVideoUploadUrl=await signedMediaPutUrl(row.output_path,external.mimeType,3600);
+  if(!directVideoUploadUrl)throw new HttpError('Falha ao assinar upload direto do MP4.',502);
+  const directAudioUploadUrl=external.audioPath&&external.audioMimeType
+    ?await signedMediaPutUrl(external.audioPath,external.audioMimeType,3600)
+    :null;
+  if(external.audioPath&&!directAudioUploadUrl)throw new HttpError('Falha ao assinar upload do áudio.',502);
+  return {jobId:row.id,directVideoUploadUrl,directAudioUploadUrl};
 }
 
 export async function streamExternalMasterUpload(input:{
