@@ -20,7 +20,7 @@ import { stockVisualConstraintsSatisfied } from '@/lib/stock-media-policy';
 import { applyDocumentarySourcePolicy, routePrefersMotion, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
-  structuralQualityChecks, technicalQualityChecks,
+  productionQualityDecodeTimeoutMs, structuralQualityChecks, technicalQualityChecks,
   type ProductionQualityAssetFact, type ProductionQualityCharacterFact,
   type ProductionQualityMediaDiversity, type ProductionQualityMotionCoverage
 } from '@/lib/production-quality-policy';
@@ -313,7 +313,9 @@ async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechn
   }
   analysisArgs.push('-f','null','-');
 
-  const analysis=await runCapture(FFMPEG,analysisArgs,180000);
+  const analysis=await runCapture(
+    FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs(duration)
+  );
   const diagnostics=analysis.stderr;
   const blackSeconds=sumMatches(diagnostics,/black_duration:([0-9.]+)/g);
   const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\s*([0-9.]+)/g):0;
@@ -508,10 +510,7 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
     await saveChapterQa(job.id,technical);
   }
 
-  const masterDecodeTimeoutMs=Math.max(
-    180000,
-    Math.min(600000,Math.ceil((master.durationSeconds??0)*600))
-  );
+  const masterDecodeTimeoutMs=productionQualityDecodeTimeoutMs(master.durationSeconds);
   const decodeDir=await mkdtemp(join(tmpdir(),'cacadores-production-qa-'));
   const decodePath=join(decodeDir,'master.mp4');
   let masterDecode:{code:number;stdout:string;stderr:string};
