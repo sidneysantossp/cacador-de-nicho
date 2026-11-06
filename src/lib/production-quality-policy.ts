@@ -3,6 +3,15 @@ import type {
   ProductionQualityTechnical, RenderJob
 } from '@/lib/types';
 
+// A full decode on a self-hosted node scales with media duration and CPU load.
+// Keep the existing three-minute floor, but allow up to ten minutes for long videos.
+export function productionQualityDecodeTimeoutMs(durationSeconds:number|null){
+  const seconds=Number.isFinite(durationSeconds)&&durationSeconds!==null
+    ?Math.max(0,durationSeconds)
+    :0;
+  return Math.max(180000,Math.min(600000,Math.ceil(seconds*600)));
+}
+
 const EPSILON=.05;
 const PLACEHOLDER_RE=/(\bTODO\b|\bTBD\b|\bVERIFY\b|\bFIXME\b|lorem ipsum|\?\?\?|\{\{[^}]+\}\}|\[[A-Z _-]{3,}\])/i;
 

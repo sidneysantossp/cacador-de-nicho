@@ -7,7 +7,7 @@ import type {
 } from '../src/lib/types';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
-  structuralQualityChecks, technicalQualityChecks
+  productionQualityDecodeTimeoutMs, structuralQualityChecks, technicalQualityChecks
 } from '../src/lib/production-quality-policy';
 
 const now='2026-09-23T21:30:00.000Z';
@@ -528,3 +528,27 @@ test('Production QA derives motion coverage from the same Source Router policy',
   assert.match(source,/videoRatio:total>0\?videoSeconds\/total:0/);
 });
 
+
+
+test('full master decode timeout scales with duration without weakening decode gate',()=>{
+  assert.equal(productionQualityDecodeTimeoutMs(null),180000);
+  assert.equal(productionQualityDecodeTimeoutMs(60),180000);
+  assert.equal(productionQualityDecodeTimeoutMs(400),240000);
+  assert.equal(productionQualityDecodeTimeoutMs(1303.8),600000);
+  assert.equal(productionQualityDecodeTimeoutMs(10000),600000);
+  const source=readFileSync(resolve('src/lib/server/production-quality.ts'),'utf8');
+  assert.match(source,/runCapture\(\s*FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs\(duration\)/);
+  assert.match(source,/decodeOk:analysis\.code===0/);
+});
+
+
+test('external legacy QA streams R2 into a temporary local master before decoding',()=>{
+  const source=readFileSync(resolve('src/lib/server/production-quality.ts'),'utf8');
+  const legacy=source.split('async function inspectOutputLegacy(')[1]?.split('function chapterTechnicalFromRow(')[0]??'';
+  assert.match(legacy,/await downloadMediaToFile\(job\.outputPath,decodePath\)/);
+  assert.match(legacy,/downloaded\.size!==job\.outputBytes/);
+  assert.match(legacy,/await rm\(decodeDir,\{recursive:true,force:true\}\)/);
+  assert.match(legacy,/FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs\(duration\)/);
+  assert.match(legacy,/decodeOk:analysis\.code===0/);
+  assert.doesNotMatch(legacy,/'-i',url/);
+});

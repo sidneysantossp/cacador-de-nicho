@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -20,7 +20,7 @@ import { stockVisualConstraintsSatisfied } from '@/lib/stock-media-policy';
 import { applyDocumentarySourcePolicy, routePrefersMotion, sourceRouteForScene } from '@/lib/source-router-policy';
 import {
   qualityApprovalIssues, qualityInitialStatus, qualitySummary,
-  structuralQualityChecks, technicalQualityChecks,
+  productionQualityDecodeTimeoutMs, structuralQualityChecks, technicalQualityChecks,
   type ProductionQualityAssetFact, type ProductionQualityCharacterFact,
   type ProductionQualityMediaDiversity, type ProductionQualityMotionCoverage
 } from '@/lib/production-quality-policy';
@@ -283,12 +283,22 @@ async function masterProbeAndAudio(job:RenderJob){
 }
 
 async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechnical>{
-  const url=await outputSignedUrl(job);
-  const probe=await runCapture(FFPROBE,[
+  if(!job.outputPath)throw new HttpError('O master externo não possui arquivo persistido.',409);
+  // Download sequentially via the authenticated R2 SDK instead of making
+  // FFmpeg decode a large file through slow remote HTTP reads.
+  const decodeDir=await mkdtemp(join(tmpdir(),'cacadores-qa-legacy-'));
+  const decodePath=join(decodeDir,'master.mp4');
+  try{
+    await downloadMediaToFile(job.outputPath,decodePath);
+    const downloaded=await stat(decodePath);
+    if(job.outputBytes&&downloaded.size!==job.outputBytes){
+      throw new HttpError('Download de master incompleto; tamanho diverge do R2.',422);
+    }
+    const probe=await runCapture(FFPROBE,[
     '-v','error',
     '-show_entries','format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels',
     '-of','json',
-    url
+    decodePath
   ],60000);
   if(probe.code!==0)return emptyTechnical();
 
@@ -301,7 +311,7 @@ async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechn
   const audio=streams.find(stream=>stream.codec_type==='audio');
   const duration=numeric(parsed.format?.duration);
   const analysisArgs=[
-    '-hide_banner','-nostats','-i',url,
+    '-hide_banner','-nostats','-i',decodePath,
     '-map','0:v:0',
     '-vf','blackdetect=d=0.15:pix_th=0.10'
   ];
@@ -313,7 +323,9 @@ async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechn
   }
   analysisArgs.push('-f','null','-');
 
-  const analysis=await runCapture(FFMPEG,analysisArgs,180000);
+  const analysis=await runCapture(
+    FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs(duration)
+  );
   const diagnostics=analysis.stderr;
   const blackSeconds=sumMatches(diagnostics,/black_duration:([0-9.]+)/g);
   const silenceSeconds=audio?sumMatches(diagnostics,/silence_duration:\s*([0-9.]+)/g):0;
@@ -336,6 +348,9 @@ async function inspectOutputLegacy(job:RenderJob):Promise<ProductionQualityTechn
     blackRatio:clampRatio(blackSeconds,duration),
     decodeOk:analysis.code===0
   };
+  }finally{
+    await rm(decodeDir,{recursive:true,force:true}).catch(()=>{});
+  }
 }
 
 function chapterTechnicalFromRow(
@@ -508,10 +523,7 @@ async function inspectChapterAwareOutput(job:RenderJob):Promise<{
     await saveChapterQa(job.id,technical);
   }
 
-  const masterDecodeTimeoutMs=Math.max(
-    180000,
-    Math.min(600000,Math.ceil((master.durationSeconds??0)*600))
-  );
+  const masterDecodeTimeoutMs=productionQualityDecodeTimeoutMs(master.durationSeconds);
   const decodeDir=await mkdtemp(join(tmpdir(),'cacadores-production-qa-'));
   const decodePath=join(decodeDir,'master.mp4');
   let masterDecode:{code:number;stdout:string;stderr:string};
