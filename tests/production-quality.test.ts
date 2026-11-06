@@ -540,3 +540,15 @@ test('full master decode timeout scales with duration without weakening decode g
   assert.match(source,/runCapture\(\s*FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs\(duration\)/);
   assert.match(source,/decodeOk:analysis\.code===0/);
 });
+
+
+test('external legacy QA streams R2 into a temporary local master before decoding',()=>{
+  const source=readFileSync(resolve('src/lib/server/production-quality.ts'),'utf8');
+  const legacy=source.split('async function inspectOutputLegacy(')[1]?.split('function chapterTechnicalFromRow(')[0]??'';
+  assert.match(legacy,/await downloadMediaToFile\(job\.outputPath,decodePath\)/);
+  assert.match(legacy,/downloaded\.size!==job\.outputBytes/);
+  assert.match(legacy,/await rm\(decodeDir,\{recursive:true,force:true\}\)/);
+  assert.match(legacy,/FFMPEG,analysisArgs,productionQualityDecodeTimeoutMs\(duration\)/);
+  assert.match(legacy,/decodeOk:analysis\.code===0/);
+  assert.doesNotMatch(legacy,/'-i',url/);
+});
