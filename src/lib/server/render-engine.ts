@@ -667,6 +667,31 @@ export async function prepareExternalMasterUpload(input:{
   };
 }
 
+// Re-issue short-lived upload links for an existing prepared master.
+ // Never accepts an arbitrary object path: signing is limited to the
+ // operator-created render job and to its original expected MIME types.
+export async function signExternalMasterUpload(jobId:string){
+  const row=checked(await db().from('radar_render_jobs')
+    .select('id,status,stage,output_path,payload').eq('id',jobId).maybeSingle()) as {
+      id:string;status:RenderJob['status'];stage:string;output_path:string|null;payload:unknown
+    }|null;
+  if(!row)throw new HttpError('Master externo não encontrado.',404);
+  const payload=row.payload as RenderJobPayload;
+  if(row.status!=='processing'||row.stage!=='external-upload'
+    ||payload.source!=='external-master'||!payload.externalMaster){
+    throw new HttpError('Este job não está aguardando upload de master externo.',409);
+  }
+  if(!row.output_path?.startsWith('r2:'))throw new HttpError('Caminho R2 inválido.',409);
+  const external=payload.externalMaster;
+  const directVideoUploadUrl=await signedMediaPutUrl(row.output_path,external.mimeType,3600);
+  if(!directVideoUploadUrl)throw new HttpError('Falha ao assinar upload direto do MP4.',502);
+  const directAudioUploadUrl=external.audioPath&&external.audioMimeType
+    ?await signedMediaPutUrl(external.audioPath,external.audioMimeType,3600)
+    :null;
+  if(external.audioPath&&!directAudioUploadUrl)throw new HttpError('Falha ao assinar upload do áudio.',502);
+  return {jobId:row.id,directVideoUploadUrl,directAudioUploadUrl};
+}
+
 export async function streamExternalMasterUpload(input:{
   jobId:string;
   kind:'video'|'audio';
