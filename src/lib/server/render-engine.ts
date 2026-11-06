@@ -7,7 +7,7 @@ import type {
 } from '@/lib/types';
 import { checked, db } from './db';
 import { HttpError } from './auth';
-import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, signedMediaUrl } from './media-storage';
+import { headMedia, preferredMediaStorage, putMediaStream, r2StoragePath, signedMediaPutUrl, signedMediaUrl } from './media-storage';
 import { probeStoredVideo } from './media-probe';
 import { loadVideoEdit, listVideoEdits, loadVideoEditWorkspace } from './video-editor';
 import { loadVoiceAsset } from './voice-engine';
@@ -635,6 +635,17 @@ export async function prepareExternalMasterUpload(input:{
     manifest:externalPlaceholderManifest(audioPath,audio?.mimeType)
   };
 
+  // Authorised operators can send external masters straight to R2 rather than
+  // proxying hundreds of megabytes through the memory-constrained VPS.
+  // These presigned PUT URLs are confined to the immutable job paths and expire
+  // after one hour. No long-lived R2 credentials leave the server.
+  const directVideoUploadUrl=await signedMediaPutUrl(videoPath,videoMime,3600);
+  if(!directVideoUploadUrl)throw new HttpError('Não foi possível assinar o upload direto do MP4 ao R2.',502);
+  const directAudioUploadUrl=audioPath
+    ?await signedMediaPutUrl(audioPath,normalizeExternalMime(audio!.mimeType),3600)
+    :null;
+  if(audioPath&&!directAudioUploadUrl)throw new HttpError('Não foi possível assinar o upload direto do áudio ao R2.',502);
+
   const inserted=await db().from('radar_render_jobs').insert({
     id,channel_id:input.channelId,episode_id:input.episodeId,
     video_edit_id:null,video_edit_version:null,
@@ -647,6 +658,8 @@ export async function prepareExternalMasterUpload(input:{
     jobId:id,
     version,
     videoUploadUrl:'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=video',
+    directVideoUploadUrl,
+    directAudioUploadUrl,
     audioUploadUrl:audio?'/api/render-engine/upload?jobId='+encodeURIComponent(id)+'&kind=audio':null,
     videoPath,
     audioPath,
